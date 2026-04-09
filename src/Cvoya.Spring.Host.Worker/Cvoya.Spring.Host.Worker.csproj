@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <PackageReference Include="Dapr.Actors.AspNetCore" />
+    <PackageReference Include="Dapr.Workflow" />
   </ItemGroup>
 
 </Project>

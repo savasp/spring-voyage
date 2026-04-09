@@ -8,8 +8,11 @@
 
 using Cvoya.Spring.Dapr.Actors;
 using Cvoya.Spring.Dapr.DependencyInjection;
+using Cvoya.Spring.Dapr.Workflows;
+using Cvoya.Spring.Dapr.Workflows.Activities;
 using Dapr.Actors;
 using Dapr.Actors.Runtime;
+using Dapr.Workflow;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -17,6 +20,16 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services
     .AddCvoyaSpringCore()
     .AddCvoyaSpringDapr();
+
+// Register Dapr workflows
+builder.Services.AddDaprWorkflow(options =>
+{
+    options.RegisterWorkflow<AgentLifecycleWorkflow>();
+    options.RegisterWorkflow<CloningLifecycleWorkflow>();
+    options.RegisterActivity<ValidateAgentDefinitionActivity>();
+    options.RegisterActivity<RegisterAgentActivity>();
+    options.RegisterActivity<UnregisterAgentActivity>();
+});
 
 // Register Dapr actors
 builder.Services.AddActors(options =>
