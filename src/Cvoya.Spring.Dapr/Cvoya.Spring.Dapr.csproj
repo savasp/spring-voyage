@@ -6,6 +6,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Cvoya.Spring.Dapr.Tests" />
+    <InternalsVisibleTo Include="Cvoya.Spring.Integration.Tests" />
   </ItemGroup>
 
   <ItemGroup>
