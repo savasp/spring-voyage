@@ -1,0 +1,51 @@
+---
+description: Spring Voyage V2 coding conventions and architecture
+globs: v2/**
+---
+
+# Spring Voyage V2
+
+AI agent orchestration platform built on .NET 9 and Dapr. Namespace: `Cvoya.Spring.*`.
+
+## Essential References
+
+- **Full conventions:** `v2/CONVENTIONS.md` (MUST read before writing code)
+- **Architecture plan:** `v2/docs/SpringVoyage-v2-plan.md`
+
+## Quick Rules
+
+- **Copyright header** on all C# files (see CONVENTIONS.md § 0).
+- **Namespace first, usings after:** file-scoped namespace immediately after copyright, then `using` statements.
+- **Namespace = folder path:** `Cvoya.Spring.Core.Messaging` → `src/Cvoya.Spring.Core/Messaging/`
+- **One public type per file.** File name matches type name.
+- **`Cvoya.Spring.Core` has ZERO NuGet dependencies.** Domain abstractions only.
+- **System.Text.Json only.** No Newtonsoft.Json.
+- **Primary constructor injection.** No service locator.
+- **`Async` suffix** on all async methods. `CancellationToken` as last parameter.
+- **Never let exceptions escape actor turns.** Catch, log, update state.
+- **Use `Result<T, TError>`** for expected failures (routing, resolution).
+
+## Build & Test
+
+```bash
+cd v2 && dotnet build
+cd v2 && dotnet test
+cd v2 && dotnet format --verify-no-changes
+```
+
+## Test Conventions
+
+- xUnit + FluentAssertions + NSubstitute
+- Test methods: `MethodName_Scenario_ExpectedResult`
+- Use `ActorTestBase<TActor>` for actor tests
+- Testcontainers for PostgreSQL integration tests
+
+## Key Patterns
+
+DI registration: `services.AddCvoyaSpringCore().AddCvoyaSpringDapr()`
+
+State keys: centralized in `StateKeys` class (e.g., `StateKeys.ActiveConversation`)
+
+Message handling: switch on `MessageType` in `ReceiveAsync`, delegate to typed handlers.
+
+Logging: `ILogger<T>` with source-generated `LoggerMessage`. Event ID ranges per project (Core: 1000s, Dapr: 2000s, Host.Api: 3000s, Cli: 4000s, Connector.GitHub: 5000s).
