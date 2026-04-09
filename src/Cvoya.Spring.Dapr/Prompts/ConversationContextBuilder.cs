@@ -1,0 +1,64 @@
+/*
+ * Copyright CVOYA LLC.
+ *
+ * This source code is proprietary and confidential.
+ * Unauthorized copying, modification, distribution, or use of this file,
+ * via any medium, is strictly prohibited without the prior written consent of CVOYA LLC.
+ */
+
+namespace Cvoya.Spring.Dapr.Prompts;
+
+using System.Text;
+using System.Text.Json;
+using Cvoya.Spring.Core.Messaging;
+
+/// <summary>
+/// Builds the conversation context layer (Layer 3) from prior messages
+/// and checkpoint state.
+/// </summary>
+public class ConversationContextBuilder
+{
+    /// <summary>
+    /// Builds the conversation context string from the provided conversation state.
+    /// </summary>
+    /// <param name="priorMessages">The prior messages in the conversation.</param>
+    /// <param name="lastCheckpoint">Optional last checkpoint state.</param>
+    /// <returns>The formatted conversation context string, or an empty string if all inputs are empty.</returns>
+    public string Build(IReadOnlyList<Message> priorMessages, string? lastCheckpoint)
+    {
+        var builder = new StringBuilder();
+
+        if (priorMessages.Count > 0)
+        {
+            builder.AppendLine("### Prior Messages");
+            foreach (var message in priorMessages)
+            {
+                var sender = $"{message.From.Scheme}://{message.From.Path}";
+                var text = ExtractText(message.Payload);
+                builder.AppendLine($"[{message.Timestamp:u}] {sender}: {text}");
+            }
+
+            builder.AppendLine();
+        }
+
+        if (!string.IsNullOrWhiteSpace(lastCheckpoint))
+        {
+            builder.AppendLine("### Last Checkpoint");
+            builder.AppendLine(lastCheckpoint);
+            builder.AppendLine();
+        }
+
+        return builder.ToString().TrimEnd();
+    }
+
+    private static string ExtractText(JsonElement payload)
+    {
+        if (payload.TryGetProperty("text", out var textElement) &&
+            textElement.ValueKind == JsonValueKind.String)
+        {
+            return textElement.GetString() ?? string.Empty;
+        }
+
+        return payload.ToString();
+    }
+}
