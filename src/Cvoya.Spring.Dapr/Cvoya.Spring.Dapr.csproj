@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Cvoya.Spring.Dapr</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Cvoya.Spring.Core\Cvoya.Spring.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Dapr.Client" />
+    <PackageReference Include="Dapr.AspNetCore" />
+    <PackageReference Include="Dapr.Actors" />
+    <PackageReference Include="Dapr.Actors.AspNetCore" />
+  </ItemGroup>
+
+</Project>

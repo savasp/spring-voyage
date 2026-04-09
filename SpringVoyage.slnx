@@ -1,0 +1,20 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Cvoya.Spring.A2A/Cvoya.Spring.A2A.csproj" />
+    <Project Path="src/Cvoya.Spring.Cli/Cvoya.Spring.Cli.csproj" />
+    <Project Path="src/Cvoya.Spring.Connector.GitHub/Cvoya.Spring.Connector.GitHub.csproj" />
+    <Project Path="src/Cvoya.Spring.Core/Cvoya.Spring.Core.csproj" />
+    <Project Path="src/Cvoya.Spring.Dapr/Cvoya.Spring.Dapr.csproj" />
+    <Project Path="src/Cvoya.Spring.Host.Api/Cvoya.Spring.Host.Api.csproj" />
+    <Project Path="src/Cvoya.Spring.Host.Worker/Cvoya.Spring.Host.Worker.csproj" />
+    <Project Path="src/Cvoya.Spring.Web/Cvoya.Spring.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Cvoya.Spring.Cli.Tests/Cvoya.Spring.Cli.Tests.csproj" />
+    <Project Path="tests/Cvoya.Spring.Connector.GitHub.Tests/Cvoya.Spring.Connector.GitHub.Tests.csproj" />
+    <Project Path="tests/Cvoya.Spring.Core.Tests/Cvoya.Spring.Core.Tests.csproj" />
+    <Project Path="tests/Cvoya.Spring.Dapr.Tests/Cvoya.Spring.Dapr.Tests.csproj" />
+    <Project Path="tests/Cvoya.Spring.Host.Api.Tests/Cvoya.Spring.Host.Api.Tests.csproj" />
+    <Project Path="tests/Cvoya.Spring.Integration.Tests/Cvoya.Spring.Integration.Tests.csproj" />
+  </Folder>
+</Solution>

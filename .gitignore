@@ -1,0 +1,11 @@
+## .NET
+bin/
+obj/
+
+## IDE
+.vs/
+*.user
+*.suo
+
+## Dapr local secrets (not committed)
+dapr/secrets.json

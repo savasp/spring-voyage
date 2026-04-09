@@ -1,0 +1,27 @@
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Dapr SDK -->
+    <PackageVersion Include="Dapr.Client" Version="1.15.3" />
+    <PackageVersion Include="Dapr.AspNetCore" Version="1.15.3" />
+    <PackageVersion Include="Dapr.Actors" Version="1.15.3" />
+    <PackageVersion Include="Dapr.Actors.AspNetCore" Version="1.15.3" />
+
+    <!-- GitHub -->
+    <PackageVersion Include="Octokit" Version="13.0.1" />
+
+    <!-- CLI -->
+    <PackageVersion Include="System.CommandLine" Version="2.0.0-beta5.25306.1" />
+
+    <!-- ASP.NET Core / Hosting -->
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.5" />
+
+    <!-- Testing (Microsoft Testing Platform + xUnit v3) -->
+    <PackageVersion Include="xunit.v3.mtp-v2" Version="3.2.2" />
+    <PackageVersion Include="Microsoft.Testing.Extensions.CodeCoverage" Version="18.5.2" />
+    <PackageVersion Include="FluentAssertions" Version="8.3.0" />
+    <PackageVersion Include="NSubstitute" Version="5.3.0" />
+  </ItemGroup>
+</Project>
