@@ -58,4 +58,34 @@ public static class StateKeys
     /// State key for the unit definition.
     /// </summary>
     public const string UnitDefinition = "Unit:Definition";
+
+    /// <summary>
+    /// State key for the connector's connection status.
+    /// </summary>
+    public const string ConnectorStatus = "Connector:Status";
+
+    /// <summary>
+    /// State key for the connector type (e.g., "github", "slack").
+    /// </summary>
+    public const string ConnectorType = "Connector:Type";
+
+    /// <summary>
+    /// State key for the connector configuration.
+    /// </summary>
+    public const string ConnectorConfig = "Connector:Config";
+
+    /// <summary>
+    /// State key for the human actor's identity.
+    /// </summary>
+    public const string HumanIdentity = "Human:Identity";
+
+    /// <summary>
+    /// State key for the human actor's permission level.
+    /// </summary>
+    public const string HumanPermission = "Human:Permission";
+
+    /// <summary>
+    /// State key for the human actor's notification preferences.
+    /// </summary>
+    public const string HumanNotificationPreferences = "Human:NotificationPreferences";
 }
