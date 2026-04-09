@@ -1,0 +1,24 @@
+[
+  {
+    "name": "assignToAgent",
+    "description": "Assign a work item to a specific agent in the unit",
+    "parameters": {
+      "type": "object",
+      "required": ["agentId", "description"],
+      "properties": {
+        "agentId": {
+          "type": "string",
+          "description": "Agent ID or role to assign to"
+        },
+        "description": {
+          "type": "string",
+          "description": "Clear description of the work"
+        },
+        "conversationId": {
+          "type": "string",
+          "description": "Optional — attach to existing conversation"
+        }
+      }
+    }
+  }
+]

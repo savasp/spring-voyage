@@ -1,0 +1,43 @@
+[
+  {
+    "name": "requestReview",
+    "description": "Request a code review from a specific agent",
+    "parameters": {
+      "type": "object",
+      "required": ["prUrl", "reviewerAgentId"],
+      "properties": {
+        "prUrl": {
+          "type": "string",
+          "description": "URL of the pull request to review"
+        },
+        "reviewerAgentId": {
+          "type": "string",
+          "description": "Agent ID or role of the reviewer"
+        }
+      }
+    }
+  },
+  {
+    "name": "submitReview",
+    "description": "Submit a review decision on a pull request",
+    "parameters": {
+      "type": "object",
+      "required": ["prUrl", "decision"],
+      "properties": {
+        "prUrl": {
+          "type": "string",
+          "description": "URL of the pull request"
+        },
+        "decision": {
+          "type": "string",
+          "enum": ["approve", "request-changes", "comment"],
+          "description": "Review decision"
+        },
+        "comments": {
+          "type": "string",
+          "description": "Review comments or feedback"
+        }
+      }
+    }
+  }
+]
