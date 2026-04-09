@@ -1,0 +1,51 @@
+/*
+ * Copyright CVOYA LLC.
+ *
+ * This source code is proprietary and confidential.
+ * Unauthorized copying, modification, distribution, or use of this file,
+ * via any medium, is strictly prohibited without the prior written consent of CVOYA LLC.
+ */
+
+namespace Cvoya.Spring.Dapr.Actors;
+
+using Cvoya.Spring.Core.Messaging;
+using global::Dapr.Actors;
+
+/// <summary>
+/// Dapr actor interface for unit actors.
+/// A unit groups agents and sub-units, dispatching domain messages
+/// through a configurable <see cref="Core.Orchestration.IOrchestrationStrategy"/>.
+/// </summary>
+public interface IUnitActor : IActor
+{
+    /// <summary>
+    /// Receives and processes a message, optionally returning a response.
+    /// Control messages are handled directly; domain messages are delegated
+    /// to the configured orchestration strategy.
+    /// </summary>
+    /// <param name="message">The message to process.</param>
+    /// <param name="ct">A token to cancel the operation.</param>
+    /// <returns>An optional response message, or <c>null</c> if no response is needed.</returns>
+    Task<Message?> ReceiveAsync(Message message, CancellationToken ct = default);
+
+    /// <summary>
+    /// Adds a member (agent or sub-unit) to this unit.
+    /// </summary>
+    /// <param name="member">The address of the member to add.</param>
+    /// <param name="ct">A token to cancel the operation.</param>
+    Task AddMemberAsync(Address member, CancellationToken ct = default);
+
+    /// <summary>
+    /// Removes a member from this unit.
+    /// </summary>
+    /// <param name="member">The address of the member to remove.</param>
+    /// <param name="ct">A token to cancel the operation.</param>
+    Task RemoveMemberAsync(Address member, CancellationToken ct = default);
+
+    /// <summary>
+    /// Returns the current list of member addresses in this unit.
+    /// </summary>
+    /// <param name="ct">A token to cancel the operation.</param>
+    /// <returns>A read-only list of member addresses.</returns>
+    Task<IReadOnlyList<Address>> GetMembersAsync(CancellationToken ct = default);
+}
