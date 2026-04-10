@@ -16,6 +16,11 @@ using Dapr.Workflow;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Allow the host to shut down within 5 seconds so Ctrl+C isn't blocked
+// by the Durable Task gRPC worker retrying a dead sidecar.
+builder.Services.Configure<HostOptions>(options =>
+    options.ShutdownTimeout = TimeSpan.FromSeconds(5));
+
 // Register Spring services
 builder.Services
     .AddCvoyaSpringCore()
