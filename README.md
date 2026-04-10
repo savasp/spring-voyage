@@ -37,9 +37,10 @@ There are two hosts:
 For local dev, you only need the Worker:
 
 ```bash
-# Start the Worker with Dapr sidecar
+# Start the Worker with Dapr sidecar (pinning Dapr HTTP port so test commands below work)
 cd v2
 dapr run --app-id spring-worker --app-port 5001 \
+  --dapr-http-port 3500 \
   --resources-path dapr/components \
   -- dotnet run --project src/Cvoya.Spring.Host.Worker -- --urls http://localhost:5001
 ```
@@ -98,11 +99,13 @@ curl -s -X POST http://localhost:3500/v1.0/actors/AgentActor/test-agent-1/method
 ```bash
 # Terminal 1: Worker (actors)
 cd v2 && dapr run --app-id spring-worker --app-port 5001 \
+  --dapr-http-port 3500 \
   --resources-path dapr/components \
   -- dotnet run --project src/Cvoya.Spring.Host.Worker -- --urls http://localhost:5001
 
 # Terminal 2: API (REST endpoints -- stub for now)
 cd v2 && dapr run --app-id spring-api --app-port 5000 \
+  --dapr-http-port 3501 \
   --resources-path dapr/components \
   -- dotnet run --project src/Cvoya.Spring.Host.Api
 ```
