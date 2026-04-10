@@ -1,0 +1,81 @@
+name: Feature Request
+description: Propose a new feature or enhancement
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Propose a feature for the Spring Voyage platform. If this feature is driven by
+        a private/cloud requirement, check the box below — this helps maintainers
+        understand the motivation and coordinate cross-repo work.
+
+  - type: checkboxes
+    id: cloud-dependency
+    attributes:
+      label: Cloud Dependency
+      description: Is this feature driven by a need in the private cloud repo?
+      options:
+        - label: This issue is driven by a cloud/private feature requirement
+          required: false
+
+  - type: dropdown
+    id: roadmap-phase
+    attributes:
+      label: Roadmap Phase
+      description: Which phase does this belong to? See docs/roadmap.md.
+      options:
+        - "Phase 1: Platform Foundation"
+        - "Phase 2: Observability + Multi-Human"
+        - "Phase 3: Initiative + Product Management"
+        - "Phase 4: A2A + Additional Strategies"
+        - "Phase 5: Unit Nesting + Directory"
+        - "Phase 6: Platform Maturity"
+        - "Not phase-specific"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which area of the platform does this affect?
+      options:
+        - "Core (interfaces, types)"
+        - "Dapr (actors, routing, execution)"
+        - "Orchestration (strategies)"
+        - "Connectors"
+        - "API / Host"
+        - "CLI"
+        - "Web UI"
+        - "Packages / Skills"
+        - "Infrastructure / DevOps"
+        - "Documentation"
+        - "Other"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Clear description of the feature and why it's needed.
+    validations:
+      required: true
+
+  - type: textarea
+    id: design
+    attributes:
+      label: Proposed Design
+      description: |
+        How should this work? Include interfaces, types, or patterns if applicable.
+        Reference the architecture plan (docs/SpringVoyage-v2-plan.md) where relevant.
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Other approaches you considered and why this one is preferred.
+    validations:
+      required: false

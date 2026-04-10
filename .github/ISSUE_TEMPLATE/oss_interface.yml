@@ -1,0 +1,76 @@
+name: OSS Interface / Extension Point
+description: Propose a new interface or extension point needed by cloud or external consumers
+labels: ["enhancement", "oss-interface"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template when a downstream consumer (cloud repo, third-party integration)
+        needs a new interface, abstract type, or extension point in the OSS platform.
+
+        This template ensures the design rationale is public even when the implementation
+        is private. OSS contributors should be able to understand *why* this interface
+        exists from this issue alone.
+
+  - type: checkboxes
+    id: cloud-dependency
+    attributes:
+      label: Cloud Dependency
+      options:
+        - label: This interface is driven by a cloud/private feature requirement
+          required: false
+
+  - type: input
+    id: cloud-issue
+    attributes:
+      label: Cloud Issue Reference
+      description: "If cloud-driven, reference the private issue (e.g., spring-cloud#42). Leave blank for public features."
+      placeholder: "spring-cloud#42"
+    validations:
+      required: false
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: |
+        Why is this interface needed? Explain the use case in terms that make sense
+        to OSS contributors, even if the primary consumer is private.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed-interface
+    attributes:
+      label: Proposed Interface
+      description: |
+        The interface or type definition. Should go in Cvoya.Spring.Core (no external dependencies).
+      placeholder: |
+        ```csharp
+        public interface IMyNewThing
+        {
+            Task DoWorkAsync(CancellationToken ct);
+        }
+        ```
+    validations:
+      required: true
+
+  - type: dropdown
+    id: target-project
+    attributes:
+      label: Target Project
+      description: Where should this interface live?
+      options:
+        - "Cvoya.Spring.Core"
+        - "Cvoya.Spring.Dapr (implementation)"
+        - "Both (interface in Core, implementation in Dapr)"
+    validations:
+      required: true
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact on Existing Code
+      description: Does this change existing interfaces or require modifications to actors, routing, etc.?
+    validations:
+      required: false
