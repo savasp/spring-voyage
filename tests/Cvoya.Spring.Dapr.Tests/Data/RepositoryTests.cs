@@ -15,7 +15,7 @@ using Xunit;
 public class RepositoryTests : IDisposable
 {
     private readonly SpringDbContext _context;
-    private readonly Repository<TenantEntity> _repository;
+    private readonly Repository<AgentDefinitionEntity> _repository;
 
     public RepositoryTests()
     {
@@ -24,25 +24,26 @@ public class RepositoryTests : IDisposable
             .Options;
 
         _context = new SpringDbContext(options);
-        _repository = new Repository<TenantEntity>(_context);
+        _repository = new Repository<AgentDefinitionEntity>(_context);
     }
 
     [Fact]
     public async Task GetByIdAsync_ExistingEntity_ReturnsEntity()
     {
         var ct = TestContext.Current.CancellationToken;
-        var tenant = new TenantEntity
+        var agent = new AgentDefinitionEntity
         {
             Id = Guid.NewGuid(),
-            Name = "Test Tenant"
+            AgentId = "test-agent",
+            Name = "Test Agent"
         };
 
-        await _repository.CreateAsync(tenant, ct);
+        await _repository.CreateAsync(agent, ct);
 
-        var result = await _repository.GetByIdAsync(tenant.Id, ct);
+        var result = await _repository.GetByIdAsync(agent.Id, ct);
 
         result.Should().NotBeNull();
-        result!.Name.Should().Be("Test Tenant");
+        result!.Name.Should().Be("Test Agent");
     }
 
     [Fact]
@@ -59,73 +60,76 @@ public class RepositoryTests : IDisposable
     public async Task GetAllAsync_MultipleEntities_ReturnsAllNonDeleted()
     {
         var ct = TestContext.Current.CancellationToken;
-        var tenant1 = new TenantEntity { Id = Guid.NewGuid(), Name = "Tenant 1" };
-        var tenant2 = new TenantEntity { Id = Guid.NewGuid(), Name = "Tenant 2" };
-        var deleted = new TenantEntity { Id = Guid.NewGuid(), Name = "Deleted", DeletedAt = DateTimeOffset.UtcNow };
+        var agent1 = new AgentDefinitionEntity { Id = Guid.NewGuid(), AgentId = "agent-1", Name = "Agent 1" };
+        var agent2 = new AgentDefinitionEntity { Id = Guid.NewGuid(), AgentId = "agent-2", Name = "Agent 2" };
+        var deleted = new AgentDefinitionEntity { Id = Guid.NewGuid(), AgentId = "agent-d", Name = "Deleted", DeletedAt = DateTimeOffset.UtcNow };
 
-        await _repository.CreateAsync(tenant1, ct);
-        await _repository.CreateAsync(tenant2, ct);
+        await _repository.CreateAsync(agent1, ct);
+        await _repository.CreateAsync(agent2, ct);
         await _repository.CreateAsync(deleted, ct);
 
         var results = await _repository.GetAllAsync(ct);
 
         results.Should().HaveCount(2);
-        results.Should().Contain(t => t.Name == "Tenant 1");
-        results.Should().Contain(t => t.Name == "Tenant 2");
+        results.Should().Contain(a => a.Name == "Agent 1");
+        results.Should().Contain(a => a.Name == "Agent 2");
     }
 
     [Fact]
     public async Task DeleteAsync_ExistingEntity_SetsSoftDelete()
     {
         var ct = TestContext.Current.CancellationToken;
-        var tenant = new TenantEntity
+        var agent = new AgentDefinitionEntity
         {
             Id = Guid.NewGuid(),
+            AgentId = "to-delete",
             Name = "To Delete"
         };
 
-        await _repository.CreateAsync(tenant, ct);
-        await _repository.DeleteAsync(tenant.Id, ct);
+        await _repository.CreateAsync(agent, ct);
+        await _repository.DeleteAsync(agent.Id, ct);
 
         // The soft-deleted entity should not appear in filtered queries.
         var results = await _repository.GetAllAsync(ct);
-        results.Should().NotContain(t => t.Id == tenant.Id);
+        results.Should().NotContain(a => a.Id == agent.Id);
     }
 
     [Fact]
     public async Task GetByIdAsync_DeletedEntity_ReturnsNull()
     {
         var ct = TestContext.Current.CancellationToken;
-        var tenant = new TenantEntity
+        var agent = new AgentDefinitionEntity
         {
             Id = Guid.NewGuid(),
+            AgentId = "will-delete",
             Name = "Will Be Deleted"
         };
 
-        await _repository.CreateAsync(tenant, ct);
-        await _repository.DeleteAsync(tenant.Id, ct);
+        await _repository.CreateAsync(agent, ct);
+        await _repository.DeleteAsync(agent.Id, ct);
 
         // Verify through GetAllAsync since FindAsync bypasses query filters.
         var results = await _repository.GetAllAsync(ct);
-        results.Should().NotContain(t => t.Id == tenant.Id);
+        results.Should().NotContain(a => a.Id == agent.Id);
     }
 
     [Fact]
     public async Task UpdateAsync_ExistingEntity_PersistsChanges()
     {
         var ct = TestContext.Current.CancellationToken;
-        var tenant = new TenantEntity
+        var agent = new AgentDefinitionEntity
         {
             Id = Guid.NewGuid(),
+            AgentId = "original",
             Name = "Original Name"
         };
 
-        await _repository.CreateAsync(tenant, ct);
+        await _repository.CreateAsync(agent, ct);
 
-        tenant.Name = "Updated Name";
-        await _repository.UpdateAsync(tenant, ct);
+        agent.Name = "Updated Name";
+        await _repository.UpdateAsync(agent, ct);
 
-        var result = await _repository.GetByIdAsync(tenant.Id, ct);
+        var result = await _repository.GetByIdAsync(agent.Id, ct);
         result.Should().NotBeNull();
         result!.Name.Should().Be("Updated Name");
     }

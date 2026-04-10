@@ -53,6 +53,17 @@ When a cloud feature needs OSS changes:
 
 This ensures all design decisions that affect the OSS platform are visible to contributors.
 
+## Contributor License Agreement (CLA)
+
+All external contributors must sign a Contributor License Agreement before their first PR can be merged. The CLA grants CVOYA LLC a license to use your contributions, which is necessary to support the open core model (see [LICENSE.md](LICENSE.md)).
+
+When you open your first PR, the CLA bot will comment with instructions. Signing is a one-time process.
+
+**What the CLA covers:**
+- You grant CVOYA LLC a perpetual, worldwide, non-exclusive license to use your contributions
+- You retain full copyright over your contributions
+- You confirm that you have the right to submit the contribution
+
 ## Coding Conventions
 
 All conventions are in [CONVENTIONS.md](CONVENTIONS.md). Key points:

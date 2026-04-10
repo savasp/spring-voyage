@@ -5,15 +5,11 @@ namespace Cvoya.Spring.Dapr.Data.Entities;
 
 /// <summary>
 /// Represents an API token used for authenticating requests to the platform.
-/// Tokens are scoped to a tenant and optionally to a specific user.
 /// </summary>
 public class ApiTokenEntity
 {
     /// <summary>Gets or sets the unique identifier for the API token.</summary>
     public Guid Id { get; set; }
-
-    /// <summary>Gets or sets the tenant that owns this API token.</summary>
-    public Guid TenantId { get; set; }
 
     /// <summary>Gets or sets the identifier of the user associated with this token.</summary>
     public string? UserId { get; set; }
@@ -36,6 +32,4 @@ public class ApiTokenEntity
     /// <summary>Gets or sets the timestamp when the token was revoked, or null if active.</summary>
     public DateTimeOffset? RevokedAt { get; set; }
 
-    /// <summary>Gets or sets the navigation property to the owning tenant.</summary>
-    public TenantEntity? Tenant { get; set; }
 }

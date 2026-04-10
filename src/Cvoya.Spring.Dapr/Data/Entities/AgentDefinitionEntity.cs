@@ -14,9 +14,6 @@ public class AgentDefinitionEntity
     /// <summary>Gets or sets the unique identifier for the agent definition.</summary>
     public Guid Id { get; set; }
 
-    /// <summary>Gets or sets the tenant that owns this agent definition.</summary>
-    public Guid TenantId { get; set; }
-
     /// <summary>Gets or sets the user-facing identifier for the agent (e.g., "ada").</summary>
     public string AgentId { get; set; } = string.Empty;
 
@@ -41,6 +38,4 @@ public class AgentDefinitionEntity
     /// <summary>Gets or sets the timestamp when the agent definition was soft-deleted, or null if active.</summary>
     public DateTimeOffset? DeletedAt { get; set; }
 
-    /// <summary>Gets or sets the navigation property to the owning tenant.</summary>
-    public TenantEntity? Tenant { get; set; }
 }

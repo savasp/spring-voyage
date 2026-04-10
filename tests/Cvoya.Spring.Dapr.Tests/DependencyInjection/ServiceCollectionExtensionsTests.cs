@@ -61,11 +61,9 @@ public class ServiceCollectionExtensionsTests
 
         var ai = provider.GetKeyedService<IOrchestrationStrategy>("ai");
         var workflow = provider.GetKeyedService<IOrchestrationStrategy>("workflow");
-        var hybrid = provider.GetKeyedService<IOrchestrationStrategy>("hybrid");
 
         ai.Should().NotBeNull().And.BeOfType<AiOrchestrationStrategy>();
         workflow.Should().NotBeNull().And.BeOfType<WorkflowOrchestrationStrategy>();
-        hybrid.Should().NotBeNull().And.BeOfType<HybridOrchestrationStrategy>();
     }
 
     [Fact]

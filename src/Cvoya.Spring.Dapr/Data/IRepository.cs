@@ -5,7 +5,7 @@ namespace Cvoya.Spring.Dapr.Data;
 
 /// <summary>
 /// Generic repository interface for CRUD operations on entities.
-/// Implementations provide tenant-scoped access and soft-delete semantics.
+/// Implementations provide soft-delete semantics.
 /// </summary>
 /// <typeparam name="T">The entity type.</typeparam>
 public interface IRepository<T> where T : class

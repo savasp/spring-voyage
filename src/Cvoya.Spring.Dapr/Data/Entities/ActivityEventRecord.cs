@@ -14,9 +14,6 @@ public class ActivityEventRecord
     /// <summary>Gets or sets the unique identifier for the activity event.</summary>
     public Guid Id { get; set; }
 
-    /// <summary>Gets or sets the tenant that owns this activity event.</summary>
-    public Guid TenantId { get; set; }
-
     /// <summary>Gets or sets the source address of the event (e.g., "agent:ada").</summary>
     public string Source { get; set; } = string.Empty;
 
@@ -41,6 +38,4 @@ public class ActivityEventRecord
     /// <summary>Gets or sets the timestamp when the event occurred.</summary>
     public DateTimeOffset Timestamp { get; set; }
 
-    /// <summary>Gets or sets the navigation property to the owning tenant.</summary>
-    public TenantEntity? Tenant { get; set; }
 }

@@ -78,7 +78,7 @@ public static class ServiceCollectionExtensions
         // Orchestration
         services.AddKeyedSingleton<IOrchestrationStrategy, AiOrchestrationStrategy>("ai");
         services.AddKeyedSingleton<IOrchestrationStrategy, WorkflowOrchestrationStrategy>("workflow");
-        services.AddKeyedSingleton<IOrchestrationStrategy, HybridOrchestrationStrategy>("hybrid");
+
 
         // Prompt
         services.AddSingleton<UnitContextBuilder>();

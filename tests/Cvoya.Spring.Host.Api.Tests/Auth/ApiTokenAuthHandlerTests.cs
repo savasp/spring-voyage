@@ -184,7 +184,6 @@ public class ApiTokenAuthHandlerTests : IDisposable
         dbContext.ApiTokens.Add(new ApiTokenEntity
         {
             Id = Guid.NewGuid(),
-            TenantId = Guid.Empty,
             UserId = "test-user",
             TokenHash = tokenHash,
             Name = name,
