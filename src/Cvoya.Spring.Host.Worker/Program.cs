@@ -31,14 +31,14 @@ void ForceExitOnSignal()
 {
     if (Interlocked.Increment(ref shutdownRequested) > 1)
     {
-        // Second signal — kill immediately
-        Environment.FailFast("Force exit on repeated shutdown signal");
+        // Second signal (e.g. SIGTERM from dapr after SIGINT) — exit immediately
+        Environment.Exit(0);
     }
-    // First signal — give 5 seconds then force kill
+    // First signal — give 5 seconds then force exit
     new Thread(() =>
     {
         Thread.Sleep(5000);
-        Environment.FailFast("Shutdown timed out after 5 seconds");
+        Environment.Exit(1);
     })
     { IsBackground = true }.Start();
 }

@@ -12,6 +12,7 @@ using System.Text.Json;
 using Cvoya.Spring.Core.Execution;
 using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Core.Orchestration;
+using Cvoya.Spring.Dapr.Execution;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -21,6 +22,7 @@ using Microsoft.Extensions.Options;
 /// </summary>
 public class WorkflowOrchestrationStrategy(
     IContainerRuntime containerRuntime,
+    ContainerLifecycleManager lifecycleManager,
     IOptions<WorkflowOrchestrationOptions> options,
     ILoggerFactory loggerFactory) : IOrchestrationStrategy
 {
@@ -44,9 +46,26 @@ public class WorkflowOrchestrationStrategy(
                 ["SPRING_MESSAGE"] = messageJson,
                 ["SPRING_MEMBERS"] = membersJson
             },
-            Timeout: _options.Timeout);
+            Timeout: _options.Timeout,
+            DaprEnabled: _options.DaprEnabled,
+            DaprAppId: _options.DaprAppId,
+            DaprAppPort: _options.DaprAppPort);
 
-        var result = await containerRuntime.RunAsync(config, cancellationToken);
+        ContainerResult result;
+
+        if (_options.DaprEnabled)
+        {
+            var lifecycleResult = await lifecycleManager.LaunchWithSidecarAsync(config, cancellationToken);
+            result = lifecycleResult.ContainerResult;
+
+            // Teardown sidecar and network after the container completes.
+            await lifecycleManager.TeardownAsync(
+                null, lifecycleResult.SidecarInfo.SidecarId, lifecycleResult.NetworkName, CancellationToken.None);
+        }
+        else
+        {
+            result = await containerRuntime.RunAsync(config, cancellationToken);
+        }
 
         if (result.ExitCode != 0)
         {

@@ -37,12 +37,22 @@ public interface IContainerRuntime
 /// <param name="EnvironmentVariables">Optional environment variables to set in the container.</param>
 /// <param name="VolumeMounts">Optional volume mount specifications.</param>
 /// <param name="Timeout">Optional timeout after which the container should be stopped.</param>
+/// <param name="NetworkName">Optional Docker/Podman network to attach the container to.</param>
+/// <param name="Labels">Optional container labels for identification and cleanup.</param>
+/// <param name="DaprEnabled">Whether to attach a Dapr sidecar to this container.</param>
+/// <param name="DaprAppId">The app-id for the Dapr sidecar.</param>
+/// <param name="DaprAppPort">The port the app listens on for Dapr to call.</param>
 public record ContainerConfig(
     string Image,
     string? Command = null,
     IReadOnlyDictionary<string, string>? EnvironmentVariables = null,
     IReadOnlyList<string>? VolumeMounts = null,
-    TimeSpan? Timeout = null);
+    TimeSpan? Timeout = null,
+    string? NetworkName = null,
+    IReadOnlyDictionary<string, string>? Labels = null,
+    bool DaprEnabled = false,
+    string? DaprAppId = null,
+    int? DaprAppPort = null);
 
 /// <summary>
 /// Result of a container execution.

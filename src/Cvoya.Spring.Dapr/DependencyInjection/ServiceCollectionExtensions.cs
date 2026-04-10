@@ -75,6 +75,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IPromptAssembler, PromptAssembler>();
         services.AddSingleton<IPlatformPromptProvider, PlatformPromptProvider>();
         services.AddSingleton<IContainerRuntime, PodmanRuntime>();
+        services.AddSingleton<IDaprSidecarManager, DaprSidecarManager>();
+        services.AddSingleton<ContainerLifecycleManager>();
         services.AddKeyedSingleton<IExecutionDispatcher, HostedExecutionDispatcher>("hosted");
         services.AddKeyedSingleton<IExecutionDispatcher, DelegatedExecutionDispatcher>("delegated");
 

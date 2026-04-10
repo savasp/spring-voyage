@@ -97,4 +97,58 @@ public class ProcessContainerRuntimeTests
         volIndex.Should().BeLessThan(imageIndex);
         imageIndex.Should().BeLessThan(cmdIndex);
     }
+
+    [Fact]
+    public void BuildRunArguments_WithNetworkName_IncludesNetworkFlag()
+    {
+        var config = new ContainerConfig(
+            Image: "my-image:latest",
+            NetworkName: "spring-net-abc");
+        var containerName = "spring-exec-net";
+
+        var args = ProcessContainerRuntime.BuildRunArguments(config, containerName);
+
+        args.Should().Contain("--network spring-net-abc");
+    }
+
+    [Fact]
+    public void BuildRunArguments_WithLabels_IncludesLabelFlags()
+    {
+        var config = new ContainerConfig(
+            Image: "my-image:latest",
+            Labels: new Dictionary<string, string>
+            {
+                ["spring.managed"] = "true",
+                ["spring.role"] = "workflow"
+            });
+        var containerName = "spring-exec-labels";
+
+        var args = ProcessContainerRuntime.BuildRunArguments(config, containerName);
+
+        args.Should().Contain("--label spring.managed=true");
+        args.Should().Contain("--label spring.role=workflow");
+    }
+
+    [Fact]
+    public void BuildRunArguments_NetworkAndLabels_ComeBeforeEnvAndVolume()
+    {
+        var config = new ContainerConfig(
+            Image: "agent:v1",
+            NetworkName: "my-net",
+            Labels: new Dictionary<string, string> { ["app"] = "test" },
+            EnvironmentVariables: new Dictionary<string, string> { ["KEY"] = "val" },
+            VolumeMounts: ["/src:/app"]);
+        var containerName = "spring-exec-order";
+
+        var args = ProcessContainerRuntime.BuildRunArguments(config, containerName);
+
+        var networkIndex = args.IndexOf("--network", StringComparison.Ordinal);
+        var labelIndex = args.IndexOf("--label", StringComparison.Ordinal);
+        var envIndex = args.IndexOf("-e KEY", StringComparison.Ordinal);
+        var imageIndex = args.IndexOf("agent:v1", StringComparison.Ordinal);
+
+        networkIndex.Should().BeLessThan(labelIndex);
+        labelIndex.Should().BeLessThan(envIndex);
+        envIndex.Should().BeLessThan(imageIndex);
+    }
 }

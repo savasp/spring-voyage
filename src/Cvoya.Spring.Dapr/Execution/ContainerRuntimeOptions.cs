@@ -27,4 +27,14 @@ public class ContainerRuntimeOptions
     /// Gets or sets the optional network mode for containers (e.g., "host", "bridge").
     /// </summary>
     public string? NetworkMode { get; set; }
+
+    /// <summary>
+    /// Gets or sets the path to the Dapr components directory for sidecar containers.
+    /// </summary>
+    public string? DaprComponentsPath { get; set; }
+
+    /// <summary>
+    /// Gets or sets the default Docker/Podman network name for container lifecycle operations.
+    /// </summary>
+    public string? DefaultNetworkName { get; set; }
 }

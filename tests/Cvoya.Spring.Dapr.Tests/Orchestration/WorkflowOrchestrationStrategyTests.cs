@@ -12,6 +12,7 @@ using System.Text.Json;
 using Cvoya.Spring.Core.Execution;
 using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Core.Orchestration;
+using Cvoya.Spring.Dapr.Execution;
 using Cvoya.Spring.Dapr.Orchestration;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
@@ -40,8 +41,15 @@ public class WorkflowOrchestrationStrategyTests
             Timeout = TimeSpan.FromMinutes(10)
         };
 
+        var lifecycleManager = new ContainerLifecycleManager(
+            _containerRuntime,
+            Substitute.For<IDaprSidecarManager>(),
+            Options.Create(new ContainerRuntimeOptions()),
+            _loggerFactory);
+
         _strategy = new WorkflowOrchestrationStrategy(
             _containerRuntime,
+            lifecycleManager,
             Options.Create(_options),
             _loggerFactory);
 

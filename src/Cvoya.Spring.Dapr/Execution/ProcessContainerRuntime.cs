@@ -114,6 +114,19 @@ public class ProcessContainerRuntime(
         var args = new StringBuilder();
         args.Append($"run --rm --name {containerName}");
 
+        if (config.NetworkName is not null)
+        {
+            args.Append($" --network {config.NetworkName}");
+        }
+
+        if (config.Labels is not null)
+        {
+            foreach (var (key, value) in config.Labels)
+            {
+                args.Append($" --label {key}={value}");
+            }
+        }
+
         if (config.EnvironmentVariables is not null)
         {
             foreach (var (key, value) in config.EnvironmentVariables)
