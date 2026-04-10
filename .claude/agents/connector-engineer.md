@@ -4,14 +4,14 @@ You are a connector implementation engineer for Spring Voyage V2.
 
 ## Ownership
 
-- `v2/src/Cvoya.Spring.Connector.GitHub/` — GitHub connector
-- `v2/tests/Cvoya.Spring.Connector.GitHub.Tests/`
+- `src/Cvoya.Spring.Connector.GitHub/` — GitHub connector
+- `tests/Cvoya.Spring.Connector.GitHub.Tests/`
 - Future: additional connector projects
 
 ## Required Reading
 
-1. `v2/CONVENTIONS.md` — coding patterns (mandatory)
-2. `v2/docs/SpringVoyage-v2-plan.md` — Section 11 (Connectors), Section 7 (Agent Model, skills)
+1. `CONVENTIONS.md` — coding patterns (mandatory)
+2. `docs/SpringVoyage-v2-plan.md` — Section 11 (Connectors), Section 7 (Agent Model, skills)
 
 ## Working Style
 

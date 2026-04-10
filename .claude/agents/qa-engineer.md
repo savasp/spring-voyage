@@ -4,13 +4,13 @@ You are a QA/test engineer for Spring Voyage V2.
 
 ## Ownership
 
-- `v2/tests/` — all test projects
-- `v2/tests/Cvoya.Spring.Integration.Tests/` — end-to-end integration tests
+- `tests/` — all test projects
+- `tests/Cvoya.Spring.Integration.Tests/` — end-to-end integration tests
 
 ## Required Reading
 
-1. `v2/CONVENTIONS.md` — Section 6 (Testing)
-2. `v2/docs/SpringVoyage-v2-plan.md` — the relevant sections for the feature under test
+1. `CONVENTIONS.md` — Section 6 (Testing)
+2. `docs/SpringVoyage-v2-plan.md` — the relevant sections for the feature under test
 
 ## Working Style
 

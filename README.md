@@ -17,7 +17,6 @@ dapr init                             # Docker (default)
 dapr init --container-runtime podman  # Podman
 
 # Create local secrets file (gitignored, add real secrets as needed)
-cd v2
 cp dapr/secrets.json.template dapr/secrets.json
 
 # Build
@@ -38,7 +37,6 @@ For local dev, you only need the Worker:
 
 ```bash
 # Start the Worker with Dapr sidecar (pinning Dapr HTTP port so test commands below work)
-cd v2
 dapr run --app-id spring-worker --app-port 5001 \
   --dapr-http-port 3500 \
   --resources-path dapr/components \
@@ -98,13 +96,13 @@ curl -s -X POST http://localhost:3500/v1.0/actors/AgentActor/test-agent-1/method
 
 ```bash
 # Terminal 1: Worker (actors)
-cd v2 && dapr run --app-id spring-worker --app-port 5001 \
+dapr run --app-id spring-worker --app-port 5001 \
   --dapr-http-port 3500 \
   --resources-path dapr/components \
   -- dotnet run --project src/Cvoya.Spring.Host.Worker -- --urls http://localhost:5001
 
 # Terminal 2: API (REST endpoints -- stub for now)
-cd v2 && dapr run --app-id spring-api --app-port 5000 \
+dapr run --app-id spring-api --app-port 5000 \
   --dapr-http-port 3501 \
   --resources-path dapr/components \
   -- dotnet run --project src/Cvoya.Spring.Host.Api
@@ -113,14 +111,13 @@ cd v2 && dapr run --app-id spring-api --app-port 5000 \
 ### Troubleshooting
 
 - **"address already in use"**: The Worker and API both default to port 5000. Use `--urls http://localhost:5001` for the Worker.
-- **"secrets.json: no such file"**: Run `cp dapr/secrets.json.template dapr/secrets.json` from the `v2/` directory. Also make sure you run `dapr run` from `v2/` so relative paths resolve correctly.
+- **"secrets.json: no such file"**: Run `cp dapr/secrets.json.template dapr/secrets.json` from the repository root. Also make sure you run `dapr run` from the repository root so relative paths resolve correctly.
 - **"403 from subscription endpoint"**: Harmless -- Dapr probes for pub/sub subscriptions which are not configured yet.
 - **Redis not running**: `dapr init` starts Redis automatically. Check with `docker ps` or `podman ps`.
 
 ## Project Structure
 
 ```
-v2/
 ├── src/
 │   ├── Cvoya.Spring.Core/              # Domain interfaces and types (no external dependencies)
 │   ├── Cvoya.Spring.Dapr/              # Dapr actor implementations

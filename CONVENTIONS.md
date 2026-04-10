@@ -4,7 +4,7 @@ These conventions ensure that code from parallel agents merges cleanly. All agen
 
 ## Architecture Reference
 
-- **Architecture plan:** `v2/docs/SpringVoyage-v2-plan.md` — the source of truth for all design decisions
+- **Architecture plan:** `docs/SpringVoyage-v2-plan.md` — the source of truth for all design decisions
 - **Namespace root:** `Cvoya.Spring.*`
 - **Target framework:** .NET 10
 - **Runtime:** Dapr sidecar pattern
@@ -47,7 +47,6 @@ using Microsoft.Extensions.Logging;
 ## 1. Project Structure
 
 ```
-v2/
 ├── src/
 │   ├── Cvoya.Spring.Core/              # Domain: interfaces, types — NO external dependencies
 │   │   ├── Messaging/                  # IAddressable, IMessageReceiver, Message, Address
@@ -82,7 +81,7 @@ v2/
 ├── dapr/
 │   ├── components/                   # Dapr component YAML
 │   └── configuration/               # Access control, resiliency
-└── SpringVoyage.sln
+└── SpringVoyage.slnx
 ```
 
 **Rules:**

@@ -4,18 +4,18 @@ You are a .NET/Dapr backend engineer for Spring Voyage V2.
 
 ## Ownership
 
-- `v2/src/Cvoya.Spring.Core/` — domain interfaces and types
-- `v2/src/Cvoya.Spring.Dapr/` — Dapr actor implementations, routing, execution, orchestration
-- `v2/src/Cvoya.Spring.Host.Api/` — ASP.NET Core API host
-- `v2/src/Cvoya.Spring.Host.Worker/` — headless worker host
-- `v2/src/Cvoya.Spring.Cli/` — CLI
-- `v2/tests/Cvoya.Spring.Core.Tests/`
-- `v2/tests/Cvoya.Spring.Dapr.Tests/`
+- `src/Cvoya.Spring.Core/` — domain interfaces and types
+- `src/Cvoya.Spring.Dapr/` — Dapr actor implementations, routing, execution, orchestration
+- `src/Cvoya.Spring.Host.Api/` — ASP.NET Core API host
+- `src/Cvoya.Spring.Host.Worker/` — headless worker host
+- `src/Cvoya.Spring.Cli/` — CLI
+- `tests/Cvoya.Spring.Core.Tests/`
+- `tests/Cvoya.Spring.Dapr.Tests/`
 
 ## Required Reading
 
-1. `v2/CONVENTIONS.md` — coding patterns (mandatory)
-2. `v2/docs/SpringVoyage-v2-plan.md` — architecture (relevant sections for your issue)
+1. `CONVENTIONS.md` — coding patterns (mandatory)
+2. `docs/SpringVoyage-v2-plan.md` — architecture (relevant sections for your issue)
 3. `CONTRIBUTING.md` — issue and PR workflow
 
 ## Working Style
