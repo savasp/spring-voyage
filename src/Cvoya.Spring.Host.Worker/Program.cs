@@ -6,6 +6,7 @@
  * via any medium, is strictly prohibited without the prior written consent of CVOYA LLC.
  */
 
+using System.Runtime.InteropServices;
 using Cvoya.Spring.Dapr.Actors;
 using Cvoya.Spring.Dapr.DependencyInjection;
 using Cvoya.Spring.Dapr.Workflows;
@@ -16,24 +17,33 @@ using Dapr.Workflow;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Force-exit after 5 seconds when Ctrl+C is pressed. The Durable Task gRPC
-// worker ignores cancellation and retries indefinitely when the sidecar is
-// down, which makes the process unkillable via normal shutdown.
+// Force-exit on shutdown signals. The Durable Task gRPC worker ignores
+// cancellation and retries indefinitely when the sidecar is down.
+// We handle both SIGINT (Ctrl+C) and SIGTERM (sent by `dapr run` to the
+// child process) and use a raw thread for the timeout because the thread
+// pool may be saturated by gRPC retries.
 builder.Services.Configure<HostOptions>(options =>
     options.ShutdownTimeout = TimeSpan.FromSeconds(5));
 
-var lifetime = new CancellationTokenSource();
-Console.CancelKeyPress += (_, e) =>
+var shutdownRequested = 0;
+
+void ForceExitOnSignal()
 {
-    e.Cancel = true;
-    if (lifetime.IsCancellationRequested)
+    if (Interlocked.Increment(ref shutdownRequested) > 1)
     {
-        // Second Ctrl+C — force exit immediately
-        Environment.Exit(1);
+        // Second signal — kill immediately
+        Environment.FailFast("Force exit on repeated shutdown signal");
     }
-    lifetime.Cancel();
-    _ = Task.Delay(TimeSpan.FromSeconds(5)).ContinueWith(_ => Environment.Exit(1));
-};
+    // First signal — give 5 seconds then force kill
+    new Thread(() =>
+    {
+        Thread.Sleep(5000);
+        Environment.FailFast("Shutdown timed out after 5 seconds");
+    }) { IsBackground = true }.Start();
+}
+
+using var sigInt = PosixSignalRegistration.Create(PosixSignal.SIGINT, _ => ForceExitOnSignal());
+using var sigTerm = PosixSignalRegistration.Create(PosixSignal.SIGTERM, _ => ForceExitOnSignal());
 
 // Register Spring services
 builder.Services
@@ -71,4 +81,4 @@ app.MapGet("/health", () => Results.Ok(new { Status = "Healthy" }));
 // Dapr actor endpoints
 app.MapActorsHandlers();
 
-await app.RunAsync(lifetime.Token);
+await app.RunAsync();
