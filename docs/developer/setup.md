@@ -18,10 +18,10 @@ Optional:
 
 ```
 # Build the entire solution
-dotnet build SpringVoyage.sln
+dotnet build SpringVoyage.slnx
 
 # Build a specific project
-dotnet build src/Spring.Host.Api/Spring.Host.Api.csproj
+dotnet build src/Cvoya.Spring.Host.Api/Cvoya.Spring.Host.Api.csproj
 ```
 
 ## Running Locally
@@ -47,7 +47,7 @@ This installs the Dapr sidecar and default components.
 
 ```
 dapr run --app-id spring-api --app-port 5000 --dapr-http-port 3500 \
-  -- dotnet run --project src/Spring.Host.Api -- --local
+  -- dotnet run --project src/Cvoya.Spring.Host.Api -- --local
 ```
 
 The `--local` flag enables single-tenant mode with no authentication.
@@ -64,13 +64,13 @@ spring agent status
 
 ```
 # All tests
-dotnet test SpringVoyage.sln
+dotnet test SpringVoyage.slnx
 
 # A specific test project
-dotnet test tests/Spring.Core.Tests/
+dotnet test tests/Cvoya.Spring.Core.Tests/
 
 # With Dapr integration tests (requires Dapr sidecar)
-dotnet test tests/Spring.Dapr.Tests/ --filter Category=Integration
+dotnet test tests/Cvoya.Spring.Dapr.Tests/ --filter Category=Integration
 ```
 
 ## Building Container Images
@@ -105,10 +105,10 @@ Schema changes use EF Core migrations:
 
 ```
 # Add a new migration
-dotnet ef migrations add <MigrationName> --project src/Spring.Host.Api
+dotnet ef migrations add <MigrationName> --project src/Cvoya.Spring.Host.Api
 
 # Apply migrations
-dotnet ef database update --project src/Spring.Host.Api
+dotnet ef database update --project src/Cvoya.Spring.Host.Api
 
 # Or via the admin CLI
 spring-admin migrate
