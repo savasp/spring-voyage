@@ -6,6 +6,7 @@ namespace Cvoya.Spring.Dapr.Actors;
 using System.Text.Json;
 
 using Cvoya.Spring.Core;
+using Cvoya.Spring.Core.Capabilities;
 using Cvoya.Spring.Core.Cloning;
 using Cvoya.Spring.Core.Messaging;
 
@@ -20,7 +21,7 @@ using Microsoft.Extensions.Logging;
 /// control (highest priority), conversation (one per ConversationId), and observation (batched events).
 /// The actor never performs long-running work in the actor turn; it dispatches async work externally.
 /// </summary>
-public class AgentActor(ActorHost host, ILoggerFactory loggerFactory) : Actor(host), IAgentActor
+public class AgentActor(ActorHost host, IActivityEventBus activityEventBus, ILoggerFactory loggerFactory) : Actor(host), IAgentActor
 {
     private readonly ILogger _logger = loggerFactory.CreateLogger<AgentActor>();
     private CancellationTokenSource? _activeWorkCancellation;
@@ -35,6 +36,10 @@ public class AgentActor(ActorHost host, ILoggerFactory loggerFactory) : Actor(ho
     {
         try
         {
+            await EmitActivityEventAsync(ActivityEventType.MessageReceived,
+                $"Received {message.Type} message {message.Id} from {message.From}",
+                cancellationToken);
+
             return message.Type switch
             {
                 MessageType.Cancel => await HandleCancelAsync(message, cancellationToken),
@@ -49,6 +54,11 @@ public class AgentActor(ActorHost host, ILoggerFactory loggerFactory) : Actor(ho
         {
             _logger.LogError(ex, "Unhandled exception processing message {MessageId} of type {MessageType} in actor {ActorId}",
                 message.Id, message.Type, Id.GetId());
+
+            await EmitActivityEventAsync(ActivityEventType.ErrorOccurred,
+                $"Error processing message {message.Id}: {ex.Message}",
+                cancellationToken);
+
             return CreateErrorResponse(message, ex.Message);
         }
     }
@@ -353,6 +363,35 @@ public class AgentActor(ActorHost host, ILoggerFactory loggerFactory) : Actor(ho
     {
         var identity = await GetCloneIdentityAsync(cancellationToken);
         return identity?.ParentAgentId;
+    }
+
+    /// <summary>
+    /// Emits an activity event through the activity event bus.
+    /// Failures are logged but never allowed to escape the actor turn.
+    /// </summary>
+    private async Task EmitActivityEventAsync(ActivityEventType eventType, string description, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var severity = eventType == ActivityEventType.ErrorOccurred
+                ? ActivitySeverity.Error
+                : ActivitySeverity.Info;
+
+            var activityEvent = new ActivityEvent(
+                Guid.NewGuid(),
+                DateTimeOffset.UtcNow,
+                Address,
+                eventType,
+                severity,
+                description);
+
+            await activityEventBus.PublishAsync(activityEvent, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to emit activity event {EventType} for actor {ActorId}.",
+                eventType, Id.GetId());
+        }
     }
 
     /// <summary>

@@ -11,7 +11,7 @@ using Cvoya.Spring.Core.Capabilities;
 /// In-process event bus for activity events, backed by an Rx.NET <see cref="Subject{T}"/>.
 /// Registered as a singleton so all producers and consumers share a single stream.
 /// </summary>
-public sealed class ActivityEventBus : IDisposable
+public sealed class ActivityEventBus : IActivityEventBus, IDisposable
 {
     private readonly Subject<ActivityEvent> _subject = new();
 
@@ -27,6 +27,14 @@ public sealed class ActivityEventBus : IDisposable
     public void Publish(ActivityEvent activityEvent)
     {
         _subject.OnNext(activityEvent);
+    }
+
+    /// <inheritdoc />
+    public Task PublishAsync(ActivityEvent activityEvent, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        _subject.OnNext(activityEvent);
+        return Task.CompletedTask;
     }
 
     /// <inheritdoc />

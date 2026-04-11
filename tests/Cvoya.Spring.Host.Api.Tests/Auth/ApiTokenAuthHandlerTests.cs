@@ -17,6 +17,7 @@ using Cvoya.Spring.Host.Api.Auth;
 using FluentAssertions;
 
 using global::Dapr.Actors.Client;
+using global::Dapr.Client;
 
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -86,6 +87,8 @@ public class ApiTokenAuthHandlerTests : IDisposable
                     services.AddSingleton(actorProxyFactory);
                     services.AddSingleton(Substitute.For<IStateStore>());
                     services.AddSingleton(new DirectoryCache());
+
+                    services.AddSingleton(Substitute.For<DaprClient>());
 
                     services.AddSingleton(sp =>
                     {

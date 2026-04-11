@@ -8,4 +8,12 @@ namespace Cvoya.Spring.Dapr.Execution;
 /// </summary>
 /// <param name="InputTokens">The number of input tokens consumed.</param>
 /// <param name="OutputTokens">The number of output tokens generated.</param>
-public record UsageStats(int InputTokens, int OutputTokens);
+/// <param name="Model">The model identifier used for the completion.</param>
+/// <param name="Cost">The estimated cost in USD for this completion, if available.</param>
+/// <param name="Duration">The wall-clock duration of the completion request.</param>
+public record UsageStats(
+    int InputTokens,
+    int OutputTokens,
+    string? Model = null,
+    decimal? Cost = null,
+    TimeSpan? Duration = null);

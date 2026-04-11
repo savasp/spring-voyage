@@ -5,6 +5,7 @@ namespace Cvoya.Spring.Dapr.Tests.Actors;
 
 using System.Text.Json;
 
+using Cvoya.Spring.Core.Capabilities;
 using Cvoya.Spring.Core.Cloning;
 using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Dapr.Actors;
@@ -28,6 +29,7 @@ public class AgentActorTests
 {
     private readonly IActorStateManager _stateManager = Substitute.For<IActorStateManager>();
     private readonly ILoggerFactory _loggerFactory = Substitute.For<ILoggerFactory>();
+    private readonly IActivityEventBus _activityEventBus = Substitute.For<IActivityEventBus>();
     private readonly AgentActor _actor;
 
     public AgentActorTests()
@@ -37,7 +39,7 @@ public class AgentActorTests
         {
             ActorId = new ActorId("test-agent")
         });
-        _actor = new AgentActor(host, _loggerFactory);
+        _actor = new AgentActor(host, _activityEventBus, _loggerFactory);
         SetStateManager(_actor, _stateManager);
 
         // Default: no active conversation, no pending conversations.
@@ -487,5 +489,45 @@ public class AgentActorTests
         var result = await _actor.GetCostAttributionTargetAsync(TestContext.Current.CancellationToken);
 
         result.Should().BeNull();
+    }
+
+    // --- Activity Event Emission Tests ---
+
+    [Fact]
+    public async Task ReceiveAsync_DomainMessage_EmitsMessageReceivedActivityEvent()
+    {
+        var message = CreateMessage(conversationId: "conv-activity");
+
+        await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
+
+        await _activityEventBus.Received().PublishAsync(
+            Arg.Is<ActivityEvent>(e => e.EventType == ActivityEventType.MessageReceived),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ReceiveAsync_ControlMessage_EmitsMessageReceivedActivityEvent()
+    {
+        var message = CreateMessage(type: MessageType.HealthCheck);
+
+        await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
+
+        await _activityEventBus.Received().PublishAsync(
+            Arg.Is<ActivityEvent>(e => e.EventType == ActivityEventType.MessageReceived),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ReceiveAsync_ActivityEventBusFailure_DoesNotBreakActor()
+    {
+        _activityEventBus.PublishAsync(Arg.Any<ActivityEvent>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException(new InvalidOperationException("Bus down")));
+
+        var message = CreateMessage(conversationId: "conv-bus-fail");
+
+        // Should not throw even though the bus fails.
+        var result = await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
+
+        result.Should().NotBeNull();
     }
 }
