@@ -97,5 +97,6 @@ Each goal directly addresses a v1 limitation:
 | [Deployment](deployment.md) | Execution modes, solution structure |
 | [Security](security.md) | Authentication, permissions, multi-tenancy, tenant administration |
 | [Packages](packages.md) | Domain packages, skill format, package system |
-| [Phasing](phasing.md) | Phased implementation plan, open core model |
 | [Open Questions](open-questions.md) | Open design questions, future work |
+
+For the phased implementation plan, see [`docs/roadmap/`](../roadmap/README.md).

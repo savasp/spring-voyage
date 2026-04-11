@@ -22,42 +22,15 @@ The agent actor (brain) and execution environment (hands) are separate — see [
 
 ## Solution Structure
 
-```
-SpringVoyage.sln
-├── src/
-│   ├── Spring.Core/                    # Domain: interfaces, types, no Dapr dependency
-│   │   ├── Messaging/                  # IAddressable, IMessageReceiver, Message, Address
-│   │   ├── Orchestration/              # IOrchestrationStrategy, IUnitContext
-│   │   └── Observability/              # IActivityObservable, ActivityEvent
-│   ├── Spring.Dapr/                    # Dapr implementations of Core interfaces
-│   │   ├── Actors/                     # AgentActor, UnitActor, ConnectorActor, HumanActor
-│   │   └── Orchestration/              # RuleBasedStrategy, WorkflowStrategy, AiStrategy, etc.
-│   ├── Spring.A2A/                     # A2A protocol client + server
-│   ├── Spring.Connector.GitHub/        # GitHub connector (C#)
-│   ├── Spring.Connector.Slack/         # Slack connector
-│   ├── Spring.Host.Api/                # Web API host (authz, multi-tenant, local dev mode)
-│   ├── Spring.Host.Worker/             # Headless worker host
-│   ├── Spring.Cli/                     # CLI ("spring" command)
-│   └── Spring.Web/                     # Web UI
-├── python/                             # Optional — for Python-based agents
-│   ├── spring_agent/                   # Python agent process (or Dapr Agents-based)
-│   └── spring_connectors/              # Python-side connector logic
-├── dapr/
-│   ├── components/                     # pubsub, state, bindings, secrets, configuration
-│   └── configuration/                  # access control, resiliency
-├── packages/                           # Domain packages (Dockerfiles, definitions, skills)
-│   └── software-engineering/           # Phase 1
-│       ├── agents/                     # Agent definition YAML
-│       ├── units/                      # Unit definition YAML
-│       ├── skills/                     # Prompt fragments + tool definitions
-│       ├── workflows/                  # Workflow container sources
-│       │   └── software-dev-cycle/
-│       │       ├── Dockerfile
-│       │       └── SoftwareDevCycle/
-│       ├── execution/                  # Agent execution environment sources
-│       │   └── spring-agent/
-│       │       └── Dockerfile
-│       └── connectors/                 # Compiled into host
-│           └── github/
-└── tests/
-```
+The solution follows a layered architecture with clean separation between domain abstractions and infrastructure:
+
+- **`Cvoya.Spring.Core`** — Domain interfaces and types. No Dapr or infrastructure dependencies. Defines `IAddressable`, `IMessageReceiver`, `IOrchestrationStrategy`, `IActivityObservable`, and all domain models.
+- **`Cvoya.Spring.Dapr`** — Dapr implementations: actors (`AgentActor`, `UnitActor`, `ConnectorActor`, `HumanActor`), orchestration strategies, state management, and routing.
+- **`Cvoya.Spring.A2A`** — A2A protocol client and server for cross-framework agent communication.
+- **`Cvoya.Spring.Connector.GitHub`** — GitHub connector with webhook handling and skills.
+- **`Cvoya.Spring.Host.Api`** — ASP.NET Core API host (REST, WebSocket, SSE, auth, local dev mode).
+- **`Cvoya.Spring.Host.Worker`** — Headless worker host for Dapr actors and workflows.
+- **`Cvoya.Spring.Cli`** — The `spring` command-line tool.
+- **`Cvoya.Spring.Web`** — Next.js/React web dashboard.
+- **`packages/`** — Domain packages with agent/unit definitions, skills, workflow containers, and execution environments.
+- **`dapr/`** — Dapr component configuration (pub/sub, state, bindings, secrets, resiliency).

@@ -1,6 +1,6 @@
 # Open Questions
 
-> **[Architecture Index](README.md)** | Related: [Phasing](phasing.md), [Infrastructure](infrastructure.md), [Initiative](initiative.md)
+> **[Architecture Index](README.md)** | Related: [Roadmap](../roadmap/README.md), [Infrastructure](infrastructure.md), [Initiative](initiative.md)
 
 ---
 

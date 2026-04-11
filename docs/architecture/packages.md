@@ -1,6 +1,6 @@
 # Packages
 
-> **[Architecture Index](README.md)** | Related: [Connectors](connectors.md), [Units & Agents](units.md), [Phasing](phasing.md)
+> **[Architecture Index](README.md)** | Related: [Connectors](connectors.md), [Units & Agents](units.md), [Roadmap](../roadmap/README.md)
 
 ---
 
@@ -8,51 +8,16 @@
 
 A **domain package** is a logical grouping of domain-specific content — agent templates, unit templates, skills, workflows, and connector implementations — organized by directory convention. Domain packages are how v2 remains domain-agnostic at the platform level while providing ready-to-use configurations for specific domains.
 
-```
-packages/
-  software-engineering/              # Phase 1 — v1 equivalent
-    agents/
-      backend-engineer.yaml
-      qa-engineer.yaml
-      tech-lead.yaml
-    units/
-      engineering-team.yaml
-    skills/
-      triage-and-assign.md           # prompt fragment
-      triage-and-assign.tools.json   # optional tool definitions
-      pr-review-cycle.md
-      pr-review-cycle.tools.json
-    workflows/                       # workflow containers (source)
-      software-dev-cycle/
-        Dockerfile
-        SoftwareDevCycle/            # .NET project or Python code
-    execution/                       # agent execution environments (source)
-      spring-agent/
-        Dockerfile
-    connectors/                      # compiled into host
-      github/                        # Spring.Connector.GitHub project
+Each domain package follows a standard directory convention:
 
-  product-management/                # Phase 3
-    agents/
-      pm-agent.yaml
-      design-agent.yaml
-    units/
-      product-squad.yaml
-    skills/
-      spec-review.md
-      roadmap-planning.md
-    connectors/
-      linear/                        # or Notion, Jira
+- **`agents/`** — Agent definition YAML files (templates for agent personas)
+- **`units/`** — Unit definition YAML files (team compositions)
+- **`skills/`** — Prompt fragments (`.md`) + optional tool definitions (`.tools.json`)
+- **`workflows/`** — Workflow container sources (Dockerfile + project code)
+- **`execution/`** — Agent execution environment sources (Dockerfile)
+- **`connectors/`** — Connector implementations (compiled into host)
 
-  research/                          # Later phase
-    agents/
-      research-agent.yaml
-    skills/
-      paper-analysis.md
-    connectors/
-      arxiv/
-      web-search/
-```
+The `software-engineering` package ships with Phase 1. Additional packages (`product-management`, `research`) are planned for later phases.
 
 **Dockerfiles are source; images are runtime.** Packages include Dockerfiles for workflows and agent execution environments — they are the source of truth for how images are built. Agent and unit definitions reference pre-built images at runtime (e.g., `image: spring-workflows/software-dev-cycle:latest`). The `spring build` command bridges the gap:
 

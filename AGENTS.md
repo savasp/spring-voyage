@@ -8,14 +8,17 @@ Read `CONVENTIONS.md` for all coding patterns, naming, testing, DI, Dapr usage, 
 
 ## Architecture
 
-The architecture plan at `docs/SpringVoyage-v2-plan.md` is the source of truth for all design decisions. Read the relevant sections before starting work. Key concepts:
+The architecture is documented under `docs/architecture/` — see [`docs/architecture/README.md`](docs/architecture/README.md) for the full index. For execution status and phased implementation plan, see [`docs/roadmap/`](docs/roadmap/README.md).
 
-- **Agents** are Dapr virtual actors (`AgentActor`) with partitioned mailboxes
-- **Units** are composite agents (`UnitActor`) with pluggable orchestration strategies
-- **Connectors** bridge external systems (GitHub, Slack, etc.) to units
-- **Messages** are typed communications between addressable entities
-- Execution patterns: **hosted** (in-process LLM) and **delegated** (container with tool like Claude Code)
-- Four-layer prompt assembly: platform, unit context, conversation context, agent instructions
+Before working on an issue, read the relevant architecture document(s). Key concepts:
+
+- **Agents** are Dapr virtual actors (`AgentActor`) with partitioned mailboxes — see [Units & Agents](docs/architecture/units.md)
+- **Units** are composite agents (`UnitActor`) with pluggable orchestration strategies — see [Units & Agents](docs/architecture/units.md)
+- **Connectors** bridge external systems (GitHub, Slack, etc.) to units — see [Connectors](docs/architecture/connectors.md)
+- **Messages** are typed communications between addressable entities — see [Messaging](docs/architecture/messaging.md)
+- Execution patterns: **hosted** (in-process LLM) and **delegated** (container with tool like Claude Code) — see [Units & Agents](docs/architecture/units.md)
+- Four-layer prompt assembly: platform, unit context, conversation context, agent instructions — see [Units & Agents](docs/architecture/units.md)
+- **Infrastructure**: Dapr building blocks, IAddressable, data persistence — see [Infrastructure](docs/architecture/infrastructure.md)
 
 ## Build & Test
 
