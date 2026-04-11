@@ -8,14 +8,11 @@ using Microsoft.EntityFrameworkCore;
 
 /// <summary>
 /// EF Core database context for the Spring Voyage platform.
-/// Provides access to tenant, agent, unit, connector, activity event, and API token entities.
+/// Provides access to agent, unit, connector, activity event, and API token entities.
 /// Uses the "spring" schema and applies snake_case naming, soft deletes, and audit columns.
 /// </summary>
 public class SpringDbContext(DbContextOptions<SpringDbContext> options) : DbContext(options)
 {
-    /// <summary>Gets the set of tenant entities.</summary>
-    public DbSet<TenantEntity> Tenants => Set<TenantEntity>();
-
     /// <summary>Gets the set of agent definition entities.</summary>
     public DbSet<AgentDefinitionEntity> AgentDefinitions => Set<AgentDefinitionEntity>();
 
@@ -30,9 +27,6 @@ public class SpringDbContext(DbContextOptions<SpringDbContext> options) : DbCont
 
     /// <summary>Gets the set of API token entities.</summary>
     public DbSet<ApiTokenEntity> ApiTokens => Set<ApiTokenEntity>();
-
-    /// <summary>Gets the set of user entities.</summary>
-    public DbSet<UserEntity> Users => Set<UserEntity>();
 
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -77,7 +71,7 @@ public class SpringDbContext(DbContextOptions<SpringDbContext> options) : DbCont
         {
             if (entry.State == EntityState.Added)
             {
-                if (entry.Properties.FirstOrDefault(p => p.Metadata.Name == nameof(TenantEntity.CreatedAt)) is { } createdAt)
+                if (entry.Properties.FirstOrDefault(p => p.Metadata.Name == "CreatedAt") is { } createdAt)
                 {
                     if ((DateTimeOffset)createdAt.CurrentValue! == default)
                     {
@@ -85,7 +79,7 @@ public class SpringDbContext(DbContextOptions<SpringDbContext> options) : DbCont
                     }
                 }
 
-                if (entry.Properties.FirstOrDefault(p => p.Metadata.Name == nameof(TenantEntity.UpdatedAt)) is { } updatedAtOnAdd)
+                if (entry.Properties.FirstOrDefault(p => p.Metadata.Name == "UpdatedAt") is { } updatedAtOnAdd)
                 {
                     if ((DateTimeOffset)updatedAtOnAdd.CurrentValue! == default)
                     {
@@ -95,7 +89,7 @@ public class SpringDbContext(DbContextOptions<SpringDbContext> options) : DbCont
             }
             else if (entry.State == EntityState.Modified)
             {
-                if (entry.Properties.FirstOrDefault(p => p.Metadata.Name == nameof(TenantEntity.UpdatedAt)) is { } updatedAt)
+                if (entry.Properties.FirstOrDefault(p => p.Metadata.Name == "UpdatedAt") is { } updatedAt)
                 {
                     updatedAt.CurrentValue = now;
                 }

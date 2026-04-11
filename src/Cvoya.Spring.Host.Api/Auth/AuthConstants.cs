@@ -11,15 +11,9 @@ public static class AuthConstants
     /// <summary>The authentication scheme name for API token bearer authentication.</summary>
     public const string ApiTokenScheme = "ApiToken";
 
-    /// <summary>The authentication scheme name for cookie-based OAuth authentication.</summary>
-    public const string OAuthScheme = "OAuth";
-
     /// <summary>The authentication scheme name for local development bypass authentication.</summary>
     public const string LocalDevScheme = "LocalDev";
 
     /// <summary>The default user ID assigned when running in local dev mode.</summary>
     public const string DefaultLocalUserId = "local-dev-user";
-
-    /// <summary>The default tenant ID assigned when running in local dev mode.</summary>
-    public const string DefaultLocalTenantId = "local-dev-tenant";
 }

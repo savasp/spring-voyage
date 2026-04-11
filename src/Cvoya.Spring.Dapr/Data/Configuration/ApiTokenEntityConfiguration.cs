@@ -9,7 +9,7 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 /// <summary>
 /// EF Core configuration for the <see cref="ApiTokenEntity"/> type.
-/// Applies snake_case naming, audit columns, and tenant relationship.
+/// Applies snake_case naming and audit columns.
 /// </summary>
 internal class ApiTokenEntityConfiguration : IEntityTypeConfiguration<ApiTokenEntity>
 {
@@ -20,7 +20,6 @@ internal class ApiTokenEntityConfiguration : IEntityTypeConfiguration<ApiTokenEn
 
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Id).HasColumnName("id");
-        builder.Property(e => e.TenantId).HasColumnName("tenant_id").IsRequired();
         builder.Property(e => e.UserId).HasColumnName("user_id").HasMaxLength(256);
         builder.Property(e => e.TokenHash).HasColumnName("token_hash").IsRequired().HasMaxLength(512);
         builder.Property(e => e.Name).HasColumnName("name").IsRequired().HasMaxLength(256);
@@ -29,8 +28,6 @@ internal class ApiTokenEntityConfiguration : IEntityTypeConfiguration<ApiTokenEn
         builder.Property(e => e.CreatedAt).HasColumnName("created_at").IsRequired();
         builder.Property(e => e.RevokedAt).HasColumnName("revoked_at");
 
-        builder.HasOne(e => e.Tenant).WithMany().HasForeignKey(e => e.TenantId);
         builder.HasIndex(e => e.TokenHash).IsUnique();
-        builder.HasIndex(e => e.TenantId);
     }
 }

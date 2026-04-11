@@ -26,75 +26,45 @@ public class SpringDbContextTests : IDisposable
     }
 
     [Fact]
-    public async Task SaveChangesAsync_NewTenant_CanCreateAndRead()
+    public async Task SaveChangesAsync_NewAgentDefinition_CanCreateAndRead()
     {
         var ct = TestContext.Current.CancellationToken;
-        var tenant = new TenantEntity
-        {
-            Id = Guid.NewGuid(),
-            Name = "Test Tenant"
-        };
-
-        _context.Tenants.Add(tenant);
-        await _context.SaveChangesAsync(ct);
-
-        var retrieved = await _context.Tenants.FindAsync([tenant.Id], ct);
-
-        retrieved.Should().NotBeNull();
-        retrieved!.Name.Should().Be("Test Tenant");
-    }
-
-    [Fact]
-    public async Task SaveChangesAsync_NewAgentDefinition_CanCreateWithTenantReference()
-    {
-        var ct = TestContext.Current.CancellationToken;
-        var tenant = new TenantEntity
-        {
-            Id = Guid.NewGuid(),
-            Name = "Test Tenant"
-        };
-
         var agent = new AgentDefinitionEntity
         {
             Id = Guid.NewGuid(),
-            TenantId = tenant.Id,
             AgentId = "ada",
             Name = "Ada",
-            Role = "Software Engineer",
-            Tenant = tenant
+            Role = "Software Engineer"
         };
 
-        _context.Tenants.Add(tenant);
         _context.AgentDefinitions.Add(agent);
         await _context.SaveChangesAsync(ct);
 
-        var retrieved = await _context.AgentDefinitions
-            .Include(a => a.Tenant)
-            .FirstOrDefaultAsync(a => a.Id == agent.Id, ct);
+        var retrieved = await _context.AgentDefinitions.FindAsync([agent.Id], ct);
 
         retrieved.Should().NotBeNull();
         retrieved!.AgentId.Should().Be("ada");
-        retrieved.Tenant.Should().NotBeNull();
-        retrieved.Tenant!.Name.Should().Be("Test Tenant");
+        retrieved.Name.Should().Be("Ada");
     }
 
     [Fact]
     public async Task SaveChangesAsync_SoftDeletedEntity_FilteredOutByDefault()
     {
         var ct = TestContext.Current.CancellationToken;
-        var tenant = new TenantEntity
+        var agent = new AgentDefinitionEntity
         {
             Id = Guid.NewGuid(),
+            AgentId = "deleted-agent",
             Name = "To Be Deleted",
             DeletedAt = DateTimeOffset.UtcNow
         };
 
-        _context.Tenants.Add(tenant);
+        _context.AgentDefinitions.Add(agent);
         await _context.SaveChangesAsync(ct);
 
-        var results = await _context.Tenants.ToListAsync(ct);
+        var results = await _context.AgentDefinitions.ToListAsync(ct);
 
-        results.Should().NotContain(t => t.Id == tenant.Id);
+        results.Should().NotContain(a => a.Id == agent.Id);
     }
 
     [Fact]
@@ -103,44 +73,46 @@ public class SpringDbContextTests : IDisposable
         var ct = TestContext.Current.CancellationToken;
         var before = DateTimeOffset.UtcNow;
 
-        var tenant = new TenantEntity
+        var agent = new AgentDefinitionEntity
         {
             Id = Guid.NewGuid(),
+            AgentId = "audit-test",
             Name = "Audit Test"
         };
 
-        _context.Tenants.Add(tenant);
+        _context.AgentDefinitions.Add(agent);
         await _context.SaveChangesAsync(ct);
 
         var after = DateTimeOffset.UtcNow;
 
-        tenant.CreatedAt.Should().BeOnOrAfter(before).And.BeOnOrBefore(after);
-        tenant.UpdatedAt.Should().BeOnOrAfter(before).And.BeOnOrBefore(after);
+        agent.CreatedAt.Should().BeOnOrAfter(before).And.BeOnOrBefore(after);
+        agent.UpdatedAt.Should().BeOnOrAfter(before).And.BeOnOrBefore(after);
     }
 
     [Fact]
     public async Task SaveChangesAsync_ModifiedEntity_UpdatesUpdatedAt()
     {
         var ct = TestContext.Current.CancellationToken;
-        var tenant = new TenantEntity
+        var agent = new AgentDefinitionEntity
         {
             Id = Guid.NewGuid(),
+            AgentId = "update-test",
             Name = "Original"
         };
 
-        _context.Tenants.Add(tenant);
+        _context.AgentDefinitions.Add(agent);
         await _context.SaveChangesAsync(ct);
 
-        var originalUpdatedAt = tenant.UpdatedAt;
+        var originalUpdatedAt = agent.UpdatedAt;
 
         // Small delay to ensure timestamp differs.
         await Task.Delay(10, ct);
 
-        tenant.Name = "Modified";
-        _context.Tenants.Update(tenant);
+        agent.Name = "Modified";
+        _context.AgentDefinitions.Update(agent);
         await _context.SaveChangesAsync(ct);
 
-        tenant.UpdatedAt.Should().BeAfter(originalUpdatedAt);
+        agent.UpdatedAt.Should().BeAfter(originalUpdatedAt);
     }
 
     public void Dispose()

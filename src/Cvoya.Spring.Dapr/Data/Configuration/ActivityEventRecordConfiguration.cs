@@ -9,7 +9,7 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 /// <summary>
 /// EF Core configuration for the <see cref="ActivityEventRecord"/> type.
-/// Applies snake_case naming and tenant relationship.
+/// Applies snake_case naming and indexes for querying.
 /// </summary>
 internal class ActivityEventRecordConfiguration : IEntityTypeConfiguration<ActivityEventRecord>
 {
@@ -20,7 +20,6 @@ internal class ActivityEventRecordConfiguration : IEntityTypeConfiguration<Activ
 
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Id).HasColumnName("id");
-        builder.Property(e => e.TenantId).HasColumnName("tenant_id").IsRequired();
         builder.Property(e => e.Source).HasColumnName("source").IsRequired().HasMaxLength(256);
         builder.Property(e => e.EventType).HasColumnName("event_type").IsRequired().HasMaxLength(128);
         builder.Property(e => e.Severity).HasColumnName("severity").IsRequired().HasMaxLength(32);
@@ -30,8 +29,6 @@ internal class ActivityEventRecordConfiguration : IEntityTypeConfiguration<Activ
         builder.Property(e => e.Cost).HasColumnName("cost").HasPrecision(18, 6);
         builder.Property(e => e.Timestamp).HasColumnName("timestamp").IsRequired();
 
-        builder.HasOne(e => e.Tenant).WithMany().HasForeignKey(e => e.TenantId);
-        builder.HasIndex(e => e.TenantId);
         builder.HasIndex(e => e.Timestamp);
         builder.HasIndex(e => e.CorrelationId);
     }

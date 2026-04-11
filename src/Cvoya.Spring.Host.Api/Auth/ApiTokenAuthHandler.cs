@@ -72,7 +72,6 @@ public class ApiTokenAuthHandler(
         var claims = new List<Claim>
         {
             new(ClaimTypes.NameIdentifier, tokenEntity.UserId ?? tokenEntity.Id.ToString()),
-            new("tenant_id", tokenEntity.TenantId.ToString()),
             new("token_name", tokenEntity.Name)
         };
 

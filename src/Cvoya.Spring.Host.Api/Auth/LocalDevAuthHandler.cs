@@ -25,7 +25,6 @@ public class LocalDevAuthHandler(
         var claims = new[]
         {
             new Claim(ClaimTypes.NameIdentifier, AuthConstants.DefaultLocalUserId),
-            new Claim("tenant_id", AuthConstants.DefaultLocalTenantId),
             new Claim(ClaimTypes.Name, "Local Developer")
         };
 

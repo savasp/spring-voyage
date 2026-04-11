@@ -14,9 +14,6 @@ public class UnitDefinitionEntity
     /// <summary>Gets or sets the unique identifier for the unit definition.</summary>
     public Guid Id { get; set; }
 
-    /// <summary>Gets or sets the tenant that owns this unit definition.</summary>
-    public Guid TenantId { get; set; }
-
     /// <summary>Gets or sets the user-facing identifier for the unit.</summary>
     public string UnitId { get; set; } = string.Empty;
 
@@ -41,6 +38,4 @@ public class UnitDefinitionEntity
     /// <summary>Gets or sets the timestamp when the unit definition was soft-deleted, or null if active.</summary>
     public DateTimeOffset? DeletedAt { get; set; }
 
-    /// <summary>Gets or sets the navigation property to the owning tenant.</summary>
-    public TenantEntity? Tenant { get; set; }
 }

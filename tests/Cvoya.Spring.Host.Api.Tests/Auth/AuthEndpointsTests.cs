@@ -89,23 +89,4 @@ public class AuthEndpointsTests : IClassFixture<CustomWebApplicationFactory>
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
-    [Fact]
-    public async Task Login_WhenOAuthNotConfigured_Returns501()
-    {
-        var ct = TestContext.Current.CancellationToken;
-
-        var response = await _client.GetAsync("/api/v1/auth/login", ct);
-
-        response.StatusCode.Should().Be(HttpStatusCode.NotImplemented);
-    }
-
-    [Fact]
-    public async Task Callback_WithoutState_Returns400()
-    {
-        var ct = TestContext.Current.CancellationToken;
-
-        var response = await _client.GetAsync("/api/v1/auth/callback?code=test", ct);
-
-        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-    }
 }
