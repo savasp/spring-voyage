@@ -1,0 +1,38 @@
+// Copyright CVOYA LLC. Licensed under the Business Source License 1.1.
+// See LICENSE.md in the project root for full license terms.
+
+namespace Cvoya.Spring.Dapr.Observability;
+
+using System.Reactive.Subjects;
+
+using Cvoya.Spring.Core.Capabilities;
+
+/// <summary>
+/// In-process event bus for activity events, backed by an Rx.NET <see cref="Subject{T}"/>.
+/// Registered as a singleton so all producers and consumers share a single stream.
+/// </summary>
+public sealed class ActivityEventBus : IDisposable
+{
+    private readonly Subject<ActivityEvent> _subject = new();
+
+    /// <summary>
+    /// Gets the observable stream of all activity events flowing through the bus.
+    /// </summary>
+    public IObservable<ActivityEvent> Events => _subject;
+
+    /// <summary>
+    /// Publishes an activity event to all subscribers.
+    /// </summary>
+    /// <param name="activityEvent">The event to publish.</param>
+    public void Publish(ActivityEvent activityEvent)
+    {
+        _subject.OnNext(activityEvent);
+    }
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        _subject.OnCompleted();
+        _subject.Dispose();
+    }
+}

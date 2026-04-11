@@ -146,19 +146,50 @@ public class ResultTests
 public class ActivityEventTests
 {
     [Fact]
-    public void Constructor_WithValidParameters_CreatesEvent()
+    public void Constructor_WithRequiredParameters_CreatesEvent()
     {
         var id = Guid.NewGuid();
         var timestamp = DateTimeOffset.UtcNow;
         var source = new Address("agent", "engineering-team/ada");
 
-        var activityEvent = new ActivityEvent(id, timestamp, source, "TaskCompleted", "Agent completed the task");
+        var activityEvent = new ActivityEvent(
+            id, timestamp, source,
+            ActivityEventType.ConversationCompleted,
+            ActivitySeverity.Info,
+            "Agent completed the task");
 
         activityEvent.Id.Should().Be(id);
         activityEvent.Timestamp.Should().Be(timestamp);
         activityEvent.Source.Should().Be(source);
-        activityEvent.EventType.Should().Be("TaskCompleted");
-        activityEvent.Description.Should().Be("Agent completed the task");
+        activityEvent.EventType.Should().Be(ActivityEventType.ConversationCompleted);
+        activityEvent.Severity.Should().Be(ActivitySeverity.Info);
+        activityEvent.Summary.Should().Be("Agent completed the task");
+        activityEvent.Details.Should().BeNull();
+        activityEvent.CorrelationId.Should().BeNull();
+        activityEvent.Cost.Should().BeNull();
+    }
+
+    [Fact]
+    public void Constructor_WithAllParameters_CreatesEvent()
+    {
+        var id = Guid.NewGuid();
+        var timestamp = DateTimeOffset.UtcNow;
+        var source = new Address("agent", "engineering-team/ada");
+        var details = JsonDocument.Parse("{\"tokens\":150}").RootElement;
+
+        var activityEvent = new ActivityEvent(
+            id, timestamp, source,
+            ActivityEventType.CostIncurred,
+            ActivitySeverity.Debug,
+            "Token usage recorded",
+            details,
+            "corr-123",
+            0.0042m);
+
+        activityEvent.Details.Should().NotBeNull();
+        activityEvent.Details!.Value.GetProperty("tokens").GetInt32().Should().Be(150);
+        activityEvent.CorrelationId.Should().Be("corr-123");
+        activityEvent.Cost.Should().Be(0.0042m);
     }
 
     [Fact]
@@ -168,8 +199,8 @@ public class ActivityEventTests
         var timestamp = DateTimeOffset.UtcNow;
         var source = new Address("agent", "engineering-team/ada");
 
-        var event1 = new ActivityEvent(id, timestamp, source, "TaskCompleted", "Done");
-        var event2 = new ActivityEvent(id, timestamp, source, "TaskCompleted", "Done");
+        var event1 = new ActivityEvent(id, timestamp, source, ActivityEventType.MessageSent, ActivitySeverity.Info, "Done");
+        var event2 = new ActivityEvent(id, timestamp, source, ActivityEventType.MessageSent, ActivitySeverity.Info, "Done");
 
         event1.Should().Be(event2);
     }
