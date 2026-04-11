@@ -91,6 +91,14 @@ public static class StateKeys
     public const string HumanNotificationPreferences = "Human:NotificationPreferences";
 
     /// <summary>
+    /// State key for the human actor's unit-scoped permission map (unitId to PermissionLevel).
+    /// </summary>
+    public const string HumanUnitPermissions = "Human:UnitPermissions";
+
+    /// <summary>
+    /// State key for the unit actor's human permission entries (humanId to UnitPermissionEntry).
+    /// </summary>
+    public const string HumanPermissions = "Unit:HumanPermissions";
     /// State key for the clone identity record, stored on clone agents.
     /// </summary>
     public const string CloneIdentity = "Agent:CloneIdentity";
