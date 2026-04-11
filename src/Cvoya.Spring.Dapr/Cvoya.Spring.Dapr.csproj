@@ -23,6 +23,7 @@
     <PackageReference Include="Dapr.Workflow" />
     <PackageReference Include="Microsoft.Extensions.Http" />
     <PackageReference Include="Microsoft.Extensions.Options" />
+    <PackageReference Include="System.Reactive" />
   </ItemGroup>
 
 </Project>
