@@ -40,7 +40,15 @@ public sealed class ActivityEventBus : IActivityEventBus, IDisposable
     /// <inheritdoc />
     public void Dispose()
     {
-        _subject.OnCompleted();
+        try
+        {
+            _subject.OnCompleted();
+        }
+        catch (ObjectDisposedException)
+        {
+            // Subject may already be disposed during shutdown; safe to ignore.
+        }
+
         _subject.Dispose();
     }
 }
