@@ -75,8 +75,11 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore SpringVoyage.slnx
 
+      - name: Build
+        run: dotnet build SpringVoyage.slnx --no-restore --configuration Release
+
       - name: Test
-        run: dotnet test SpringVoyage.slnx --no-restore --no-build --configuration Release
+        run: dotnet test --solution SpringVoyage.slnx --no-restore --no-build --configuration Release
 
   format:
     name: Format check
