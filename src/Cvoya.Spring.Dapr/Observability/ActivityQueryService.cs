@@ -59,18 +59,6 @@ public class ActivityQueryService(SpringDbContext dbContext) : IActivityQuerySer
     }
 
     /// <inheritdoc />
-    public async Task<IReadOnlyList<ActivityQueryResult.Item>> GetRecentAsync(DateTimeOffset since, CancellationToken cancellationToken)
-    {
-        return await dbContext.ActivityEvents
-            .Where(e => e.Timestamp > since)
-            .OrderByDescending(e => e.Timestamp)
-            .Select(e => new ActivityQueryResult.Item(
-                e.Id, e.Source, e.EventType, e.Severity, e.Summary,
-                e.CorrelationId, e.Cost, e.Timestamp))
-            .ToListAsync(cancellationToken);
-    }
-
-    /// <inheritdoc />
     public async Task<decimal> GetTotalCostAsync(string? source, DateTimeOffset? from, DateTimeOffset? to, CancellationToken cancellationToken)
     {
         var query = dbContext.ActivityEvents.AsQueryable();

@@ -3,12 +3,14 @@
 
 namespace Cvoya.Spring.Host.Api.Tests;
 
+using Cvoya.Spring.Core.Capabilities;
 using Cvoya.Spring.Core.Costs;
 using Cvoya.Spring.Core.Directory;
 using Cvoya.Spring.Core.Observability;
 using Cvoya.Spring.Core.State;
 using Cvoya.Spring.Dapr.Auth;
 using Cvoya.Spring.Dapr.Data;
+using Cvoya.Spring.Dapr.Observability;
 using Cvoya.Spring.Dapr.Routing;
 
 using global::Dapr.Actors.Client;
@@ -45,6 +47,11 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
     /// </summary>
     public IActivityQueryService ActivityQueryService { get; } = Substitute.For<IActivityQueryService>();
 
+    /// <summary>
+    /// Gets the mock <see cref="IActivityObservable"/> registered in the test DI container.
+    /// </summary>
+    public IActivityObservable ActivityObservable { get; } = Substitute.For<IActivityObservable>();
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         // Use --local mode to enable LocalDevAuthHandler (bypasses auth).
@@ -77,7 +84,9 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
                 typeof(IActorProxyFactory),
                 typeof(IStateStore),
                 typeof(ICostTracker),
-                typeof(IActivityQueryService)
+                typeof(IActivityQueryService),
+                typeof(IActivityObservable),
+                typeof(ActivityBus)
             };
 
             var descriptors = services
@@ -95,6 +104,7 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
             services.AddSingleton(Substitute.For<IStateStore>());
             services.AddSingleton(Substitute.For<ICostTracker>());
             services.AddSingleton(ActivityQueryService);
+            services.AddSingleton(ActivityObservable);
             services.AddSingleton(new DirectoryCache());
 
             // Remove and re-register permission service.
