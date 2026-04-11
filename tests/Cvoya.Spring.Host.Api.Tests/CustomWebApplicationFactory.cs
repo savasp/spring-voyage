@@ -10,6 +10,7 @@ using Cvoya.Spring.Dapr.Data;
 using Cvoya.Spring.Dapr.Routing;
 
 using global::Dapr.Actors.Client;
+using global::Dapr.Client;
 
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -95,6 +96,9 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
 
             var permissionService = Substitute.For<IPermissionService>();
             services.AddSingleton(permissionService);
+
+            // Dapr runtime dependencies.
+            services.AddSingleton(Substitute.For<DaprClient>());
 
             services.AddSingleton(sp =>
             {

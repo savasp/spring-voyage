@@ -5,6 +5,7 @@ namespace Cvoya.Spring.Integration.Tests.TestHelpers;
 
 using System.Reflection;
 
+using Cvoya.Spring.Core.Capabilities;
 using Cvoya.Spring.Core.Orchestration;
 using Cvoya.Spring.Dapr.Actors;
 
@@ -39,7 +40,8 @@ public static class ActorTestHost
             ActorId = new ActorId(actorId ?? Guid.NewGuid().ToString())
         });
 
-        var actor = new AgentActor(host, loggerFactory);
+        var activityEventBus = Substitute.For<IActivityEventBus>();
+        var actor = new AgentActor(host, activityEventBus, loggerFactory);
         SetStateManager(actor, stateManager);
 
         // Default: no active conversation, no pending conversations.

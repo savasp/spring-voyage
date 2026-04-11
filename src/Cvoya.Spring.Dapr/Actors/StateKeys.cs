@@ -99,6 +99,8 @@ public static class StateKeys
     /// State key for the unit actor's human permission entries (humanId to UnitPermissionEntry).
     /// </summary>
     public const string HumanPermissions = "Unit:HumanPermissions";
+
+    /// <summary>
     /// State key for the clone identity record, stored on clone agents.
     /// </summary>
     public const string CloneIdentity = "Agent:CloneIdentity";
@@ -107,4 +109,14 @@ public static class StateKeys
     /// State key for the list of child clone IDs, stored on parent agents.
     /// </summary>
     public const string CloneChildren = "Agent:CloneChildren";
+
+    /// <summary>
+    /// State key for the last stream event sequence number processed by the agent.
+    /// </summary>
+    public const string StreamSequence = "Agent:StreamSequence";
+
+    /// <summary>
+    /// State key for the agent's streaming configuration (enabled, topic, etc.).
+    /// </summary>
+    public const string StreamConfig = "Agent:StreamConfig";
 }

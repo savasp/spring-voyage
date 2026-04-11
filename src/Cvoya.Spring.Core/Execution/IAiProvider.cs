@@ -15,4 +15,12 @@ public interface IAiProvider
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>The AI model's response.</returns>
     Task<string> CompleteAsync(string prompt, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Sends a prompt to the AI model and returns a stream of events as they are generated.
+    /// </summary>
+    /// <param name="prompt">The prompt to send to the AI model.</param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>An asynchronous stream of <see cref="StreamEvent"/> instances.</returns>
+    IAsyncEnumerable<StreamEvent> StreamCompleteAsync(string prompt, CancellationToken cancellationToken = default);
 }

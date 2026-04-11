@@ -3,6 +3,7 @@
 
 namespace Cvoya.Spring.Dapr.DependencyInjection;
 
+using Cvoya.Spring.Core.Capabilities;
 using Cvoya.Spring.Core.Directory;
 using Cvoya.Spring.Core.Execution;
 using Cvoya.Spring.Core.Orchestration;
@@ -93,7 +94,11 @@ public static class ServiceCollectionExtensions
 
         // Observability
         services.AddSingleton<ActivityEventBus>();
+        services.AddSingleton<IActivityEventBus>(sp => sp.GetRequiredService<ActivityEventBus>());
         services.AddHostedService<ActivityEventPersister>();
+        services.AddOptions<StreamEventPublisherOptions>().BindConfiguration(StreamEventPublisherOptions.SectionName);
+        services.AddSingleton<StreamEventPublisher>();
+        services.AddSingleton<StreamEventSubscriber>();
 
         // Auth
         services.AddSingleton<IPermissionService, PermissionService>();
