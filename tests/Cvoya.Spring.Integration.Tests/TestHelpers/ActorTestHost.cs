@@ -73,7 +73,8 @@ public static class ActorTestHost
             ActorId = new ActorId(actorId ?? Guid.NewGuid().ToString())
         });
 
-        var actor = new UnitActor(host, loggerFactory, strategy);
+        var activityEventBus = Substitute.For<Core.Capabilities.IActivityEventBus>();
+        var actor = new UnitActor(host, loggerFactory, strategy, activityEventBus);
         SetStateManager(actor, stateManager);
 
         // Default: no members.

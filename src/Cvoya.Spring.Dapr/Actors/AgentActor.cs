@@ -86,7 +86,24 @@ public class AgentActor(ActorHost host, IActivityEventBus activityEventBus, ILog
             activeConversation.Value.ConversationId == message.ConversationId)
         {
             await StateManager.TryRemoveStateAsync(StateKeys.ActiveConversation, cancellationToken);
+
+            await EmitActivityEventAsync(ActivityEventType.ConversationCompleted,
+                $"Conversation {message.ConversationId} cancelled",
+                cancellationToken,
+                correlationId: message.ConversationId);
+
             await PromoteNextPendingAsync(cancellationToken);
+
+            // If no pending conversation was promoted, agent returns to Idle.
+            var newActive = await StateManager
+                .TryGetStateAsync<ConversationChannel>(StateKeys.ActiveConversation, cancellationToken);
+            if (!newActive.HasValue)
+            {
+                await EmitActivityEventAsync(ActivityEventType.StateChanged,
+                    "State changed from Active to Idle",
+                    cancellationToken,
+                    details: JsonSerializer.SerializeToElement(new { from = "Active", to = "Idle" }));
+            }
         }
 
         return CreateAckResponse(message);
@@ -185,6 +202,16 @@ public class AgentActor(ActorHost host, IActivityEventBus activityEventBus, ILog
             _logger.LogInformation("Actor {ActorId} activated conversation {ConversationId}",
                 Id.GetId(), conversationId);
 
+            await EmitActivityEventAsync(ActivityEventType.ConversationStarted,
+                $"Started conversation {conversationId}",
+                cancellationToken,
+                correlationId: conversationId);
+
+            await EmitActivityEventAsync(ActivityEventType.StateChanged,
+                "State changed from Idle to Active",
+                cancellationToken,
+                details: JsonSerializer.SerializeToElement(new { from = "Idle", to = "Active" }));
+
             return CreateAckResponse(message);
         }
 
@@ -206,6 +233,17 @@ public class AgentActor(ActorHost host, IActivityEventBus activityEventBus, ILog
 
         _logger.LogInformation("Actor {ActorId} queued message for pending conversation {ConversationId}",
             Id.GetId(), conversationId);
+
+        await EmitActivityEventAsync(ActivityEventType.DecisionMade,
+            $"Queued conversation {conversationId} as pending (active: {activeConversation.Value.ConversationId})",
+            cancellationToken,
+            details: JsonSerializer.SerializeToElement(new
+            {
+                decision = "QueueAsPending",
+                activeConversationId = activeConversation.Value.ConversationId,
+                pendingConversationId = conversationId
+            }),
+            correlationId: conversationId);
 
         return CreateAckResponse(message);
     }
@@ -245,6 +283,11 @@ public class AgentActor(ActorHost host, IActivityEventBus activityEventBus, ILog
 
         _logger.LogInformation("Actor {ActorId} suspended conversation {ConversationId}",
             Id.GetId(), activeConversation.Value.ConversationId);
+
+        await EmitActivityEventAsync(ActivityEventType.StateChanged,
+            "State changed from Active to Suspended",
+            cancellationToken,
+            details: JsonSerializer.SerializeToElement(new { from = "Active", to = "Suspended" }));
     }
 
     /// <summary>
@@ -369,13 +412,22 @@ public class AgentActor(ActorHost host, IActivityEventBus activityEventBus, ILog
     /// Emits an activity event through the activity event bus.
     /// Failures are logged but never allowed to escape the actor turn.
     /// </summary>
-    private async Task EmitActivityEventAsync(ActivityEventType eventType, string description, CancellationToken cancellationToken)
+    private async Task EmitActivityEventAsync(
+        ActivityEventType eventType,
+        string description,
+        CancellationToken cancellationToken,
+        JsonElement? details = null,
+        string? correlationId = null,
+        decimal? cost = null)
     {
         try
         {
-            var severity = eventType == ActivityEventType.ErrorOccurred
-                ? ActivitySeverity.Error
-                : ActivitySeverity.Info;
+            var severity = eventType switch
+            {
+                ActivityEventType.ErrorOccurred => ActivitySeverity.Error,
+                ActivityEventType.StateChanged => ActivitySeverity.Debug,
+                _ => ActivitySeverity.Info,
+            };
 
             var activityEvent = new ActivityEvent(
                 Guid.NewGuid(),
@@ -383,7 +435,10 @@ public class AgentActor(ActorHost host, IActivityEventBus activityEventBus, ILog
                 Address,
                 eventType,
                 severity,
-                description);
+                description,
+                details,
+                correlationId,
+                cost);
 
             await activityEventBus.PublishAsync(activityEvent, cancellationToken);
         }
@@ -392,6 +447,39 @@ public class AgentActor(ActorHost host, IActivityEventBus activityEventBus, ILog
             _logger.LogWarning(ex, "Failed to emit activity event {EventType} for actor {ActorId}.",
                 eventType, Id.GetId());
         }
+    }
+
+    /// <summary>
+    /// Emits a <see cref="ActivityEventType.CostIncurred"/> event for this agent's execution costs.
+    /// </summary>
+    /// <param name="cost">The cost incurred.</param>
+    /// <param name="model">The LLM model name.</param>
+    /// <param name="inputTokens">Number of input tokens consumed.</param>
+    /// <param name="outputTokens">Number of output tokens produced.</param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    internal async Task EmitCostIncurredAsync(
+        decimal cost,
+        string model,
+        int inputTokens,
+        int outputTokens,
+        CancellationToken cancellationToken = default)
+    {
+        var costAttributionTarget = await GetCostAttributionTargetAsync(cancellationToken);
+        var details = JsonSerializer.SerializeToElement(new
+        {
+            model,
+            inputTokens,
+            outputTokens,
+            parentAgentId = costAttributionTarget
+        });
+
+        await EmitActivityEventAsync(
+            ActivityEventType.CostIncurred,
+            $"Cost incurred: {cost:C} ({model}, {inputTokens} in / {outputTokens} out)",
+            cancellationToken,
+            details: details,
+            cost: cost);
     }
 
     /// <summary>

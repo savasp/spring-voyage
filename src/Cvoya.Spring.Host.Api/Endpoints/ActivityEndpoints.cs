@@ -3,10 +3,14 @@
 
 namespace Cvoya.Spring.Host.Api.Endpoints;
 
+using System.Reactive.Linq;
+using System.Security.Claims;
 using System.Text.Json;
 
 using Cvoya.Spring.Core.Capabilities;
 using Cvoya.Spring.Core.Observability;
+using Cvoya.Spring.Dapr.Actors;
+using Cvoya.Spring.Dapr.Auth;
 using Cvoya.Spring.Host.Api.Models;
 
 using Microsoft.AspNetCore.Http;
@@ -53,16 +57,44 @@ public static class ActivityEndpoints
     private static async Task StreamActivityAsync(
         HttpContext httpContext,
         IActivityObservable activityObservable,
+        IPermissionService permissionService,
+        string? source,
+        string? severity,
         CancellationToken cancellationToken)
     {
         httpContext.Response.Headers.ContentType = "text/event-stream";
         httpContext.Response.Headers.CacheControl = "no-cache";
         httpContext.Response.Headers.Connection = "keep-alive";
 
+        var humanId = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(humanId))
+        {
+            httpContext.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            return;
+        }
+
+        var stream = activityObservable.ActivityStream;
+
+        // Apply permission-based filtering: only show events from sources the user can observe.
+        stream = stream.Where(evt => IsAuthorizedToObserve(evt, humanId, permissionService));
+
+        // Apply query parameter filters.
+        if (!string.IsNullOrEmpty(source))
+        {
+            stream = stream.Where(evt =>
+                $"{evt.Source.Scheme}://{evt.Source.Path}".Equals(source, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (!string.IsNullOrEmpty(severity) &&
+            Enum.TryParse<ActivitySeverity>(severity, ignoreCase: true, out var severityFilter))
+        {
+            stream = stream.Where(evt => evt.Severity >= severityFilter);
+        }
+
         var tcs = new TaskCompletionSource();
         using var reg = cancellationToken.Register(() => tcs.TrySetCanceled());
 
-        using var subscription = activityObservable.ActivityStream
+        using var subscription = stream
             .Subscribe(
                 evt =>
                 {
@@ -83,5 +115,26 @@ public static class ActivityEndpoints
         {
             // Client disconnected — expected.
         }
+    }
+
+    /// <summary>
+    /// Checks whether the requesting user is authorized to observe events from the given source.
+    /// Unit-sourced events require at least Viewer permission; agent and other events are allowed by default.
+    /// </summary>
+    private static bool IsAuthorizedToObserve(ActivityEvent evt, string humanId, IPermissionService permissionService)
+    {
+        // Only unit-sourced events require permission checks.
+        if (!evt.Source.Scheme.Equals("unit", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        // Synchronous permission resolution for the Rx pipeline.
+        // PermissionService is designed for fast lookups (actor proxy call).
+        var permission = permissionService
+            .ResolvePermissionAsync(humanId, evt.Source.Path, CancellationToken.None)
+            .GetAwaiter().GetResult();
+
+        return permission.HasValue && permission.Value >= PermissionLevel.Viewer;
     }
 }
