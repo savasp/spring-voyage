@@ -1,124 +1,123 @@
-# Security and Resilience
+# Security
 
-This document covers authentication, authorization, network security, multi-tenancy isolation, and failure recovery in Spring Voyage V2.
+> **[Architecture Index](README.md)** | Related: [Infrastructure](infrastructure.md), [Units & Agents](units.md), [Deployment](deployment.md)
+>
+> **Note:** Multi-tenancy, OAuth/SSO, tenant administration, and platform operations are commercial extensions developed in the private repository. This document covers the OSS security model.
 
-## Authentication
+---
 
-### User Authentication
+## Multi-Human Participation & Permissions
 
-Users authenticate via the `spring auth` command, which opens the web portal in the browser. The portal handles:
+### HumanActor
 
-1. Login via identity providers (Google OAuth, etc.)
-2. Account creation for new users (minimal profile, terms acceptance)
-3. Issuing a session credential back to the CLI
-
-All subsequent CLI commands use the stored credential. Unauthenticated commands (except `spring auth`) are rejected.
-
-### API Tokens
-
-For non-interactive use (CI/CD, scripts), authenticated users generate long-lived API tokens:
-
-- Generated via the web portal or CLI
-- Named, scoped, and trackable (creation time, last used)
-- Listable and revocable by the owning user
-- Listable and revocable by tenant admins (including bulk invalidation)
-- Rejected immediately upon invalidation
-
-### Local Development
-
-When the API Host runs in local development mode (`--local`), authentication is disabled. All commands execute as an implicit local user.
-
-## Network Security
-
-### Dapr-Native mTLS
-
-All service-to-service communication uses mutual TLS, managed by Dapr:
-
-- Every sidecar has a certificate
-- All inter-sidecar calls are encrypted and authenticated
-- Certificate rotation is automatic
-
-No application code manages TLS. The sidecar handles it.
-
-### Access Control Policies
-
-Dapr access control policies restrict which actors can access which building blocks. An agent actor can access its own state store keys but not another agent's. These are configured declaratively in YAML.
-
-## Authorization
+Represents a human participant. Routes messages to notification channels. Enforces permission level.
 
 ### Permission Model
 
-Authorization operates at three levels:
+**System-level roles:**
 
-**System level:**
-- Platform Admin -- manage tenants, users, system config
-- User -- create units, join invited units
 
-**Tenant level:**
-- Tenant Admin -- full control within the tenant
-- Unit Creator -- create and manage own units
-- Member -- participate in invited units
+| Role               | Permissions                                        |
+| ------------------ | -------------------------------------------------- |
+| **Platform Admin** | Create/delete tenants, manage users, system config |
+| **User**           | Create units, join units they're invited to        |
 
-**Unit level:**
-- Owner -- full control over the unit
-- Operator -- interact with agents, approve workflow steps
-- Viewer -- read-only access
+
+**Unit-level roles:**
+
+
+| Role         | Permissions                                                        |
+| ------------ | ------------------------------------------------------------------ |
+| **Owner**    | Full control — configure, manage members, delete, set policies     |
+| **Operator** | Start/stop, interact with agents, approve workflow steps, view all |
+| **Viewer**   | Read-only — state, feed, metrics, agent status                     |
+
+
+Permission inheritance in recursive units is **opt-in** — each unit manages its own ACL. `permissions.inherit: parent` enables it.
 
 ### Agent Permissions
 
-Agents have scoped access:
-- `message.send` -- send to specified addresses/roles
-- `directory.query` -- query unit/parent/root directory
-- `topic.publish` / `topic.subscribe` -- pub/sub access
-- `observe` -- subscribe to another agent's activity stream
-- `workflow.participate` -- be invoked as a workflow step
+Agents also have scoped access:
 
-Higher initiative levels implicitly grant additional self-modification permissions.
 
-### Boundary Enforcement
+| Permission                          | Description                                    |
+| ----------------------------------- | ---------------------------------------------- |
+| `message.send`                      | Send to specified addresses/roles              |
+| `directory.query`                   | Query unit/parent/root directory               |
+| `topic.publish` / `topic.subscribe` | Pub/sub access                                 |
+| `observe`                           | Subscribe to another agent's activity stream   |
+| `workflow.participate`              | Be invoked as a workflow step                  |
+| `agent.spawn`                       | Create new agents at runtime (see Future Work) |
 
-Permission checks happen at address resolution time. When the directory resolves a path address, it evaluates each boundary along the path, checks the sender's permissions, and either returns the actor ID or rejects the message. This is one synchronous check.
 
-## Multi-Tenancy Isolation
+---
 
-Tenants are isolated at multiple layers:
+## Security & Multi-Tenancy
 
-| Layer | Mechanism |
-|-------|-----------|
-| **Runtime** | Dapr namespaces -- actors, pub/sub consumer groups, state store key prefixes |
-| **Data** | Tenant-scoped queries enforced at the repository layer |
-| **Resources** | Per-tenant resource quotas (CPU, memory, storage, containers) via Kubernetes |
-| **Secrets** | Namespaced secret stores |
+### User Authentication
 
-## Resilience
+Users must authenticate with the platform before using the CLI or API. Local development instances (daemon mode) bypass authentication.
 
-### LLM API Failures
+**CLI authentication flow:**
 
-- Retry with exponential backoff
-- Circuit breaker prevents cascading failures when a provider is down
-- Agent falls back to queuing work
+```bash
+spring auth
+# Opens the web portal in the user's default browser.
+# The portal handles:
+#   1. Login (Google OAuth or other identity providers)
+#   2. Account creation for new users:
+#      - Minimal profile (name, email — pre-filled from identity provider)
+#      - Terms of usage acceptance
+#   3. On success, the portal issues a session credential back to the CLI
+```
 
-### Execution Environment Crashes
+All subsequent CLI commands use the credential stored locally. The CLI rejects commands (other than `spring auth`) if the user is not authenticated.
 
-- Actor detects failure via heartbeat/timeout
-- Conversation marked as failed
-- Work can be resumed from last checkpoint or re-queued
-- Escalation to human if recovery fails
+**API tokens for non-interactive use:**
 
-### Actor Failures
+Authenticated users can generate long-lived API tokens for CI/CD, scripts, and programmatic access. Tokens are generated via the web portal or the CLI (which redirects to the web portal for the actual generation flow).
 
-- Dapr virtual actors are automatically reactivated on failure
-- State is persisted in the state store -- recovery is transparent
-- No manual intervention needed
+```bash
+spring auth token create --name "ci-pipeline"
+# Opens the web portal where the user names and confirms the token.
+# The token is displayed once; the CLI stores it if requested.
+```
 
-### Pub/Sub Delivery
+Token management:
 
-- At-least-once delivery guarantees
-- Dead letter topics for messages that repeatedly fail processing
-- Message deduplication via unique message IDs
+- The platform tracks all tokens per user (name, creation time, last used, scopes).
+- A user can list and invalidate their own tokens via the portal or CLI (`spring auth token list`, `spring auth token revoke <name>`).
+- A tenant admin can list and invalidate all tokens for any user in the tenant, or bulk-invalidate all tokens for all tenant users.
+- Invalidated tokens are rejected immediately on next use.
 
-### Execution Environment Security
+**Local development exception:** When the API Host runs in daemon mode (single-tenant, `--local`), authentication is disabled. All commands execute as the implicit local user. This mode is for development and testing only.
 
-- Sandboxed by default: no network, no filesystem beyond workspace
-- Explicit permission grants for network, filesystem, and secrets
-- Container isolation via Podman/Docker
+### Dapr-Native Security
+
+- Agent identity via Dapr
+- mTLS for all service-to-service communication
+- Pluggable secret stores
+- Access control policies restrict actor → building block access
+
+### Resilience
+
+Dapr provides pluggable resiliency policies (retries, timeouts, circuit breakers) configured per building block via YAML — no application code changes. Key resilience concerns:
+
+- **LLM API failures** — retry with exponential backoff; circuit breaker prevents cascading failures when a provider is down. Agent falls back to queuing work.
+- **Execution environment crashes** — actor detects via heartbeat/timeout, marks conversation as failed, re-queues or escalates. Checkpoints (see [Messaging](messaging.md)) enable resumption from last known state.
+- **Actor failures** — Dapr virtual actors are automatically reactivated on failure. State is persisted in the state store, so recovery is transparent.
+- **Pub/sub delivery** — at-least-once delivery with dead letter topics for messages that repeatedly fail processing.
+
+---
+
+## Extension Points for Commercial Features
+
+The OSS platform is designed for extensibility via dependency injection. Commercial extensions add:
+
+- **Multi-tenancy** — tenant isolation via Dapr namespaces, tenant-scoped repositories, tenant administration CLI
+- **OAuth/SSO/SAML** — identity provider integration beyond API token auth
+- **Platform operations** — `spring-admin` CLI for tenant provisioning, platform upgrades, resource quota management
+- **Cross-tenant federation** — inter-deployment agent communication
+- **Billing and budgets** — tenant-level cost limits and billing integration
+
+All core abstractions are defined as interfaces in `Cvoya.Spring.Core`. Extensions override default implementations by registering their own services after the default registrations. The OSS codebase has no `TenantId` on any entity — extensions add tenant-scoped wrappers around repositories and services.

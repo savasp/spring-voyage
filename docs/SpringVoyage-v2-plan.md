@@ -1,6 +1,8 @@
 # Spring Voyage V2 — Architecture Plan
 
-**Status:** Draft  
+> **DEPRECATED:** This monolithic document has been decomposed into focused documents under [`docs/architecture/`](architecture/README.md). Please refer to the [Architecture Index](architecture/README.md) for the latest content. This file is retained for reference only.
+
+**Status:** Deprecated (see `docs/architecture/`)
 **Last updated:** 2026-04-08
 
 ---

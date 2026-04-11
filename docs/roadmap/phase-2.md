@@ -1,0 +1,25 @@
+# Phase 2: Observability + Multi-Human
+
+> **[Roadmap Index](README.md)** | **Status: In progress**
+
+Real-time visibility into what agents are doing, and support for multiple human participants.
+
+## Deliverables
+
+- [x] Enrich ActivityEvent model + Rx.NET pipeline (models + schema; #1) — [Observability](../architecture/observability.md)
+- [x] Streaming event types + Dapr pub/sub transport (#2) — [Messaging](../architecture/messaging.md)
+- [x] Basic cost tracking service + aggregation (schema; #3) — [Observability](../architecture/observability.md)
+- [x] Multi-human RBAC with unit-scoped permissions (#4) — [Security](../architecture/security.md)
+- [x] Clone state model + ephemeral lifecycle (model; #5) — [Units & Agents](../architecture/units.md)
+- [x] Clone API endpoints + cost attribution (model; #6) — [Units & Agents](../architecture/units.md)
+- [x] Real-time SSE endpoint + activity query API (model; #7) — [Observability](../architecture/observability.md)
+
+## Remaining Work
+
+- [ ] Wire Rx.NET reactive pipeline end-to-end (#44) — [Observability](../architecture/observability.md)
+- [ ] Implement cost tracking aggregation service + API endpoints (#41) — [Observability](../architecture/observability.md)
+- [ ] Implement agent cloning lifecycle workflow + clone API (#43) — [Units & Agents](../architecture/units.md)
+- [ ] Implement SSE activity stream endpoint + activity query API (#42) — [Observability](../architecture/observability.md)
+- [ ] React/Next.js web dashboard (#8, in progress) — [CLI & Web](../architecture/cli-and-web.md)
+
+**Delivers:** Real-time observation of agent work, multi-human participation, elastic agent scaling.
