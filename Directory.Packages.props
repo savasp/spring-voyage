@@ -11,7 +11,7 @@
     <PackageVersion Include="Dapr.Workflow" Version="1.15.3" />
 
     <!-- GitHub -->
-    <PackageVersion Include="Octokit" Version="13.0.1" />
+    <PackageVersion Include="Octokit" Version="14.0.0" />
     <PackageVersion Include="System.IdentityModel.Tokens.Jwt" Version="8.8.0" />
 
     <!-- CLI -->
