@@ -4,7 +4,7 @@ Read `AGENTS.md` for project rules, architecture, and **extensibility requiremen
 
 This is the **open-source core platform**. A private repository extends it via git submodule and DI. Every change must be designed for clean extension — read `AGENTS.md` § "Open-Source Platform & Extensibility" before starting work.
 
-Before working on an issue, read the relevant sections of `docs/SpringVoyage-v2-plan.md`.
+Before working on an issue, read the relevant architecture documents under `docs/architecture/` (see `docs/architecture/README.md` for the index). For execution status, see `docs/roadmap.md`.
 
 ## Claude Code-Specific
 
