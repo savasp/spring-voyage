@@ -6,6 +6,7 @@ namespace Cvoya.Spring.Dapr.Actors;
 using System.Text.Json;
 
 using Cvoya.Spring.Core;
+using Cvoya.Spring.Core.Capabilities;
 using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Core.Orchestration;
 using Cvoya.Spring.Dapr.Auth;
@@ -24,6 +25,7 @@ public class UnitActor : Actor, IUnitActor
 {
     private readonly ILogger _logger;
     private readonly IOrchestrationStrategy _orchestrationStrategy;
+    private readonly IActivityEventBus _activityEventBus;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="UnitActor"/> class.
@@ -31,11 +33,13 @@ public class UnitActor : Actor, IUnitActor
     /// <param name="host">The actor host providing runtime services.</param>
     /// <param name="loggerFactory">The logger factory for creating loggers.</param>
     /// <param name="orchestrationStrategy">The strategy used to orchestrate domain messages.</param>
-    public UnitActor(ActorHost host, ILoggerFactory loggerFactory, IOrchestrationStrategy orchestrationStrategy)
+    /// <param name="activityEventBus">The activity event bus for emitting observable events.</param>
+    public UnitActor(ActorHost host, ILoggerFactory loggerFactory, IOrchestrationStrategy orchestrationStrategy, IActivityEventBus activityEventBus)
         : base(host)
     {
         _logger = loggerFactory.CreateLogger<UnitActor>();
         _orchestrationStrategy = orchestrationStrategy;
+        _activityEventBus = activityEventBus;
     }
 
     /// <summary>
@@ -48,6 +52,10 @@ public class UnitActor : Actor, IUnitActor
     {
         try
         {
+            await EmitActivityEventAsync(ActivityEventType.MessageReceived,
+                $"Received {message.Type} message {message.Id} from {message.From}",
+                ct);
+
             return message.Type switch
             {
                 MessageType.Cancel => await HandleCancelAsync(message, ct),
@@ -63,6 +71,11 @@ public class UnitActor : Actor, IUnitActor
             _logger.LogError(ex,
                 "Unhandled exception processing message {MessageId} of type {MessageType} in unit actor {ActorId}",
                 message.Id, message.Type, Id.GetId());
+
+            await EmitActivityEventAsync(ActivityEventType.ErrorOccurred,
+                $"Error processing message {message.Id}: {ex.Message}",
+                ct);
+
             return CreateErrorResponse(message, ex.Message);
         }
     }
@@ -83,6 +96,16 @@ public class UnitActor : Actor, IUnitActor
 
         _logger.LogInformation("Unit {ActorId} added member {Member}. Total members: {Count}",
             Id.GetId(), member, members.Count);
+
+        await EmitActivityEventAsync(ActivityEventType.StateChanged,
+            $"Member {member} added to unit. Total members: {members.Count}",
+            ct,
+            details: JsonSerializer.SerializeToElement(new
+            {
+                action = "MemberAdded",
+                member = $"{member.Scheme}://{member.Path}",
+                totalMembers = members.Count
+            }));
     }
 
     /// <inheritdoc />
@@ -101,6 +124,16 @@ public class UnitActor : Actor, IUnitActor
 
         _logger.LogInformation("Unit {ActorId} removed member {Member}. Total members: {Count}",
             Id.GetId(), member, members.Count);
+
+        await EmitActivityEventAsync(ActivityEventType.StateChanged,
+            $"Member {member} removed from unit. Total members: {members.Count}",
+            ct,
+            details: JsonSerializer.SerializeToElement(new
+            {
+                action = "MemberRemoved",
+                member = $"{member.Scheme}://{member.Path}",
+                totalMembers = members.Count
+            }));
     }
 
     /// <inheritdoc />
@@ -221,6 +254,17 @@ public class UnitActor : Actor, IUnitActor
             "Unit {ActorId} delegating domain message {MessageId} to orchestration strategy with {MemberCount} members",
             Id.GetId(), message.Id, members.Count);
 
+        await EmitActivityEventAsync(ActivityEventType.DecisionMade,
+            $"Delegating message {message.Id} to orchestration strategy with {members.Count} members",
+            ct,
+            details: JsonSerializer.SerializeToElement(new
+            {
+                decision = "DelegateToStrategy",
+                messageId = message.Id,
+                memberCount = members.Count
+            }),
+            correlationId: message.ConversationId);
+
         return await _orchestrationStrategy.OrchestrateAsync(message, context, ct);
     }
 
@@ -234,6 +278,45 @@ public class UnitActor : Actor, IUnitActor
             ;
 
         return result.HasValue ? result.Value : [];
+    }
+
+    /// <summary>
+    /// Emits an activity event through the activity event bus.
+    /// Failures are logged but never allowed to escape the actor turn.
+    /// </summary>
+    private async Task EmitActivityEventAsync(
+        ActivityEventType eventType,
+        string description,
+        CancellationToken cancellationToken,
+        JsonElement? details = null,
+        string? correlationId = null)
+    {
+        try
+        {
+            var severity = eventType switch
+            {
+                ActivityEventType.ErrorOccurred => ActivitySeverity.Error,
+                ActivityEventType.StateChanged => ActivitySeverity.Debug,
+                _ => ActivitySeverity.Info,
+            };
+
+            var activityEvent = new ActivityEvent(
+                Guid.NewGuid(),
+                DateTimeOffset.UtcNow,
+                Address,
+                eventType,
+                severity,
+                description,
+                details,
+                correlationId);
+
+            await _activityEventBus.PublishAsync(activityEvent, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to emit activity event {EventType} for unit actor {ActorId}.",
+                eventType, Id.GetId());
+        }
     }
 
     /// <summary>

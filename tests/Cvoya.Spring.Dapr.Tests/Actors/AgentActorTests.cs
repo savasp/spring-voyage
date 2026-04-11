@@ -530,4 +530,168 @@ public class AgentActorTests
 
         result.Should().NotBeNull();
     }
+
+    [Fact]
+    public async Task ReceiveAsync_NewConversation_EmitsConversationStartedEvent()
+    {
+        var message = CreateMessage(conversationId: "conv-started");
+
+        await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
+
+        await _activityEventBus.Received().PublishAsync(
+            Arg.Is<ActivityEvent>(e =>
+                e.EventType == ActivityEventType.ConversationStarted &&
+                e.CorrelationId == "conv-started"),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ReceiveAsync_NewConversation_EmitsStateChangedIdleToActive()
+    {
+        var message = CreateMessage(conversationId: "conv-state-change");
+
+        await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
+
+        await _activityEventBus.Received().PublishAsync(
+            Arg.Is<ActivityEvent>(e =>
+                e.EventType == ActivityEventType.StateChanged &&
+                e.Summary.Contains("Idle") &&
+                e.Summary.Contains("Active")),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ReceiveAsync_DifferentConversationQueued_EmitsDecisionMadeEvent()
+    {
+        var activeChannel = new ConversationChannel
+        {
+            ConversationId = "conv-active",
+            Messages = []
+        };
+
+        _stateManager.TryGetStateAsync<ConversationChannel>(StateKeys.ActiveConversation, Arg.Any<CancellationToken>())
+            .Returns(new ConditionalValue<ConversationChannel>(true, activeChannel));
+
+        var message = CreateMessage(conversationId: "conv-new");
+        await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
+
+        await _activityEventBus.Received().PublishAsync(
+            Arg.Is<ActivityEvent>(e =>
+                e.EventType == ActivityEventType.DecisionMade &&
+                e.Summary.Contains("Queued") &&
+                e.CorrelationId == "conv-new"),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ReceiveAsync_CancelActiveConversation_EmitsConversationCompletedEvent()
+    {
+        var activeChannel = new ConversationChannel
+        {
+            ConversationId = "conv-to-complete",
+            Messages = []
+        };
+
+        _stateManager.TryGetStateAsync<ConversationChannel>(StateKeys.ActiveConversation, Arg.Any<CancellationToken>())
+            .Returns(new ConditionalValue<ConversationChannel>(true, activeChannel));
+
+        var cancelMessage = CreateMessage(type: MessageType.Cancel, conversationId: "conv-to-complete");
+        await _actor.ReceiveAsync(cancelMessage, TestContext.Current.CancellationToken);
+
+        await _activityEventBus.Received().PublishAsync(
+            Arg.Is<ActivityEvent>(e =>
+                e.EventType == ActivityEventType.ConversationCompleted &&
+                e.CorrelationId == "conv-to-complete"),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ReceiveAsync_CancelWithNoPending_EmitsStateChangedActiveToIdle()
+    {
+        var activeChannel = new ConversationChannel
+        {
+            ConversationId = "conv-cancel-idle",
+            Messages = []
+        };
+
+        _stateManager.TryGetStateAsync<ConversationChannel>(StateKeys.ActiveConversation, Arg.Any<CancellationToken>())
+            .Returns(
+                new ConditionalValue<ConversationChannel>(true, activeChannel),
+                new ConditionalValue<ConversationChannel>(false, default!));
+
+        var cancelMessage = CreateMessage(type: MessageType.Cancel, conversationId: "conv-cancel-idle");
+        await _actor.ReceiveAsync(cancelMessage, TestContext.Current.CancellationToken);
+
+        await _activityEventBus.Received().PublishAsync(
+            Arg.Is<ActivityEvent>(e =>
+                e.EventType == ActivityEventType.StateChanged &&
+                e.Summary.Contains("Active") &&
+                e.Summary.Contains("Idle")),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SuspendActiveConversation_EmitsStateChangedActiveToSuspended()
+    {
+        var activeChannel = new ConversationChannel
+        {
+            ConversationId = "conv-suspend",
+            Messages = []
+        };
+
+        // First activate a conversation to set up the CancellationTokenSource.
+        _stateManager.TryGetStateAsync<ConversationChannel>(StateKeys.ActiveConversation, Arg.Any<CancellationToken>())
+            .Returns(
+                new ConditionalValue<ConversationChannel>(false, default!),
+                new ConditionalValue<ConversationChannel>(true, activeChannel));
+
+        var message = CreateMessage(conversationId: "conv-suspend");
+        await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
+
+        _stateManager.TryGetStateAsync<ConversationChannel>(StateKeys.ActiveConversation, Arg.Any<CancellationToken>())
+            .Returns(new ConditionalValue<ConversationChannel>(true, activeChannel));
+
+        await _actor.SuspendActiveConversationAsync(TestContext.Current.CancellationToken);
+
+        await _activityEventBus.Received().PublishAsync(
+            Arg.Is<ActivityEvent>(e =>
+                e.EventType == ActivityEventType.StateChanged &&
+                e.Summary.Contains("Suspended")),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task EmitCostIncurredAsync_EmitsCostEvent()
+    {
+        _stateManager.TryGetStateAsync<CloneIdentity>(StateKeys.CloneIdentity, Arg.Any<CancellationToken>())
+            .Returns(new ConditionalValue<CloneIdentity>(false, default!));
+
+        await _actor.EmitCostIncurredAsync(0.05m, "gpt-4", 1000, 500, TestContext.Current.CancellationToken);
+
+        await _activityEventBus.Received().PublishAsync(
+            Arg.Is<ActivityEvent>(e =>
+                e.EventType == ActivityEventType.CostIncurred &&
+                e.Cost == 0.05m &&
+                e.Details.HasValue),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task EmitCostIncurredAsync_Clone_IncludesParentAgentInDetails()
+    {
+        var identity = new CloneIdentity("parent-agent", "test-agent",
+            CloningPolicy.EphemeralNoMemory, AttachmentMode.Detached);
+        _stateManager.TryGetStateAsync<CloneIdentity>(StateKeys.CloneIdentity, Arg.Any<CancellationToken>())
+            .Returns(new ConditionalValue<CloneIdentity>(true, identity));
+
+        await _actor.EmitCostIncurredAsync(0.10m, "claude-3", 2000, 1000, TestContext.Current.CancellationToken);
+
+        await _activityEventBus.Received().PublishAsync(
+            Arg.Is<ActivityEvent>(e =>
+                e.EventType == ActivityEventType.CostIncurred &&
+                e.Cost == 0.10m &&
+                e.Details.HasValue &&
+                e.Details.Value.GetProperty("parentAgentId").GetString() == "parent-agent"),
+            Arg.Any<CancellationToken>());
+    }
 }

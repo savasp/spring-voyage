@@ -5,6 +5,7 @@ namespace Cvoya.Spring.Dapr.Tests.Actors;
 
 using System.Text.Json;
 
+using Cvoya.Spring.Core.Capabilities;
 using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Core.Orchestration;
 using Cvoya.Spring.Dapr.Actors;
@@ -30,6 +31,7 @@ public class UnitActorTests
     private readonly IActorStateManager _stateManager = Substitute.For<IActorStateManager>();
     private readonly ILoggerFactory _loggerFactory = Substitute.For<ILoggerFactory>();
     private readonly IOrchestrationStrategy _strategy = Substitute.For<IOrchestrationStrategy>();
+    private readonly IActivityEventBus _activityEventBus = Substitute.For<IActivityEventBus>();
     private readonly UnitActor _actor;
 
     public UnitActorTests()
@@ -40,7 +42,7 @@ public class UnitActorTests
         {
             ActorId = new ActorId("test-unit")
         });
-        _actor = new UnitActor(host, _loggerFactory, _strategy);
+        _actor = new UnitActor(host, _loggerFactory, _strategy, _activityEventBus);
         SetStateManager(_actor, _stateManager);
 
         // Default: no members.
@@ -406,5 +408,97 @@ public class UnitActorTests
         var result = await _actor.GetHumanPermissionsAsync(TestContext.Current.CancellationToken);
 
         result.Should().HaveCount(2);
+    }
+
+    // --- Activity Event Emission Tests ---
+
+    [Fact]
+    public async Task ReceiveAsync_DomainMessage_EmitsMessageReceivedEvent()
+    {
+        var message = CreateMessage();
+        _strategy.OrchestrateAsync(message, Arg.Any<IUnitContext>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<Message?>(null));
+
+        await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
+
+        await _activityEventBus.Received().PublishAsync(
+            Arg.Is<ActivityEvent>(e => e.EventType == ActivityEventType.MessageReceived),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ReceiveAsync_DomainMessage_EmitsDecisionMadeEvent()
+    {
+        var message = CreateMessage();
+        _strategy.OrchestrateAsync(message, Arg.Any<IUnitContext>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<Message?>(null));
+
+        await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
+
+        await _activityEventBus.Received().PublishAsync(
+            Arg.Is<ActivityEvent>(e =>
+                e.EventType == ActivityEventType.DecisionMade &&
+                e.Summary.Contains("orchestration strategy")),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task AddMemberAsync_NewMember_EmitsStateChangedEvent()
+    {
+        var member = new Address("agent", "new-agent");
+
+        await _actor.AddMemberAsync(member, TestContext.Current.CancellationToken);
+
+        await _activityEventBus.Received().PublishAsync(
+            Arg.Is<ActivityEvent>(e =>
+                e.EventType == ActivityEventType.StateChanged &&
+                e.Summary.Contains("added")),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RemoveMemberAsync_ExistingMember_EmitsStateChangedEvent()
+    {
+        var member = new Address("agent", "agent-to-remove");
+        _stateManager.TryGetStateAsync<List<Address>>(StateKeys.Members, Arg.Any<CancellationToken>())
+            .Returns(new ConditionalValue<List<Address>>(true, [member]));
+
+        await _actor.RemoveMemberAsync(member, TestContext.Current.CancellationToken);
+
+        await _activityEventBus.Received().PublishAsync(
+            Arg.Is<ActivityEvent>(e =>
+                e.EventType == ActivityEventType.StateChanged &&
+                e.Summary.Contains("removed")),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ReceiveAsync_StrategyThrows_EmitsErrorOccurredEvent()
+    {
+        var message = CreateMessage();
+        _strategy.OrchestrateAsync(message, Arg.Any<IUnitContext>(), Arg.Any<CancellationToken>())
+            .Returns<Message?>(_ => throw new InvalidOperationException("Strategy failed"));
+
+        await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
+
+        await _activityEventBus.Received().PublishAsync(
+            Arg.Is<ActivityEvent>(e => e.EventType == ActivityEventType.ErrorOccurred),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ReceiveAsync_ActivityEventBusFailure_DoesNotBreakActor()
+    {
+        _activityEventBus.PublishAsync(Arg.Any<ActivityEvent>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException(new InvalidOperationException("Bus down")));
+
+        var message = CreateMessage();
+        _strategy.OrchestrateAsync(message, Arg.Any<IUnitContext>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<Message?>(null));
+
+        // Should not throw even though the bus fails.
+        var result = await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
+
+        result.Should().BeNull();
     }
 }
