@@ -119,4 +119,14 @@ public static class StateKeys
     /// State key for the agent's streaming configuration (enabled, topic, etc.).
     /// </summary>
     public const string StreamConfig = "Agent:StreamConfig";
+
+    /// <summary>
+    /// State key for the agent's accumulated cost total.
+    /// </summary>
+    public const string AgentCostTotal = "Agent:CostTotal";
+
+    /// <summary>
+    /// State key for the agent's cost budget limit.
+    /// </summary>
+    public const string AgentCostBudget = "Agent:CostBudget";
 }

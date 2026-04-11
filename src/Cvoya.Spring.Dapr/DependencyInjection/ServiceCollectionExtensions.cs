@@ -4,11 +4,13 @@
 namespace Cvoya.Spring.Dapr.DependencyInjection;
 
 using Cvoya.Spring.Core.Capabilities;
+using Cvoya.Spring.Core.Costs;
 using Cvoya.Spring.Core.Directory;
 using Cvoya.Spring.Core.Execution;
 using Cvoya.Spring.Core.Orchestration;
 using Cvoya.Spring.Core.State;
 using Cvoya.Spring.Dapr.Auth;
+using Cvoya.Spring.Dapr.Costs;
 using Cvoya.Spring.Dapr.Data;
 using Cvoya.Spring.Dapr.Data.Entities;
 using Cvoya.Spring.Dapr.Execution;
@@ -102,6 +104,11 @@ public static class ServiceCollectionExtensions
 
         // Auth
         services.AddSingleton<IPermissionService, PermissionService>();
+
+        // Costs
+        services.AddHostedService<CostTracker>();
+        services.AddScoped<ICostQueryService, CostAggregation>();
+        services.AddHostedService<BudgetEnforcer>();
 
         return services;
     }

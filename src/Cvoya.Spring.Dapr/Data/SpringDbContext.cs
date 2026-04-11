@@ -3,6 +3,7 @@
 
 namespace Cvoya.Spring.Dapr.Data;
 
+using Cvoya.Spring.Dapr.Costs;
 using Cvoya.Spring.Dapr.Data.Entities;
 
 using Microsoft.EntityFrameworkCore;
@@ -28,6 +29,9 @@ public class SpringDbContext(DbContextOptions<SpringDbContext> options) : DbCont
 
     /// <summary>Gets the set of API token entities.</summary>
     public DbSet<ApiTokenEntity> ApiTokens => Set<ApiTokenEntity>();
+
+    /// <summary>Gets the set of cost records.</summary>
+    public DbSet<CostRecord> CostRecords => Set<CostRecord>();
 
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)

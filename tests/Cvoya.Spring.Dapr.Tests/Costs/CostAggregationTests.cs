@@ -1,0 +1,142 @@
+// Copyright CVOYA LLC. Licensed under the Business Source License 1.1.
+// See LICENSE.md in the project root for full license terms.
+
+namespace Cvoya.Spring.Dapr.Tests.Costs;
+
+using Cvoya.Spring.Dapr.Costs;
+using Cvoya.Spring.Dapr.Data;
+
+using FluentAssertions;
+
+using Microsoft.EntityFrameworkCore;
+
+using Xunit;
+
+public class CostAggregationTests : IDisposable
+{
+    private readonly SpringDbContext _dbContext;
+
+    public CostAggregationTests()
+    {
+        var options = new DbContextOptionsBuilder<SpringDbContext>()
+            .UseInMemoryDatabase($"CostAggregationTest-{Guid.NewGuid()}")
+            .Options;
+        _dbContext = new SpringDbContext(options);
+    }
+
+    private CostAggregation CreateService() => new(_dbContext);
+
+    private CostRecord CreateRecord(
+        string agentId = "agent-a",
+        string? unitId = "unit-a",
+        string tenantId = "tenant-a",
+        decimal cost = 0.05m,
+        int inputTokens = 100,
+        int outputTokens = 50,
+        DateTimeOffset? timestamp = null)
+    {
+        return new CostRecord
+        {
+            Id = Guid.NewGuid(),
+            AgentId = agentId,
+            UnitId = unitId,
+            TenantId = tenantId,
+            Model = "claude-3-opus",
+            Cost = cost,
+            InputTokens = inputTokens,
+            OutputTokens = outputTokens,
+            Timestamp = timestamp ?? DateTimeOffset.UtcNow,
+        };
+    }
+
+    [Fact]
+    public async Task GetAgentCostAsync_WithRecords_ReturnsAggregation()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var now = DateTimeOffset.UtcNow;
+        _dbContext.CostRecords.AddRange(
+            CreateRecord(agentId: "agent-a", cost: 0.10m, inputTokens: 200, outputTokens: 100, timestamp: now),
+            CreateRecord(agentId: "agent-a", cost: 0.20m, inputTokens: 300, outputTokens: 150, timestamp: now),
+            CreateRecord(agentId: "agent-b", cost: 0.05m, timestamp: now)); // different agent
+        await _dbContext.SaveChangesAsync(ct);
+
+        var service = CreateService();
+        var result = await service.GetAgentCostAsync("agent-a", now.AddHours(-1), now.AddHours(1), ct);
+
+        result.TotalCost.Should().Be(0.30m);
+        result.TotalInputTokens.Should().Be(500);
+        result.TotalOutputTokens.Should().Be(250);
+        result.RecordCount.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task GetAgentCostAsync_NoRecords_ReturnsZero()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var now = DateTimeOffset.UtcNow;
+
+        var service = CreateService();
+        var result = await service.GetAgentCostAsync("nonexistent", now.AddHours(-1), now.AddHours(1), ct);
+
+        result.TotalCost.Should().Be(0m);
+        result.RecordCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task GetUnitCostAsync_WithRecords_ReturnsAggregation()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var now = DateTimeOffset.UtcNow;
+        _dbContext.CostRecords.AddRange(
+            CreateRecord(unitId: "unit-x", cost: 0.15m, timestamp: now),
+            CreateRecord(unitId: "unit-x", cost: 0.25m, timestamp: now),
+            CreateRecord(unitId: "unit-y", cost: 0.10m, timestamp: now)); // different unit
+        await _dbContext.SaveChangesAsync(ct);
+
+        var service = CreateService();
+        var result = await service.GetUnitCostAsync("unit-x", now.AddHours(-1), now.AddHours(1), ct);
+
+        result.TotalCost.Should().Be(0.40m);
+        result.RecordCount.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task GetTenantCostAsync_WithRecords_ReturnsAggregation()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var now = DateTimeOffset.UtcNow;
+        _dbContext.CostRecords.AddRange(
+            CreateRecord(tenantId: "acme", cost: 0.50m, timestamp: now),
+            CreateRecord(tenantId: "acme", cost: 0.30m, timestamp: now),
+            CreateRecord(tenantId: "other", cost: 0.10m, timestamp: now)); // different tenant
+        await _dbContext.SaveChangesAsync(ct);
+
+        var service = CreateService();
+        var result = await service.GetTenantCostAsync("acme", now.AddHours(-1), now.AddHours(1), ct);
+
+        result.TotalCost.Should().Be(0.80m);
+        result.RecordCount.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task GetAgentCostAsync_OutOfRange_ExcludesRecords()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var now = DateTimeOffset.UtcNow;
+        _dbContext.CostRecords.AddRange(
+            CreateRecord(cost: 0.10m, timestamp: now.AddDays(-10)),
+            CreateRecord(cost: 0.20m, timestamp: now));
+        await _dbContext.SaveChangesAsync(ct);
+
+        var service = CreateService();
+        var result = await service.GetAgentCostAsync("agent-a", now.AddHours(-1), now.AddHours(1), ct);
+
+        result.TotalCost.Should().Be(0.20m);
+        result.RecordCount.Should().Be(1);
+    }
+
+    public void Dispose()
+    {
+        _dbContext.Dispose();
+    }
+}

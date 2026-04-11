@@ -1,0 +1,174 @@
+// Copyright CVOYA LLC. Licensed under the Business Source License 1.1.
+// See LICENSE.md in the project root for full license terms.
+
+namespace Cvoya.Spring.Dapr.Tests.Costs;
+
+using System.Text.Json;
+
+using Cvoya.Spring.Core.Capabilities;
+using Cvoya.Spring.Core.Messaging;
+using Cvoya.Spring.Dapr.Costs;
+using Cvoya.Spring.Dapr.Data;
+using Cvoya.Spring.Dapr.Observability;
+
+using FluentAssertions;
+
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
+
+using Xunit;
+
+public class CostTrackerTests : IDisposable
+{
+    private readonly ActivityEventBus _bus = new();
+    private readonly ServiceProvider _serviceProvider;
+
+    public CostTrackerTests()
+    {
+        var services = new ServiceCollection();
+        var dbName = $"CostTrackerTest-{Guid.NewGuid()}";
+        services.AddDbContext<SpringDbContext>(options =>
+            options.UseInMemoryDatabase(dbName));
+        _serviceProvider = services.BuildServiceProvider();
+    }
+
+    private CostTracker CreateTracker()
+    {
+        return new CostTracker(
+            _bus,
+            _serviceProvider.GetRequiredService<IServiceScopeFactory>(),
+            NullLogger<CostTracker>.Instance);
+    }
+
+    private static ActivityEvent CreateCostEvent(
+        string agentId = "test-agent",
+        decimal cost = 0.05m,
+        int inputTokens = 100,
+        int outputTokens = 50,
+        string model = "claude-3-opus")
+    {
+        var details = JsonSerializer.SerializeToElement(new
+        {
+            tenantId = "default",
+            unitId = "test-unit",
+            model,
+            inputTokens,
+            outputTokens,
+            durationMs = 1500.0
+        });
+
+        return new ActivityEvent(
+            Guid.NewGuid(),
+            DateTimeOffset.UtcNow,
+            new Address("agent", agentId),
+            ActivityEventType.CostIncurred,
+            ActivitySeverity.Info,
+            "Cost incurred",
+            details,
+            Cost: cost);
+    }
+
+    [Fact]
+    public async Task StartAsync_CostIncurredEvent_PersistsRecord()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var tracker = CreateTracker();
+        await tracker.StartAsync(ct);
+
+        _bus.Publish(CreateCostEvent());
+
+        // Wait for buffer window (1s) + processing time
+        await Task.Delay(3000, ct);
+
+        using var scope = _serviceProvider.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
+        var records = await db.CostRecords.ToListAsync(ct);
+
+        records.Should().ContainSingle();
+        var record = records[0];
+        record.AgentId.Should().Be("test-agent");
+        record.Cost.Should().Be(0.05m);
+        record.InputTokens.Should().Be(100);
+        record.OutputTokens.Should().Be(50);
+        record.Model.Should().Be("claude-3-opus");
+        record.UnitId.Should().Be("test-unit");
+        record.TenantId.Should().Be("default");
+        record.Duration.Should().NotBeNull();
+
+        await tracker.StopAsync(ct);
+        tracker.Dispose();
+    }
+
+    [Fact]
+    public async Task StartAsync_NonCostEvent_IsIgnored()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var tracker = CreateTracker();
+        await tracker.StartAsync(ct);
+
+        var nonCostEvent = new ActivityEvent(
+            Guid.NewGuid(),
+            DateTimeOffset.UtcNow,
+            new Address("agent", "test"),
+            ActivityEventType.MessageReceived,
+            ActivitySeverity.Info,
+            "Not a cost event");
+
+        _bus.Publish(nonCostEvent);
+
+        await Task.Delay(3000, ct);
+
+        using var scope = _serviceProvider.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
+        var records = await db.CostRecords.ToListAsync(ct);
+
+        records.Should().BeEmpty();
+
+        await tracker.StopAsync(ct);
+        tracker.Dispose();
+    }
+
+    [Fact]
+    public void MapToRecord_ValidEvent_MapsCorrectly()
+    {
+        var costEvent = CreateCostEvent(
+            agentId: "agent-a",
+            cost: 0.10m,
+            inputTokens: 200,
+            outputTokens: 100,
+            model: "claude-3-haiku");
+
+        var record = CostTracker.MapToRecord(costEvent);
+
+        record.Should().NotBeNull();
+        record!.AgentId.Should().Be("agent-a");
+        record.Cost.Should().Be(0.10m);
+        record.InputTokens.Should().Be(200);
+        record.OutputTokens.Should().Be(100);
+        record.Model.Should().Be("claude-3-haiku");
+    }
+
+    [Fact]
+    public void MapToRecord_NullDetails_ReturnsNull()
+    {
+        var costEvent = new ActivityEvent(
+            Guid.NewGuid(),
+            DateTimeOffset.UtcNow,
+            new Address("agent", "test"),
+            ActivityEventType.CostIncurred,
+            ActivitySeverity.Info,
+            "Cost incurred",
+            Cost: 0.05m);
+
+        var record = CostTracker.MapToRecord(costEvent);
+
+        record.Should().BeNull();
+    }
+
+    public void Dispose()
+    {
+        _bus.Dispose();
+        _serviceProvider.Dispose();
+    }
+}
