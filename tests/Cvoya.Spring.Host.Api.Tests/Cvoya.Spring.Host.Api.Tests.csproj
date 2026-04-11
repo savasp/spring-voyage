@@ -24,6 +24,7 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" />
     <PackageReference Include="Dapr.Actors" />
     <PackageReference Include="Dapr.Workflow" />
+    <PackageReference Include="System.Reactive" />
   </ItemGroup>
 
 </Project>

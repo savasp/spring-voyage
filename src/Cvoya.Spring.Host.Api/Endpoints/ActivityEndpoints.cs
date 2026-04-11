@@ -5,6 +5,7 @@ namespace Cvoya.Spring.Host.Api.Endpoints;
 
 using System.Text.Json;
 
+using Cvoya.Spring.Core.Capabilities;
 using Cvoya.Spring.Core.Observability;
 using Cvoya.Spring.Host.Api.Models;
 
@@ -51,27 +52,36 @@ public static class ActivityEndpoints
 
     private static async Task StreamActivityAsync(
         HttpContext httpContext,
-        IActivityQueryService queryService,
+        IActivityObservable activityObservable,
         CancellationToken cancellationToken)
     {
         httpContext.Response.Headers.ContentType = "text/event-stream";
         httpContext.Response.Headers.CacheControl = "no-cache";
         httpContext.Response.Headers.Connection = "keep-alive";
 
-        var lastCheck = DateTimeOffset.UtcNow;
+        var tcs = new TaskCompletionSource();
+        using var reg = cancellationToken.Register(() => tcs.TrySetCanceled());
 
-        while (!cancellationToken.IsCancellationRequested)
+        using var subscription = activityObservable.ActivityStream
+            .Subscribe(
+                evt =>
+                {
+                    var json = JsonSerializer.Serialize(evt);
+                    // Fire-and-forget write within the subscription callback.
+                    // HttpContext response writing is inherently sequential per request.
+                    httpContext.Response.WriteAsync($"data: {json}\n\n", cancellationToken)
+                        .ContinueWith(_ => httpContext.Response.Body.FlushAsync(cancellationToken), cancellationToken);
+                },
+                ex => tcs.TrySetException(ex),
+                () => tcs.TrySetResult());
+
+        try
         {
-            var events = await queryService.GetRecentAsync(lastCheck, cancellationToken);
-            foreach (var evt in events)
-            {
-                var json = JsonSerializer.Serialize(evt);
-                await httpContext.Response.WriteAsync($"data: {json}\n\n", cancellationToken);
-            }
-
-            await httpContext.Response.Body.FlushAsync(cancellationToken);
-            lastCheck = DateTimeOffset.UtcNow;
-            await Task.Delay(2000, cancellationToken);
+            await tcs.Task;
+        }
+        catch (OperationCanceledException)
+        {
+            // Client disconnected — expected.
         }
     }
 }

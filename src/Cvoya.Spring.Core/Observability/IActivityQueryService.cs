@@ -18,14 +18,6 @@ public interface IActivityQueryService
     Task<ActivityQueryResult> QueryAsync(ActivityQueryParameters parameters, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Gets activity events that occurred after the specified timestamp.
-    /// </summary>
-    /// <param name="since">The timestamp to query from.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
-    /// <returns>A list of recent activity event items.</returns>
-    Task<IReadOnlyList<ActivityQueryResult.Item>> GetRecentAsync(DateTimeOffset since, CancellationToken cancellationToken);
-
-    /// <summary>
     /// Gets the total cost, optionally filtered by source and time range.
     /// </summary>
     /// <param name="source">Optional source filter.</param>

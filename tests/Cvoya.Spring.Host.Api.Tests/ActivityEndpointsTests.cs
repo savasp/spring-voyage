@@ -5,7 +5,9 @@ namespace Cvoya.Spring.Host.Api.Tests;
 
 using System.Net;
 using System.Net.Http.Json;
+using System.Reactive.Linq;
 
+using Cvoya.Spring.Core.Capabilities;
 using Cvoya.Spring.Core.Observability;
 
 using FluentAssertions;
@@ -77,8 +79,7 @@ public class ActivityEndpointsTests : IClassFixture<CustomWebApplicationFactory>
     public async Task StreamActivity_ReturnsCorrectContentType()
     {
         var ct = TestContext.Current.CancellationToken;
-        _factory.ActivityQueryService.GetRecentAsync(Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
-            .Returns(new List<ActivityQueryResult.Item>());
+        _factory.ActivityObservable.ActivityStream.Returns(Observable.Never<ActivityEvent>());
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         cts.CancelAfter(TimeSpan.FromSeconds(3));
