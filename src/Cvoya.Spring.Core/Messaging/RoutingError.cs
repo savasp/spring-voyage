@@ -1,9 +1,7 @@
 // Copyright CVOYA LLC. Licensed under the Business Source License 1.1.
 // See LICENSE.md in the project root for full license terms.
 
-namespace Cvoya.Spring.Dapr.Routing;
-
-using Cvoya.Spring.Core.Messaging;
+namespace Cvoya.Spring.Core.Messaging;
 
 /// <summary>
 /// Represents an error that occurred during message routing.

@@ -7,7 +7,6 @@ using System.Text.Json;
 
 using Cvoya.Spring.Connector.GitHub.Auth;
 using Cvoya.Spring.Connector.GitHub.Webhooks;
-using Cvoya.Spring.Core.Messaging;
 
 using Microsoft.Extensions.Logging;
 
@@ -22,15 +21,16 @@ using Octokit;
 public class GitHubConnector(
     GitHubAppAuth auth,
     GitHubWebhookHandler webhookHandler,
+    IWebhookSignatureValidator signatureValidator,
     GitHubConnectorOptions options,
-    ILoggerFactory loggerFactory)
+    ILoggerFactory loggerFactory) : IGitHubConnector
 {
     private readonly ILogger _logger = loggerFactory.CreateLogger<GitHubConnector>();
 
     /// <summary>
     /// Gets the webhook handler for processing inbound GitHub events.
     /// </summary>
-    public GitHubWebhookHandler WebhookHandler => webhookHandler;
+    public IGitHubWebhookHandler WebhookHandler => webhookHandler;
 
     /// <summary>
     /// Gets the authentication handler for GitHub App operations.
@@ -44,17 +44,25 @@ public class GitHubConnector(
     /// <param name="eventType">The GitHub event type from the X-GitHub-Event header.</param>
     /// <param name="payload">The raw webhook payload body.</param>
     /// <param name="signature">The signature from the X-Hub-Signature-256 header.</param>
-    /// <returns>A domain <see cref="Message"/>, or <c>null</c> if the event is not handled or the signature is invalid.</returns>
-    public Message? HandleWebhook(string eventType, string payload, string signature)
+    /// <returns>
+    /// A <see cref="WebhookHandleResult"/> distinguishing invalid-signature,
+    /// accepted-but-ignored, and translated-message outcomes so the endpoint
+    /// can map each to the correct HTTP status (401 / 202 / 202-with-routing).
+    /// </returns>
+    public WebhookHandleResult HandleWebhook(string eventType, string payload, string signature)
     {
-        if (!WebhookSignatureValidator.Validate(payload, signature, options.WebhookSecret))
+        if (!signatureValidator.Validate(payload, signature, options.WebhookSecret))
         {
             _logger.LogWarning("Invalid webhook signature received for event {EventType}", eventType);
-            return null;
+            return WebhookHandleResult.InvalidSignature;
         }
 
-        var jsonPayload = JsonDocument.Parse(payload).RootElement;
-        return webhookHandler.TranslateEvent(eventType, jsonPayload);
+        using var document = JsonDocument.Parse(payload);
+        var message = webhookHandler.TranslateEvent(eventType, document.RootElement);
+
+        return message is null
+            ? WebhookHandleResult.Ignored
+            : WebhookHandleResult.Translated(message);
     }
 
     /// <summary>

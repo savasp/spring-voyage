@@ -22,7 +22,7 @@ public class WebhookSignatureValidatorTests
     {
         var signature = ComputeSignature(Payload, Secret);
 
-        var result = WebhookSignatureValidator.Validate(Payload, signature, Secret);
+        var result = WebhookSignatureValidator.ValidateCore(Payload, signature, Secret);
 
         result.Should().BeTrue();
     }
@@ -30,7 +30,7 @@ public class WebhookSignatureValidatorTests
     [Fact]
     public void Validate_InvalidSignature_ReturnsFalse()
     {
-        var result = WebhookSignatureValidator.Validate(Payload, "sha256=invalid", Secret);
+        var result = WebhookSignatureValidator.ValidateCore(Payload, "sha256=invalid", Secret);
 
         result.Should().BeFalse();
     }
@@ -38,7 +38,7 @@ public class WebhookSignatureValidatorTests
     [Fact]
     public void Validate_EmptySecret_ReturnsFalse()
     {
-        var result = WebhookSignatureValidator.Validate(Payload, "sha256=abc", string.Empty);
+        var result = WebhookSignatureValidator.ValidateCore(Payload, "sha256=abc", string.Empty);
 
         result.Should().BeFalse();
     }
@@ -46,7 +46,7 @@ public class WebhookSignatureValidatorTests
     [Fact]
     public void Validate_EmptyPayload_ReturnsFalse()
     {
-        var result = WebhookSignatureValidator.Validate(string.Empty, "sha256=abc", Secret);
+        var result = WebhookSignatureValidator.ValidateCore(string.Empty, "sha256=abc", Secret);
 
         result.Should().BeFalse();
     }
@@ -54,7 +54,7 @@ public class WebhookSignatureValidatorTests
     [Fact]
     public void Validate_MissingPrefix_ReturnsFalse()
     {
-        var result = WebhookSignatureValidator.Validate(Payload, "nothash=abc", Secret);
+        var result = WebhookSignatureValidator.ValidateCore(Payload, "nothash=abc", Secret);
 
         result.Should().BeFalse();
     }
