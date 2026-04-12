@@ -139,4 +139,9 @@ public static class StateKeys
     /// State key for the tenant-level cost budget limit.
     /// </summary>
     public const string TenantCostBudget = "Tenant:CostBudget";
+
+    /// <summary>
+    /// State key for the unit's lifecycle status.
+    /// </summary>
+    public const string UnitStatus = "Unit:Status";
 }

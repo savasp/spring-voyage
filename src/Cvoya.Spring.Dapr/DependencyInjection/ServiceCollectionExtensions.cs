@@ -11,6 +11,7 @@ using Cvoya.Spring.Core.Initiative;
 using Cvoya.Spring.Core.Observability;
 using Cvoya.Spring.Core.Orchestration;
 using Cvoya.Spring.Core.State;
+using Cvoya.Spring.Core.Units;
 using Cvoya.Spring.Dapr.Auth;
 using Cvoya.Spring.Dapr.Costs;
 using Cvoya.Spring.Dapr.Data;
@@ -76,6 +77,7 @@ public static class ServiceCollectionExtensions
         // Options
         services.AddOptions<AiProviderOptions>().BindConfiguration(AiProviderOptions.SectionName);
         services.AddOptions<ContainerRuntimeOptions>().BindConfiguration("ContainerRuntime");
+        services.AddOptions<UnitRuntimeOptions>().BindConfiguration(UnitRuntimeOptions.SectionName);
         services.AddOptions<WorkflowOrchestrationOptions>().BindConfiguration("WorkflowOrchestration");
 
         // Routing
@@ -90,6 +92,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IContainerRuntime, PodmanRuntime>();
         services.AddSingleton<IDaprSidecarManager, DaprSidecarManager>();
         services.AddSingleton<ContainerLifecycleManager>();
+        services.TryAddSingleton<IUnitContainerLifecycle, UnitContainerLifecycle>();
         services.AddKeyedSingleton<IExecutionDispatcher, HostedExecutionDispatcher>("hosted");
         services.AddKeyedSingleton<IExecutionDispatcher, DelegatedExecutionDispatcher>("delegated");
 

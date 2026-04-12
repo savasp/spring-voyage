@@ -7,6 +7,7 @@ using System.Text.Json;
 
 using Cvoya.Spring.Core.Directory;
 using Cvoya.Spring.Core.Messaging;
+using Cvoya.Spring.Core.Units;
 using Cvoya.Spring.Dapr.Actors;
 using Cvoya.Spring.Dapr.Auth;
 using Cvoya.Spring.Dapr.Routing;
@@ -15,6 +16,9 @@ using Cvoya.Spring.Host.Api.Models;
 
 using global::Dapr.Actors;
 using global::Dapr.Actors.Client;
+
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 
 /// <summary>
 /// Maps unit-related API endpoints.
@@ -47,6 +51,14 @@ public static class UnitEndpoints
             .WithName("DeleteUnit")
             .WithSummary("Delete a unit");
 
+        group.MapPost("/{id}/start", StartUnitAsync)
+            .WithName("StartUnit")
+            .WithSummary("Start the runtime container for a unit");
+
+        group.MapPost("/{id}/stop", StopUnitAsync)
+            .WithName("StopUnit")
+            .WithSummary("Stop the runtime container for a unit");
+
         group.MapPost("/{id}/members", AddMemberAsync)
             .WithName("AddMember")
             .WithSummary("Add a member to a unit");
@@ -76,7 +88,7 @@ public static class UnitEndpoints
 
         var units = entries
             .Where(e => string.Equals(e.Address.Scheme, "unit", StringComparison.OrdinalIgnoreCase))
-            .Select(ToUnitResponse)
+            .Select(e => ToUnitResponse(e))
             .ToList();
 
         return Results.Ok(units);
@@ -84,8 +96,9 @@ public static class UnitEndpoints
 
     private static async Task<IResult> GetUnitAsync(
         string id,
-        IDirectoryService directoryService,
-        MessageRouter messageRouter,
+        [FromServices] IDirectoryService directoryService,
+        [FromServices] MessageRouter messageRouter,
+        [FromServices] IActorProxyFactory actorProxyFactory,
         CancellationToken cancellationToken)
     {
         var address = new Address("unit", id);
@@ -95,6 +108,8 @@ public static class UnitEndpoints
         {
             return Results.NotFound(new { Error = $"Unit '{id}' not found" });
         }
+
+        var status = await TryGetUnitStatusAsync(actorProxyFactory, entry.ActorId, cancellationToken);
 
         // Send a StatusQuery to get unit details including members.
         var statusQuery = new Message(
@@ -110,14 +125,32 @@ public static class UnitEndpoints
 
         if (!result.IsSuccess)
         {
-            return Results.Ok(ToUnitResponse(entry));
+            return Results.Ok(ToUnitResponse(entry, status));
         }
 
         return Results.Ok(new
         {
-            Unit = ToUnitResponse(entry),
+            Unit = ToUnitResponse(entry, status),
             Details = result.Value?.Payload
         });
+    }
+
+    private static async Task<UnitStatus> TryGetUnitStatusAsync(
+        IActorProxyFactory actorProxyFactory,
+        string actorId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var proxy = actorProxyFactory.CreateActorProxy<IUnitActor>(
+                new ActorId(actorId), nameof(IUnitActor));
+            return await proxy.GetStatusAsync(cancellationToken);
+        }
+        catch
+        {
+            // Non-fatal: older units or unreachable actors report Draft.
+            return UnitStatus.Draft;
+        }
     }
 
     private static async Task<IResult> CreateUnitAsync(
@@ -153,9 +186,157 @@ public static class UnitEndpoints
             return Results.NotFound(new { Error = $"Unit '{id}' not found" });
         }
 
+        // TODO: consider requiring Stopped before Delete — follow-up.
         await directoryService.UnregisterAsync(address, cancellationToken);
 
         return Results.NoContent();
+    }
+
+    private static async Task<IResult> StartUnitAsync(
+        string id,
+        [FromServices] IDirectoryService directoryService,
+        [FromServices] IActorProxyFactory actorProxyFactory,
+        [FromServices] IUnitContainerLifecycle containerLifecycle,
+        [FromServices] ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken)
+    {
+        var logger = loggerFactory.CreateLogger("Cvoya.Spring.Host.Api.Endpoints.UnitEndpoints");
+        var address = new Address("unit", id);
+        var entry = await directoryService.ResolveAsync(address, cancellationToken);
+
+        if (entry is null)
+        {
+            return Results.NotFound(new { Error = $"Unit '{id}' not found" });
+        }
+
+        var proxy = actorProxyFactory.CreateActorProxy<IUnitActor>(
+            new ActorId(entry.ActorId), nameof(IUnitActor));
+
+        var startingTransition = await proxy.TransitionAsync(UnitStatus.Starting, cancellationToken);
+        if (!startingTransition.Success)
+        {
+            return Results.Conflict(new
+            {
+                Error = startingTransition.RejectionReason,
+                CurrentStatus = startingTransition.CurrentStatus
+            });
+        }
+
+        // TODO(#81 follow-up): Register GitHub webhooks during unit /start.
+        try
+        {
+            await containerLifecycle.StartUnitAsync(entry.ActorId, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex,
+                "Container start failed for unit {UnitId} (actor {ActorId}). Transitioning to Error.",
+                id, entry.ActorId);
+
+            var errorTransition = await proxy.TransitionAsync(UnitStatus.Error, cancellationToken);
+
+            return Results.Problem(
+                title: "Unit start failed",
+                detail: ex.Message,
+                statusCode: StatusCodes.Status500InternalServerError,
+                extensions: new Dictionary<string, object?>
+                {
+                    ["unitId"] = id,
+                    ["currentStatus"] = errorTransition.CurrentStatus.ToString()
+                });
+        }
+
+        var runningTransition = await proxy.TransitionAsync(UnitStatus.Running, cancellationToken);
+        if (!runningTransition.Success)
+        {
+            logger.LogError(
+                "Unit {UnitId} failed to transition to Running: {Reason}. Current status {Status}.",
+                id, runningTransition.RejectionReason, runningTransition.CurrentStatus);
+
+            return Results.Problem(
+                title: "Unit start failed",
+                detail: runningTransition.RejectionReason,
+                statusCode: StatusCodes.Status500InternalServerError);
+        }
+
+        return Results.Accepted($"/api/v1/units/{id}", new
+        {
+            UnitId = id,
+            Status = runningTransition.CurrentStatus.ToString()
+        });
+    }
+
+    private static async Task<IResult> StopUnitAsync(
+        string id,
+        [FromServices] IDirectoryService directoryService,
+        [FromServices] IActorProxyFactory actorProxyFactory,
+        [FromServices] IUnitContainerLifecycle containerLifecycle,
+        [FromServices] ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken)
+    {
+        var logger = loggerFactory.CreateLogger("Cvoya.Spring.Host.Api.Endpoints.UnitEndpoints");
+        var address = new Address("unit", id);
+        var entry = await directoryService.ResolveAsync(address, cancellationToken);
+
+        if (entry is null)
+        {
+            return Results.NotFound(new { Error = $"Unit '{id}' not found" });
+        }
+
+        var proxy = actorProxyFactory.CreateActorProxy<IUnitActor>(
+            new ActorId(entry.ActorId), nameof(IUnitActor));
+
+        var stoppingTransition = await proxy.TransitionAsync(UnitStatus.Stopping, cancellationToken);
+        if (!stoppingTransition.Success)
+        {
+            return Results.Conflict(new
+            {
+                Error = stoppingTransition.RejectionReason,
+                CurrentStatus = stoppingTransition.CurrentStatus
+            });
+        }
+
+        try
+        {
+            await containerLifecycle.StopUnitAsync(entry.ActorId, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex,
+                "Container stop failed for unit {UnitId} (actor {ActorId}). Transitioning to Error.",
+                id, entry.ActorId);
+
+            var errorTransition = await proxy.TransitionAsync(UnitStatus.Error, cancellationToken);
+
+            return Results.Problem(
+                title: "Unit stop failed",
+                detail: ex.Message,
+                statusCode: StatusCodes.Status500InternalServerError,
+                extensions: new Dictionary<string, object?>
+                {
+                    ["unitId"] = id,
+                    ["currentStatus"] = errorTransition.CurrentStatus.ToString()
+                });
+        }
+
+        var stoppedTransition = await proxy.TransitionAsync(UnitStatus.Stopped, cancellationToken);
+        if (!stoppedTransition.Success)
+        {
+            logger.LogError(
+                "Unit {UnitId} failed to transition to Stopped: {Reason}. Current status {Status}.",
+                id, stoppedTransition.RejectionReason, stoppedTransition.CurrentStatus);
+
+            return Results.Problem(
+                title: "Unit stop failed",
+                detail: stoppedTransition.RejectionReason,
+                statusCode: StatusCodes.Status500InternalServerError);
+        }
+
+        return Results.Accepted($"/api/v1/units/{id}", new
+        {
+            UnitId = id,
+            Status = stoppedTransition.CurrentStatus.ToString()
+        });
     }
 
     private static async Task<IResult> AddMemberAsync(
@@ -308,11 +489,12 @@ public static class UnitEndpoints
         return Results.Ok(permissions);
     }
 
-    private static UnitResponse ToUnitResponse(DirectoryEntry entry) =>
+    private static UnitResponse ToUnitResponse(DirectoryEntry entry, UnitStatus status = UnitStatus.Draft) =>
         new(
             entry.ActorId,
             entry.Address.Path,
             entry.DisplayName,
             entry.Description,
-            entry.RegisteredAt);
+            entry.RegisteredAt,
+            status);
 }

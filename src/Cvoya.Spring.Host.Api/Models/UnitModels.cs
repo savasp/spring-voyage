@@ -3,6 +3,8 @@
 
 namespace Cvoya.Spring.Host.Api.Models;
 
+using Cvoya.Spring.Core.Units;
+
 /// <summary>
 /// Request body for creating a new unit.
 /// </summary>
@@ -22,12 +24,14 @@ public record CreateUnitRequest(
 /// <param name="DisplayName">The human-readable display name.</param>
 /// <param name="Description">A description of the unit.</param>
 /// <param name="RegisteredAt">The timestamp when the unit was registered.</param>
+/// <param name="Status">The current lifecycle status of the unit.</param>
 public record UnitResponse(
     string Id,
     string Name,
     string DisplayName,
     string Description,
-    DateTimeOffset RegisteredAt);
+    DateTimeOffset RegisteredAt,
+    UnitStatus Status = UnitStatus.Draft);
 
 /// <summary>
 /// Request body for adding a member to a unit.
