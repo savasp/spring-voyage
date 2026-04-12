@@ -8,6 +8,7 @@ using Cvoya.Spring.Core.Costs;
 using Cvoya.Spring.Core.Directory;
 using Cvoya.Spring.Core.Observability;
 using Cvoya.Spring.Core.State;
+using Cvoya.Spring.Core.Units;
 using Cvoya.Spring.Dapr.Auth;
 using Cvoya.Spring.Dapr.Data;
 using Cvoya.Spring.Dapr.Observability;
@@ -57,6 +58,11 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
     /// </summary>
     public IStateStore StateStore { get; } = Substitute.For<IStateStore>();
 
+    /// <summary>
+    /// Gets the mock <see cref="IUnitContainerLifecycle"/> registered in the test DI container.
+    /// </summary>
+    public IUnitContainerLifecycle UnitContainerLifecycle { get; } = Substitute.For<IUnitContainerLifecycle>();
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         // Use --local mode to enable LocalDevAuthHandler (bypasses auth).
@@ -90,7 +96,8 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
                 typeof(IStateStore),
                 typeof(ICostTracker),
                 typeof(IActivityQueryService),
-                typeof(IActivityEventBus)
+                typeof(IActivityEventBus),
+                typeof(IUnitContainerLifecycle)
             };
 
             var descriptors = services
@@ -109,6 +116,7 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
             services.AddSingleton(Substitute.For<ICostTracker>());
             services.AddSingleton(ActivityQueryService);
             services.AddSingleton(ActivityEventBus);
+            services.AddSingleton(UnitContainerLifecycle);
             services.AddSingleton(new DirectoryCache());
 
             // Remove and re-register permission service.

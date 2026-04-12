@@ -9,6 +9,7 @@ using Cvoya.Spring.Core;
 using Cvoya.Spring.Core.Capabilities;
 using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Core.Orchestration;
+using Cvoya.Spring.Core.Units;
 using Cvoya.Spring.Dapr.Auth;
 
 using global::Dapr.Actors.Runtime;
@@ -169,6 +170,71 @@ public class UnitActor : Actor, IUnitActor
         return permissions.Values.ToList().AsReadOnly();
     }
 
+    /// <inheritdoc />
+    public Task<UnitStatus> GetStatusAsync(CancellationToken ct = default)
+        => GetStatusInternalAsync(ct);
+
+    /// <inheritdoc />
+    public async Task<TransitionResult> TransitionAsync(UnitStatus target, CancellationToken ct = default)
+    {
+        var current = await GetStatusInternalAsync(ct);
+
+        if (!IsTransitionAllowed(current, target))
+        {
+            var reason = $"cannot transition from {current} to {target}";
+            _logger.LogWarning(
+                "Unit {ActorId} rejected transition from {Current} to {Target}: {Reason}",
+                Id.GetId(), current, target, reason);
+            return new TransitionResult(false, current, reason);
+        }
+
+        await StateManager.SetStateAsync(StateKeys.UnitStatus, target, ct);
+
+        _logger.LogInformation(
+            "Unit {ActorId} transitioned from {Current} to {Target}",
+            Id.GetId(), current, target);
+
+        await EmitActivityEventAsync(ActivityEventType.StateChanged,
+            $"Unit transitioned from {current} to {target}",
+            ct,
+            details: JsonSerializer.SerializeToElement(new
+            {
+                action = "StatusTransition",
+                from = current.ToString(),
+                to = target.ToString()
+            }));
+
+        return new TransitionResult(true, target, null);
+    }
+
+    /// <summary>
+    /// Reads the persisted lifecycle status, defaulting to <see cref="UnitStatus.Draft"/> when unset.
+    /// </summary>
+    private async Task<UnitStatus> GetStatusInternalAsync(CancellationToken ct)
+    {
+        var result = await StateManager
+            .TryGetStateAsync<UnitStatus>(StateKeys.UnitStatus, ct);
+
+        return result.HasValue ? result.Value : UnitStatus.Draft;
+    }
+
+    /// <summary>
+    /// Enforces the unit lifecycle state machine.
+    /// </summary>
+    private static bool IsTransitionAllowed(UnitStatus current, UnitStatus target) =>
+        (current, target) switch
+        {
+            (UnitStatus.Draft, UnitStatus.Stopped) => true,
+            (UnitStatus.Stopped, UnitStatus.Starting) => true,
+            (UnitStatus.Starting, UnitStatus.Running) => true,
+            (UnitStatus.Starting, UnitStatus.Error) => true,
+            (UnitStatus.Running, UnitStatus.Stopping) => true,
+            (UnitStatus.Stopping, UnitStatus.Stopped) => true,
+            (UnitStatus.Stopping, UnitStatus.Error) => true,
+            (UnitStatus.Error, UnitStatus.Stopped) => true,
+            _ => false,
+        };
+
     /// <summary>
     /// Retrieves the human permissions map from state, returning an empty dictionary if none exists.
     /// </summary>
@@ -198,10 +264,11 @@ public class UnitActor : Actor, IUnitActor
     private async Task<Message?> HandleStatusQueryAsync(CancellationToken ct)
     {
         var members = await GetMembersListAsync(ct);
+        var status = await GetStatusInternalAsync(ct);
 
         var statusPayload = JsonSerializer.SerializeToElement(new
         {
-            Status = "Active",
+            Status = status.ToString(),
             MemberCount = members.Count
         });
 

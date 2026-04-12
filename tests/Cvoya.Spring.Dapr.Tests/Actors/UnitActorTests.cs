@@ -8,6 +8,7 @@ using System.Text.Json;
 using Cvoya.Spring.Core.Capabilities;
 using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Core.Orchestration;
+using Cvoya.Spring.Core.Units;
 using Cvoya.Spring.Dapr.Actors;
 using Cvoya.Spring.Dapr.Auth;
 
@@ -48,6 +49,10 @@ public class UnitActorTests
         // Default: no members.
         _stateManager.TryGetStateAsync<List<Address>>(StateKeys.Members, Arg.Any<CancellationToken>())
             .Returns(new ConditionalValue<List<Address>>(false, default!));
+
+        // Default: no persisted status -> Draft.
+        _stateManager.TryGetStateAsync<UnitStatus>(StateKeys.UnitStatus, Arg.Any<CancellationToken>())
+            .Returns(new ConditionalValue<UnitStatus>(false, default));
     }
 
     private static Message CreateMessage(
@@ -162,7 +167,7 @@ public class UnitActorTests
         result.From.Should().Be(new Address("unit", "test-unit"));
 
         var payload = result.Payload.Deserialize<JsonElement>();
-        payload.GetProperty("Status").GetString().Should().Be("Active");
+        payload.GetProperty("Status").GetString().Should().Be("Draft");
         payload.GetProperty("MemberCount").GetInt32().Should().Be(2);
     }
 
@@ -500,5 +505,181 @@ public class UnitActorTests
         var result = await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
 
         result.Should().BeNull();
+    }
+
+    // --- Lifecycle Status Tests ---
+
+    [Fact]
+    public async Task GetStatusAsync_NewUnit_ReturnsDraft()
+    {
+        var status = await _actor.GetStatusAsync(TestContext.Current.CancellationToken);
+
+        status.Should().Be(UnitStatus.Draft);
+    }
+
+    [Fact]
+    public async Task TransitionAsync_DraftToStopped_SucceedsAndPersists()
+    {
+        var result = await _actor.TransitionAsync(UnitStatus.Stopped, TestContext.Current.CancellationToken);
+
+        result.Success.Should().BeTrue();
+        result.CurrentStatus.Should().Be(UnitStatus.Stopped);
+        result.RejectionReason.Should().BeNull();
+
+        await _stateManager.Received(1).SetStateAsync(
+            StateKeys.UnitStatus,
+            UnitStatus.Stopped,
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task TransitionAsync_StoppedToStarting_Succeeds()
+    {
+        _stateManager.TryGetStateAsync<UnitStatus>(StateKeys.UnitStatus, Arg.Any<CancellationToken>())
+            .Returns(new ConditionalValue<UnitStatus>(true, UnitStatus.Stopped));
+
+        var result = await _actor.TransitionAsync(UnitStatus.Starting, TestContext.Current.CancellationToken);
+
+        result.Success.Should().BeTrue();
+        result.CurrentStatus.Should().Be(UnitStatus.Starting);
+        await _stateManager.Received(1).SetStateAsync(
+            StateKeys.UnitStatus,
+            UnitStatus.Starting,
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task TransitionAsync_StartingToRunning_Succeeds()
+    {
+        _stateManager.TryGetStateAsync<UnitStatus>(StateKeys.UnitStatus, Arg.Any<CancellationToken>())
+            .Returns(new ConditionalValue<UnitStatus>(true, UnitStatus.Starting));
+
+        var result = await _actor.TransitionAsync(UnitStatus.Running, TestContext.Current.CancellationToken);
+
+        result.Success.Should().BeTrue();
+        result.CurrentStatus.Should().Be(UnitStatus.Running);
+    }
+
+    [Fact]
+    public async Task TransitionAsync_RunningToStopping_Succeeds()
+    {
+        _stateManager.TryGetStateAsync<UnitStatus>(StateKeys.UnitStatus, Arg.Any<CancellationToken>())
+            .Returns(new ConditionalValue<UnitStatus>(true, UnitStatus.Running));
+
+        var result = await _actor.TransitionAsync(UnitStatus.Stopping, TestContext.Current.CancellationToken);
+
+        result.Success.Should().BeTrue();
+        result.CurrentStatus.Should().Be(UnitStatus.Stopping);
+    }
+
+    [Fact]
+    public async Task TransitionAsync_StoppingToStopped_Succeeds()
+    {
+        _stateManager.TryGetStateAsync<UnitStatus>(StateKeys.UnitStatus, Arg.Any<CancellationToken>())
+            .Returns(new ConditionalValue<UnitStatus>(true, UnitStatus.Stopping));
+
+        var result = await _actor.TransitionAsync(UnitStatus.Stopped, TestContext.Current.CancellationToken);
+
+        result.Success.Should().BeTrue();
+        result.CurrentStatus.Should().Be(UnitStatus.Stopped);
+    }
+
+    [Fact]
+    public async Task TransitionAsync_ErrorToStopped_Succeeds()
+    {
+        _stateManager.TryGetStateAsync<UnitStatus>(StateKeys.UnitStatus, Arg.Any<CancellationToken>())
+            .Returns(new ConditionalValue<UnitStatus>(true, UnitStatus.Error));
+
+        var result = await _actor.TransitionAsync(UnitStatus.Stopped, TestContext.Current.CancellationToken);
+
+        result.Success.Should().BeTrue();
+        result.CurrentStatus.Should().Be(UnitStatus.Stopped);
+    }
+
+    [Fact]
+    public async Task TransitionAsync_StartingToError_Succeeds()
+    {
+        _stateManager.TryGetStateAsync<UnitStatus>(StateKeys.UnitStatus, Arg.Any<CancellationToken>())
+            .Returns(new ConditionalValue<UnitStatus>(true, UnitStatus.Starting));
+
+        var result = await _actor.TransitionAsync(UnitStatus.Error, TestContext.Current.CancellationToken);
+
+        result.Success.Should().BeTrue();
+        result.CurrentStatus.Should().Be(UnitStatus.Error);
+    }
+
+    [Fact]
+    public async Task TransitionAsync_RunningToDraft_Rejected()
+    {
+        _stateManager.TryGetStateAsync<UnitStatus>(StateKeys.UnitStatus, Arg.Any<CancellationToken>())
+            .Returns(new ConditionalValue<UnitStatus>(true, UnitStatus.Running));
+
+        var result = await _actor.TransitionAsync(UnitStatus.Draft, TestContext.Current.CancellationToken);
+
+        result.Success.Should().BeFalse();
+        result.CurrentStatus.Should().Be(UnitStatus.Running);
+        result.RejectionReason.Should().Contain("Running").And.Contain("Draft");
+
+        await _stateManager.DidNotReceive().SetStateAsync(
+            StateKeys.UnitStatus,
+            Arg.Any<UnitStatus>(),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task TransitionAsync_StoppedToRunning_Rejected()
+    {
+        _stateManager.TryGetStateAsync<UnitStatus>(StateKeys.UnitStatus, Arg.Any<CancellationToken>())
+            .Returns(new ConditionalValue<UnitStatus>(true, UnitStatus.Stopped));
+
+        var result = await _actor.TransitionAsync(UnitStatus.Running, TestContext.Current.CancellationToken);
+
+        result.Success.Should().BeFalse();
+        result.CurrentStatus.Should().Be(UnitStatus.Stopped);
+        result.RejectionReason.Should().NotBeNullOrEmpty();
+    }
+
+    [Fact]
+    public async Task TransitionAsync_Success_EmitsStateChangedEvent()
+    {
+        await _actor.TransitionAsync(UnitStatus.Stopped, TestContext.Current.CancellationToken);
+
+        await _activityEventBus.Received().PublishAsync(
+            Arg.Is<ActivityEvent>(e =>
+                e.EventType == ActivityEventType.StateChanged &&
+                e.Summary.Contains("transitioned")),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task TransitionAsync_Rejected_DoesNotEmitStateChangedEvent()
+    {
+        _stateManager.TryGetStateAsync<UnitStatus>(StateKeys.UnitStatus, Arg.Any<CancellationToken>())
+            .Returns(new ConditionalValue<UnitStatus>(true, UnitStatus.Running));
+
+        _activityEventBus.ClearReceivedCalls();
+
+        await _actor.TransitionAsync(UnitStatus.Draft, TestContext.Current.CancellationToken);
+
+        await _activityEventBus.DidNotReceive().PublishAsync(
+            Arg.Is<ActivityEvent>(e =>
+                e.EventType == ActivityEventType.StateChanged &&
+                e.Summary.Contains("transitioned")),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ReceiveAsync_StatusQuery_ReportsPersistedStatus()
+    {
+        _stateManager.TryGetStateAsync<UnitStatus>(StateKeys.UnitStatus, Arg.Any<CancellationToken>())
+            .Returns(new ConditionalValue<UnitStatus>(true, UnitStatus.Running));
+
+        var message = CreateMessage(type: MessageType.StatusQuery);
+
+        var result = await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
+
+        result.Should().NotBeNull();
+        var payload = result!.Payload.Deserialize<JsonElement>();
+        payload.GetProperty("Status").GetString().Should().Be("Running");
     }
 }

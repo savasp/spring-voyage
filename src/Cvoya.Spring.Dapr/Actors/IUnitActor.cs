@@ -4,6 +4,7 @@
 namespace Cvoya.Spring.Dapr.Actors;
 
 using Cvoya.Spring.Core.Messaging;
+using Cvoya.Spring.Core.Units;
 using Cvoya.Spring.Dapr.Auth;
 
 using global::Dapr.Actors;
@@ -68,4 +69,20 @@ public interface IUnitActor : IActor
     /// <param name="ct">A token to cancel the operation.</param>
     /// <returns>A read-only list of all human permission entries.</returns>
     Task<IReadOnlyList<UnitPermissionEntry>> GetHumanPermissionsAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Gets the persisted lifecycle status of this unit. A unit that has never transitioned reports <see cref="UnitStatus.Draft"/>.
+    /// </summary>
+    /// <param name="ct">A token to cancel the operation.</param>
+    /// <returns>The current lifecycle status.</returns>
+    Task<UnitStatus> GetStatusAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Attempts a lifecycle transition to <paramref name="target"/>. If the transition is not
+    /// permitted from the current status, the status is left unchanged and a rejection reason is returned.
+    /// </summary>
+    /// <param name="target">The target status.</param>
+    /// <param name="ct">A token to cancel the operation.</param>
+    /// <returns>A <see cref="TransitionResult"/> describing success or rejection.</returns>
+    Task<TransitionResult> TransitionAsync(UnitStatus target, CancellationToken ct = default);
 }
