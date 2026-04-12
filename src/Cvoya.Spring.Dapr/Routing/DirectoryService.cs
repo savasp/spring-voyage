@@ -86,5 +86,40 @@ public class DirectoryService(DirectoryCache cache, ILoggerFactory loggerFactory
         return Task.FromResult<IReadOnlyList<DirectoryEntry>>(_entries.Values.ToList());
     }
 
+    /// <inheritdoc />
+    public Task<DirectoryEntry?> UpdateEntryAsync(
+        Address address,
+        string? displayName,
+        string? description,
+        CancellationToken cancellationToken = default)
+    {
+        _ = cancellationToken;
+        var key = ToKey(address);
+
+        if (!_entries.TryGetValue(key, out var existing))
+        {
+            return Task.FromResult<DirectoryEntry?>(null);
+        }
+
+        // Null fields mean "leave unchanged" so partial PATCH-style updates are supported.
+        var updated = existing with
+        {
+            DisplayName = displayName ?? existing.DisplayName,
+            Description = description ?? existing.Description,
+        };
+
+        _entries[key] = updated;
+        cache.Set(address, updated);
+
+        _logger.LogInformation(
+            "Updated directory entry for {Scheme}://{Path} (displayName changed: {DisplayNameChanged}, description changed: {DescriptionChanged})",
+            address.Scheme,
+            address.Path,
+            displayName is not null,
+            description is not null);
+
+        return Task.FromResult<DirectoryEntry?>(updated);
+    }
+
     private static string ToKey(Address address) => $"{address.Scheme}://{address.Path}";
 }

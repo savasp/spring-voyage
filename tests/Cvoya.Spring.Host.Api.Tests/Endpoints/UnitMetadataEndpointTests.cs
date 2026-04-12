@@ -151,6 +151,83 @@ public class UnitMetadataEndpointTests : IClassFixture<CustomWebApplicationFacto
     }
 
     [Fact]
+    public async Task PatchUnit_UpdatesDisplayNameAndDescription_RoutesThroughDirectory()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var proxy = Substitute.For<IUnitActor>();
+        proxy.GetStatusAsync(Arg.Any<CancellationToken>()).Returns(UnitStatus.Draft);
+        proxy.GetMetadataAsync(Arg.Any<CancellationToken>())
+            .Returns(new UnitMetadata(null, null, null, null));
+
+        ArrangeResolved(proxy);
+
+        _factory.DirectoryService
+            .UpdateEntryAsync(
+                Arg.Any<Address>(),
+                Arg.Any<string?>(),
+                Arg.Any<string?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(ci => new DirectoryEntry(
+                new Address("unit", UnitName),
+                ActorId,
+                ci.ArgAt<string?>(1) ?? "Engineering",
+                ci.ArgAt<string?>(2) ?? "Engineering unit",
+                null,
+                DateTimeOffset.UtcNow));
+
+        var patchResponse = await _client.PatchAsJsonAsync(
+            $"/api/v1/units/{UnitName}",
+            new UpdateUnitRequest(DisplayName: "Eng Team", Description: "Builds stuff"),
+            ct);
+
+        patchResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // DisplayName/Description must be forwarded to the directory, not persisted on the actor.
+        await _factory.DirectoryService.Received(1).UpdateEntryAsync(
+            Arg.Is<Address>(a => a.Scheme == "unit" && a.Path == UnitName),
+            "Eng Team",
+            "Builds stuff",
+            Arg.Any<CancellationToken>());
+
+        // Actor is still invoked so the audit-trail StateChanged event is emitted (#123).
+        await proxy.Received(1).SetMetadataAsync(
+            Arg.Is<UnitMetadata>(m =>
+                m.DisplayName == "Eng Team" &&
+                m.Description == "Builds stuff"),
+            Arg.Any<CancellationToken>());
+
+        var body = await patchResponse.Content.ReadAsStringAsync(ct);
+        using var doc = JsonDocument.Parse(body);
+        doc.RootElement.GetProperty("displayName").GetString().Should().Be("Eng Team");
+        doc.RootElement.GetProperty("description").GetString().Should().Be("Builds stuff");
+    }
+
+    [Fact]
+    public async Task PatchUnit_OnlyModelChange_DoesNotCallDirectoryUpdate()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var proxy = Substitute.For<IUnitActor>();
+        proxy.GetStatusAsync(Arg.Any<CancellationToken>()).Returns(UnitStatus.Draft);
+        proxy.GetMetadataAsync(Arg.Any<CancellationToken>())
+            .Returns(new UnitMetadata(null, null, "gpt-4o", null));
+
+        ArrangeResolved(proxy);
+
+        var response = await _client.PatchAsJsonAsync(
+            $"/api/v1/units/{UnitName}",
+            new UpdateUnitRequest(Model: "gpt-4o"),
+            ct);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        await _factory.DirectoryService.DidNotReceive().UpdateEntryAsync(
+            Arg.Any<Address>(),
+            Arg.Any<string?>(),
+            Arg.Any<string?>(),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task PatchUnit_UnknownUnit_Returns404()
     {
         var ct = TestContext.Current.CancellationToken;

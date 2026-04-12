@@ -164,6 +164,15 @@ public class ApplyCommandTests
         handler.Calls[2].Path.Should().Be("/api/v1/units/engineering-team/members");
         handler.Calls[3].Path.Should().Be("/api/v1/units/engineering-team/members");
 
+        // The create-unit POST must carry the full server-side contract
+        // (Name + DisplayName + Description) so CreateUnitRequest binds
+        // correctly and the description from the manifest is persisted.
+        using var createBody = System.Text.Json.JsonDocument.Parse(handler.Calls[0].Body);
+        createBody.RootElement.GetProperty("name").GetString().Should().Be("engineering-team");
+        createBody.RootElement.GetProperty("displayName").GetString().Should().NotBeNullOrEmpty();
+        createBody.RootElement.GetProperty("description").GetString()
+            .Should().StartWith("A software engineering team");
+
         // Bodies record the scheme/path for each member in declaration order.
         handler.Calls[1].Body.Should().Contain("tech-lead");
         handler.Calls[2].Body.Should().Contain("backend-engineer");

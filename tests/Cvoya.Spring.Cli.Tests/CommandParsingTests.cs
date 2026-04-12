@@ -53,18 +53,23 @@ public class CommandParsingTests
     }
 
     [Fact]
-    public void UnitCreate_ParsesIdAndNameOptions()
+    public void UnitCreate_ParsesNameAndMetadataOptions()
     {
+        // After #117 the CLI mirrors the server CreateUnitRequest contract:
+        // a positional `name` (unit address + identifier) plus optional
+        // --display-name and --description metadata.
         var outputOption = CreateOutputOption();
         var unitCommand = UnitCommand.Create(outputOption);
         var rootCommand = new RootCommand { Options = { outputOption } };
         rootCommand.Subcommands.Add(unitCommand);
 
-        var parseResult = rootCommand.Parse("unit create eng-team --name \"Engineering Team\"");
+        var parseResult = rootCommand.Parse(
+            "unit create eng-team --display-name \"Engineering Team\" --description \"Builds the product\"");
 
         parseResult.Errors.Should().BeEmpty();
-        parseResult.GetValue<string>("id").Should().Be("eng-team");
-        parseResult.GetValue<string>("--name").Should().Be("Engineering Team");
+        parseResult.GetValue<string>("name").Should().Be("eng-team");
+        parseResult.GetValue<string>("--display-name").Should().Be("Engineering Team");
+        parseResult.GetValue<string>("--description").Should().Be("Builds the product");
     }
 
     [Fact]

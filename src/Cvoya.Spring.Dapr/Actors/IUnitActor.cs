@@ -102,11 +102,13 @@ public interface IUnitActor : IActor
     /// non-<c>null</c> fields are written — a <c>null</c> field leaves the
     /// corresponding state key untouched, which makes this safe for partial
     /// PATCH-style updates. <c>DisplayName</c> and <c>Description</c> on
-    /// the incoming <paramref name="metadata"/> are ignored by the actor
-    /// (they live on the directory entity); callers that need to update
-    /// those fields must do so through the directory service. Emits a
-    /// <c>StateChanged</c> activity event describing which fields were
-    /// written when at least one actor-owned field is non-<c>null</c>.
+    /// the incoming <paramref name="metadata"/> are not persisted on the
+    /// actor (they live on the directory entity) — callers that need to
+    /// update those fields must do so through the directory service.
+    /// Emits a <c>StateChanged</c> activity event describing which fields
+    /// were updated whenever at least one field (actor-owned or
+    /// directory-owned) is non-<c>null</c>, so the audit trail is consistent
+    /// regardless of which fields changed.
     /// </summary>
     /// <param name="metadata">The metadata to apply.</param>
     /// <param name="ct">A token to cancel the operation.</param>

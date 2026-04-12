@@ -48,20 +48,24 @@ public static class UnitCommand
 
     private static Command CreateCreateCommand(Option<string> outputOption)
     {
-        var idArg = new Argument<string>("id") { Description = "The unit identifier" };
-        var nameOption = new Option<string>("--name") { Description = "The unit display name", Required = true };
+        // "name" is the unit's address path and unique identifier; the server generates the actor id.
+        var nameArg = new Argument<string>("name") { Description = "The unit name (address path; also used as the identifier)" };
+        var displayNameOption = new Option<string?>("--display-name") { Description = "Human-readable display name (defaults to name)" };
+        var descriptionOption = new Option<string?>("--description") { Description = "Description of the unit's purpose" };
         var command = new Command("create", "Create a new unit");
-        command.Arguments.Add(idArg);
-        command.Options.Add(nameOption);
+        command.Arguments.Add(nameArg);
+        command.Options.Add(displayNameOption);
+        command.Options.Add(descriptionOption);
 
         command.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
         {
-            var id = parseResult.GetValue(idArg)!;
-            var name = parseResult.GetValue(nameOption)!;
+            var name = parseResult.GetValue(nameArg)!;
+            var displayName = parseResult.GetValue(displayNameOption);
+            var description = parseResult.GetValue(descriptionOption);
             var output = parseResult.GetValue(outputOption) ?? "table";
             var client = ClientFactory.Create();
 
-            var result = await client.CreateUnitAsync(id, name, ct);
+            var result = await client.CreateUnitAsync(name, displayName, description, ct);
 
             Console.WriteLine(output == "json"
                 ? OutputFormatter.FormatJson(result)

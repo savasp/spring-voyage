@@ -62,6 +62,53 @@ public class DirectoryServiceTests
     }
 
     [Fact]
+    public async Task UpdateEntryAsync_updates_displayName_and_description()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var address = new Address("unit", "engineering");
+        var entry = new DirectoryEntry(address, "actor-1", "old-display", "old-desc", null, DateTimeOffset.UtcNow);
+
+        await _service.RegisterAsync(entry, ct);
+
+        var updated = await _service.UpdateEntryAsync(address, "new-display", "new-desc", ct);
+
+        updated.Should().NotBeNull();
+        updated!.DisplayName.Should().Be("new-display");
+        updated.Description.Should().Be("new-desc");
+
+        var resolved = await _service.ResolveAsync(address, ct);
+        resolved!.DisplayName.Should().Be("new-display");
+        resolved.Description.Should().Be("new-desc");
+    }
+
+    [Fact]
+    public async Task UpdateEntryAsync_null_fields_leave_existing_values()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var address = new Address("unit", "engineering");
+        var entry = new DirectoryEntry(address, "actor-1", "display", "description", null, DateTimeOffset.UtcNow);
+
+        await _service.RegisterAsync(entry, ct);
+
+        var updated = await _service.UpdateEntryAsync(address, displayName: null, description: "new-desc", ct);
+
+        updated.Should().NotBeNull();
+        updated!.DisplayName.Should().Be("display");
+        updated.Description.Should().Be("new-desc");
+    }
+
+    [Fact]
+    public async Task UpdateEntryAsync_unknown_address_returns_null()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var address = new Address("unit", "missing");
+
+        var updated = await _service.UpdateEntryAsync(address, "display", "desc", ct);
+
+        updated.Should().BeNull();
+    }
+
+    [Fact]
     public async Task ResolveByRoleAsync_returns_matching_entries()
     {
         var ct = TestContext.Current.CancellationToken;

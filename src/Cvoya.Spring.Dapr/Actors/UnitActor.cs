@@ -228,6 +228,7 @@ public class UnitActor : Actor, IUnitActor
         ArgumentNullException.ThrowIfNull(metadata);
 
         var writtenFields = new List<string>();
+        var directoryFields = new List<string>();
 
         if (metadata.Model is not null)
         {
@@ -242,29 +243,49 @@ public class UnitActor : Actor, IUnitActor
         }
 
         // DisplayName and Description are deliberately not persisted here; the
-        // directory entity is the source of truth. We still allow callers to
-        // pass them so higher layers can share a single metadata record.
-        if (writtenFields.Count == 0)
+        // directory entity is the source of truth (#123). We still emit a
+        // StateChanged activity event for audit consistency so the API layer
+        // does not need to duplicate the emission when only directory-side
+        // fields change.
+        if (metadata.DisplayName is not null)
+        {
+            directoryFields.Add(nameof(metadata.DisplayName));
+        }
+
+        if (metadata.Description is not null)
+        {
+            directoryFields.Add(nameof(metadata.Description));
+        }
+
+        if (writtenFields.Count == 0 && directoryFields.Count == 0)
         {
             _logger.LogDebug(
-                "Unit {ActorId} SetMetadataAsync called with no actor-owned fields; nothing persisted.",
+                "Unit {ActorId} SetMetadataAsync called with no fields; nothing to emit.",
                 Id.GetId());
             return;
         }
 
+        var allFields = writtenFields.Concat(directoryFields).ToList();
+
         _logger.LogInformation(
-            "Unit {ActorId} metadata updated. Fields: {Fields}",
-            Id.GetId(), string.Join(",", writtenFields));
+            "Unit {ActorId} metadata updated. Actor-owned fields: {ActorFields}; directory-owned fields: {DirectoryFields}",
+            Id.GetId(),
+            string.Join(",", writtenFields),
+            string.Join(",", directoryFields));
 
         await EmitActivityEventAsync(ActivityEventType.StateChanged,
-            $"Unit metadata updated: {string.Join(", ", writtenFields)}",
+            $"Unit metadata updated: {string.Join(", ", allFields)}",
             ct,
             details: JsonSerializer.SerializeToElement(new
             {
                 action = "MetadataUpdated",
-                fields = writtenFields,
+                fields = allFields,
+                actorFields = writtenFields,
+                directoryFields,
                 model = metadata.Model,
-                color = metadata.Color
+                color = metadata.Color,
+                displayName = metadata.DisplayName,
+                description = metadata.Description
             }));
     }
 

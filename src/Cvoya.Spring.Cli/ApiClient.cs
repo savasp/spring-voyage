@@ -60,9 +60,24 @@ public class SpringApiClient(HttpClient httpClient)
     /// <summary>
     /// Creates a new unit.
     /// </summary>
-    public async Task<JsonElement> CreateUnitAsync(string id, string name, CancellationToken ct = default)
+    /// <param name="name">The unique name for the unit. The server generates the id.</param>
+    /// <param name="displayName">Human-readable display name. Falls back to <paramref name="name"/> if null/empty.</param>
+    /// <param name="description">Description of the unit's purpose. Empty string when null.</param>
+    /// <param name="ct">Cancellation token.</param>
+    public async Task<JsonElement> CreateUnitAsync(
+        string name,
+        string? displayName,
+        string? description,
+        CancellationToken ct = default)
     {
-        var payload = new { id, name };
+        // Server requires non-null Name/DisplayName/Description on CreateUnitRequest; normalise
+        // optional inputs to empty strings so the server validator accepts them.
+        var payload = new
+        {
+            name,
+            displayName = string.IsNullOrWhiteSpace(displayName) ? name : displayName,
+            description = description ?? string.Empty,
+        };
         return await PostJsonAsync("/api/v1/units", payload, ct);
     }
 

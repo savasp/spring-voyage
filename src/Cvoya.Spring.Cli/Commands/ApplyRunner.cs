@@ -88,7 +88,9 @@ public static class ApplyRunner
         stdout.WriteLine($"[apply] creating unit '{unitName}'...");
         try
         {
-            await client.CreateUnitAsync(unitName, unitName, ct);
+            // Forward description from the manifest; display name defaults to the unit name
+            // when no separate display name is declared in the manifest today.
+            await client.CreateUnitAsync(unitName, unitName, manifest.Description, ct);
         }
         catch (System.Exception ex)
         {
