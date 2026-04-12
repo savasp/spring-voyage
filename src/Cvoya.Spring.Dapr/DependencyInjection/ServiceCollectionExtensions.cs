@@ -7,6 +7,7 @@ using Cvoya.Spring.Core.Capabilities;
 using Cvoya.Spring.Core.Costs;
 using Cvoya.Spring.Core.Directory;
 using Cvoya.Spring.Core.Execution;
+using Cvoya.Spring.Core.Initiative;
 using Cvoya.Spring.Core.Observability;
 using Cvoya.Spring.Core.Orchestration;
 using Cvoya.Spring.Core.State;
@@ -15,6 +16,7 @@ using Cvoya.Spring.Dapr.Costs;
 using Cvoya.Spring.Dapr.Data;
 using Cvoya.Spring.Dapr.Data.Entities;
 using Cvoya.Spring.Dapr.Execution;
+using Cvoya.Spring.Dapr.Initiative;
 using Cvoya.Spring.Dapr.Observability;
 using Cvoya.Spring.Dapr.Orchestration;
 using Cvoya.Spring.Dapr.Prompts;
@@ -90,6 +92,18 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ContainerLifecycleManager>();
         services.AddKeyedSingleton<IExecutionDispatcher, HostedExecutionDispatcher>("hosted");
         services.AddKeyedSingleton<IExecutionDispatcher, DelegatedExecutionDispatcher>("delegated");
+
+        // Initiative — use TryAdd so the private repo can override any implementation.
+        services.TryAddSingleton<ICancellationManager, CancellationManager>();
+        services.TryAddSingleton<IAgentPolicyStore, InMemoryAgentPolicyStore>();
+        services.TryAddSingleton<IInitiativeBudgetTracker, InMemoryInitiativeBudgetTracker>();
+        services.TryAddSingleton<IInitiativeEngine, InitiativeEngine>();
+
+        services.TryAddKeyedSingleton<ICognitionProvider, Tier1CognitionProvider>("tier1");
+        services.TryAddKeyedSingleton<ICognitionProvider, Tier2CognitionProvider>("tier2");
+
+        services.AddOptions<Tier1Options>().BindConfiguration("Initiative:Tier1");
+        services.AddHttpClient<Tier1CognitionProvider>();
 
         // Orchestration
         services.AddKeyedSingleton<IOrchestrationStrategy, AiOrchestrationStrategy>("ai");
