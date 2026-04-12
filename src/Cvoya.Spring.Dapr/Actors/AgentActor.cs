@@ -8,6 +8,7 @@ using System.Text.Json;
 using Cvoya.Spring.Core;
 using Cvoya.Spring.Core.Capabilities;
 using Cvoya.Spring.Core.Cloning;
+using Cvoya.Spring.Core.Initiative;
 using Cvoya.Spring.Core.Messaging;
 
 using global::Dapr.Actors;
@@ -21,8 +22,24 @@ using Microsoft.Extensions.Logging;
 /// control (highest priority), conversation (one per ConversationId), and observation (batched events).
 /// The actor never performs long-running work in the actor turn; it dispatches async work externally.
 /// </summary>
-public class AgentActor(ActorHost host, IActivityEventBus activityEventBus, ILoggerFactory loggerFactory) : Actor(host), IAgentActor
+public class AgentActor(
+    ActorHost host,
+    IActivityEventBus activityEventBus,
+    IInitiativeEngine initiativeEngine,
+    IAgentPolicyStore policyStore,
+    ILoggerFactory loggerFactory) : Actor(host), IAgentActor, IRemindable
 {
+    /// <summary>
+    /// Name of the Dapr reminder that drives periodic initiative checks.
+    /// </summary>
+    internal const string InitiativeReminderName = "initiative-check";
+
+    /// <summary>
+    /// Maximum number of observations retained in the observation channel.
+    /// Older entries are trimmed when the list exceeds this bound.
+    /// </summary>
+    internal const int MaxObservationChannelEntries = 100;
+
     private readonly ILogger _logger = loggerFactory.CreateLogger<AgentActor>();
     private CancellationTokenSource? _activeWorkCancellation;
 
@@ -512,5 +529,181 @@ public class AgentActor(ActorHost host, IActivityEventBus activityEventBus, ILog
             originalMessage.ConversationId,
             errorPayload,
             DateTimeOffset.UtcNow);
+    }
+
+    /// <summary>
+    /// Records an observation for this agent. Observations are appended to a bounded
+    /// in-state channel and are drained on the next initiative reminder tick.
+    /// Emits an <see cref="ActivityEventType.InitiativeTriggered"/> activity event
+    /// so observers can see that the agent was poked, even when Tier 1 ignores it.
+    /// </summary>
+    /// <param name="observation">The observation payload.</param>
+    /// <param name="ct">A token to cancel the operation.</param>
+    public async Task RecordObservationAsync(JsonElement observation, CancellationToken ct)
+    {
+        var existing = await StateManager
+            .TryGetStateAsync<List<JsonElement>>(StateKeys.ObservationChannel, ct);
+
+        var list = existing.HasValue ? existing.Value : new List<JsonElement>();
+        list.Add(observation);
+
+        // Bound the list to the most recent MaxObservationChannelEntries.
+        if (list.Count > MaxObservationChannelEntries)
+        {
+            list.RemoveRange(0, list.Count - MaxObservationChannelEntries);
+        }
+
+        await StateManager.SetStateAsync(StateKeys.ObservationChannel, list, ct);
+
+        await RegisterInitiativeReminderAsync(ct);
+
+        var summary = SummarizeObservation(observation);
+        await EmitActivityEventAsync(
+            ActivityEventType.InitiativeTriggered,
+            $"Observation recorded: {summary}",
+            ct);
+    }
+
+    /// <inheritdoc />
+    public async Task ReceiveReminderAsync(string reminderName, byte[] state, TimeSpan dueTime, TimeSpan period)
+    {
+        _ = state;
+        _ = dueTime;
+        _ = period;
+
+        switch (reminderName)
+        {
+            case InitiativeReminderName:
+                await RunInitiativeCheckAsync(CancellationToken.None);
+                break;
+            default:
+                _logger.LogDebug("Actor {ActorId} ignored unknown reminder {ReminderName}",
+                    Id.GetId(), reminderName);
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Drains the observation channel through <see cref="IInitiativeEngine"/> and, if
+    /// Tier 2 decides to act, emits a <see cref="ActivityEventType.ReflectionCompleted"/>
+    /// activity event. The observation list is cleared only on a successful engine call.
+    /// </summary>
+    private async Task RunInitiativeCheckAsync(CancellationToken ct)
+    {
+        var existing = await StateManager
+            .TryGetStateAsync<List<JsonElement>>(StateKeys.ObservationChannel, ct);
+
+        if (!existing.HasValue || existing.Value.Count == 0)
+        {
+            return;
+        }
+
+        var observations = existing.Value;
+        var agentId = Id.GetId();
+
+        ReflectionOutcome? outcome;
+        try
+        {
+            outcome = await initiativeEngine.ProcessObservationsAsync(agentId, observations, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Initiative engine threw for actor {ActorId}; retaining observations for next tick.",
+                agentId);
+            return;
+        }
+
+        // Only clear observations after a successful engine call.
+        await StateManager.SetStateAsync(StateKeys.ObservationChannel, new List<JsonElement>(), ct);
+
+        if (outcome is null || !outcome.ShouldAct)
+        {
+            return;
+        }
+
+        var details = JsonSerializer.SerializeToElement(new
+        {
+            actionType = outcome.ActionType,
+            reasoning = outcome.Reasoning,
+            actionPayload = outcome.ActionPayload,
+        });
+
+        await EmitActivityEventAsync(
+            ActivityEventType.ReflectionCompleted,
+            $"Reflection decided to act: {outcome.ActionType ?? "(unknown)"}",
+            ct,
+            details: details);
+
+        // TODO(#69 follow-up): dispatch outcome.ActionType with outcome.ActionPayload via MessageRouter
+    }
+
+    /// <summary>
+    /// Lazily registers the Dapr reminder that drives periodic initiative checks.
+    /// The registration is idempotent — the persisted
+    /// <see cref="StateKeys.InitiativeReminderRegistered"/> flag prevents duplicate work.
+    /// The reminder period is derived from <see cref="Tier2Config.MaxCallsPerHour"/>.
+    /// </summary>
+    private async Task RegisterInitiativeReminderAsync(CancellationToken ct)
+    {
+        var registered = await StateManager
+            .TryGetStateAsync<bool>(StateKeys.InitiativeReminderRegistered, ct);
+
+        if (registered.HasValue && registered.Value)
+        {
+            return;
+        }
+
+        var maxCallsPerHour = 5;
+        try
+        {
+            var policy = await policyStore.GetPolicyAsync($"agent:{Id.GetId()}", ct);
+            if (policy.Tier2 is not null)
+            {
+                maxCallsPerHour = policy.Tier2.MaxCallsPerHour;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex,
+                "Could not read initiative policy for {ActorId}; using default reminder period.",
+                Id.GetId());
+        }
+
+        var period = TimeSpan.FromHours(1.0 / Math.Max(1, maxCallsPerHour));
+
+        try
+        {
+            await RegisterReminderAsync(InitiativeReminderName, state: null, dueTime: period, period: period);
+            await StateManager.SetStateAsync(StateKeys.InitiativeReminderRegistered, true, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Failed to register initiative reminder for actor {ActorId}.",
+                Id.GetId());
+        }
+    }
+
+    /// <summary>
+    /// Produces a short, human-readable summary for an observation. If the observation is
+    /// an object with a <c>summary</c> string property, that value is used. Otherwise the
+    /// raw JSON is truncated to 200 characters.
+    /// </summary>
+    private static string SummarizeObservation(JsonElement observation)
+    {
+        if (observation.ValueKind == JsonValueKind.Object &&
+            observation.TryGetProperty("summary", out var summary) &&
+            summary.ValueKind == JsonValueKind.String)
+        {
+            return summary.GetString() ?? observation.ToString();
+        }
+
+        var raw = observation.ToString();
+        return raw.Length <= 200 ? raw : raw[..200];
     }
 }

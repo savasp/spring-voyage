@@ -69,6 +69,7 @@ app.MapDirectoryEndpoints().RequireAuthorization();
 app.MapCloneEndpoints().RequireAuthorization();
 app.MapCostEndpoints().RequireAuthorization();
 app.MapBudgetEndpoints().RequireAuthorization();
+app.MapInitiativeEndpoints().RequireAuthorization();
 app.MapActivityEndpoints().RequireAuthorization();
 app.MapDashboardEndpoints().RequireAuthorization();
 

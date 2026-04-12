@@ -41,6 +41,11 @@ public static class StateKeys
     public const string InitiativeState = "Agent:InitiativeState";
 
     /// <summary>
+    /// State key indicating whether the initiative reminder has been registered for this agent.
+    /// </summary>
+    public const string InitiativeReminderRegistered = "Agent:InitiativeReminderRegistered";
+
+    /// <summary>
     /// State key for unit members.
     /// </summary>
     public const string Members = "Unit:Members";

@@ -7,6 +7,7 @@ using System.Text.Json;
 
 using Cvoya.Spring.Core.Capabilities;
 using Cvoya.Spring.Core.Cloning;
+using Cvoya.Spring.Core.Initiative;
 using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Dapr.Actors;
 
@@ -30,6 +31,8 @@ public class AgentActorTests
     private readonly IActorStateManager _stateManager = Substitute.For<IActorStateManager>();
     private readonly ILoggerFactory _loggerFactory = Substitute.For<ILoggerFactory>();
     private readonly IActivityEventBus _activityEventBus = Substitute.For<IActivityEventBus>();
+    private readonly IInitiativeEngine _initiativeEngine = Substitute.For<IInitiativeEngine>();
+    private readonly IAgentPolicyStore _policyStore = Substitute.For<IAgentPolicyStore>();
     private readonly AgentActor _actor;
 
     public AgentActorTests()
@@ -39,7 +42,7 @@ public class AgentActorTests
         {
             ActorId = new ActorId("test-agent")
         });
-        _actor = new AgentActor(host, _activityEventBus, _loggerFactory);
+        _actor = new AgentActor(host, _activityEventBus, _initiativeEngine, _policyStore, _loggerFactory);
         SetStateManager(_actor, _stateManager);
 
         // Default: no active conversation, no pending conversations.
