@@ -34,9 +34,8 @@ const DEFAULT_COLOR = "#6366f1";
 
 const NAME_PATTERN = /^[a-z0-9-]+$/;
 
-// NOTE: `#XXX` placeholders below must be replaced with real follow-up issue
-// numbers after this PR lands. Keep the literal string `#XXX` so a single
-// find/replace updates every occurrence.
+// Follow-up issues for the placeholder steps in this wizard:
+//   #119 template catalog, #120 YAML import, #121 GitHub App, #122 unit secrets.
 
 type Step = 1 | 2 | 3 | 4 | 5;
 type Mode = "template" | "scratch" | "yaml";
@@ -300,8 +299,7 @@ export default function CreateUnitPage() {
               title="Template"
               description="Start from a pre-built team template."
               disabled
-              // TODO: replace #XXX with the template catalog follow-up issue.
-              tooltip="Template catalog is tracked in follow-up #XXX."
+              tooltip="Template catalog is tracked in follow-up #119."
               selected={false}
               onSelect={() => {}}
             />
@@ -317,8 +315,7 @@ export default function CreateUnitPage() {
               title="YAML"
               description="Import an existing unit manifest."
               disabled
-              // TODO: replace #XXX with the YAML import follow-up issue.
-              tooltip="YAML import is tracked in follow-up #XXX."
+              tooltip="YAML import is tracked in follow-up #120."
               selected={false}
               onSelect={() => {}}
             />
@@ -342,8 +339,7 @@ export default function CreateUnitPage() {
           <CardContent className="space-y-3 text-sm text-muted-foreground">
             <p>
               GitHub App installation flow is tracked in follow-up{" "}
-              {/* TODO: replace #XXX with the GitHub App install follow-up issue. */}
-              <span className="font-mono text-foreground">#XXX</span>. Skip for
+              <span className="font-mono text-foreground">#121</span>. Skip for
               now — you can finish creating the unit without it.
             </p>
             <Button onClick={handleNext}>Skip for now</Button>
@@ -361,8 +357,7 @@ export default function CreateUnitPage() {
           <CardContent className="space-y-3 text-sm text-muted-foreground">
             <p>
               Unit secrets CRUD is tracked in follow-up{" "}
-              {/* TODO: replace #XXX with the unit secrets follow-up issue. */}
-              <span className="font-mono text-foreground">#XXX</span>. Skip for
+              <span className="font-mono text-foreground">#122</span>. Skip for
               now — you can finish creating the unit without it.
             </p>
             <Button onClick={handleNext}>Skip for now</Button>

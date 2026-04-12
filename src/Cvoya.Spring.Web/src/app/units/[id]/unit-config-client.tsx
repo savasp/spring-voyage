@@ -30,9 +30,9 @@ import { api } from "@/lib/api/client";
 import type { UnitResponse, UnitStatus } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 
-// NOTE: `#XXX` placeholders below must be replaced with real follow-up issue
-// numbers after this PR lands. Keep the literal string `#XXX` so a single
-// find/replace updates every occurrence.
+// Follow-up issues referenced by this page: #123 DisplayName/Description
+// wiring, #124 unit-scoped agent assignment, #125 GitHub connector config,
+// #122 unit secrets CRUD, #126 per-agent skill assignment.
 
 const STATUS_NAMES: UnitStatus[] = [
   "Draft",
@@ -324,10 +324,9 @@ export default function UnitConfigClient({ id }: ClientProps) {
               <CardTitle>General</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* TODO: replace #XXX with the DisplayName/Description wiring follow-up issue. */}
               <p className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
                 Heads up: display name and description updates are pending
-                backend wiring — see #XXX. Model and color changes save
+                backend wiring — see #123. Model and color changes save
                 normally.
               </p>
 
@@ -396,8 +395,7 @@ export default function UnitConfigClient({ id }: ClientProps) {
           <PlaceholderCard
             icon={<Bot className="h-5 w-5" />}
             title="Agents"
-            // TODO: replace #XXX with the unit-scoped agent assignment follow-up.
-            body="Unit-scoped agent assignment isn't wired yet. Follow-up: #XXX."
+            body="Unit-scoped agent assignment isn't wired yet. Follow-up: #124."
             footer={
               <Link
                 href="/"
@@ -414,8 +412,7 @@ export default function UnitConfigClient({ id }: ClientProps) {
           <PlaceholderCard
             icon={<Github className="h-5 w-5" />}
             title="Connector"
-            // TODO: replace #XXX with the unit connector configuration follow-up.
-            body="GitHub connector configuration lives here. Follow-up: #XXX."
+            body="GitHub connector configuration lives here. Follow-up: #125."
           />
         </TabsContent>
 
@@ -423,8 +420,7 @@ export default function UnitConfigClient({ id }: ClientProps) {
           <PlaceholderCard
             icon={<KeyRound className="h-5 w-5" />}
             title="Secrets"
-            // TODO: replace #XXX with the unit secrets CRUD follow-up.
-            body="Unit secrets CRUD lives here. Follow-up: #XXX."
+            body="Unit secrets CRUD lives here. Follow-up: #122."
           />
         </TabsContent>
 
@@ -432,8 +428,7 @@ export default function UnitConfigClient({ id }: ClientProps) {
           <PlaceholderCard
             icon={<Wrench className="h-5 w-5" />}
             title="Skills"
-            // TODO: replace #XXX with the per-agent skill assignment follow-up.
-            body="Per-agent skill assignment lives here. Follow-up: #XXX."
+            body="Per-agent skill assignment lives here. Follow-up: #126."
           />
         </TabsContent>
       </Tabs>
