@@ -25,7 +25,7 @@ public class MessageRouter(
     IDirectoryService directoryService,
     IActorProxyFactory actorProxyFactory,
     IPermissionService permissionService,
-    ILoggerFactory loggerFactory)
+    ILoggerFactory loggerFactory) : IMessageRouter
 {
     private readonly ILogger _logger = loggerFactory.CreateLogger<MessageRouter>();
 

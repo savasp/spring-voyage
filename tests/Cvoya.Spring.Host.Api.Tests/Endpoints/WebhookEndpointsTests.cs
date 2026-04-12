@@ -10,8 +10,11 @@ using System.Text;
 
 using Cvoya.Spring.Core.Directory;
 using Cvoya.Spring.Core.Messaging;
+using Cvoya.Spring.Dapr.Actors;
 
 using FluentAssertions;
+
+using global::Dapr.Actors;
 
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
@@ -23,6 +26,7 @@ using Xunit;
 public class WebhookEndpointsTests : IClassFixture<WebhookEndpointsTests.Factory>
 {
     private const string WebhookSecret = "test-webhook-secret";
+    private const string TargetUnitPath = "engineering-team";
 
     private readonly Factory _factory;
     private readonly HttpClient _client;
@@ -100,16 +104,36 @@ public class WebhookEndpointsTests : IClassFixture<WebhookEndpointsTests.Factory
     }
 
     [Fact]
-    public async Task PostGitHubWebhook_ValidSignatureHandledEvent_Returns202AndRoutes()
+    public async Task PostGitHubWebhook_ValidSignatureHandledEvent_Returns202AndRoutesSuccessfully()
     {
         var ct = TestContext.Current.CancellationToken;
         _factory.DirectoryService.ClearReceivedCalls();
+        _factory.ActorProxyFactory.ClearReceivedCalls();
 
-        // Directory lookup for the synthesized connector-out message (system://router)
-        // returns null — the endpoint should still acknowledge with 202.
+        // The connector is configured with DefaultTargetUnitPath = "engineering-team",
+        // so the translated message is addressed to unit://engineering-team. The
+        // directory resolves that to a unit actor, the actor proxy accepts the
+        // message, and MessageRouter returns a successful result.
+        var expectedAddress = new Address("unit", TargetUnitPath);
+        var directoryEntry = new DirectoryEntry(
+            expectedAddress,
+            "unit-actor-1",
+            "Engineering",
+            "Team",
+            Role: null,
+            RegisteredAt: DateTimeOffset.UtcNow);
+
         _factory.DirectoryService
-            .ResolveAsync(Arg.Any<Address>(), Arg.Any<CancellationToken>())
-            .Returns((DirectoryEntry?)null);
+            .ResolveAsync(Arg.Is<Address>(a => a.Scheme == "unit" && a.Path == TargetUnitPath), Arg.Any<CancellationToken>())
+            .Returns(directoryEntry);
+
+        var unitProxy = Substitute.For<IUnitActor>();
+        unitProxy.ReceiveAsync(Arg.Any<Message>(), Arg.Any<CancellationToken>())
+            .Returns((Message?)null);
+
+        _factory.ActorProxyFactory
+            .CreateActorProxy<IUnitActor>(Arg.Any<ActorId>(), Arg.Any<string>())
+            .Returns(unitProxy);
 
         const string payload = """
         {
@@ -137,11 +161,23 @@ public class WebhookEndpointsTests : IClassFixture<WebhookEndpointsTests.Factory
 
         response.StatusCode.Should().Be(HttpStatusCode.Accepted);
 
-        // The endpoint handed a Message to MessageRouter, which in turn looked up
-        // the destination address via DirectoryService.
+        // The endpoint produced a unit-addressed message and MessageRouter resolved it
+        // through the directory service to the mocked unit actor.
         await _factory.DirectoryService
             .Received()
-            .ResolveAsync(Arg.Any<Address>(), Arg.Any<CancellationToken>());
+            .ResolveAsync(
+                Arg.Is<Address>(a => a.Scheme == "unit" && a.Path == TargetUnitPath),
+                Arg.Any<CancellationToken>());
+
+        await unitProxy
+            .Received()
+            .ReceiveAsync(
+                Arg.Is<Message>(m =>
+                    m.To.Scheme == "unit"
+                    && m.To.Path == TargetUnitPath
+                    && m.From.Scheme == "connector"
+                    && m.From.Path == "github"),
+                Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -198,6 +234,7 @@ public class WebhookEndpointsTests : IClassFixture<WebhookEndpointsTests.Factory
                     ["GitHub:AppId"] = "12345",
                     ["GitHub:PrivateKeyPem"] = "test-key",
                     ["GitHub:WebhookSecret"] = WebhookSecret,
+                    ["GitHub:DefaultTargetUnitPath"] = TargetUnitPath,
                 });
             });
 

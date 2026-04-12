@@ -10,7 +10,7 @@ using System.Text;
 /// Validates GitHub webhook signatures using HMAC-SHA256 to ensure
 /// that incoming payloads are authentic.
 /// </summary>
-public static class WebhookSignatureValidator
+public class WebhookSignatureValidator : IWebhookSignatureValidator
 {
     /// <summary>
     /// Validates a GitHub webhook payload signature against the expected secret.
@@ -19,7 +19,16 @@ public static class WebhookSignatureValidator
     /// <param name="signature">The signature from the X-Hub-Signature-256 header (format: "sha256=...").</param>
     /// <param name="secret">The webhook secret configured in the GitHub App.</param>
     /// <returns><c>true</c> if the signature is valid; otherwise, <c>false</c>.</returns>
-    public static bool Validate(string payload, string signature, string secret)
+    public bool Validate(string payload, string signature, string secret)
+        => ValidateCore(payload, signature, secret);
+
+    /// <summary>
+    /// Pure HMAC-SHA256 validation. Kept public so very low-level unit tests
+    /// can exercise the algorithm without DI. Production endpoints should
+    /// resolve <see cref="IWebhookSignatureValidator"/> from the container
+    /// so the private repo can substitute its own implementation.
+    /// </summary>
+    public static bool ValidateCore(string payload, string signature, string secret)
     {
         if (string.IsNullOrEmpty(payload) || string.IsNullOrEmpty(signature) || string.IsNullOrEmpty(secret))
         {

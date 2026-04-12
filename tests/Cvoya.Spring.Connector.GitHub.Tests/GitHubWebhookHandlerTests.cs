@@ -5,6 +5,7 @@ namespace Cvoya.Spring.Connector.GitHub.Tests;
 
 using System.Text.Json;
 
+using Cvoya.Spring.Connector.GitHub.Auth;
 using Cvoya.Spring.Connector.GitHub.Webhooks;
 using Cvoya.Spring.Core.Messaging;
 
@@ -25,7 +26,8 @@ public class GitHubWebhookHandlerTests
         var loggerFactory = Substitute.For<ILoggerFactory>();
         var logger = Substitute.For<ILogger>();
         loggerFactory.CreateLogger(Arg.Any<string>()).Returns(logger);
-        _handler = new GitHubWebhookHandler(loggerFactory);
+        var options = new GitHubConnectorOptions { DefaultTargetUnitPath = "test-team" };
+        _handler = new GitHubWebhookHandler(options, loggerFactory);
     }
 
     [Fact]
@@ -87,6 +89,35 @@ public class GitHubWebhookHandlerTests
         message.Should().NotBeNull();
         message!.From.Scheme.Should().Be("connector");
         message.From.Path.Should().Be("github");
+    }
+
+    [Fact]
+    public void TranslateEvent_WithConfiguredTargetUnit_RoutesToUnitScheme()
+    {
+        var payload = CreateIssuePayload("opened");
+
+        var message = _handler.TranslateEvent("issues", payload);
+
+        message.Should().NotBeNull();
+        message!.To.Scheme.Should().Be("unit");
+        message.To.Path.Should().Be("test-team");
+    }
+
+    [Fact]
+    public void TranslateEvent_WithoutConfiguredTargetUnit_FallsBackToSystemRouter()
+    {
+        var loggerFactory = Substitute.For<ILoggerFactory>();
+        loggerFactory.CreateLogger(Arg.Any<string>()).Returns(Substitute.For<ILogger>());
+        var options = new GitHubConnectorOptions { DefaultTargetUnitPath = string.Empty };
+        var handler = new GitHubWebhookHandler(options, loggerFactory);
+
+        var payload = CreateIssuePayload("opened");
+
+        var message = handler.TranslateEvent("issues", payload);
+
+        message.Should().NotBeNull();
+        message!.To.Scheme.Should().Be("system");
+        message.To.Path.Should().Be("router");
     }
 
     private static JsonElement CreateIssuePayload(string action)

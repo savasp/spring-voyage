@@ -4,7 +4,6 @@
 namespace Cvoya.Spring.Host.Api.Endpoints;
 
 using Cvoya.Spring.Core.Messaging;
-using Cvoya.Spring.Dapr.Routing;
 using Cvoya.Spring.Host.Api.Models;
 
 /// <summary>
@@ -31,7 +30,7 @@ public static class MessageEndpoints
 
     private static async Task<IResult> SendMessageAsync(
         SendMessageRequest request,
-        MessageRouter messageRouter,
+        IMessageRouter messageRouter,
         IConfiguration configuration,
         CancellationToken cancellationToken)
     {

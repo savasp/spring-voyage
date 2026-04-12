@@ -27,8 +27,9 @@ public class GitHubSkillRegistryTests
 
         var options = new GitHubConnectorOptions();
         var auth = new GitHubAppAuth(options, loggerFactory);
-        var webhookHandler = new GitHubWebhookHandler(loggerFactory);
-        var connector = new GitHubConnector(auth, webhookHandler, options, loggerFactory);
+        var webhookHandler = new GitHubWebhookHandler(options, loggerFactory);
+        var signatureValidator = new WebhookSignatureValidator();
+        var connector = new GitHubConnector(auth, webhookHandler, signatureValidator, options, loggerFactory);
         _registry = new GitHubSkillRegistry(connector, loggerFactory);
     }
 

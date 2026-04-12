@@ -42,8 +42,11 @@ public static class ServiceCollectionExtensions
         });
 
         services.TryAddSingleton<GitHubAppAuth>();
+        services.TryAddSingleton<IWebhookSignatureValidator, WebhookSignatureValidator>();
         services.TryAddSingleton<GitHubWebhookHandler>();
+        services.TryAddSingleton<IGitHubWebhookHandler>(sp => sp.GetRequiredService<GitHubWebhookHandler>());
         services.TryAddSingleton<GitHubConnector>();
+        services.TryAddSingleton<IGitHubConnector>(sp => sp.GetRequiredService<GitHubConnector>());
         services.TryAddSingleton<GitHubSkillRegistry>();
 
         // Expose the GitHub skills through the cross-connector ISkillRegistry abstraction

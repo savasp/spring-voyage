@@ -8,6 +8,7 @@ using Cvoya.Spring.Core.Costs;
 using Cvoya.Spring.Core.Directory;
 using Cvoya.Spring.Core.Execution;
 using Cvoya.Spring.Core.Initiative;
+using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Core.Observability;
 using Cvoya.Spring.Core.Orchestration;
 using Cvoya.Spring.Core.State;
@@ -84,7 +85,8 @@ public static class ServiceCollectionExtensions
         // Routing
         services.AddSingleton<DirectoryCache>();
         services.AddSingleton<IDirectoryService, DirectoryService>();
-        services.AddSingleton<MessageRouter>();
+        services.TryAddSingleton<MessageRouter>();
+        services.TryAddSingleton<IMessageRouter>(sp => sp.GetRequiredService<MessageRouter>());
 
         // Execution — AnthropicProvider needs HttpClient
         services.AddHttpClient<IAiProvider, AnthropicProvider>();

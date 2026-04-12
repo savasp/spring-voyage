@@ -29,4 +29,15 @@ public class GitHubConnectorOptions
     /// When set, the connector authenticates as this specific installation.
     /// </summary>
     public long? InstallationId { get; set; }
+
+    /// <summary>
+    /// Gets or sets the unit address path (e.g. "engineering-team") to which
+    /// webhook-translated messages should be delivered. Until a proper
+    /// installation-id → unit mapping lands, this single configured path is
+    /// used as the destination for every webhook the connector translates.
+    /// When left empty the handler falls back to the legacy <c>system://router</c>
+    /// address, which <see cref="Cvoya.Spring.Core.Messaging.IMessageRouter"/>
+    /// does not recognize — produced messages will not be delivered.
+    /// </summary>
+    public string DefaultTargetUnitPath { get; set; } = string.Empty;
 }

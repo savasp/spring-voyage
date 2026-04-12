@@ -5,6 +5,7 @@ namespace Cvoya.Spring.Connector.GitHub.Webhooks;
 
 using System.Text.Json;
 
+using Cvoya.Spring.Connector.GitHub.Auth;
 using Cvoya.Spring.Core.Messaging;
 
 using Microsoft.Extensions.Logging;
@@ -13,8 +14,18 @@ using Microsoft.Extensions.Logging;
 /// Processes incoming GitHub webhook payloads and translates them into
 /// domain <see cref="Message"/> objects for the Spring Voyage platform.
 /// </summary>
-public class GitHubWebhookHandler(ILoggerFactory loggerFactory)
+public class GitHubWebhookHandler(
+    GitHubConnectorOptions options,
+    ILoggerFactory loggerFactory) : IGitHubWebhookHandler
 {
+    /// <summary>
+    /// Fallback destination used when no target unit is configured. <see cref="IMessageRouter"/>
+    /// does not recognize this scheme, so routing will fail with <c>ADDRESS_NOT_FOUND</c>
+    /// — callers log and ack but no delivery occurs. Configure
+    /// <see cref="GitHubConnectorOptions.DefaultTargetUnitPath"/> to route to a real unit.
+    /// </summary>
+    internal static readonly Address FallbackRouterAddress = new("system", "router");
+
     private static readonly Address ConnectorAddress = new("connector", "github");
 
     private readonly ILogger _logger = loggerFactory.CreateLogger<GitHubWebhookHandler>();
@@ -77,19 +88,46 @@ public class GitHubWebhookHandler(ILoggerFactory loggerFactory)
         var repo = webhookPayload.GetProperty("repository");
         var repoFullName = repo.GetProperty("full_name").GetString() ?? "unknown";
 
+        var destination = ResolveDestination(repoFullName);
+
         _logger.LogInformation(
-            "Translating GitHub event {EventName} from {Repository}",
+            "Translating GitHub event {EventName} from {Repository} to {Scheme}://{Path}",
             eventName,
-            repoFullName);
+            repoFullName,
+            destination.Scheme,
+            destination.Path);
 
         return new Message(
             Id: Guid.NewGuid(),
             From: ConnectorAddress,
-            To: new Address("system", "router"),
+            To: destination,
             Type: MessageType.Domain,
             ConversationId: null,
             Payload: domainPayload,
             Timestamp: DateTimeOffset.UtcNow);
+    }
+
+    /// <summary>
+    /// Determines the routing destination for a translated webhook message.
+    /// Until a per-installation unit lookup lands (see issue #109), we use the
+    /// single configured <see cref="GitHubConnectorOptions.DefaultTargetUnitPath"/>
+    /// for every repository. When unset, fall back to the legacy
+    /// <c>system://router</c> sentinel and warn — <see cref="IMessageRouter"/>
+    /// will Failure-route and the endpoint will still acknowledge the webhook.
+    /// </summary>
+    private Address ResolveDestination(string repoFullName)
+    {
+        var unitPath = options.DefaultTargetUnitPath;
+        if (!string.IsNullOrWhiteSpace(unitPath))
+        {
+            return new Address("unit", unitPath);
+        }
+
+        _logger.LogWarning(
+            "No DefaultTargetUnitPath configured for the GitHub connector; webhook from {Repository} "
+            + "will be addressed to system://router which the message router does not recognize.",
+            repoFullName);
+        return FallbackRouterAddress;
     }
 
     private static JsonElement BuildIssuePayload(JsonElement payload, string intent)

@@ -4,12 +4,10 @@
 namespace Cvoya.Spring.Host.Api.Endpoints;
 
 using System.Text;
-using System.Text.Json;
 
 using Cvoya.Spring.Connector.GitHub;
-using Cvoya.Spring.Connector.GitHub.Auth;
 using Cvoya.Spring.Connector.GitHub.Webhooks;
-using Cvoya.Spring.Dapr.Routing;
+using Cvoya.Spring.Core.Messaging;
 
 using Microsoft.AspNetCore.Mvc;
 
@@ -43,9 +41,8 @@ public static class WebhookEndpoints
 
     private static async Task<IResult> HandleGitHubWebhookAsync(
         HttpContext httpContext,
-        [FromServices] GitHubConnector githubConnector,
-        [FromServices] GitHubConnectorOptions githubOptions,
-        [FromServices] MessageRouter messageRouter,
+        [FromServices] IGitHubConnector githubConnector,
+        [FromServices] IMessageRouter messageRouter,
         [FromServices] ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
@@ -102,45 +99,10 @@ public static class WebhookEndpoints
                 statusCode: StatusCodes.Status500InternalServerError);
         }
 
-        if (!WebhookSignatureValidator.Validate(payload, signature, githubOptions.WebhookSecret))
-        {
-            logger.LogWarning(
-                "Rejected GitHub webhook: invalid signature for event {EventType} (delivery {DeliveryId}).",
-                safeEventType,
-                safeDeliveryId);
-            return Results.Problem(
-                detail: "Invalid webhook signature.",
-                statusCode: StatusCodes.Status401Unauthorized);
-        }
-
+        WebhookHandleResult result;
         try
         {
-            using var document = JsonDocument.Parse(payload);
-            var message = githubConnector.WebhookHandler.TranslateEvent(eventType, document.RootElement);
-
-            if (message is null)
-            {
-                logger.LogInformation(
-                    "GitHub webhook event {EventType} (delivery {DeliveryId}) did not produce a message; ignoring.",
-                    safeEventType,
-                    safeDeliveryId);
-                return Results.Accepted();
-            }
-
-            var routeResult = await messageRouter.RouteAsync(message, cancellationToken);
-
-            if (!routeResult.IsSuccess)
-            {
-                // Routing failure is a platform-level issue, not a GitHub retry signal.
-                // Log and acknowledge so GitHub does not retry indefinitely.
-                logger.LogWarning(
-                    "GitHub webhook event {EventType} (delivery {DeliveryId}) produced a message but routing failed: {Error}",
-                    safeEventType,
-                    safeDeliveryId,
-                    routeResult.Error?.Message ?? "unknown error");
-            }
-
-            return Results.Accepted();
+            result = githubConnector.HandleWebhook(eventType, payload, signature);
         }
         catch (Exception ex)
         {
@@ -151,6 +113,52 @@ public static class WebhookEndpoints
             return Results.Problem(
                 detail: "Unhandled error processing webhook.",
                 statusCode: StatusCodes.Status500InternalServerError);
+        }
+
+        switch (result.Outcome)
+        {
+            case WebhookOutcome.InvalidSignature:
+                logger.LogWarning(
+                    "Rejected GitHub webhook: invalid signature for event {EventType} (delivery {DeliveryId}).",
+                    safeEventType,
+                    safeDeliveryId);
+                return Results.Problem(
+                    detail: "Invalid webhook signature.",
+                    statusCode: StatusCodes.Status401Unauthorized);
+
+            case WebhookOutcome.Ignored:
+                logger.LogInformation(
+                    "GitHub webhook event {EventType} (delivery {DeliveryId}) did not produce a message; ignoring.",
+                    safeEventType,
+                    safeDeliveryId);
+                return Results.Accepted();
+
+            case WebhookOutcome.Translated:
+                var message = result.Message!;
+                var routeResult = await messageRouter.RouteAsync(message, cancellationToken);
+
+                if (!routeResult.IsSuccess)
+                {
+                    // Routing failure is a platform-level issue, not a GitHub retry signal.
+                    // Log and acknowledge so GitHub does not retry indefinitely.
+                    logger.LogWarning(
+                        "GitHub webhook event {EventType} (delivery {DeliveryId}) produced a message but routing failed: {Error}",
+                        safeEventType,
+                        safeDeliveryId,
+                        routeResult.Error?.Message ?? "unknown error");
+                }
+
+                return Results.Accepted();
+
+            default:
+                logger.LogError(
+                    "Unexpected webhook outcome {Outcome} for event {EventType} (delivery {DeliveryId}).",
+                    result.Outcome,
+                    safeEventType,
+                    safeDeliveryId);
+                return Results.Problem(
+                    detail: "Unexpected webhook outcome.",
+                    statusCode: StatusCodes.Status500InternalServerError);
         }
     }
 
