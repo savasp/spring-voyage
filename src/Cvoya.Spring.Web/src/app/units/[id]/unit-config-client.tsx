@@ -35,9 +35,9 @@ import type {
 } from "@/lib/api/types";
 import { cn, formatCost } from "@/lib/utils";
 
-// Follow-up issues referenced by this page: #123 DisplayName/Description
-// wiring, #124 unit-scoped agent assignment, #125 GitHub connector config,
-// #122 unit secrets CRUD, #126 per-agent skill assignment.
+// Follow-up issues referenced by this page: #124 unit-scoped agent
+// assignment, #125 GitHub connector config, #122 unit secrets CRUD,
+// #126 per-agent skill assignment.
 
 const STATUS_NAMES: UnitStatus[] = [
   "Draft",
@@ -347,12 +347,6 @@ export default function UnitConfigClient({ id }: ClientProps) {
               <CardTitle>General</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <p className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
-                Heads up: display name and description updates are pending
-                backend wiring — see #123. Model and color changes save
-                normally.
-              </p>
-
               <label className="block space-y-1">
                 <span className="text-sm text-muted-foreground">
                   Display name

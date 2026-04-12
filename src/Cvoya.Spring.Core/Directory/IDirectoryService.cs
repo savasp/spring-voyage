@@ -47,4 +47,21 @@ public interface IDirectoryService
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A list of all directory entries.</returns>
     Task<IReadOnlyList<DirectoryEntry>> ListAllAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Updates the mutable, directory-owned metadata fields (<see cref="DirectoryEntry.DisplayName"/>
+    /// and <see cref="DirectoryEntry.Description"/>) for an existing entry. Passing
+    /// <c>null</c> for a field leaves the existing value untouched, making this method
+    /// safe for partial PATCH-style updates.
+    /// </summary>
+    /// <param name="address">The address of the entry to update.</param>
+    /// <param name="displayName">The new display name, or <c>null</c> to leave unchanged.</param>
+    /// <param name="description">The new description, or <c>null</c> to leave unchanged.</param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>The updated entry, or <c>null</c> if no entry existed for <paramref name="address"/>.</returns>
+    Task<DirectoryEntry?> UpdateEntryAsync(
+        Address address,
+        string? displayName,
+        string? description,
+        CancellationToken cancellationToken = default);
 }

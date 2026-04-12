@@ -250,14 +250,22 @@ public static class UnitEndpoints
             return Results.NotFound(new { Error = $"Unit '{id}' not found" });
         }
 
+        // DisplayName/Description live on the directory entity — route those
+        // through IDirectoryService (#123). Model/Color are actor-owned and
+        // persisted through SetMetadataAsync. We always forward the PATCH to
+        // the actor so the audit trail captures the change even when only
+        // directory-side fields are touched.
+        if (request.DisplayName is not null || request.Description is not null)
+        {
+            var updatedEntry = await directoryService.UpdateEntryAsync(
+                address, request.DisplayName, request.Description, cancellationToken);
+
+            entry = updatedEntry ?? entry;
+        }
+
         var proxy = actorProxyFactory.CreateActorProxy<IUnitActor>(
             new ActorId(entry.ActorId), nameof(IUnitActor));
 
-        // Forward the actor-owned subset of the metadata. DisplayName and
-        // Description live on the directory entity; the PATCH endpoint
-        // currently only updates actor-owned fields on the directory side.
-        // (DisplayName/Description edits on the directory are a follow-up —
-        // see UnitMetadata docs.)
         var metadata = new UnitMetadata(
             DisplayName: request.DisplayName,
             Description: request.Description,
@@ -274,9 +282,12 @@ public static class UnitEndpoints
 
     private static async Task<IResult> DeleteUnitAsync(
         string id,
-        IDirectoryService directoryService,
+        [FromServices] IDirectoryService directoryService,
+        [FromServices] IActorProxyFactory actorProxyFactory,
+        [FromServices] ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
+        var logger = loggerFactory.CreateLogger("Cvoya.Spring.Host.Api.Endpoints.UnitEndpoints");
         var address = new Address("unit", id);
         var entry = await directoryService.ResolveAsync(address, cancellationToken);
 
@@ -285,7 +296,23 @@ public static class UnitEndpoints
             return Results.NotFound(new { Error = $"Unit '{id}' not found" });
         }
 
-        // TODO: consider requiring Stopped before Delete — follow-up.
+        // Gate deletion on lifecycle status (#116). Allowing DELETE while the unit is
+        // Running/Starting/Stopping leaves the container, sidecar, and network orphaned.
+        // Only Draft (never started) and Stopped (cleanly torn down) are safe. Error-state
+        // units still require an explicit /stop to drive them to Stopped first; a future
+        // force-delete flag can cover unrecoverable Error cases.
+        var status = await TryGetUnitStatusAsync(actorProxyFactory, entry.ActorId, logger, id, cancellationToken);
+
+        if (status != UnitStatus.Draft && status != UnitStatus.Stopped)
+        {
+            return Results.Conflict(new
+            {
+                Error = $"Unit '{id}' is {status}; stop it before deleting.",
+                CurrentStatus = status.ToString(),
+                Hint = $"POST /api/v1/units/{id}/stop",
+            });
+        }
+
         await directoryService.UnregisterAsync(address, cancellationToken);
 
         return Results.NoContent();
