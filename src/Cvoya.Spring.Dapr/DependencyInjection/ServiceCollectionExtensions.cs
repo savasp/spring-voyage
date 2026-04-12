@@ -93,8 +93,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IDaprSidecarManager, DaprSidecarManager>();
         services.AddSingleton<ContainerLifecycleManager>();
         services.TryAddSingleton<IUnitContainerLifecycle, UnitContainerLifecycle>();
-        services.AddKeyedSingleton<IExecutionDispatcher, HostedExecutionDispatcher>("hosted");
-        services.AddKeyedSingleton<IExecutionDispatcher, DelegatedExecutionDispatcher>("delegated");
+        services.AddSingleton<IExecutionDispatcher, DelegatedExecutionDispatcher>();
 
         // Initiative — use TryAdd so the private repo can override any implementation.
         services.TryAddSingleton<ICancellationManager, CancellationManager>();

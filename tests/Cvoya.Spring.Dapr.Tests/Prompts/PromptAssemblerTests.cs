@@ -66,8 +66,7 @@ public class PromptAssemblerTests
             Skills: [new Skill("review", "Code review", [])],
             PriorMessages: [CreateMessage("prior msg")],
             LastCheckpoint: "checkpoint-1",
-            AgentInstructions: "You are a code reviewer.",
-            Mode: ExecutionMode.Hosted);
+            AgentInstructions: "You are a code reviewer.");
 
         var result = await _assembler.AssembleAsync(message, TestContext.Current.CancellationToken);
 
@@ -100,8 +99,7 @@ public class PromptAssemblerTests
             Skills: null,
             PriorMessages: [],
             LastCheckpoint: null,
-            AgentInstructions: null,
-            Mode: ExecutionMode.Hosted);
+            AgentInstructions: null);
 
         var result = await _assembler.AssembleAsync(message, TestContext.Current.CancellationToken);
 
@@ -109,84 +107,6 @@ public class PromptAssemblerTests
         result.Should().NotContain("## Unit Context");
         result.Should().NotContain("## Conversation Context");
         result.Should().NotContain("## Agent Instructions");
-    }
-
-    /// <summary>
-    /// Verifies that <see cref="PromptAssembler.AssembleForToolsAsync"/> surfaces the tools
-    /// from <see cref="PromptAssemblyContext.GetAllTools"/> and builds a user turn from the
-    /// message payload text.
-    /// </summary>
-    [Fact]
-    public async Task AssembleForToolsAsync_FlowsSkillToolsAndSeedsUserTurn()
-    {
-        var message = CreateMessage("please help");
-        var tool = new ToolDefinition(
-            "github_read_file",
-            "Reads a file",
-            JsonSerializer.SerializeToElement(new { type = "object" }));
-        _assembler.Context = new PromptAssemblyContext(
-            Members: [],
-            Policies: null,
-            Skills: [new Skill("github", "GitHub tools", [tool])],
-            PriorMessages: [],
-            LastCheckpoint: null,
-            AgentInstructions: null,
-            Mode: ExecutionMode.Hosted);
-
-        var result = await _assembler.AssembleForToolsAsync(message, TestContext.Current.CancellationToken);
-
-        result.SystemPrompt.Should().Contain("## Platform Instructions");
-        result.Tools.Should().HaveCount(1);
-        result.Tools[0].Name.Should().Be("github_read_file");
-        result.InitialTurns.Should().HaveCount(1);
-        result.InitialTurns[0].Role.Should().Be("user");
-        result.InitialTurns[0].Content.Should().HaveCount(1);
-        result.InitialTurns[0].Content[0].Should().BeOfType<ContentBlock.TextBlock>()
-            .Which.Text.Should().Be("please help");
-    }
-
-    /// <summary>
-    /// Verifies that <see cref="PromptAssembler.AssembleForToolsAsync"/> returns an empty
-    /// tool list when no context is set.
-    /// </summary>
-    [Fact]
-    public async Task AssembleForToolsAsync_NoContext_ReturnsEmptyTools()
-    {
-        var message = CreateMessage("hi");
-
-        var result = await _assembler.AssembleForToolsAsync(message, TestContext.Current.CancellationToken);
-
-        result.Tools.Should().BeEmpty();
-        result.InitialTurns.Should().HaveCount(1);
-    }
-
-    /// <summary>
-    /// Verifies that <see cref="PromptAssemblyContext.GetAllTools"/> flattens tools across
-    /// multiple skills.
-    /// </summary>
-    [Fact]
-    public void GetAllTools_FlattensAcrossSkills()
-    {
-        var context = new PromptAssemblyContext(
-            Members: [],
-            Policies: null,
-            Skills:
-            [
-                new Skill("a", "first", [new ToolDefinition("t1", "", JsonSerializer.SerializeToElement(new { }))]),
-                new Skill("b", "second",
-                [
-                    new ToolDefinition("t2", "", JsonSerializer.SerializeToElement(new { })),
-                    new ToolDefinition("t3", "", JsonSerializer.SerializeToElement(new { })),
-                ]),
-            ],
-            PriorMessages: [],
-            LastCheckpoint: null,
-            AgentInstructions: null,
-            Mode: ExecutionMode.Hosted);
-
-        var tools = context.GetAllTools();
-
-        tools.Select(t => t.Name).Should().BeEquivalentTo(["t1", "t2", "t3"]);
     }
 
     /// <summary>
@@ -204,8 +124,7 @@ public class PromptAssemblerTests
             ])],
             PriorMessages: [],
             LastCheckpoint: null,
-            AgentInstructions: null,
-            Mode: ExecutionMode.Hosted);
+            AgentInstructions: null);
 
         var result = await _assembler.AssembleAsync(message, TestContext.Current.CancellationToken);
 

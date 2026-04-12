@@ -5,7 +5,6 @@ namespace Cvoya.Spring.Dapr.Tests.Execution;
 
 using System.Text.Json;
 
-using Cvoya.Spring.Core;
 using Cvoya.Spring.Core.Execution;
 using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Dapr.Execution;
@@ -49,7 +48,7 @@ public class DelegatedExecutionDispatcherTests
     }
 
     [Fact]
-    public async Task DispatchAsync_DelegatedMode_CallsContainerRuntime()
+    public async Task DispatchAsync_CallsContainerRuntime()
     {
         var message = CreateMessage();
         var prompt = "assembled prompt";
@@ -59,23 +58,11 @@ public class DelegatedExecutionDispatcherTests
         _containerRuntime.RunAsync(Arg.Any<ContainerConfig>(), Arg.Any<CancellationToken>())
             .Returns(new ContainerResult("spring-exec-123", 0, "output", ""));
 
-        await _dispatcher.DispatchAsync(message, ExecutionMode.Delegated, TestContext.Current.CancellationToken);
+        await _dispatcher.DispatchAsync(message, TestContext.Current.CancellationToken);
 
         await _containerRuntime.Received(1).RunAsync(
             Arg.Any<ContainerConfig>(),
             Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task DispatchAsync_HostedMode_ThrowsSpringException()
-    {
-        var message = CreateMessage();
-
-        var act = () => _dispatcher.DispatchAsync(
-            message, ExecutionMode.Hosted, TestContext.Current.CancellationToken);
-
-        await act.Should().ThrowAsync<SpringException>()
-            .WithMessage("*Delegated*Hosted*");
     }
 
     [Fact]
@@ -89,8 +76,7 @@ public class DelegatedExecutionDispatcherTests
         _containerRuntime.RunAsync(Arg.Any<ContainerConfig>(), Arg.Any<CancellationToken>())
             .Returns(new ContainerResult("spring-exec-456", 0, "success output", ""));
 
-        var result = await _dispatcher.DispatchAsync(
-            message, ExecutionMode.Delegated, TestContext.Current.CancellationToken);
+        var result = await _dispatcher.DispatchAsync(message, TestContext.Current.CancellationToken);
 
         result.Should().NotBeNull();
         result!.From.Should().Be(message.To);
@@ -113,8 +99,7 @@ public class DelegatedExecutionDispatcherTests
         _containerRuntime.RunAsync(Arg.Any<ContainerConfig>(), Arg.Any<CancellationToken>())
             .Returns(new ContainerResult("spring-exec-789", 1, "", "error occurred"));
 
-        var result = await _dispatcher.DispatchAsync(
-            message, ExecutionMode.Delegated, TestContext.Current.CancellationToken);
+        var result = await _dispatcher.DispatchAsync(message, TestContext.Current.CancellationToken);
 
         result.Should().NotBeNull();
         var payload = result!.Payload.Deserialize<JsonElement>();
@@ -139,7 +124,7 @@ public class DelegatedExecutionDispatcherTests
                 return new ContainerResult("spring-exec-cancel", 0, "", "");
             });
 
-        var act = () => _dispatcher.DispatchAsync(message, ExecutionMode.Delegated, cts.Token);
+        var act = () => _dispatcher.DispatchAsync(message, cts.Token);
 
         await act.Should().ThrowAsync<OperationCanceledException>();
     }
@@ -155,8 +140,7 @@ public class DelegatedExecutionDispatcherTests
         _containerRuntime.RunAsync(Arg.Any<ContainerConfig>(), Arg.Any<CancellationToken>())
             .Returns(new ContainerResult("spring-exec-env", 0, "output", ""));
 
-        await _dispatcher.DispatchAsync(
-            message, ExecutionMode.Delegated, TestContext.Current.CancellationToken);
+        await _dispatcher.DispatchAsync(message, TestContext.Current.CancellationToken);
 
         await _containerRuntime.Received(1).RunAsync(
             Arg.Is<ContainerConfig>(c =>
