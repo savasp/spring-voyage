@@ -6,16 +6,18 @@ namespace Cvoya.Spring.Core.Execution;
 using Cvoya.Spring.Core.Messaging;
 
 /// <summary>
-/// Dispatches work to the appropriate execution environment based on the execution mode.
+/// Dispatches work to an external agent runtime (e.g., a container running a
+/// configured AI agent tool such as Claude Code or Codex). Spring Voyage does
+/// not implement its own agent loop — the dispatcher is a thin wrapper over the
+/// process/container spawner.
 /// </summary>
 public interface IExecutionDispatcher
 {
     /// <summary>
-    /// Dispatches a message for execution in the specified mode.
+    /// Dispatches a message for execution by an external agent runtime.
     /// </summary>
     /// <param name="message">The message containing the work to dispatch.</param>
-    /// <param name="mode">The execution mode determining where the work runs.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>An optional response message.</returns>
-    Task<Message?> DispatchAsync(Message message, ExecutionMode mode, CancellationToken cancellationToken = default);
+    Task<Message?> DispatchAsync(Message message, CancellationToken cancellationToken = default);
 }

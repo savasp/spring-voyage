@@ -72,14 +72,12 @@ public class ServiceCollectionExtensionsTests
     }
 
     [Fact]
-    public void AddCvoyaSpringDapr_RegistersExecutionDispatchers()
+    public void AddCvoyaSpringDapr_RegistersExecutionDispatcher()
     {
         using var provider = BuildProvider();
 
-        var hosted = provider.GetKeyedService<IExecutionDispatcher>("hosted");
-        var delegated = provider.GetKeyedService<IExecutionDispatcher>("delegated");
+        var dispatcher = provider.GetService<IExecutionDispatcher>();
 
-        hosted.Should().NotBeNull().And.BeOfType<Cvoya.Spring.Dapr.Execution.HostedExecutionDispatcher>();
-        delegated.Should().NotBeNull().And.BeOfType<Cvoya.Spring.Dapr.Execution.DelegatedExecutionDispatcher>();
+        dispatcher.Should().NotBeNull().And.BeOfType<Cvoya.Spring.Dapr.Execution.DelegatedExecutionDispatcher>();
     }
 }

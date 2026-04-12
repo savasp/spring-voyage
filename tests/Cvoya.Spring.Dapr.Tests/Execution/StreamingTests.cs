@@ -111,30 +111,6 @@ public class StreamingTests
     }
 
     [Fact]
-    public async Task StreamCompleteAsync_ToolUse_YieldsToolCallStartAndResult()
-    {
-        var sseContent = BuildSseResponse(
-            """{"type":"message_start","message":{"usage":{"input_tokens":5}}}""",
-            """{"type":"content_block_start","content_block":{"type":"tool_use","name":"get_weather","input":{}}}""",
-            """{"type":"content_block_stop"}""",
-            """{"type":"message_delta","usage":{"output_tokens":3},"delta":{"stop_reason":"tool_use"}}""");
-
-        var handler = new SseHttpMessageHandler(sseContent, HttpStatusCode.OK);
-        var provider = CreateProvider(handler);
-
-        var events = new List<StreamEvent>();
-        await foreach (var evt in provider.StreamCompleteAsync("test prompt", TestContext.Current.CancellationToken))
-        {
-            events.Add(evt);
-        }
-
-        events.OfType<StreamEvent.ToolCallStart>().Should().ContainSingle()
-            .Which.ToolName.Should().Be("get_weather");
-        events.OfType<StreamEvent.ToolCallResult>().Should().ContainSingle()
-            .Which.ToolName.Should().Be("get_weather");
-    }
-
-    [Fact]
     public async Task StreamCompleteAsync_ErrorResponse_ThrowsSpringException()
     {
         var handler = new SseHttpMessageHandler(

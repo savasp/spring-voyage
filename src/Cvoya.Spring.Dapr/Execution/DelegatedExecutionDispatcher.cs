@@ -5,15 +5,16 @@ namespace Cvoya.Spring.Dapr.Execution;
 
 using System.Text.Json;
 
-using Cvoya.Spring.Core;
 using Cvoya.Spring.Core.Execution;
 using Cvoya.Spring.Core.Messaging;
 
 using Microsoft.Extensions.Logging;
 
 /// <summary>
-/// Dispatches agent work to external containers via the delegated execution model.
-/// Only handles <see cref="ExecutionMode.Delegated"/>; throws for other modes.
+/// Dispatches agent work to an external agent-tool container. The container
+/// (e.g., a configured Claude Code or Codex image) receives the assembled
+/// system prompt via the <c>SPRING_SYSTEM_PROMPT</c> environment variable and
+/// runs its own agent loop; Spring Voyage does not implement one.
 /// </summary>
 public class DelegatedExecutionDispatcher(
     IContainerRuntime containerRuntime,
@@ -22,27 +23,13 @@ public class DelegatedExecutionDispatcher(
 {
     private readonly ILogger _logger = loggerFactory.CreateLogger<DelegatedExecutionDispatcher>();
 
-    /// <summary>
-    /// Dispatches a message for delegated execution in a container.
-    /// </summary>
-    /// <param name="message">The message containing the work to dispatch.</param>
-    /// <param name="mode">The execution mode. Must be <see cref="ExecutionMode.Delegated"/>.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
-    /// <returns>A response message containing the container output.</returns>
-    /// <exception cref="SpringException">Thrown when the execution mode is not Delegated.</exception>
+    /// <inheritdoc />
     public async Task<Message?> DispatchAsync(
         Message message,
-        ExecutionMode mode,
         CancellationToken cancellationToken = default)
     {
-        if (mode != ExecutionMode.Delegated)
-        {
-            throw new SpringException(
-                $"DelegatedExecutionDispatcher only supports ExecutionMode.Delegated, but received {mode}.");
-        }
-
         _logger.LogInformation(
-            "Dispatching delegated execution for message {MessageId} to {Destination}",
+            "Dispatching execution for message {MessageId} to {Destination}",
             message.Id, message.To);
 
         var prompt = await promptAssembler.AssembleAsync(message, cancellationToken);
