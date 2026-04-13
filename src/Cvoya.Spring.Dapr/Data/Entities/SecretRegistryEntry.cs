@@ -35,6 +35,14 @@ public class SecretRegistryEntry
     /// </summary>
     public string StoreKey { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Who owns the storage slot that <see cref="StoreKey"/> points at.
+    /// This distinction is critical on delete / rotate paths: the store
+    /// layer must only mutate slots the platform owns — see
+    /// <see cref="SecretOrigin"/> for the full semantics.
+    /// </summary>
+    public SecretOrigin Origin { get; set; }
+
     /// <summary>Creation timestamp (UTC).</summary>
     public DateTimeOffset CreatedAt { get; set; }
 }

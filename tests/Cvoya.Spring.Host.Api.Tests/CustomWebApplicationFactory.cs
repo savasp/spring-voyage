@@ -9,6 +9,7 @@ using Cvoya.Spring.Core.Capabilities;
 using Cvoya.Spring.Core.Costs;
 using Cvoya.Spring.Core.Directory;
 using Cvoya.Spring.Core.Observability;
+using Cvoya.Spring.Core.Secrets;
 using Cvoya.Spring.Core.State;
 using Cvoya.Spring.Core.Units;
 using Cvoya.Spring.Dapr.Auth;
@@ -92,6 +93,50 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
     /// </summary>
     public IConnectorType StubConnectorType { get; } = CreateStubConnector();
 
+    /// <summary>
+    /// Gets the substitute <see cref="ISecretStore"/> wired into the test
+    /// DI container. Tests that need to observe (or control) store-layer
+    /// writes and deletes configure this stub instead of using a real
+    /// Dapr-backed store. <c>WriteAsync</c> is pre-configured to return a
+    /// fresh opaque GUID on each call so pass-through writes produce a
+    /// valid, unique, opaque store key.
+    /// </summary>
+    public ISecretStore SecretStore { get; } = CreateStubSecretStore();
+
+    /// <summary>
+    /// Gets the substitute <see cref="ISecretAccessPolicy"/> wired into
+    /// the test DI container. Defaults to allow-all; tests that exercise
+    /// the 403 path re-configure it per call.
+    /// </summary>
+    public ISecretAccessPolicy SecretAccessPolicy { get; } = CreatePermissiveAccessPolicy();
+
+    private static ISecretStore CreateStubSecretStore()
+    {
+        var stub = Substitute.For<ISecretStore>();
+        // Return a fresh opaque GUID on each WriteAsync so pass-through
+        // flows produce unique, opaque store keys — mirroring the real
+        // Dapr-backed store's contract.
+        stub.WriteAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromResult(Guid.NewGuid().ToString("N")));
+        stub.ReadAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<string?>(null));
+        stub.DeleteAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
+        return stub;
+    }
+
+    private static ISecretAccessPolicy CreatePermissiveAccessPolicy()
+    {
+        var stub = Substitute.For<ISecretAccessPolicy>();
+        stub.IsAuthorizedAsync(
+                Arg.Any<SecretAccessAction>(),
+                Arg.Any<SecretScope>(),
+                Arg.Any<string>(),
+                Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(true));
+        return stub;
+    }
+
     private static IConnectorType CreateStubConnector()
     {
         var stub = Substitute.For<IConnectorType>();
@@ -148,6 +193,8 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
                 typeof(IUnitConnectorConfigStore),
                 typeof(IUnitConnectorRuntimeStore),
                 typeof(IConnectorType),
+                typeof(ISecretStore),
+                typeof(ISecretAccessPolicy),
             };
 
             var descriptors = services
@@ -171,6 +218,8 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
             services.AddSingleton(ConnectorConfigStore);
             services.AddSingleton(ConnectorRuntimeStore);
             services.AddSingleton(StubConnectorType);
+            services.AddSingleton(SecretStore);
+            services.AddSingleton(SecretAccessPolicy);
             services.AddSingleton(new DirectoryCache());
 
             // Remove and re-register permission service.

@@ -42,7 +42,7 @@ public class EfSecretRegistryTests : IDisposable
         var ct = TestContext.Current.CancellationToken;
         var sut = NewRegistry(tenant);
 
-        await sut.RegisterAsync(new SecretRef(SecretScope.Unit, "u1", "foo"), "sk-abc", ct);
+        await sut.RegisterAsync(new SecretRef(SecretScope.Unit, "u1", "foo"), "sk-abc", SecretOrigin.PlatformOwned, ct);
 
         var found = await sut.LookupStoreKeyAsync(
             new SecretRef(SecretScope.Unit, "u1", "foo"), ct);
@@ -59,7 +59,7 @@ public class EfSecretRegistryTests : IDisposable
         // see it — this is the mandatory cross-tenant isolation test
         // called out in the PR spec.
         var t2 = NewRegistry("t2");
-        await t2.RegisterAsync(new SecretRef(SecretScope.Unit, "u1", "foo"), "sk-xyz", ct);
+        await t2.RegisterAsync(new SecretRef(SecretScope.Unit, "u1", "foo"), "sk-xyz", SecretOrigin.PlatformOwned, ct);
 
         var t1 = NewRegistry("t1");
         var found = await t1.LookupStoreKeyAsync(
@@ -76,9 +76,9 @@ public class EfSecretRegistryTests : IDisposable
         var t1 = NewRegistry("t1");
         var t2 = NewRegistry("t2");
 
-        await t1.RegisterAsync(new SecretRef(SecretScope.Unit, "u1", "a"), "k-t1-a", ct);
-        await t1.RegisterAsync(new SecretRef(SecretScope.Unit, "u1", "b"), "k-t1-b", ct);
-        await t2.RegisterAsync(new SecretRef(SecretScope.Unit, "u1", "c"), "k-t2-c", ct);
+        await t1.RegisterAsync(new SecretRef(SecretScope.Unit, "u1", "a"), "k-t1-a", SecretOrigin.PlatformOwned, ct);
+        await t1.RegisterAsync(new SecretRef(SecretScope.Unit, "u1", "b"), "k-t1-b", SecretOrigin.PlatformOwned, ct);
+        await t2.RegisterAsync(new SecretRef(SecretScope.Unit, "u1", "c"), "k-t2-c", SecretOrigin.PlatformOwned, ct);
 
         var t1List = await t1.ListAsync(SecretScope.Unit, "u1", ct);
         var t2List = await t2.ListAsync(SecretScope.Unit, "u1", ct);
@@ -95,8 +95,8 @@ public class EfSecretRegistryTests : IDisposable
         var ct = TestContext.Current.CancellationToken;
         var sut = NewRegistry(tenant);
 
-        await sut.RegisterAsync(new SecretRef(SecretScope.Unit, "u1", "foo"), "sk-1", ct);
-        await sut.RegisterAsync(new SecretRef(SecretScope.Unit, "u1", "foo"), "sk-2", ct);
+        await sut.RegisterAsync(new SecretRef(SecretScope.Unit, "u1", "foo"), "sk-1", SecretOrigin.PlatformOwned, ct);
+        await sut.RegisterAsync(new SecretRef(SecretScope.Unit, "u1", "foo"), "sk-2", SecretOrigin.PlatformOwned, ct);
 
         var found = await sut.LookupStoreKeyAsync(
             new SecretRef(SecretScope.Unit, "u1", "foo"), ct);
@@ -120,9 +120,9 @@ public class EfSecretRegistryTests : IDisposable
         // Register identical (Unit, "u1", "foo") in both tenants; only
         // the one in the deleting tenant should disappear.
         await NewRegistry("t1").RegisterAsync(
-            new SecretRef(SecretScope.Unit, "u1", "foo"), "k-t1", ct);
+            new SecretRef(SecretScope.Unit, "u1", "foo"), "k-t1", SecretOrigin.PlatformOwned, ct);
         await NewRegistry("t2").RegisterAsync(
-            new SecretRef(SecretScope.Unit, "u1", "foo"), "k-t2", ct);
+            new SecretRef(SecretScope.Unit, "u1", "foo"), "k-t2", SecretOrigin.PlatformOwned, ct);
 
         var sut = NewRegistry(tenant);
         await sut.DeleteAsync(new SecretRef(SecretScope.Unit, "u1", "foo"), ct);
@@ -144,6 +144,63 @@ public class EfSecretRegistryTests : IDisposable
 
         // Should not throw.
         await sut.DeleteAsync(new SecretRef(SecretScope.Unit, "missing", "none"), ct);
+    }
+
+    [Theory]
+    [InlineData(SecretOrigin.PlatformOwned)]
+    [InlineData(SecretOrigin.ExternalReference)]
+    public async Task LookupAsync_ReturnsOrigin_AsRegistered(SecretOrigin origin)
+    {
+        // The origin field is load-bearing on the DELETE path — if the
+        // registry loses it, the store-layer delete gate in the endpoints
+        // becomes useless. Parameterise both values.
+        var ct = TestContext.Current.CancellationToken;
+        var sut = NewRegistry("t1");
+
+        await sut.RegisterAsync(
+            new SecretRef(SecretScope.Unit, "u1", "foo"), "sk-1", origin, ct);
+
+        var pointer = await sut.LookupAsync(
+            new SecretRef(SecretScope.Unit, "u1", "foo"), ct);
+
+        pointer.ShouldNotBeNull();
+        pointer!.StoreKey.ShouldBe("sk-1");
+        pointer.Origin.ShouldBe(origin);
+    }
+
+    [Fact]
+    public async Task LookupAsync_MissingRef_ReturnsNull()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var sut = NewRegistry("t1");
+
+        var pointer = await sut.LookupAsync(
+            new SecretRef(SecretScope.Unit, "u1", "nope"), ct);
+
+        pointer.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task Register_SameTriple_Updates_Origin_OnReplacement()
+    {
+        // Re-registration must replace the origin as well as the store
+        // key — otherwise a platform-owned → external-reference switch
+        // (or vice versa) would leave stale origin data that would
+        // mis-gate the DELETE path.
+        var ct = TestContext.Current.CancellationToken;
+        var sut = NewRegistry("t1");
+
+        await sut.RegisterAsync(
+            new SecretRef(SecretScope.Unit, "u1", "foo"), "sk-1", SecretOrigin.PlatformOwned, ct);
+        await sut.RegisterAsync(
+            new SecretRef(SecretScope.Unit, "u1", "foo"), "kv://ext/1", SecretOrigin.ExternalReference, ct);
+
+        var pointer = await sut.LookupAsync(
+            new SecretRef(SecretScope.Unit, "u1", "foo"), ct);
+
+        pointer.ShouldNotBeNull();
+        pointer!.StoreKey.ShouldBe("kv://ext/1");
+        pointer.Origin.ShouldBe(SecretOrigin.ExternalReference);
     }
 
     private EfSecretRegistry NewRegistry(string tenantId)

@@ -156,6 +156,11 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton<ISecretStore, DaprStateBackedSecretStore>();
         services.TryAddScoped<ISecretRegistry, EfSecretRegistry>();
         services.TryAddScoped<ISecretResolver, ComposedSecretResolver>();
+        // ISecretAccessPolicy: OSS default authorizes everything. The
+        // private cloud repo replaces this with a tenant-admin / platform-admin
+        // check driven by the authenticated principal — the endpoints only
+        // depend on the interface, so no endpoint code has to change.
+        services.TryAddSingleton<ISecretAccessPolicy, AllowAllSecretAccessPolicy>();
 
         // Observability
         services.AddSingleton<ActivityEventBus>();

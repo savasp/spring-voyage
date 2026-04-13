@@ -27,6 +27,7 @@ internal class SecretRegistryEntryConfiguration : IEntityTypeConfiguration<Secre
         builder.Property(e => e.OwnerId).HasColumnName("owner_id").IsRequired().HasMaxLength(256);
         builder.Property(e => e.Name).HasColumnName("name").IsRequired().HasMaxLength(256);
         builder.Property(e => e.StoreKey).HasColumnName("store_key").IsRequired().HasMaxLength(512);
+        builder.Property(e => e.Origin).HasColumnName("origin").IsRequired().HasConversion<int>();
         builder.Property(e => e.CreatedAt).HasColumnName("created_at").IsRequired();
 
         builder.HasIndex(e => new { e.TenantId, e.Scope, e.OwnerId, e.Name })
