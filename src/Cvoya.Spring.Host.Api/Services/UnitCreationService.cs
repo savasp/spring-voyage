@@ -5,10 +5,12 @@ namespace Cvoya.Spring.Host.Api.Services;
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Cvoya.Spring.Connectors;
 using Cvoya.Spring.Core.Directory;
 using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Core.Units;
@@ -20,6 +22,8 @@ using Cvoya.Spring.Manifest;
 using global::Dapr.Actors;
 using global::Dapr.Actors.Client;
 
+using Microsoft.Extensions.Logging;
+
 /// <summary>
 /// Default <see cref="IUnitCreationService"/> implementation.
 ///
@@ -28,12 +32,34 @@ using global::Dapr.Actors.Client;
 /// and <see cref="Endpoints.UnitEndpoints.AddMemberAsync"/> used to do inline;
 /// this service just packages them so the three create endpoints share a path.
 /// </summary>
-public class UnitCreationService(
-    IDirectoryService directoryService,
-    IActorProxyFactory actorProxyFactory,
-    MessageRouter messageRouter)
-    : IUnitCreationService
+public class UnitCreationService : IUnitCreationService
 {
+    private readonly IDirectoryService _directoryService;
+    private readonly IActorProxyFactory _actorProxyFactory;
+    private readonly MessageRouter _messageRouter;
+    private readonly IUnitConnectorConfigStore _connectorConfigStore;
+    private readonly IReadOnlyList<IConnectorType> _connectorTypes;
+    private readonly ILogger<UnitCreationService> _logger;
+
+    /// <summary>
+    /// Creates a new <see cref="UnitCreationService"/>.
+    /// </summary>
+    public UnitCreationService(
+        IDirectoryService directoryService,
+        IActorProxyFactory actorProxyFactory,
+        MessageRouter messageRouter,
+        IUnitConnectorConfigStore connectorConfigStore,
+        IEnumerable<IConnectorType> connectorTypes,
+        ILoggerFactory loggerFactory)
+    {
+        _directoryService = directoryService;
+        _actorProxyFactory = actorProxyFactory;
+        _messageRouter = messageRouter;
+        _connectorConfigStore = connectorConfigStore;
+        _connectorTypes = connectorTypes.ToList();
+        _logger = loggerFactory.CreateLogger<UnitCreationService>();
+    }
+
     /// <inheritdoc />
     public Task<UnitCreationResult> CreateAsync(
         CreateUnitRequest request,
@@ -46,13 +72,15 @@ public class UnitCreationService(
             color: request.Color,
             members: Array.Empty<MemberManifest>(),
             warnings: new List<string>(),
+            connector: request.Connector,
             cancellationToken);
 
     /// <inheritdoc />
     public Task<UnitCreationResult> CreateFromManifestAsync(
         UnitManifest manifest,
         UnitCreationOverrides overrides,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        UnitConnectorBindingRequest? connector = null)
     {
         var name = manifest.Name!;
         var displayName = !string.IsNullOrWhiteSpace(overrides.DisplayName)
@@ -78,6 +106,7 @@ public class UnitCreationService(
             color,
             manifest.Members ?? new List<MemberManifest>(),
             warnings,
+            connector,
             cancellationToken);
     }
 
@@ -89,8 +118,18 @@ public class UnitCreationService(
         string? color,
         IReadOnlyList<MemberManifest> members,
         List<string> warnings,
+        UnitConnectorBindingRequest? connector,
         CancellationToken cancellationToken)
     {
+        // Validate the connector binding request up-front — before we touch
+        // any server-side state — so the caller sees a 400/404 without a
+        // rollback dance happening under the hood.
+        IConnectorType? targetConnector = null;
+        if (connector is not null)
+        {
+            targetConnector = ResolveConnectorType(connector);
+        }
+
         var actorId = Guid.NewGuid().ToString();
         var address = new Address("unit", name);
         var entry = new DirectoryEntry(
@@ -101,71 +140,168 @@ public class UnitCreationService(
             null,
             DateTimeOffset.UtcNow);
 
-        await directoryService.RegisterAsync(entry, cancellationToken);
+        await _directoryService.RegisterAsync(entry, cancellationToken);
 
-        // DisplayName/Description live on the directory entity; only forward
-        // the actor-owned fields (Model, Color) to the metadata write to avoid
-        // a double-write — mirrors UnitEndpoints.CreateUnitAsync.
-        var metadata = new UnitMetadata(
-            DisplayName: null,
-            Description: null,
-            Model: model,
-            Color: color);
-
-        if (metadata.Model is not null || metadata.Color is not null)
+        try
         {
-            var proxy = actorProxyFactory.CreateActorProxy<IUnitActor>(
-                new ActorId(actorId), nameof(IUnitActor));
-            await proxy.SetMetadataAsync(metadata, cancellationToken);
-        }
+            // DisplayName/Description live on the directory entity; only forward
+            // the actor-owned fields (Model, Color) to the metadata write to avoid
+            // a double-write — mirrors UnitEndpoints.CreateUnitAsync.
+            var metadata = new UnitMetadata(
+                DisplayName: null,
+                Description: null,
+                Model: model,
+                Color: color);
 
-        var membersAdded = 0;
-        foreach (var member in members)
-        {
-            var resolved = ResolveMemberAddress(member);
-            if (resolved is null)
+            if (metadata.Model is not null || metadata.Color is not null)
             {
-                warnings.Add("member entry had no 'agent' or 'unit' field; skipped");
-                continue;
+                var proxy = _actorProxyFactory.CreateActorProxy<IUnitActor>(
+                    new ActorId(actorId), nameof(IUnitActor));
+                await proxy.SetMetadataAsync(metadata, cancellationToken);
             }
 
-            var payload = JsonSerializer.SerializeToElement(new
+            var membersAdded = 0;
+            foreach (var member in members)
             {
-                Action = "AddMember",
-                MemberScheme = resolved.Value.Scheme,
-                MemberPath = resolved.Value.Path,
-            });
+                var resolved = ResolveMemberAddress(member);
+                if (resolved is null)
+                {
+                    warnings.Add("member entry had no 'agent' or 'unit' field; skipped");
+                    continue;
+                }
 
-            var message = new Message(
-                Guid.NewGuid(),
-                new Address("human", "api"),
-                address,
-                MessageType.Domain,
-                null,
-                payload,
-                DateTimeOffset.UtcNow);
+                var payload = JsonSerializer.SerializeToElement(new
+                {
+                    Action = "AddMember",
+                    MemberScheme = resolved.Value.Scheme,
+                    MemberPath = resolved.Value.Path,
+                });
 
-            var result = await messageRouter.RouteAsync(message, cancellationToken);
-            if (!result.IsSuccess)
-            {
-                warnings.Add(
-                    $"failed to add member {resolved.Value.Scheme}:{resolved.Value.Path}: {result.Error!.Message}");
-                continue;
+                var message = new Message(
+                    Guid.NewGuid(),
+                    new Address("human", "api"),
+                    address,
+                    MessageType.Domain,
+                    null,
+                    payload,
+                    DateTimeOffset.UtcNow);
+
+                var result = await _messageRouter.RouteAsync(message, cancellationToken);
+                if (!result.IsSuccess)
+                {
+                    warnings.Add(
+                        $"failed to add member {resolved.Value.Scheme}:{resolved.Value.Path}: {result.Error!.Message}");
+                    continue;
+                }
+                membersAdded++;
             }
-            membersAdded++;
+
+            // Bind the connector *after* the actor is reachable — the store
+            // talks to the unit actor, which needs the directory entry in
+            // place. A failure here rolls the whole creation back (below)
+            // so the user never sees a half-configured unit.
+            if (targetConnector is not null)
+            {
+                try
+                {
+                    await _connectorConfigStore.SetAsync(
+                        name,
+                        targetConnector.TypeId,
+                        connector!.Config,
+                        cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    throw new UnitCreationBindingException(
+                        UnitCreationBindingFailureReason.StoreFailure,
+                        $"Failed to bind unit '{name}' to connector '{targetConnector.Slug}': {ex.Message}",
+                        ex);
+                }
+            }
+
+            var response = new UnitResponse(
+                entry.ActorId,
+                entry.Address.Path,
+                entry.DisplayName,
+                entry.Description,
+                entry.RegisteredAt,
+                UnitStatus.Draft,
+                metadata.Model,
+                metadata.Color);
+
+            return new UnitCreationResult(response, warnings, membersAdded);
+        }
+        catch (UnitCreationBindingException)
+        {
+            await TryRollbackAsync(address, name, cancellationToken);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Best-effort rollback: unregisters the directory entry so the caller's
+    /// failed creation leaves nothing behind. We deliberately do NOT touch
+    /// the actor — absent a directory entry, its state is unreachable and
+    /// will be cleared on the next actor reactivation. Unit-scoped secrets
+    /// are not yet provisioned at this point (the connector binding is the
+    /// last step), so no additional cleanup is needed.
+    /// </summary>
+    private async Task TryRollbackAsync(Address address, string name, CancellationToken ct)
+    {
+        try
+        {
+            await _directoryService.UnregisterAsync(address, ct);
+        }
+        catch (Exception ex)
+        {
+            // Surface but don't mask the original failure — the binding
+            // exception is about to be rethrown. The operator sees both in
+            // the logs.
+            _logger.LogWarning(ex,
+                "Rollback failed: could not unregister directory entry for unit '{UnitName}' after connector-binding failure. Manual cleanup may be required.",
+                name);
+        }
+    }
+
+    /// <summary>
+    /// Looks up the requested connector type by id (preferred) or slug, and
+    /// throws a typed exception when neither resolves. Also rejects requests
+    /// that supply neither identifier.
+    /// </summary>
+    private IConnectorType ResolveConnectorType(UnitConnectorBindingRequest connector)
+    {
+        if (connector.TypeId == Guid.Empty && string.IsNullOrWhiteSpace(connector.TypeSlug))
+        {
+            throw new UnitCreationBindingException(
+                UnitCreationBindingFailureReason.InvalidBindingRequest,
+                "Connector binding requires either 'typeId' or 'typeSlug'.");
         }
 
-        var response = new UnitResponse(
-            entry.ActorId,
-            entry.Address.Path,
-            entry.DisplayName,
-            entry.Description,
-            entry.RegisteredAt,
-            UnitStatus.Draft,
-            metadata.Model,
-            metadata.Color);
+        if (connector.TypeId != Guid.Empty)
+        {
+            var byId = _connectorTypes.FirstOrDefault(c => c.TypeId == connector.TypeId);
+            if (byId is not null)
+            {
+                return byId;
+            }
+        }
 
-        return new UnitCreationResult(response, warnings, membersAdded);
+        if (!string.IsNullOrWhiteSpace(connector.TypeSlug))
+        {
+            var bySlug = _connectorTypes.FirstOrDefault(
+                c => string.Equals(c.Slug, connector.TypeSlug, StringComparison.OrdinalIgnoreCase));
+            if (bySlug is not null)
+            {
+                return bySlug;
+            }
+        }
+
+        var identifier = connector.TypeId != Guid.Empty
+            ? connector.TypeId.ToString()
+            : connector.TypeSlug!;
+        throw new UnitCreationBindingException(
+            UnitCreationBindingFailureReason.UnknownConnectorType,
+            $"Connector '{identifier}' is not registered on this server.");
     }
 
     private static (string Scheme, string Path)? ResolveMemberAddress(MemberManifest member)

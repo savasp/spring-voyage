@@ -3,6 +3,8 @@
 
 namespace Cvoya.Spring.Host.Api.Models;
 
+using System.Text.Json;
+
 using Cvoya.Spring.Core.Units;
 
 /// <summary>
@@ -18,7 +20,8 @@ public record CreateUnitRequest(
     string DisplayName,
     string Description,
     string? Model = null,
-    string? Color = null);
+    string? Color = null,
+    UnitConnectorBindingRequest? Connector = null);
 
 /// <summary>
 /// Request body for updating mutable unit metadata. All fields are optional;
@@ -85,7 +88,8 @@ public record CreateUnitFromYamlRequest(
     string Yaml,
     string? DisplayName = null,
     string? Color = null,
-    string? Model = null);
+    string? Model = null,
+    UnitConnectorBindingRequest? Connector = null);
 
 /// <summary>
 /// Request body for <c>POST /api/v1/units/from-template</c>.
@@ -100,7 +104,8 @@ public record CreateUnitFromTemplateRequest(
     string Name,
     string? DisplayName = null,
     string? Color = null,
-    string? Model = null);
+    string? Model = null,
+    UnitConnectorBindingRequest? Connector = null);
 
 /// <summary>
 /// Response body for a unit created through the manifest-backed flows
@@ -164,3 +169,35 @@ public record UnitForceDeleteResponse(
     UnitStatus PreviousStatus,
     IReadOnlyList<string> TeardownFailures,
     string Message);
+
+/// <summary>
+/// Optional connector binding bundled into a unit-creation request so the
+/// wizard can atomically create the unit AND bind it to a connector in a
+/// single round-trip. Without this, the wizard has to take two calls (unit
+/// create → connector PUT), which leaves a partially-configured unit behind
+/// if the second call fails or the user abandons the flow.
+/// </summary>
+/// <remarks>
+/// The unit-creation service validates that <paramref name="TypeId"/> matches
+/// a registered connector and, if binding fails, rolls back the partial unit
+/// by removing the directory entry. The entire exchange produces ProblemDetails
+/// on the 4xx path.
+/// </remarks>
+/// <param name="TypeId">
+/// The connector type id (matches <c>IConnectorType.TypeId</c>).
+/// </param>
+/// <param name="TypeSlug">
+/// Optional convenience: the slug of the connector type. If
+/// <paramref name="TypeId"/> is <c>Guid.Empty</c> the service resolves the
+/// type via this slug instead. At least one of the two must be supplied.
+/// </param>
+/// <param name="Config">
+/// The typed config payload the connector understands. The shape is dictated
+/// by the target connector's <c>IConnectorType.ConfigType</c>; this layer
+/// stays type-agnostic and forwards it verbatim to the connector's config
+/// store.
+/// </param>
+public record UnitConnectorBindingRequest(
+    Guid TypeId,
+    string? TypeSlug,
+    JsonElement Config);

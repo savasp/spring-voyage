@@ -5,17 +5,22 @@
 # ship a web/ submodule holding its React/TypeScript UI (consumed by
 # src/Cvoya.Spring.Web via the @connector-<slug>/* tsconfig alias and
 # registered in src/Cvoya.Spring.Web/src/connectors/registry.ts). This
-# script enforces four invariants in CI:
+# script enforces the following invariants in CI:
 #
 #   1. Every connector package that has a web/ subdirectory declares the
-#      expected entry file (`connector-tab.tsx`) and a package.json
+#      expected tab entry file (`connector-tab.tsx`) and a package.json
 #      workspace manifest (so the npm workspace root can hoist its deps).
-#   2. The entry file exports a React component named `<PascalCase>ConnectorTab`
+#   2. The tab file exports a React component named `<PascalCase>ConnectorTab`
 #      derived from the package name (drift guard between the .NET slug
 #      and the component identifier).
-#   3. Every connector slug referenced from the Web registry has a
+#   3. If a connector also ships a wizard-step file
+#      (`connector-wizard-step.tsx`, optional — see #199), it must export
+#      `<PascalCase>ConnectorWizardStep`. A connector without this file
+#      is fine; the wizard falls back to a "configure after creation"
+#      hint for that connector.
+#   4. Every connector slug referenced from the Web registry has a
 #      matching on-disk submodule under the expected connector package.
-#   4. Every connector package with a web/ subdirectory has a registry
+#   5. Every connector package with a web/ subdirectory has a registry
 #      entry (no orphaned submodules that ship code the web app cannot
 #      discover).
 #
@@ -111,6 +116,20 @@ $slug"
     expected_component="${pkg_name}ConnectorTab"
     if ! grep -qE "export (function|const) ${expected_component}\b" "$entry_file"; then
       echo "::error file=$entry_file::Expected an export named '${expected_component}' (derived from the connector package name '${pkg_name}'). The web registry imports it by that name — rename the component or align the package name."
+      failed=1
+    fi
+  fi
+
+  # Optional wizard-step entry point (#199). A connector that ships a
+  # wizard-step UI must export `<PascalPackageName>ConnectorWizardStep`
+  # so the registry can statically import it. Absence of the file is
+  # fine — wizard Step 3 falls back to a "configure after creation"
+  # hint for that connector.
+  wizard_file="$web_dir/connector-wizard-step.tsx"
+  if [ -f "$wizard_file" ]; then
+    expected_wizard="${pkg_name}ConnectorWizardStep"
+    if ! grep -qE "export (function|const) ${expected_wizard}\b" "$wizard_file"; then
+      echo "::error file=$wizard_file::Expected an export named '${expected_wizard}' (derived from the connector package name '${pkg_name}'). The web registry imports it by that name for the create-unit wizard — rename the component or align the package name."
       failed=1
     fi
   fi

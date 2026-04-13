@@ -8,6 +8,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 
+using Cvoya.Spring.Connectors;
 using Cvoya.Spring.Core.Directory;
 using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Core.Units;
@@ -200,6 +201,157 @@ public class UnitCreationEndpointTests : IClassFixture<UnitCreationEndpointTests
     }
 
     [Fact]
+    public async Task CreateUnit_WithConnectorBinding_HappyPath_BindsAfterCreate()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        ResetMocks();
+        var proxy = Substitute.For<IUnitActor>();
+        proxy.GetStatusAsync(Arg.Any<CancellationToken>()).Returns(UnitStatus.Draft);
+        _factory.ActorProxyFactory
+            .CreateActorProxy<IUnitActor>(Arg.Any<ActorId>(), Arg.Any<string>())
+            .Returns(proxy);
+        _factory.DirectoryService
+            .RegisterAsync(Arg.Any<DirectoryEntry>(), Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
+
+        var configPayload = JsonSerializer.SerializeToElement(new { owner = "acme", repo = "platform" });
+        var request = new
+        {
+            name = "bundled-unit",
+            displayName = "Bundled Unit",
+            description = "created + bound in one call",
+            connector = new
+            {
+                typeSlug = "stub",
+                typeId = "00000000-0000-0000-0000-00000000beef",
+                config = configPayload,
+            },
+        };
+
+        var response = await _client.PostAsJsonAsync("/api/v1/units", request, ct);
+        response.StatusCode.ShouldBe(HttpStatusCode.Created);
+
+        await _factory.DirectoryService.Received(1).RegisterAsync(
+            Arg.Is<DirectoryEntry>(e => e.Address.Path == "bundled-unit"),
+            Arg.Any<CancellationToken>());
+        await _factory.ConnectorConfigStore.Received(1).SetAsync(
+            "bundled-unit",
+            new Guid("00000000-0000-0000-0000-00000000beef"),
+            Arg.Any<JsonElement>(),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task CreateUnit_WithUnknownConnector_Returns404_AndRollsBack()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        ResetMocks();
+        var proxy = Substitute.For<IUnitActor>();
+        proxy.GetStatusAsync(Arg.Any<CancellationToken>()).Returns(UnitStatus.Draft);
+        _factory.ActorProxyFactory
+            .CreateActorProxy<IUnitActor>(Arg.Any<ActorId>(), Arg.Any<string>())
+            .Returns(proxy);
+        _factory.DirectoryService
+            .RegisterAsync(Arg.Any<DirectoryEntry>(), Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
+
+        var request = new
+        {
+            name = "missing-connector-unit",
+            displayName = "X",
+            description = "",
+            connector = new
+            {
+                typeSlug = "does-not-exist",
+                typeId = "00000000-0000-0000-0000-000000000000",
+                config = JsonSerializer.SerializeToElement(new { }),
+            },
+        };
+
+        var response = await _client.PostAsJsonAsync("/api/v1/units", request, ct);
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+
+        // Validation is up-front — nothing should have been written or
+        // unregistered.
+        await _factory.DirectoryService.DidNotReceive().RegisterAsync(
+            Arg.Any<DirectoryEntry>(), Arg.Any<CancellationToken>());
+        await _factory.ConnectorConfigStore.DidNotReceive().SetAsync(
+            Arg.Any<string>(), Arg.Any<Guid>(), Arg.Any<JsonElement>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task CreateUnit_ConnectorBindingStoreFailure_RollsBackUnit()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        ResetMocks();
+        var proxy = Substitute.For<IUnitActor>();
+        proxy.GetStatusAsync(Arg.Any<CancellationToken>()).Returns(UnitStatus.Draft);
+        _factory.ActorProxyFactory
+            .CreateActorProxy<IUnitActor>(Arg.Any<ActorId>(), Arg.Any<string>())
+            .Returns(proxy);
+        _factory.DirectoryService
+            .RegisterAsync(Arg.Any<DirectoryEntry>(), Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
+        _factory.ConnectorConfigStore
+            .SetAsync(Arg.Any<string>(), Arg.Any<Guid>(), Arg.Any<JsonElement>(), Arg.Any<CancellationToken>())
+            .Returns<Task>(_ => throw new InvalidOperationException("store is down"));
+
+        var configPayload = JsonSerializer.SerializeToElement(new { owner = "acme", repo = "platform" });
+        var request = new
+        {
+            name = "rollback-unit",
+            displayName = "Rollback Unit",
+            description = "",
+            connector = new
+            {
+                typeSlug = "stub",
+                typeId = "00000000-0000-0000-0000-00000000beef",
+                config = configPayload,
+            },
+        };
+
+        var response = await _client.PostAsJsonAsync("/api/v1/units", request, ct);
+        response.StatusCode.ShouldBe(HttpStatusCode.BadGateway);
+
+        // The unit was registered, then rolled back via UnregisterAsync.
+        await _factory.DirectoryService.Received(1).RegisterAsync(
+            Arg.Is<DirectoryEntry>(e => e.Address.Path == "rollback-unit"),
+            Arg.Any<CancellationToken>());
+        await _factory.DirectoryService.Received(1).UnregisterAsync(
+            Arg.Is<Address>(a => a.Scheme == "unit" && a.Path == "rollback-unit"),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task CreateUnit_BindingRequestWithNoIdentifier_Returns400()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        ResetMocks();
+        var request = new
+        {
+            name = "invalid-binding-unit",
+            displayName = "X",
+            description = "",
+            connector = new
+            {
+                typeSlug = (string?)null,
+                typeId = "00000000-0000-0000-0000-000000000000",
+                config = JsonSerializer.SerializeToElement(new { }),
+            },
+        };
+
+        var response = await _client.PostAsJsonAsync("/api/v1/units", request, ct);
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+
+        await _factory.DirectoryService.DidNotReceive().RegisterAsync(
+            Arg.Any<DirectoryEntry>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task FromTemplate_PathTraversalRejected()
     {
         var ct = TestContext.Current.CancellationToken;
@@ -216,6 +368,13 @@ public class UnitCreationEndpointTests : IClassFixture<UnitCreationEndpointTests
     {
         _factory.DirectoryService.ClearReceivedCalls();
         _factory.ActorProxyFactory.ClearReceivedCalls();
+        _factory.ConnectorConfigStore.ClearReceivedCalls();
+        // Re-establish the happy-path default for ConnectorConfigStore.SetAsync.
+        // Tests that want the call to throw must re-configure it explicitly
+        // (see CreateUnit_ConnectorBindingStoreFailure_RollsBackUnit).
+        _factory.ConnectorConfigStore
+            .SetAsync(Arg.Any<string>(), Arg.Any<Guid>(), Arg.Any<JsonElement>(), Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
     }
 
     /// <summary>
