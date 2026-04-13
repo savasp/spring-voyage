@@ -12,6 +12,7 @@ using System.Threading.Tasks;
 
 using Cvoya.Spring.Cli;
 using Cvoya.Spring.Cli.Commands;
+using Cvoya.Spring.Manifest;
 
 using FluentAssertions;
 

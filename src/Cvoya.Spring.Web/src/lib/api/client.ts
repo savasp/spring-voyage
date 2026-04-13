@@ -7,13 +7,17 @@ import type {
   CostDashboardSummary,
   CostSummaryResponse,
   CreateCloneRequest,
+  CreateUnitFromTemplateRequest,
+  CreateUnitFromYamlRequest,
   InitiativeLevelResponse,
   InitiativePolicy,
   SetBudgetRequest,
+  UnitCreationResponse,
   UnitDashboardSummary,
   UnitDetailResponse,
   UnitResponse,
   UnitStatus,
+  UnitTemplateSummary,
 } from "./types";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
@@ -132,6 +136,12 @@ export const api = {
     model?: string;
     color?: string;
   }) => postJSON<UnitResponse>("/api/v1/units", body),
+  createUnitFromYaml: (body: CreateUnitFromYamlRequest) =>
+    postJSON<UnitCreationResponse>("/api/v1/units/from-yaml", body),
+  createUnitFromTemplate: (body: CreateUnitFromTemplateRequest) =>
+    postJSON<UnitCreationResponse>("/api/v1/units/from-template", body),
+  listUnitTemplates: () =>
+    fetchJSON<UnitTemplateSummary[]>("/api/v1/packages/templates"),
   updateUnit: (
     id: string,
     patch: Partial<{

@@ -13,6 +13,8 @@ using Cvoya.Spring.Dapr.Auth;
 using Cvoya.Spring.Dapr.Routing;
 using Cvoya.Spring.Host.Api.Auth;
 using Cvoya.Spring.Host.Api.Models;
+using Cvoya.Spring.Host.Api.Services;
+using Cvoya.Spring.Manifest;
 
 using global::Dapr.Actors;
 using global::Dapr.Actors.Client;
@@ -46,6 +48,14 @@ public static class UnitEndpoints
         group.MapPost("/", CreateUnitAsync)
             .WithName("CreateUnit")
             .WithSummary("Create a new unit");
+
+        group.MapPost("/from-yaml", CreateUnitFromYamlAsync)
+            .WithName("CreateUnitFromYaml")
+            .WithSummary("Create a unit by applying a raw unit manifest YAML document");
+
+        group.MapPost("/from-template", CreateUnitFromTemplateAsync)
+            .WithName("CreateUnitFromTemplate")
+            .WithSummary("Create a unit from one of the templates listed by /api/v1/packages/templates");
 
         group.MapPatch("/{id}", UpdateUnitAsync)
             .WithName("UpdateUnit")
@@ -195,41 +205,80 @@ public static class UnitEndpoints
 
     private static async Task<IResult> CreateUnitAsync(
         CreateUnitRequest request,
-        [FromServices] IDirectoryService directoryService,
-        [FromServices] IActorProxyFactory actorProxyFactory,
+        [FromServices] IUnitCreationService creationService,
         CancellationToken cancellationToken)
     {
-        var actorId = Guid.NewGuid().ToString();
-        var address = new Address("unit", request.Name);
-        var entry = new DirectoryEntry(
-            address,
-            actorId,
-            request.DisplayName,
-            request.Description,
-            null,
-            DateTimeOffset.UtcNow);
+        var result = await creationService.CreateAsync(request, cancellationToken);
+        return Results.Created($"/api/v1/units/{request.Name}", result.Unit);
+    }
 
-        await directoryService.RegisterAsync(entry, cancellationToken);
-
-        // DisplayName/Description live on the directory entity; only forward
-        // the actor-owned fields (Model, Color) to avoid a double-write.
-        var metadata = new UnitMetadata(
-            DisplayName: null,
-            Description: null,
-            Model: request.Model,
-            Color: request.Color);
-
-        if (metadata.Model is not null || metadata.Color is not null)
+    private static async Task<IResult> CreateUnitFromYamlAsync(
+        CreateUnitFromYamlRequest request,
+        [FromServices] IUnitCreationService creationService,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.Yaml))
         {
-            var proxy = actorProxyFactory.CreateActorProxy<IUnitActor>(
-                new ActorId(actorId), nameof(IUnitActor));
-
-            await proxy.SetMetadataAsync(metadata, cancellationToken);
+            return Results.BadRequest(new { Error = "Request body must include non-empty 'yaml'." });
         }
 
+        UnitManifest manifest;
+        try
+        {
+            manifest = ManifestParser.Parse(request.Yaml);
+        }
+        catch (ManifestParseException ex)
+        {
+            return Results.BadRequest(new { Error = ex.Message });
+        }
+
+        var overrides = new UnitCreationOverrides(request.DisplayName, request.Color, request.Model);
+        var result = await creationService.CreateFromManifestAsync(manifest, overrides, cancellationToken);
+
         return Results.Created(
-            $"/api/v1/units/{request.Name}",
-            ToUnitResponse(entry, UnitStatus.Draft, metadata));
+            $"/api/v1/units/{result.Unit.Name}",
+            new UnitCreationResponse(result.Unit, result.Warnings, result.MembersAdded));
+    }
+
+    private static async Task<IResult> CreateUnitFromTemplateAsync(
+        CreateUnitFromTemplateRequest request,
+        [FromServices] IPackageCatalogService catalog,
+        [FromServices] IUnitCreationService creationService,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.Package) || string.IsNullOrWhiteSpace(request.Name))
+        {
+            return Results.BadRequest(new { Error = "Request body must include both 'package' and 'name'." });
+        }
+
+        var yaml = await catalog.LoadUnitTemplateYamlAsync(request.Package, request.Name, cancellationToken);
+        if (yaml is null)
+        {
+            return Results.NotFound(new
+            {
+                Error = $"Template '{request.Package}/{request.Name}' was not found.",
+            });
+        }
+
+        UnitManifest manifest;
+        try
+        {
+            manifest = ManifestParser.Parse(yaml);
+        }
+        catch (ManifestParseException ex)
+        {
+            return Results.Problem(
+                title: "Template YAML is invalid",
+                detail: ex.Message,
+                statusCode: StatusCodes.Status500InternalServerError);
+        }
+
+        var overrides = new UnitCreationOverrides(request.DisplayName, request.Color, request.Model);
+        var result = await creationService.CreateFromManifestAsync(manifest, overrides, cancellationToken);
+
+        return Results.Created(
+            $"/api/v1/units/{result.Unit.Name}",
+            new UnitCreationResponse(result.Unit, result.Warnings, result.MembersAdded));
     }
 
     private static async Task<IResult> UpdateUnitAsync(

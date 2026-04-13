@@ -9,6 +9,8 @@ using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
 
+using Cvoya.Spring.Manifest;
+
 /// <summary>
 /// Builds the <c>apply</c> command, which parses a unit manifest YAML file and
 /// drives the platform API via <see cref="SpringApiClient"/> to create the unit
