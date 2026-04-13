@@ -129,6 +129,17 @@ export type ConnectorTypeResponse = Schemas["ConnectorTypeResponse"];
 /** GET /api/v1/units/{id}/connector response — a pointer to the typed config. */
 export type UnitConnectorPointerResponse = Schemas["UnitConnectorPointerResponse"];
 
+/**
+ * Optional connector binding bundled into a unit-creation request (#199).
+ * Allows the wizard to create the unit AND bind a connector in one
+ * transactional call. Either `typeId` or `typeSlug` identifies the target
+ * connector — the server accepts both and prefers `typeId` when present.
+ * `config` is the connector-specific payload (e.g. `UnitGitHubConfigRequest`
+ * for the GitHub connector).
+ */
+export type UnitConnectorBindingRequest =
+  Schemas["UnitConnectorBindingRequest"];
+
 /** PUT /api/v1/connectors/github/units/{unitId}/config request body. */
 export type UnitGitHubConfigRequest = Schemas["UnitGitHubConfigRequest"];
 

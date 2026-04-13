@@ -264,8 +264,15 @@ public static class UnitEndpoints
         [FromServices] IUnitCreationService creationService,
         CancellationToken cancellationToken)
     {
-        var result = await creationService.CreateAsync(request, cancellationToken);
-        return Results.Created($"/api/v1/units/{request.Name}", result.Unit);
+        try
+        {
+            var result = await creationService.CreateAsync(request, cancellationToken);
+            return Results.Created($"/api/v1/units/{request.Name}", result.Unit);
+        }
+        catch (UnitCreationBindingException ex)
+        {
+            return ProblemFromBindingFailure(ex);
+        }
     }
 
     private static async Task<IResult> CreateUnitFromYamlAsync(
@@ -289,11 +296,19 @@ public static class UnitEndpoints
         }
 
         var overrides = new UnitCreationOverrides(request.DisplayName, request.Color, request.Model);
-        var result = await creationService.CreateFromManifestAsync(manifest, overrides, cancellationToken);
+        try
+        {
+            var result = await creationService.CreateFromManifestAsync(
+                manifest, overrides, cancellationToken, request.Connector);
 
-        return Results.Created(
-            $"/api/v1/units/{result.Unit.Name}",
-            new UnitCreationResponse(result.Unit, result.Warnings, result.MembersAdded));
+            return Results.Created(
+                $"/api/v1/units/{result.Unit.Name}",
+                new UnitCreationResponse(result.Unit, result.Warnings, result.MembersAdded));
+        }
+        catch (UnitCreationBindingException ex)
+        {
+            return ProblemFromBindingFailure(ex);
+        }
     }
 
     private static async Task<IResult> CreateUnitFromTemplateAsync(
@@ -330,11 +345,44 @@ public static class UnitEndpoints
         }
 
         var overrides = new UnitCreationOverrides(request.DisplayName, request.Color, request.Model);
-        var result = await creationService.CreateFromManifestAsync(manifest, overrides, cancellationToken);
+        try
+        {
+            var result = await creationService.CreateFromManifestAsync(
+                manifest, overrides, cancellationToken, request.Connector);
 
-        return Results.Created(
-            $"/api/v1/units/{result.Unit.Name}",
-            new UnitCreationResponse(result.Unit, result.Warnings, result.MembersAdded));
+            return Results.Created(
+                $"/api/v1/units/{result.Unit.Name}",
+                new UnitCreationResponse(result.Unit, result.Warnings, result.MembersAdded));
+        }
+        catch (UnitCreationBindingException ex)
+        {
+            return ProblemFromBindingFailure(ex);
+        }
+    }
+
+    /// <summary>
+    /// Maps <see cref="UnitCreationBindingException"/> outcomes onto the
+    /// ProblemDetails conventions established by #192. The service has
+    /// already rolled back the partial unit by the time we get here, so
+    /// the client sees a clean 4xx / 502 with no residual state.
+    /// </summary>
+    private static IResult ProblemFromBindingFailure(UnitCreationBindingException ex)
+    {
+        var status = ex.Reason switch
+        {
+            UnitCreationBindingFailureReason.UnknownConnectorType => StatusCodes.Status404NotFound,
+            UnitCreationBindingFailureReason.InvalidBindingRequest => StatusCodes.Status400BadRequest,
+            UnitCreationBindingFailureReason.StoreFailure => StatusCodes.Status502BadGateway,
+            _ => StatusCodes.Status400BadRequest,
+        };
+        var title = ex.Reason switch
+        {
+            UnitCreationBindingFailureReason.UnknownConnectorType => "Unknown connector type",
+            UnitCreationBindingFailureReason.InvalidBindingRequest => "Invalid connector binding",
+            UnitCreationBindingFailureReason.StoreFailure => "Connector binding failed",
+            _ => "Invalid connector binding",
+        };
+        return Results.Problem(title: title, detail: ex.Message, statusCode: status);
     }
 
     private static async Task<IResult> UpdateUnitAsync(

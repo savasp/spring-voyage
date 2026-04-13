@@ -21,6 +21,9 @@ public interface IUnitCreationService
     /// <summary>
     /// Creates a unit from the caller-supplied fields. No members are added —
     /// callers wire members up through the existing member endpoints.
+    /// If <see cref="CreateUnitRequest.Connector"/> is supplied, the unit is
+    /// bound to that connector atomically; a binding failure rolls back the
+    /// partial unit and surfaces a <see cref="UnitCreationBindingException"/>.
     /// </summary>
     Task<UnitCreationResult> CreateAsync(
         CreateUnitRequest request,
@@ -30,11 +33,14 @@ public interface IUnitCreationService
     /// Creates a unit from a parsed unit manifest, forwarding members declared
     /// in the manifest to the unit actor. Warnings for unsupported manifest
     /// sections are surfaced through <see cref="UnitCreationResult.Warnings"/>.
+    /// The <paramref name="connector"/> parameter is optional and follows the
+    /// same transactional semantics as <see cref="CreateAsync"/>.
     /// </summary>
     Task<UnitCreationResult> CreateFromManifestAsync(
         Manifest.UnitManifest manifest,
         UnitCreationOverrides overrides,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        Models.UnitConnectorBindingRequest? connector = null);
 }
 
 /// <summary>
@@ -64,3 +70,69 @@ public record UnitCreationResult(
     UnitResponse Unit,
     IReadOnlyList<string> Warnings,
     int MembersAdded);
+
+/// <summary>
+/// Thrown by <see cref="IUnitCreationService"/> when a caller-supplied
+/// connector binding cannot be applied. The service rolls back the partial
+/// unit (unregisters the directory entry) before throwing, so no residual
+/// state remains to clean up. The <see cref="Reason"/> distinguishes between
+/// validation problems (404 on an unknown type id, 400 on malformed bodies)
+/// and downstream failures (502 on store errors).
+/// </summary>
+/// <param name="Reason">
+/// Machine-readable classification of the failure, so the endpoint layer can
+/// map it to a ProblemDetails status code without inspecting message text.
+/// </param>
+/// <param name="Message">Human-readable error detail.</param>
+public class UnitCreationBindingException : System.Exception
+{
+    /// <summary>
+    /// Initialises a new <see cref="UnitCreationBindingException"/>.
+    /// </summary>
+    public UnitCreationBindingException(UnitCreationBindingFailureReason reason, string message)
+        : base(message)
+    {
+        Reason = reason;
+    }
+
+    /// <summary>
+    /// Initialises a new <see cref="UnitCreationBindingException"/> with an inner exception.
+    /// </summary>
+    public UnitCreationBindingException(UnitCreationBindingFailureReason reason, string message, System.Exception inner)
+        : base(message, inner)
+    {
+        Reason = reason;
+    }
+
+    /// <summary>
+    /// Why the binding failed.
+    /// </summary>
+    public UnitCreationBindingFailureReason Reason { get; }
+}
+
+/// <summary>
+/// Classifies <see cref="UnitCreationBindingException"/> outcomes so
+/// endpoints can translate them into ProblemDetails responses without
+/// parsing strings.
+/// </summary>
+public enum UnitCreationBindingFailureReason
+{
+    /// <summary>
+    /// The requested connector type id / slug is not registered. Map to
+    /// HTTP 404 Not Found.
+    /// </summary>
+    UnknownConnectorType,
+
+    /// <summary>
+    /// The binding request is syntactically invalid (missing type id/slug,
+    /// empty config). Map to HTTP 400 Bad Request.
+    /// </summary>
+    InvalidBindingRequest,
+
+    /// <summary>
+    /// The connector config store threw while persisting the binding. Map
+    /// to HTTP 502 Bad Gateway — the downstream store is unreachable or
+    /// unhealthy.
+    /// </summary>
+    StoreFailure,
+}

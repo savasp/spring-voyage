@@ -3554,6 +3554,16 @@
               "null",
               "string"
             ]
+          },
+          "connector": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/UnitConnectorBindingRequest"
+              }
+            ]
           }
         }
       },
@@ -3582,6 +3592,16 @@
             "type": [
               "null",
               "string"
+            ]
+          },
+          "connector": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/UnitConnectorBindingRequest"
+              }
             ]
           }
         }
@@ -3613,6 +3633,16 @@
             "type": [
               "null",
               "string"
+            ]
+          },
+          "connector": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/UnitConnectorBindingRequest"
+              }
             ]
           }
         }
@@ -4088,6 +4118,29 @@
             "items": {
               "type": "string"
             }
+          }
+        }
+      },
+      "UnitConnectorBindingRequest": {
+        "required": [
+          "typeId",
+          "typeSlug",
+          "config"
+        ],
+        "type": "object",
+        "properties": {
+          "typeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "typeSlug": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "config": {
+            "$ref": "#/components/schemas/JsonElement"
           }
         }
       },

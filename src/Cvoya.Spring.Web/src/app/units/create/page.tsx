@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -8,8 +8,8 @@ import {
   Check,
   FileCode,
   FileText,
-  Github,
   KeyRound,
+  Plug,
   Rocket,
   Sparkles,
 } from "lucide-react";
@@ -24,7 +24,12 @@ import {
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
 import { api } from "@/lib/api/client";
-import type { UnitTemplateSummary } from "@/lib/api/types";
+import { getConnectorWizardStep } from "@/connectors/registry";
+import type {
+  ConnectorTypeResponse,
+  UnitConnectorBindingRequest,
+  UnitTemplateSummary,
+} from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 
 // Default matches the platform-wide default model hint. Keep in sync with
@@ -34,8 +39,9 @@ const DEFAULT_COLOR = "#6366f1";
 
 const NAME_PATTERN = /^[a-z0-9-]+$/;
 
-// Follow-up issues for the placeholder steps in this wizard:
-//   #121 GitHub App, #122 unit secrets.
+// Secrets step (#122) is implemented inline; connector binding (#199) is
+// implemented via a registry-provided per-connector React component that
+// produces a payload we bundle into the single create-unit call.
 
 type Step = 1 | 2 | 3 | 4 | 5;
 type Mode = "template" | "scratch" | "yaml";
@@ -72,6 +78,14 @@ interface FormState {
   yamlFileName: string | null;
   // Secrets (#122) — optional, applied after unit creation succeeds.
   secrets: PendingSecret[];
+  // Connector binding (#199) — optional, bundled into the create-unit call
+  // so the unit and its connector binding are created atomically. `null`
+  // connectorSlug means "skip this step". `connectorConfig` is the payload
+  // produced by the connector-specific wizard step; it stays `null` until
+  // the user fills out enough fields for validity.
+  connectorSlug: string | null;
+  connectorTypeId: string | null;
+  connectorConfig: Record<string, unknown> | null;
 }
 
 const INITIAL_FORM: FormState = {
@@ -85,6 +99,9 @@ const INITIAL_FORM: FormState = {
   yamlText: "",
   yamlFileName: null,
   secrets: [],
+  connectorSlug: null,
+  connectorTypeId: null,
+  connectorConfig: null,
 };
 
 function StepIndicator({ current }: { current: Step }) {
@@ -142,6 +159,17 @@ export default function CreateUnitPage() {
   const [templatesError, setTemplatesError] = useState<string | null>(null);
   const [templatesLoading, setTemplatesLoading] = useState(false);
 
+  // Connector catalog state (#199): fetched once, lists every connector the
+  // server knows about so Step 3 can let the user pick one without a
+  // per-click round-trip. Connectors that don't ship a web component still
+  // show up, but their selector surfaces a fallback hint.
+  const [connectorTypes, setConnectorTypes] = useState<
+    ConnectorTypeResponse[] | null
+  >(null);
+  const [connectorTypesError, setConnectorTypesError] = useState<string | null>(
+    null,
+  );
+
   useEffect(() => {
     let cancelled = false;
     setTemplatesLoading(true);
@@ -160,6 +188,26 @@ export default function CreateUnitPage() {
       })
       .finally(() => {
         if (!cancelled) setTemplatesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .listConnectors()
+      .then((list) => {
+        if (cancelled) return;
+        setConnectorTypes(list);
+        setConnectorTypesError(null);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        const message = err instanceof Error ? err.message : String(err);
+        setConnectorTypesError(message);
+        setConnectorTypes([]);
       });
     return () => {
       cancelled = true;
@@ -189,6 +237,17 @@ export default function CreateUnitPage() {
     return null;
   };
 
+  const validateStep3 = (): string | null => {
+    // Skip is always allowed. If the user picked a connector, the wizard
+    // step component must have produced a non-null config (it pushes null
+    // while the form is incomplete, so this gate catches the "selected
+    // but unfilled" case).
+    if (form.connectorSlug !== null && form.connectorConfig === null) {
+      return "Finish filling the connector configuration, or choose Skip.";
+    }
+    return null;
+  };
+
   const handleNext = () => {
     setStepError(null);
     if (step === 1) {
@@ -200,6 +259,13 @@ export default function CreateUnitPage() {
     }
     if (step === 2) {
       const err = validateStep2();
+      if (err) {
+        setStepError(err);
+        return;
+      }
+    }
+    if (step === 3) {
+      const err = validateStep3();
       if (err) {
         setStepError(err);
         return;
@@ -243,6 +309,24 @@ export default function CreateUnitPage() {
     return warnings;
   };
 
+  // Build the connector-binding payload the server expects. Returns `null`
+  // when the user skipped Step 3 OR filled it out partially (the wizard-
+  // step component pushes `null` up until the form is valid). The server
+  // is strict: either the binding is absent, or it's well-formed.
+  const buildConnectorBinding = (): UnitConnectorBindingRequest | null => {
+    if (!form.connectorSlug || form.connectorConfig === null) {
+      return null;
+    }
+    return {
+      // typeId is required on the wire; pass the zero GUID when we only
+      // have the slug (the server accepts that as a lookup fallback).
+      typeId:
+        form.connectorTypeId ?? "00000000-0000-0000-0000-000000000000",
+      typeSlug: form.connectorSlug,
+      config: form.connectorConfig,
+    };
+  };
+
   const handleCreate = async () => {
     setSubmitError(null);
     setSubmitWarnings([]);
@@ -250,16 +334,20 @@ export default function CreateUnitPage() {
     try {
       let createdName: string | null = null;
       const warnings: string[] = [];
+      const connector = buildConnectorBinding();
 
       // Route through the correct endpoint based on the chosen mode. All three
       // paths ultimately go through the server-side unit-creation service, so
-      // the actor-create + directory-register logic is identical.
+      // the actor-create + directory-register logic is identical. When a
+      // connector binding is present it goes on the same request so the
+      // server can create + bind atomically (#199).
       if (form.mode === "yaml") {
         const resp = await api.createUnitFromYaml({
           yaml: form.yamlText,
           displayName: form.displayName.trim() || undefined,
           color: form.color.trim() || undefined,
           model: form.model.trim() || undefined,
+          connector: connector ?? undefined,
         });
         warnings.push(...(resp.warnings ?? []));
         createdName = resp.unit.name;
@@ -277,6 +365,7 @@ export default function CreateUnitPage() {
           displayName: form.displayName.trim() || undefined,
           color: form.color.trim() || undefined,
           model: form.model.trim() || undefined,
+          connector: connector ?? undefined,
         });
         warnings.push(...(resp.warnings ?? []));
         createdName = resp.unit.name;
@@ -288,6 +377,7 @@ export default function CreateUnitPage() {
           description: form.description.trim(),
           model: form.model.trim() || undefined,
           color: form.color.trim() || undefined,
+          connector: connector ?? undefined,
         });
         createdName = created.name;
       }
@@ -315,6 +405,19 @@ export default function CreateUnitPage() {
     }
   };
 
+  // Stable handler passed to each connector wizard-step component. The
+  // component fires it whenever its local form produces a valid payload
+  // (or `null` when incomplete). We memoise so the component doesn't
+  // see a new reference on every re-render of the wizard.
+  const handleConnectorConfigChange = useCallback(
+    (config: Record<string, unknown> | null) => {
+      setForm((prev) =>
+        prev.connectorConfig === config ? prev : { ...prev, connectorConfig: config },
+      );
+    },
+    [],
+  );
+
   const canGoNext = useMemo(() => {
     if (step === 1) {
       // For YAML/template modes the manifest itself supplies the name, so we
@@ -327,6 +430,12 @@ export default function CreateUnitPage() {
       if (form.mode === "template") return form.templateId !== null;
       if (form.mode === "yaml") return form.yamlText.trim().length > 0;
       return true;
+    }
+    if (step === 3) {
+      // "Skip" is always allowed. If a connector is selected, require a
+      // valid config payload from the connector's wizard step.
+      if (form.connectorSlug === null) return true;
+      return form.connectorConfig !== null;
     }
     return true;
   }, [step, form]);
@@ -567,21 +676,119 @@ export default function CreateUnitPage() {
       )}
 
       {step === 3 && (
-        <Card className="bg-muted/40">
+        <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Github className="h-5 w-5" /> Connector
+              <Plug className="h-5 w-5" /> Connector
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3 text-sm text-muted-foreground">
-            <p>
-              Connector binding happens on the unit&apos;s{" "}
-              <strong>Connector</strong> tab after creation — the unit actor
-              has to exist before its per-unit config can be persisted. Skip
-              for now and wire up GitHub (or any registered connector) from
-              the unit config page.
+          <CardContent className="space-y-4 text-sm">
+            <p className="text-muted-foreground">
+              Optionally bind this unit to a connector during creation. The
+              binding is applied atomically with the unit — if it fails, the
+              unit is rolled back and nothing is persisted. Leave on{" "}
+              <strong>Skip</strong> to configure a connector later from the
+              unit&apos;s Connector tab.
             </p>
-            <Button onClick={handleNext}>Skip for now</Button>
+
+            {connectorTypesError && (
+              <p className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                Failed to load connectors: {connectorTypesError}
+              </p>
+            )}
+
+            <div className="space-y-2">
+              <label className="flex cursor-pointer items-start gap-3 rounded-md border border-border p-3">
+                <input
+                  type="radio"
+                  name="connector-choice"
+                  checked={form.connectorSlug === null}
+                  onChange={() =>
+                    setForm((prev) => ({
+                      ...prev,
+                      connectorSlug: null,
+                      connectorTypeId: null,
+                      connectorConfig: null,
+                    }))
+                  }
+                  className="mt-1"
+                />
+                <span>
+                  <span className="font-medium">Skip</span>
+                  <span className="block text-xs text-muted-foreground">
+                    Create the unit without a connector binding. You can add
+                    one later.
+                  </span>
+                </span>
+              </label>
+
+              {connectorTypes?.map((c) => {
+                const isSelected = form.connectorSlug === c.typeSlug;
+                const WizardStep = getConnectorWizardStep(c.typeSlug);
+                return (
+                  <label
+                    key={c.typeId}
+                    className={cn(
+                      "block space-y-2 rounded-md border p-3 transition-colors",
+                      isSelected
+                        ? "border-primary bg-primary/5"
+                        : "border-border",
+                    )}
+                  >
+                    <span className="flex cursor-pointer items-start gap-3">
+                      <input
+                        type="radio"
+                        name="connector-choice"
+                        checked={isSelected}
+                        onChange={() =>
+                          setForm((prev) => ({
+                            ...prev,
+                            connectorSlug: c.typeSlug,
+                            connectorTypeId: c.typeId,
+                            // Clearing here forces the connector's step
+                            // component to rebuild its initial state.
+                            connectorConfig: null,
+                          }))
+                        }
+                        className="mt-1"
+                      />
+                      <span className="flex-1">
+                        <span className="font-medium">{c.displayName}</span>
+                        <span className="block text-xs text-muted-foreground">
+                          {c.description}
+                        </span>
+                      </span>
+                    </span>
+
+                    {isSelected && WizardStep && (
+                      <WizardStep
+                        onChange={handleConnectorConfigChange}
+                        initialValue={null}
+                      />
+                    )}
+                    {isSelected && !WizardStep && (
+                      <div className="rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-200">
+                        This connector doesn&apos;t ship a wizard UI. Select{" "}
+                        <strong>Skip</strong> and configure it from the
+                        unit&apos;s Connector tab after creation.
+                      </div>
+                    )}
+                  </label>
+                );
+              })}
+
+              {connectorTypes && connectorTypes.length === 0 && (
+                <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                  No connectors are registered on this server.
+                </p>
+              )}
+            </div>
+
+            {stepError && (
+              <p className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {stepError}
+              </p>
+            )}
           </CardContent>
         </Card>
       )}
@@ -771,6 +978,16 @@ export default function CreateUnitPage() {
                   }
                 />
               )}
+              <SummaryRow
+                label="Connector"
+                value={
+                  form.connectorSlug === null
+                    ? "(skipped)"
+                    : form.connectorConfig === null
+                      ? `${form.connectorSlug} (incomplete — will not bind)`
+                      : form.connectorSlug
+                }
+              />
             </div>
 
             {submitError && (
@@ -808,9 +1025,7 @@ export default function CreateUnitPage() {
         >
           Back
         </Button>
-        {/* Step 3 is still a placeholder with an embedded "Skip for now"
-            primary action — don't show a second Next button there. */}
-        {step !== 3 && step < 5 && (
+        {step < 5 && (
           <Button onClick={handleNext} disabled={!canGoNext}>
             Next
           </Button>

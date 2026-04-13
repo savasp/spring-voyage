@@ -9,6 +9,7 @@ import type {
   CreateUnitFromYamlRequest,
   InitiativePolicy,
   SetBudgetRequest,
+  UnitConnectorBindingRequest,
   UnitGitHubConfigRequest,
   UnitResponse,
   UpdateAgentMetadataRequest,
@@ -163,6 +164,13 @@ export const api = {
     description: string;
     model?: string;
     color?: string;
+    // #199: optional connector binding bundled into the create-unit call.
+    // When supplied, the server creates the unit AND binds it
+    // transactionally — a binding failure rolls back the whole creation.
+    // The server accepts typeId, typeSlug, or both (at least one required);
+    // on the wire we pass the zero-GUID as a sentinel when the caller only
+    // knows the slug.
+    connector?: UnitConnectorBindingRequest;
   }) =>
     unwrap(
       await fetchClient.POST("/api/v1/units", { body }),
