@@ -750,27 +750,31 @@ export interface components {
         AgentSkillsResponse: {
             skills: string[];
         };
+        /** @enum {unknown} */
+        AttachmentMode: "detached" | "attached";
         BudgetResponse: {
             /** Format: double */
-            dailyBudget: number | string;
+            dailyBudget: number;
         };
         CloneResponse: {
             cloneId: string;
             parentAgentId: string;
-            cloneType: string;
-            attachmentMode: string;
+            cloneType: components["schemas"]["CloningPolicy"];
+            attachmentMode: components["schemas"]["AttachmentMode"];
             status: string;
             /** Format: date-time */
             createdAt: string;
         };
+        /** @enum {unknown} */
+        CloningPolicy: "none" | "ephemeral-no-memory" | "ephemeral-with-memory";
         CostBySource: {
             source: string;
             /** Format: double */
-            totalCost: number | string;
+            totalCost: number;
         };
         CostDashboardSummary: {
             /** Format: double */
-            totalCost: number | string;
+            totalCost: number;
             costsBySource: components["schemas"]["CostBySource"][];
             /** Format: date-time */
             periodStart: null | string;
@@ -779,7 +783,7 @@ export interface components {
         };
         CostSummaryResponse: {
             /** Format: double */
-            totalCost: number | string;
+            totalCost: number;
             /** Format: int64 */
             totalInputTokens: number | string;
             /** Format: int64 */
@@ -787,9 +791,9 @@ export interface components {
             /** Format: int32 */
             recordCount: number | string;
             /** Format: double */
-            workCost: number | string;
+            workCost: number;
             /** Format: double */
-            initiativeCost: number | string;
+            initiativeCost: number;
             /** Format: date-time */
             from: string;
             /** Format: date-time */
@@ -802,8 +806,8 @@ export interface components {
             role: null | string;
         };
         CreateCloneRequest: {
-            cloneType: string;
-            attachmentMode: string;
+            cloneType: components["schemas"]["CloningPolicy"];
+            attachmentMode: components["schemas"]["AttachmentMode"];
         };
         CreateTokenRequest: {
             name: string;
@@ -870,7 +874,7 @@ export interface components {
             summary: string;
             correlationId: null | string;
             /** Format: double */
-            cost: null | number | string;
+            cost: number;
             /** Format: date-time */
             timestamp: string;
         };
@@ -901,7 +905,7 @@ export interface components {
         };
         SetBudgetRequest: {
             /** Format: double */
-            dailyBudget: number | string;
+            dailyBudget: number;
         };
         SetHumanPermissionRequest: {
             permission: string;
@@ -941,7 +945,7 @@ export interface components {
              * Format: double
              * @default 3
              */
-            maxCostPerDay: number | string;
+            maxCostPerDay: number;
         };
         TokenResponse: {
             name: string;
