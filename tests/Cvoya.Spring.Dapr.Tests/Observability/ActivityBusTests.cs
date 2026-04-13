@@ -7,7 +7,7 @@ using Cvoya.Spring.Core.Capabilities;
 using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Dapr.Observability;
 
-using FluentAssertions;
+using Shouldly;
 
 using Xunit;
 
@@ -26,7 +26,7 @@ public class ActivityBusTests
             ActivityEventType.WorkflowStepCompleted, ActivitySeverity.Info, "Done");
         bus.Publish(evt);
 
-        received.Should().ContainSingle().Which.Should().Be(evt);
+        received.ShouldHaveSingleItem().ShouldBe(evt);
     }
 
     [Fact]
@@ -44,8 +44,8 @@ public class ActivityBusTests
             ActivityEventType.WorkflowStepCompleted, ActivitySeverity.Info, "Done");
         bus.Publish(evt);
 
-        received1.Should().ContainSingle();
-        received2.Should().ContainSingle();
+        received1.ShouldHaveSingleItem();
+        received2.ShouldHaveSingleItem();
     }
 
     [Fact]
@@ -62,6 +62,6 @@ public class ActivityBusTests
             ActivityEventType.WorkflowStepCompleted, ActivitySeverity.Info, "Done");
         bus.Publish(evt);
 
-        received.Should().BeEmpty();
+        received.ShouldBeEmpty();
     }
 }

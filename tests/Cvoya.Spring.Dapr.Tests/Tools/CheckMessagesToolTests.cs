@@ -9,13 +9,13 @@ using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Dapr.Actors;
 using Cvoya.Spring.Dapr.Tools;
 
-using FluentAssertions;
-
 using global::Dapr.Actors.Runtime;
 
 using Microsoft.Extensions.Logging;
 
 using NSubstitute;
+
+using Shouldly;
 
 using Xunit;
 
@@ -74,8 +74,8 @@ public class CheckMessagesToolTests
             JsonSerializer.SerializeToElement(new { }),
             TestContext.Current.CancellationToken);
 
-        result.ValueKind.Should().Be(JsonValueKind.Array);
-        result.GetArrayLength().Should().Be(2);
+        result.ValueKind.ShouldBe(JsonValueKind.Array);
+        result.GetArrayLength().ShouldBe(2);
     }
 
     [Fact]
@@ -89,7 +89,7 @@ public class CheckMessagesToolTests
             JsonSerializer.SerializeToElement(new { }),
             TestContext.Current.CancellationToken);
 
-        result.ValueKind.Should().Be(JsonValueKind.Array);
-        result.GetArrayLength().Should().Be(0);
+        result.ValueKind.ShouldBe(JsonValueKind.Array);
+        result.GetArrayLength().ShouldBe(0);
     }
 }

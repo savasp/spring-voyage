@@ -8,9 +8,9 @@ using System.Text.Json;
 using Cvoya.Spring.Core.Tools;
 using Cvoya.Spring.Dapr.Tools;
 
-using FluentAssertions;
-
 using NSubstitute;
+
+using Shouldly;
 
 using Xunit;
 
@@ -29,7 +29,7 @@ public class PlatformToolRegistryTests
         registry.Register(tool);
 
         var retrieved = registry.Get("testTool");
-        retrieved.Should().BeSameAs(tool);
+        retrieved.ShouldBeSameAs(tool);
     }
 
     [Fact]
@@ -39,7 +39,7 @@ public class PlatformToolRegistryTests
 
         var retrieved = registry.Get("nonexistent");
 
-        retrieved.Should().BeNull();
+        retrieved.ShouldBeNull();
     }
 
     [Fact]
@@ -55,8 +55,8 @@ public class PlatformToolRegistryTests
         registry.Register(tool2);
 
         var all = registry.GetAll();
-        all.Should().HaveCount(2);
-        all.Should().Contain(tool1);
-        all.Should().Contain(tool2);
+        all.Count().ShouldBe(2);
+        all.ShouldContain(tool1);
+        all.ShouldContain(tool2);
     }
 }

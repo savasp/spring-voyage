@@ -9,11 +9,11 @@ using Cvoya.Spring.Connector.GitHub.Auth;
 using Cvoya.Spring.Connector.GitHub.Webhooks;
 using Cvoya.Spring.Core.Skills;
 
-using FluentAssertions;
-
 using Microsoft.Extensions.Logging;
 
 using NSubstitute;
+
+using Shouldly;
 
 using Xunit;
 
@@ -42,7 +42,7 @@ public class GitHubSkillRegistryInvocationTests
     [Fact]
     public void Name_IsGithub()
     {
-        _registry.Name.Should().Be("github");
+        _registry.Name.ShouldBe("github");
     }
 
     [Fact]
@@ -53,8 +53,8 @@ public class GitHubSkillRegistryInvocationTests
             JsonSerializer.SerializeToElement(new { }),
             CancellationToken.None);
 
-        await act.Should().ThrowAsync<SkillNotFoundException>()
-            .Where(e => e.ToolName == "github_not_a_tool");
+        var ex = await Should.ThrowAsync<SkillNotFoundException>(act);
+        ex.ToolName.ShouldBe("github_not_a_tool");
     }
 
     [Fact]
@@ -62,7 +62,7 @@ public class GitHubSkillRegistryInvocationTests
     {
         var tools = _registry.GetToolDefinitions().Select(t => t.Name).ToHashSet();
 
-        tools.Should().BeEquivalentTo(new[]
+        tools.ShouldBe(new[]
         {
             "github_create_branch",
             "github_create_pull_request",
@@ -75,6 +75,6 @@ public class GitHubSkillRegistryInvocationTests
             "github_get_issue_details",
             "github_get_pull_request_diff",
             "github_manage_labels",
-        });
+        }, ignoreOrder: true);
     }
 }

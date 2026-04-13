@@ -8,7 +8,7 @@ using System.Net.Http.Json;
 
 using Cvoya.Spring.Host.Api.Models;
 
-using FluentAssertions;
+using Shouldly;
 
 using Xunit;
 
@@ -32,12 +32,12 @@ public class AuthEndpointsTests : IClassFixture<CustomWebApplicationFactory>
 
         var response = await _client.PostAsJsonAsync("/api/v1/auth/tokens", request, ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        response.StatusCode.ShouldBe(HttpStatusCode.Created);
 
         var result = await response.Content.ReadFromJsonAsync<CreateTokenResponse>(ct);
-        result.Should().NotBeNull();
-        result!.Name.Should().Be("my-token");
-        result.Token.Should().NotBeNullOrWhiteSpace();
+        result.ShouldNotBeNull();
+        result!.Name.ShouldBe("my-token");
+        result.Token.ShouldNotBeNullOrWhiteSpace();
     }
 
     [Fact]
@@ -48,18 +48,18 @@ public class AuthEndpointsTests : IClassFixture<CustomWebApplicationFactory>
         // Create a token first.
         var createRequest = new CreateTokenRequest("list-test-token", ["read", "write"]);
         var createResponse = await _client.PostAsJsonAsync("/api/v1/auth/tokens", createRequest, ct);
-        createResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+        createResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
 
         var response = await _client.GetAsync("/api/v1/auth/tokens", ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var tokens = await response.Content.ReadFromJsonAsync<List<TokenResponse>>(ct);
-        tokens.Should().NotBeNull();
-        tokens.Should().Contain(t => t.Name == "list-test-token");
+        tokens.ShouldNotBeNull();
+        tokens.ShouldContain(t => t.Name == "list-test-token");
 
         var token = tokens!.First(t => t.Name == "list-test-token");
-        token.Scopes.Should().BeEquivalentTo(["read", "write"]);
+        token.Scopes.ShouldBe(new[] { "read", "write" }, ignoreOrder: true);
     }
 
     [Fact]
@@ -70,16 +70,17 @@ public class AuthEndpointsTests : IClassFixture<CustomWebApplicationFactory>
         // Create a token.
         var createRequest = new CreateTokenRequest("revoke-test-token");
         var createResponse = await _client.PostAsJsonAsync("/api/v1/auth/tokens", createRequest, ct);
-        createResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+        createResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
 
         // Revoke it.
         var revokeResponse = await _client.DeleteAsync("/api/v1/auth/tokens/revoke-test-token", ct);
-        revokeResponse.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        revokeResponse.StatusCode.ShouldBe(HttpStatusCode.NoContent);
 
         // Verify it no longer appears in the list.
         var listResponse = await _client.GetAsync("/api/v1/auth/tokens", ct);
         var tokens = await listResponse.Content.ReadFromJsonAsync<List<TokenResponse>>(ct);
-        tokens.Should().NotContain(t => t.Name == "revoke-test-token");
+        tokens.ShouldNotBeNull();
+        tokens.ShouldNotContain(t => t.Name == "revoke-test-token");
     }
 
     [Fact]
@@ -89,7 +90,7 @@ public class AuthEndpointsTests : IClassFixture<CustomWebApplicationFactory>
 
         var response = await _client.DeleteAsync("/api/v1/auth/tokens/nonexistent-token", ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 
 }

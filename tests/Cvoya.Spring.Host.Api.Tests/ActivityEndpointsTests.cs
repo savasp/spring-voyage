@@ -10,9 +10,9 @@ using System.Reactive.Linq;
 using Cvoya.Spring.Core.Capabilities;
 using Cvoya.Spring.Core.Observability;
 
-using FluentAssertions;
-
 using NSubstitute;
+
+using Shouldly;
 
 using Xunit;
 
@@ -37,12 +37,12 @@ public class ActivityEndpointsTests : IClassFixture<CustomWebApplicationFactory>
 
         var response = await _client.GetAsync("/api/v1/activity", ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var result = await response.Content.ReadFromJsonAsync<ActivityQueryResult>(ct);
-        result.Should().NotBeNull();
-        result!.TotalCount.Should().Be(0);
-        result.Items.Should().BeEmpty();
+        result.ShouldNotBeNull();
+        result!.TotalCount.ShouldBe(0);
+        result.Items.ShouldBeEmpty();
     }
 
     [Fact]
@@ -59,12 +59,12 @@ public class ActivityEndpointsTests : IClassFixture<CustomWebApplicationFactory>
 
         var response = await _client.GetAsync("/api/v1/activity?source=agent://test&eventType=TaskCompleted&page=1&pageSize=10", ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var result = await response.Content.ReadFromJsonAsync<ActivityQueryResult>(ct);
-        result.Should().NotBeNull();
-        result!.TotalCount.Should().Be(1);
-        result.Items.Should().HaveCount(1);
+        result.ShouldNotBeNull();
+        result!.TotalCount.ShouldBe(1);
+        result.Items.Count().ShouldBe(1);
 
         await _factory.ActivityQueryService.Received(1).QueryAsync(
             Arg.Is<ActivityQueryParameters>(p =>
@@ -89,8 +89,8 @@ public class ActivityEndpointsTests : IClassFixture<CustomWebApplicationFactory>
         try
         {
             var response = await _client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cts.Token);
-            response.StatusCode.Should().Be(HttpStatusCode.OK);
-            response.Content.Headers.ContentType?.MediaType.Should().Be("text/event-stream");
+            response.StatusCode.ShouldBe(HttpStatusCode.OK);
+            response.Content.Headers.ContentType?.MediaType.ShouldBe("text/event-stream");
         }
         catch (OperationCanceledException)
         {

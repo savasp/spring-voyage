@@ -9,9 +9,9 @@ using Cvoya.Spring.Core.Initiative;
 using Cvoya.Spring.Core.State;
 using Cvoya.Spring.Dapr.Initiative;
 
-using FluentAssertions;
-
 using NSubstitute;
+
+using Shouldly;
 
 using Xunit;
 
@@ -37,11 +37,11 @@ public class DaprStateInitiativeBudgetTrackerTests
 
         var result = await sut.TryConsumeAsync("ada", 0.10m, TestContext.Current.CancellationToken);
 
-        result.Should().BeTrue();
+        result.ShouldBeTrue();
         var persisted = await _stateStore.GetAsync<DaprStateInitiativeBudgetTracker.AgentBudgetState>(
             "Initiative:Budget:ada", TestContext.Current.CancellationToken);
-        persisted.Should().NotBeNull();
-        persisted!.Spent.Should().Be(0.10m);
+        persisted.ShouldNotBeNull();
+        persisted!.Spent.ShouldBe(0.10m);
     }
 
     [Fact]
@@ -50,12 +50,12 @@ public class DaprStateInitiativeBudgetTrackerTests
         ArrangePolicy(maxPerDay: 0.30m);
         var sut = CreateSut();
 
-        (await sut.TryConsumeAsync("ada", 0.20m, TestContext.Current.CancellationToken)).Should().BeTrue();
-        (await sut.TryConsumeAsync("ada", 0.20m, TestContext.Current.CancellationToken)).Should().BeFalse();
+        (await sut.TryConsumeAsync("ada", 0.20m, TestContext.Current.CancellationToken)).ShouldBeTrue();
+        (await sut.TryConsumeAsync("ada", 0.20m, TestContext.Current.CancellationToken)).ShouldBeFalse();
 
         var persisted = await _stateStore.GetAsync<DaprStateInitiativeBudgetTracker.AgentBudgetState>(
             "Initiative:Budget:ada", TestContext.Current.CancellationToken);
-        persisted!.Spent.Should().Be(0.20m);
+        persisted!.Spent.ShouldBe(0.20m);
     }
 
     [Fact]
@@ -67,7 +67,7 @@ public class DaprStateInitiativeBudgetTrackerTests
 
         var result = await sut.TryConsumeAsync("ada", DaprStateInitiativeBudgetTracker.DefaultMaxCostPerDay - 0.01m, TestContext.Current.CancellationToken);
 
-        result.Should().BeTrue();
+        result.ShouldBeTrue();
     }
 
     [Fact]
@@ -77,19 +77,19 @@ public class DaprStateInitiativeBudgetTrackerTests
         var sut = CreateSut();
 
         // Day 1: exhaust the cap.
-        (await sut.TryConsumeAsync("ada", 0.20m, TestContext.Current.CancellationToken)).Should().BeTrue();
-        (await sut.TryConsumeAsync("ada", 0.20m, TestContext.Current.CancellationToken)).Should().BeFalse();
+        (await sut.TryConsumeAsync("ada", 0.20m, TestContext.Current.CancellationToken)).ShouldBeTrue();
+        (await sut.TryConsumeAsync("ada", 0.20m, TestContext.Current.CancellationToken)).ShouldBeFalse();
 
         // Advance the clock past UTC midnight.
         _timeProvider.Advance(TimeSpan.FromHours(2));
 
         // Day 2: the running total must have rolled over so the same amount succeeds.
-        (await sut.TryConsumeAsync("ada", 0.20m, TestContext.Current.CancellationToken)).Should().BeTrue();
+        (await sut.TryConsumeAsync("ada", 0.20m, TestContext.Current.CancellationToken)).ShouldBeTrue();
 
         var persisted = await _stateStore.GetAsync<DaprStateInitiativeBudgetTracker.AgentBudgetState>(
             "Initiative:Budget:ada", TestContext.Current.CancellationToken);
-        persisted!.Day.Should().Be(new DateTime(2026, 4, 13, 0, 0, 0, DateTimeKind.Utc));
-        persisted.Spent.Should().Be(0.20m);
+        persisted!.Day.ShouldBe(new DateTime(2026, 4, 13, 0, 0, 0, DateTimeKind.Utc));
+        persisted.Spent.ShouldBe(0.20m);
     }
 
     [Fact]
@@ -99,11 +99,11 @@ public class DaprStateInitiativeBudgetTrackerTests
 
         // Pre-restart: consume some of the cap.
         var pre = CreateSut();
-        (await pre.TryConsumeAsync("ada", 0.20m, TestContext.Current.CancellationToken)).Should().BeTrue();
+        (await pre.TryConsumeAsync("ada", 0.20m, TestContext.Current.CancellationToken)).ShouldBeTrue();
 
         // Simulate a restart: new tracker instance, same state store.
         var post = new DaprStateInitiativeBudgetTracker(_stateStore, _policyStore, _timeProvider);
-        (await post.TryConsumeAsync("ada", 0.20m, TestContext.Current.CancellationToken)).Should().BeFalse();
+        (await post.TryConsumeAsync("ada", 0.20m, TestContext.Current.CancellationToken)).ShouldBeFalse();
     }
 
     private void ArrangePolicy(decimal maxPerDay)

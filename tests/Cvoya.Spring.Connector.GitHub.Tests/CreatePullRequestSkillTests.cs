@@ -7,13 +7,13 @@ using System.Reflection;
 
 using Cvoya.Spring.Connector.GitHub.Skills;
 
-using FluentAssertions;
-
 using Microsoft.Extensions.Logging;
 
 using NSubstitute;
 
 using Octokit;
+
+using Shouldly;
 
 using Xunit;
 
@@ -43,9 +43,9 @@ public class CreatePullRequestSkillTests
             "owner", "repo", "Fix bug", "Fixes the bug", "fix-branch", "main",
             TestContext.Current.CancellationToken);
 
-        result.GetProperty("number").GetInt32().Should().Be(99);
-        result.GetProperty("title").GetString().Should().Be("Fix bug");
-        result.GetProperty("html_url").GetString().Should().Be("https://github.com/owner/repo/pull/99");
+        result.GetProperty("number").GetInt32().ShouldBe(99);
+        result.GetProperty("title").GetString().ShouldBe("Fix bug");
+        result.GetProperty("html_url").GetString().ShouldBe("https://github.com/owner/repo/pull/99");
     }
 
     private static PullRequest CreatePullRequestViaReflection(int number, string title, string htmlUrl)

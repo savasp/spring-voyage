@@ -10,11 +10,11 @@ using Cvoya.Spring.Core.Orchestration;
 using Cvoya.Spring.Dapr.Actors;
 using Cvoya.Spring.Integration.Tests.TestHelpers;
 
-using FluentAssertions;
-
 using global::Dapr.Actors.Runtime;
 
 using NSubstitute;
+
+using Shouldly;
 
 using Xunit;
 
@@ -50,18 +50,18 @@ public class GitHubWebhookFlowTests
         await unitActor.ReceiveAsync(webhookMessage, TestContext.Current.CancellationToken);
 
         // Verify the strategy received the webhook message with its payload intact.
-        capturedMessage.Should().NotBeNull();
-        capturedMessage!.From.Scheme.Should().Be("connector");
-        capturedMessage.From.Path.Should().Be("github-connector");
+        capturedMessage.ShouldNotBeNull();
+        capturedMessage!.From.Scheme.ShouldBe("connector");
+        capturedMessage.From.Path.ShouldBe("github-connector");
 
         var payload = capturedMessage.Payload.Deserialize<JsonElement>();
-        payload.GetProperty("EventType").GetString().Should().Be("issues");
-        payload.GetProperty("Action").GetString().Should().Be("opened");
-        payload.GetProperty("Repository").GetString().Should().Be("test-org/test-repo");
+        payload.GetProperty("EventType").GetString().ShouldBe("issues");
+        payload.GetProperty("Action").GetString().ShouldBe("opened");
+        payload.GetProperty("Repository").GetString().ShouldBe("test-org/test-repo");
 
         // Verify the context contains the agent member.
-        capturedContext.Should().NotBeNull();
-        capturedContext!.Members.Should().ContainSingle().Which.Should().Be(agentAddress);
+        capturedContext.ShouldNotBeNull();
+        capturedContext!.Members.ShouldHaveSingleItem().ShouldBe(agentAddress);
     }
 
     [Fact]
@@ -97,13 +97,13 @@ public class GitHubWebhookFlowTests
 
         // Unit processes the webhook.
         var unitResult = await unitActor.ReceiveAsync(webhookMessage, TestContext.Current.CancellationToken);
-        unitResult.Should().NotBeNull();
+        unitResult.ShouldNotBeNull();
 
         // Now deliver the forwarded message to the agent.
         var agentResult = await agentActor.ReceiveAsync(forwardedMessage!, TestContext.Current.CancellationToken);
 
         // Verify the agent received and stored the message as its active conversation.
-        agentResult.Should().NotBeNull();
+        agentResult.ShouldNotBeNull();
         await agentStateManager.Received().SetStateAsync(
             StateKeys.ActiveConversation,
             Arg.Is<ConversationChannel>(c =>
@@ -137,7 +137,7 @@ public class GitHubWebhookFlowTests
 
         var result = await agentActor.ReceiveAsync(message, TestContext.Current.CancellationToken);
 
-        result.Should().NotBeNull();
+        result.ShouldNotBeNull();
         await agentStateManager.Received().SetStateAsync(
             StateKeys.ActiveConversation,
             Arg.Is<ConversationChannel>(c =>

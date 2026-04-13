@@ -6,7 +6,7 @@ namespace Cvoya.Spring.Dapr.Tests.Execution;
 using Cvoya.Spring.Core.Execution;
 using Cvoya.Spring.Dapr.Execution;
 
-using FluentAssertions;
+using Shouldly;
 
 using Xunit;
 
@@ -24,7 +24,7 @@ public class ProcessContainerRuntimeTests
 
         var args = ProcessContainerRuntime.BuildRunArguments(config, containerName);
 
-        args.Should().Be("run --rm --name spring-exec-test my-image:latest");
+        args.ShouldBe("run --rm --name spring-exec-test my-image:latest");
     }
 
     [Fact]
@@ -41,8 +41,8 @@ public class ProcessContainerRuntimeTests
 
         var args = ProcessContainerRuntime.BuildRunArguments(config, containerName);
 
-        args.Should().Contain("-e SPRING_SYSTEM_PROMPT=hello");
-        args.Should().Contain("-e OTHER_VAR=world");
+        args.ShouldContain("-e SPRING_SYSTEM_PROMPT=hello");
+        args.ShouldContain("-e OTHER_VAR=world");
     }
 
     [Fact]
@@ -55,8 +55,8 @@ public class ProcessContainerRuntimeTests
 
         var args = ProcessContainerRuntime.BuildRunArguments(config, containerName);
 
-        args.Should().Contain("-v /host/path:/container/path");
-        args.Should().Contain("-v /data:/data:ro");
+        args.ShouldContain("-v /host/path:/container/path");
+        args.ShouldContain("-v /data:/data:ro");
     }
 
     [Fact]
@@ -69,7 +69,7 @@ public class ProcessContainerRuntimeTests
 
         var args = ProcessContainerRuntime.BuildRunArguments(config, containerName);
 
-        args.Should().EndWith("my-image:latest bash -c 'echo hello'");
+        args.ShouldEndWith("my-image:latest bash -c 'echo hello'");
     }
 
     [Fact]
@@ -90,9 +90,9 @@ public class ProcessContainerRuntimeTests
         var volIndex = args.IndexOf("-v /src:/app", StringComparison.Ordinal);
         var cmdIndex = args.IndexOf("run-agent", StringComparison.Ordinal);
 
-        envIndex.Should().BeLessThan(imageIndex);
-        volIndex.Should().BeLessThan(imageIndex);
-        imageIndex.Should().BeLessThan(cmdIndex);
+        envIndex.ShouldBeLessThan(imageIndex);
+        volIndex.ShouldBeLessThan(imageIndex);
+        imageIndex.ShouldBeLessThan(cmdIndex);
     }
 
     [Fact]
@@ -105,7 +105,7 @@ public class ProcessContainerRuntimeTests
 
         var args = ProcessContainerRuntime.BuildRunArguments(config, containerName);
 
-        args.Should().Contain("--network spring-net-abc");
+        args.ShouldContain("--network spring-net-abc");
     }
 
     [Fact]
@@ -122,8 +122,8 @@ public class ProcessContainerRuntimeTests
 
         var args = ProcessContainerRuntime.BuildRunArguments(config, containerName);
 
-        args.Should().Contain("--label spring.managed=true");
-        args.Should().Contain("--label spring.role=workflow");
+        args.ShouldContain("--label spring.managed=true");
+        args.ShouldContain("--label spring.role=workflow");
     }
 
     [Fact]
@@ -144,8 +144,8 @@ public class ProcessContainerRuntimeTests
         var envIndex = args.IndexOf("-e KEY", StringComparison.Ordinal);
         var imageIndex = args.IndexOf("agent:v1", StringComparison.Ordinal);
 
-        networkIndex.Should().BeLessThan(labelIndex);
-        labelIndex.Should().BeLessThan(envIndex);
-        envIndex.Should().BeLessThan(imageIndex);
+        networkIndex.ShouldBeLessThan(labelIndex);
+        labelIndex.ShouldBeLessThan(envIndex);
+        envIndex.ShouldBeLessThan(imageIndex);
     }
 }

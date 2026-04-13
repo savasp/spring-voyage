@@ -10,13 +10,13 @@ using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Core.Units;
 using Cvoya.Spring.Dapr.Actors;
 
-using FluentAssertions;
-
 using global::Dapr.Actors;
 using global::Dapr.Actors.Client;
 
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
+
+using Shouldly;
 
 using Xunit;
 
@@ -50,7 +50,7 @@ public class UnitLifecycleEndpointTests : IClassFixture<CustomWebApplicationFact
 
         var response = await _client.PostAsync($"/api/v1/units/{UnitName}/start", content: null, ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        response.StatusCode.ShouldBe(HttpStatusCode.Accepted);
 
         await proxy.Received(1).TransitionAsync(UnitStatus.Starting, Arg.Any<CancellationToken>());
         await proxy.Received(1).TransitionAsync(UnitStatus.Running, Arg.Any<CancellationToken>());
@@ -70,7 +70,7 @@ public class UnitLifecycleEndpointTests : IClassFixture<CustomWebApplicationFact
 
         var response = await _client.PostAsync($"/api/v1/units/{UnitName}/start", content: null, ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
 
         await _factory.UnitContainerLifecycle.DidNotReceive()
             .StartUnitAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
@@ -94,7 +94,7 @@ public class UnitLifecycleEndpointTests : IClassFixture<CustomWebApplicationFact
 
         var response = await _client.PostAsync($"/api/v1/units/{UnitName}/start", content: null, ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.InternalServerError);
+        response.StatusCode.ShouldBe(HttpStatusCode.InternalServerError);
 
         await proxy.Received(1).TransitionAsync(UnitStatus.Error, Arg.Any<CancellationToken>());
         await proxy.DidNotReceive().TransitionAsync(UnitStatus.Running, Arg.Any<CancellationToken>());
@@ -118,7 +118,7 @@ public class UnitLifecycleEndpointTests : IClassFixture<CustomWebApplicationFact
 
         var response = await _client.PostAsync($"/api/v1/units/{UnitName}/stop", content: null, ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        response.StatusCode.ShouldBe(HttpStatusCode.Accepted);
 
         await proxy.Received(1).TransitionAsync(UnitStatus.Stopping, Arg.Any<CancellationToken>());
         await proxy.Received(1).TransitionAsync(UnitStatus.Stopped, Arg.Any<CancellationToken>());
@@ -143,7 +143,7 @@ public class UnitLifecycleEndpointTests : IClassFixture<CustomWebApplicationFact
 
         var response = await _client.PostAsync($"/api/v1/units/{UnitName}/start", content: null, ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        response.StatusCode.ShouldBe(HttpStatusCode.Accepted);
 
         await _factory.GitHubWebhookRegistrar.Received(1)
             .RegisterAsync("acme", "platform", Arg.Any<CancellationToken>());
@@ -167,7 +167,7 @@ public class UnitLifecycleEndpointTests : IClassFixture<CustomWebApplicationFact
 
         var response = await _client.PostAsync($"/api/v1/units/{UnitName}/start", content: null, ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        response.StatusCode.ShouldBe(HttpStatusCode.Accepted);
         await proxy.DidNotReceive().SetGitHubHookIdAsync(Arg.Any<long?>(), Arg.Any<CancellationToken>());
         await proxy.Received(1).TransitionAsync(UnitStatus.Running, Arg.Any<CancellationToken>());
     }
@@ -194,7 +194,7 @@ public class UnitLifecycleEndpointTests : IClassFixture<CustomWebApplicationFact
 
         var response = await _client.PostAsync($"/api/v1/units/{UnitName}/stop", content: null, ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        response.StatusCode.ShouldBe(HttpStatusCode.Accepted);
         await _factory.GitHubWebhookRegistrar.Received(1)
             .UnregisterAsync("acme", "platform", 12345L, Arg.Any<CancellationToken>());
         await proxy.Received(1).SetGitHubHookIdAsync(null, Arg.Any<CancellationToken>());
@@ -222,7 +222,7 @@ public class UnitLifecycleEndpointTests : IClassFixture<CustomWebApplicationFact
 
         var response = await _client.PostAsync($"/api/v1/units/{UnitName}/stop", content: null, ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        response.StatusCode.ShouldBe(HttpStatusCode.Accepted);
         await _factory.GitHubWebhookRegistrar.DidNotReceive()
             .UnregisterAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<long>(), Arg.Any<CancellationToken>());
     }
@@ -240,7 +240,7 @@ public class UnitLifecycleEndpointTests : IClassFixture<CustomWebApplicationFact
 
         var response = await _client.PostAsync($"/api/v1/units/{UnitName}/stop", content: null, ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
 
         await _factory.UnitContainerLifecycle.DidNotReceive()
             .StopUnitAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());

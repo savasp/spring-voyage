@@ -10,9 +10,9 @@ using Cvoya.Spring.Core.Directory;
 using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Host.Api.Models;
 
-using FluentAssertions;
-
 using NSubstitute;
+
+using Shouldly;
 
 using Xunit;
 
@@ -40,13 +40,13 @@ public class AgentEndpointsTests : IClassFixture<CustomWebApplicationFactory>
 
         var response = await _client.GetAsync("/api/v1/agents", ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var agents = await response.Content.ReadFromJsonAsync<List<AgentResponse>>(ct);
-        agents.Should().HaveCount(1);
-        agents![0].Name.Should().Be("test-agent");
-        agents[0].DisplayName.Should().Be("Test Agent");
-        agents[0].Role.Should().Be("backend");
+        agents!.Count().ShouldBe(1);
+        agents![0].Name.ShouldBe("test-agent");
+        agents[0].DisplayName.ShouldBe("Test Agent");
+        agents[0].Role.ShouldBe("backend");
     }
 
     [Fact]
@@ -57,8 +57,8 @@ public class AgentEndpointsTests : IClassFixture<CustomWebApplicationFactory>
 
         var response = await _client.PostAsJsonAsync("/api/v1/agents", request, ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.Created);
-        response.Headers.Location!.ToString().Should().Contain("/api/v1/agents/new-agent");
+        response.StatusCode.ShouldBe(HttpStatusCode.Created);
+        response.Headers.Location!.ToString().ShouldContain("/api/v1/agents/new-agent");
 
         await _factory.DirectoryService.Received(1).RegisterAsync(
             Arg.Is<DirectoryEntry>(e =>

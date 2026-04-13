@@ -11,9 +11,9 @@ using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Core.Observability;
 using Cvoya.Spring.Host.Api.Models;
 
-using FluentAssertions;
-
 using NSubstitute;
+
+using Shouldly;
 
 using Xunit;
 
@@ -42,14 +42,14 @@ public class DashboardEndpointsTests : IClassFixture<CustomWebApplicationFactory
 
         var response = await _client.GetAsync("/api/v1/dashboard/agents", ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var agents = await response.Content.ReadFromJsonAsync<List<AgentDashboardSummary>>(ct);
-        agents.Should().HaveCount(2);
-        agents![0].Name.Should().Be("agent-1");
-        agents[0].DisplayName.Should().Be("Agent One");
-        agents[0].Role.Should().Be("backend");
-        agents[1].Name.Should().Be("agent-2");
+        agents!.Count().ShouldBe(2);
+        agents![0].Name.ShouldBe("agent-1");
+        agents[0].DisplayName.ShouldBe("Agent One");
+        agents[0].Role.ShouldBe("backend");
+        agents[1].Name.ShouldBe("agent-2");
     }
 
     [Fact]
@@ -66,13 +66,13 @@ public class DashboardEndpointsTests : IClassFixture<CustomWebApplicationFactory
 
         var response = await _client.GetAsync("/api/v1/dashboard/units", ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var units = await response.Content.ReadFromJsonAsync<List<UnitDashboardSummary>>(ct);
-        units.Should().HaveCount(2);
-        units![0].Name.Should().Be("unit-1");
-        units[0].DisplayName.Should().Be("Unit One");
-        units[1].Name.Should().Be("unit-2");
+        units!.Count().ShouldBe(2);
+        units![0].Name.ShouldBe("unit-1");
+        units[0].DisplayName.ShouldBe("Unit One");
+        units[1].Name.ShouldBe("unit-2");
     }
 
     [Fact]
@@ -91,11 +91,11 @@ public class DashboardEndpointsTests : IClassFixture<CustomWebApplicationFactory
 
         var response = await _client.GetAsync("/api/v1/dashboard/costs", ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var summary = await response.Content.ReadFromJsonAsync<CostDashboardSummary>(ct);
-        summary.Should().NotBeNull();
-        summary!.TotalCost.Should().Be(15.75m);
-        summary.CostsBySource.Should().HaveCount(2);
+        summary.ShouldNotBeNull();
+        summary!.TotalCost.ShouldBe(15.75m);
+        summary.CostsBySource.Count().ShouldBe(2);
     }
 }

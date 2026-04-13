@@ -11,12 +11,12 @@ using Cvoya.Spring.Core.Orchestration;
 using Cvoya.Spring.Dapr.Execution;
 using Cvoya.Spring.Dapr.Orchestration;
 
-using FluentAssertions;
-
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 using NSubstitute;
+
+using Shouldly;
 
 using Xunit;
 
@@ -97,14 +97,14 @@ public class WorkflowOrchestrationStrategyTests
 
         var result = await _strategy.OrchestrateAsync(message, _context, TestContext.Current.CancellationToken);
 
-        result.Should().NotBeNull();
-        result!.Type.Should().Be(MessageType.Domain);
-        result.From.Should().Be(message.To);
-        result.To.Should().Be(message.From);
-        result.ConversationId.Should().Be(message.ConversationId);
+        result.ShouldNotBeNull();
+        result!.Type.ShouldBe(MessageType.Domain);
+        result.From.ShouldBe(message.To);
+        result.To.ShouldBe(message.From);
+        result.ConversationId.ShouldBe(message.ConversationId);
 
         var payload = result.Payload.Deserialize<JsonElement>();
-        payload.GetProperty("Output").GetString().Should().Be("workflow result data");
+        payload.GetProperty("Output").GetString().ShouldBe("workflow result data");
     }
 
     [Fact]
@@ -116,7 +116,7 @@ public class WorkflowOrchestrationStrategyTests
 
         var result = await _strategy.OrchestrateAsync(message, _context, TestContext.Current.CancellationToken);
 
-        result.Should().BeNull();
+        result.ShouldBeNull();
     }
 
     [Fact]
@@ -128,6 +128,6 @@ public class WorkflowOrchestrationStrategyTests
 
         var result = await _strategy.OrchestrateAsync(message, _context, TestContext.Current.CancellationToken);
 
-        result.Should().BeNull();
+        result.ShouldBeNull();
     }
 }

@@ -10,12 +10,12 @@ using Cvoya.Spring.Core.Execution;
 using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Dapr.Execution;
 
-using FluentAssertions;
-
 using Microsoft.Extensions.Logging;
 
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
+
+using Shouldly;
 
 using Xunit;
 
@@ -158,7 +158,7 @@ public class DelegatedExecutionDispatcherTests
             .ThrowsAsyncForAnyArgs(new InvalidOperationException("runtime boom"));
 
         var act = () => _dispatcher.DispatchAsync(message, context: null, TestContext.Current.CancellationToken);
-        await act.Should().ThrowAsync<InvalidOperationException>();
+        await Should.ThrowAsync<InvalidOperationException>(act);
 
         _mcpServer.Received(1).RevokeSession("test-token");
         await _launcher.Received(1).CleanupAsync("/tmp/test-workdir", Arg.Any<CancellationToken>());
@@ -175,15 +175,15 @@ public class DelegatedExecutionDispatcherTests
 
         var result = await _dispatcher.DispatchAsync(message, context: null, TestContext.Current.CancellationToken);
 
-        result.Should().NotBeNull();
-        result!.From.Should().Be(message.To);
-        result.To.Should().Be(message.From);
-        result.ConversationId.Should().Be(message.ConversationId);
-        result.Type.Should().Be(MessageType.Domain);
+        result.ShouldNotBeNull();
+        result!.From.ShouldBe(message.To);
+        result.To.ShouldBe(message.From);
+        result.ConversationId.ShouldBe(message.ConversationId);
+        result.Type.ShouldBe(MessageType.Domain);
 
         var payload = result.Payload.Deserialize<JsonElement>();
-        payload.GetProperty("Output").GetString().Should().Be("success output");
-        payload.GetProperty("ExitCode").GetInt32().Should().Be(0);
+        payload.GetProperty("Output").GetString().ShouldBe("success output");
+        payload.GetProperty("ExitCode").GetInt32().ShouldBe(0);
     }
 
     [Fact]
@@ -198,10 +198,10 @@ public class DelegatedExecutionDispatcherTests
 
         var result = await _dispatcher.DispatchAsync(message, context: null, TestContext.Current.CancellationToken);
 
-        result.Should().NotBeNull();
+        result.ShouldNotBeNull();
         var payload = result!.Payload.Deserialize<JsonElement>();
-        payload.GetProperty("ExitCode").GetInt32().Should().Be(1);
-        payload.GetProperty("Error").GetString().Should().Be("error occurred");
+        payload.GetProperty("ExitCode").GetInt32().ShouldBe(1);
+        payload.GetProperty("Error").GetString().ShouldBe("error occurred");
     }
 
     [Fact]
@@ -212,7 +212,8 @@ public class DelegatedExecutionDispatcherTests
             .Returns((AgentDefinition?)null);
 
         var act = () => _dispatcher.DispatchAsync(message, context: null, TestContext.Current.CancellationToken);
-        await act.Should().ThrowAsync<SpringException>().WithMessage("*No agent definition*");
+        var ex = await Should.ThrowAsync<SpringException>(act);
+        ex.Message.ShouldContain("No agent definition");
     }
 
     [Fact]
@@ -225,7 +226,8 @@ public class DelegatedExecutionDispatcherTests
                 new AgentExecutionConfig("codex", Image)));
 
         var act = () => _dispatcher.DispatchAsync(message, context: null, TestContext.Current.CancellationToken);
-        await act.Should().ThrowAsync<SpringException>().WithMessage("*No IAgentToolLauncher*");
+        var ex = await Should.ThrowAsync<SpringException>(act);
+        ex.Message.ShouldContain("No IAgentToolLauncher");
     }
 
     [Fact]

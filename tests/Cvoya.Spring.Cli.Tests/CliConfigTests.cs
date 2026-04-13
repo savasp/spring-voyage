@@ -3,7 +3,7 @@
 
 namespace Cvoya.Spring.Cli.Tests;
 
-using FluentAssertions;
+using Shouldly;
 
 using Xunit;
 
@@ -14,7 +14,7 @@ public class CliConfigTests
     {
         var config = new CliConfig();
 
-        config.Endpoint.Should().Be("http://localhost:5000");
+        config.Endpoint.ShouldBe("http://localhost:5000");
     }
 
     [Fact]
@@ -22,7 +22,7 @@ public class CliConfigTests
     {
         var config = new CliConfig();
 
-        config.ApiToken.Should().BeNull();
+        config.ApiToken.ShouldBeNull();
     }
 
     [Fact]
@@ -49,9 +49,9 @@ public class CliConfigTests
             var loaded = System.Text.Json.JsonSerializer.Deserialize<CliConfig>(
                 File.ReadAllText(configPath));
 
-            loaded.Should().NotBeNull();
-            loaded!.Endpoint.Should().Be("https://api.example.com");
-            loaded.ApiToken.Should().Be("test-token-123");
+            loaded.ShouldNotBeNull();
+            loaded!.Endpoint.ShouldBe("https://api.example.com");
+            loaded.ApiToken.ShouldBe("test-token-123");
         }
         finally
         {

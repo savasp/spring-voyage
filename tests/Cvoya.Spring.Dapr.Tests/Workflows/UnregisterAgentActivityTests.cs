@@ -8,13 +8,13 @@ using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Dapr.Workflows;
 using Cvoya.Spring.Dapr.Workflows.Activities;
 
-using FluentAssertions;
-
 using global::Dapr.Workflow;
 
 using Microsoft.Extensions.Logging;
 
 using NSubstitute;
+
+using Shouldly;
 
 using Xunit;
 
@@ -43,7 +43,7 @@ public class UnregisterAgentActivityTests
 
         var result = await _activity.RunAsync(context, input);
 
-        result.Should().BeTrue();
+        result.ShouldBeTrue();
         await _directoryService.Received(1).UnregisterAsync(
             Arg.Is<Address>(a => a.Scheme == "agent" && a.Path == "agent-1"),
             Arg.Any<CancellationToken>());

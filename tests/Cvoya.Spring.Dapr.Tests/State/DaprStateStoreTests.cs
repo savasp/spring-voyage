@@ -5,14 +5,14 @@ namespace Cvoya.Spring.Dapr.Tests.State;
 
 using Cvoya.Spring.Dapr.State;
 
-using FluentAssertions;
-
 using global::Dapr.Client;
 
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 using NSubstitute;
+
+using Shouldly;
 
 using Xunit;
 
@@ -41,7 +41,7 @@ public class DaprStateStoreTests
 
         var result = await _sut.GetAsync<string>("key1", TestContext.Current.CancellationToken);
 
-        result.Should().Be(expected);
+        result.ShouldBe(expected);
     }
 
     [Fact]
@@ -52,7 +52,7 @@ public class DaprStateStoreTests
 
         var result = await _sut.GetAsync<string>("missing", TestContext.Current.CancellationToken);
 
-        result.Should().BeNull();
+        result.ShouldBeNull();
     }
 
     [Fact]
@@ -79,7 +79,7 @@ public class DaprStateStoreTests
 
         var result = await _sut.ContainsAsync("key1", TestContext.Current.CancellationToken);
 
-        result.Should().BeTrue();
+        result.ShouldBeTrue();
     }
 
     [Fact]
@@ -90,7 +90,7 @@ public class DaprStateStoreTests
 
         var result = await _sut.ContainsAsync("missing", TestContext.Current.CancellationToken);
 
-        result.Should().BeFalse();
+        result.ShouldBeFalse();
     }
 
     [Fact]

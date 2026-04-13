@@ -9,11 +9,11 @@ using Cvoya.Spring.Connector.GitHub.Auth;
 using Cvoya.Spring.Connector.GitHub.Webhooks;
 using Cvoya.Spring.Core.Messaging;
 
-using FluentAssertions;
-
 using Microsoft.Extensions.Logging;
 
 using NSubstitute;
+
+using Shouldly;
 
 using Xunit;
 
@@ -37,10 +37,10 @@ public class GitHubWebhookHandlerTests
 
         var message = _handler.TranslateEvent("issues", payload);
 
-        message.Should().NotBeNull();
-        message!.Type.Should().Be(MessageType.Domain);
-        message.Payload.GetProperty("intent").GetString().Should().Be("work_assignment");
-        message.Payload.GetProperty("issue").GetProperty("number").GetInt32().Should().Be(42);
+        message.ShouldNotBeNull();
+        message!.Type.ShouldBe(MessageType.Domain);
+        message.Payload.GetProperty("intent").GetString().ShouldBe("work_assignment");
+        message.Payload.GetProperty("issue").GetProperty("number").GetInt32().ShouldBe(42);
     }
 
     [Fact]
@@ -50,10 +50,10 @@ public class GitHubWebhookHandlerTests
 
         var message = _handler.TranslateEvent("pull_request", payload);
 
-        message.Should().NotBeNull();
-        message!.Type.Should().Be(MessageType.Domain);
-        message.Payload.GetProperty("intent").GetString().Should().Be("review_request");
-        message.Payload.GetProperty("pull_request").GetProperty("number").GetInt32().Should().Be(10);
+        message.ShouldNotBeNull();
+        message!.Type.ShouldBe(MessageType.Domain);
+        message.Payload.GetProperty("intent").GetString().ShouldBe("review_request");
+        message.Payload.GetProperty("pull_request").GetProperty("number").GetInt32().ShouldBe(10);
     }
 
     [Fact]
@@ -63,10 +63,10 @@ public class GitHubWebhookHandlerTests
 
         var message = _handler.TranslateEvent("issue_comment", payload);
 
-        message.Should().NotBeNull();
-        message!.Type.Should().Be(MessageType.Domain);
-        message.Payload.GetProperty("intent").GetString().Should().Be("feedback");
-        message.Payload.GetProperty("comment").GetProperty("body").GetString().Should().Be("Looks good!");
+        message.ShouldNotBeNull();
+        message!.Type.ShouldBe(MessageType.Domain);
+        message.Payload.GetProperty("intent").GetString().ShouldBe("feedback");
+        message.Payload.GetProperty("comment").GetProperty("body").GetString().ShouldBe("Looks good!");
     }
 
     [Fact]
@@ -76,7 +76,7 @@ public class GitHubWebhookHandlerTests
 
         var message = _handler.TranslateEvent("deployment", payload);
 
-        message.Should().BeNull();
+        message.ShouldBeNull();
     }
 
     [Fact]
@@ -86,9 +86,9 @@ public class GitHubWebhookHandlerTests
 
         var message = _handler.TranslateEvent("issues", payload);
 
-        message.Should().NotBeNull();
-        message!.From.Scheme.Should().Be("connector");
-        message.From.Path.Should().Be("github");
+        message.ShouldNotBeNull();
+        message!.From.Scheme.ShouldBe("connector");
+        message.From.Path.ShouldBe("github");
     }
 
     [Fact]
@@ -98,9 +98,9 @@ public class GitHubWebhookHandlerTests
 
         var message = _handler.TranslateEvent("issues", payload);
 
-        message.Should().NotBeNull();
-        message!.To.Scheme.Should().Be("unit");
-        message.To.Path.Should().Be("test-team");
+        message.ShouldNotBeNull();
+        message!.To.Scheme.ShouldBe("unit");
+        message.To.Path.ShouldBe("test-team");
     }
 
     [Fact]
@@ -115,9 +115,9 @@ public class GitHubWebhookHandlerTests
 
         var message = handler.TranslateEvent("issues", payload);
 
-        message.Should().NotBeNull();
-        message!.To.Scheme.Should().Be("system");
-        message.To.Path.Should().Be("router");
+        message.ShouldNotBeNull();
+        message!.To.Scheme.ShouldBe("system");
+        message.To.Path.ShouldBe("router");
     }
 
     private static JsonElement CreateIssuePayload(string action)

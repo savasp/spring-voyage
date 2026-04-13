@@ -8,14 +8,14 @@ using System.Text.Json;
 using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Dapr.Actors;
 
-using FluentAssertions;
-
 using global::Dapr.Actors;
 using global::Dapr.Actors.Runtime;
 
 using Microsoft.Extensions.Logging;
 
 using NSubstitute;
+
+using Shouldly;
 
 using Xunit;
 
@@ -87,13 +87,13 @@ public class HumanActorTests
 
         var result = await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
 
-        result.Should().NotBeNull();
-        result!.Type.Should().Be(MessageType.StatusQuery);
-        result.From.Should().Be(new Address("human", "test-human"));
-        result.To.Should().Be(new Address("agent", "test-sender"));
+        result.ShouldNotBeNull();
+        result!.Type.ShouldBe(MessageType.StatusQuery);
+        result.From.ShouldBe(new Address("human", "test-human"));
+        result.To.ShouldBe(new Address("agent", "test-sender"));
 
         var payload = result.Payload.Deserialize<JsonElement>();
-        payload.GetProperty("Permission").GetString().Should().Be("Operator");
+        payload.GetProperty("Permission").GetString().ShouldBe("Operator");
     }
 
     [Fact]
@@ -103,10 +103,10 @@ public class HumanActorTests
 
         var result = await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
 
-        result.Should().NotBeNull();
-        result!.Type.Should().Be(MessageType.HealthCheck);
+        result.ShouldNotBeNull();
+        result!.Type.ShouldBe(MessageType.HealthCheck);
         var payload = result.Payload.Deserialize<JsonElement>();
-        payload.GetProperty("Healthy").GetBoolean().Should().BeTrue();
+        payload.GetProperty("Healthy").GetBoolean().ShouldBeTrue();
     }
 
     [Fact]
@@ -119,9 +119,9 @@ public class HumanActorTests
 
         var result = await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
 
-        result.Should().NotBeNull();
+        result.ShouldNotBeNull();
         var payload = result!.Payload.Deserialize<JsonElement>();
-        payload.GetProperty("Acknowledged").GetBoolean().Should().BeTrue();
+        payload.GetProperty("Acknowledged").GetBoolean().ShouldBeTrue();
     }
 
     [Fact]
@@ -134,9 +134,9 @@ public class HumanActorTests
 
         var result = await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
 
-        result.Should().NotBeNull();
+        result.ShouldNotBeNull();
         var payload = result!.Payload.Deserialize<JsonElement>();
-        payload.GetProperty("Acknowledged").GetBoolean().Should().BeTrue();
+        payload.GetProperty("Acknowledged").GetBoolean().ShouldBeTrue();
     }
 
     [Fact]
@@ -147,9 +147,9 @@ public class HumanActorTests
 
         var result = await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
 
-        result.Should().NotBeNull();
+        result.ShouldNotBeNull();
         var payload = result!.Payload.Deserialize<JsonElement>();
-        payload.GetProperty("Error").GetString().Should().Contain("Viewers cannot receive domain messages");
+        payload.GetProperty("Error").GetString()!.ShouldContain("Viewers cannot receive domain messages");
     }
 
     [Fact]
@@ -168,7 +168,7 @@ public class HumanActorTests
             .Returns(new ConditionalValue<PermissionLevel>(true, PermissionLevel.Owner));
 
         var permission = await _actor.GetPermissionAsync(TestContext.Current.CancellationToken);
-        permission.Should().Be(PermissionLevel.Owner);
+        permission.ShouldBe(PermissionLevel.Owner);
     }
 
     [Fact]
@@ -176,7 +176,7 @@ public class HumanActorTests
     {
         var permission = await _actor.GetPermissionAsync(TestContext.Current.CancellationToken);
 
-        permission.Should().Be(PermissionLevel.Viewer);
+        permission.ShouldBe(PermissionLevel.Viewer);
     }
 
     // --- Unit-Scoped Permission Tests ---
@@ -210,7 +210,7 @@ public class HumanActorTests
 
         var result = await _actor.GetPermissionForUnitAsync("unit-1", TestContext.Current.CancellationToken);
 
-        result.Should().Be(PermissionLevel.Owner);
+        result.ShouldBe(PermissionLevel.Owner);
     }
 
     [Fact]
@@ -222,6 +222,6 @@ public class HumanActorTests
 
         var result = await _actor.GetPermissionForUnitAsync("unknown-unit", TestContext.Current.CancellationToken);
 
-        result.Should().BeNull();
+        result.ShouldBeNull();
     }
 }

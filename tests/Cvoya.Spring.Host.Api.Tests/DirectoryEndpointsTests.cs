@@ -10,9 +10,9 @@ using Cvoya.Spring.Core.Directory;
 using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Host.Api.Models;
 
-using FluentAssertions;
-
 using NSubstitute;
+
+using Shouldly;
 
 using Xunit;
 
@@ -40,12 +40,12 @@ public class DirectoryEndpointsTests : IClassFixture<CustomWebApplicationFactory
 
         var response = await _client.GetAsync("/api/v1/directory", ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var result = await response.Content.ReadFromJsonAsync<List<DirectoryEntryResponse>>(ct);
-        result.Should().HaveCount(2);
-        result![0].Address.Scheme.Should().Be("agent");
-        result[1].Address.Scheme.Should().Be("unit");
+        result!.Count().ShouldBe(2);
+        result![0].Address.Scheme.ShouldBe("agent");
+        result[1].Address.Scheme.ShouldBe("unit");
     }
 
     [Fact]
@@ -60,10 +60,10 @@ public class DirectoryEndpointsTests : IClassFixture<CustomWebApplicationFactory
 
         var response = await _client.GetAsync("/api/v1/directory/role/backend", ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var result = await response.Content.ReadFromJsonAsync<List<DirectoryEntryResponse>>(ct);
-        result.Should().HaveCount(1);
-        result![0].Role.Should().Be("backend");
+        result!.Count().ShouldBe(1);
+        result![0].Role.ShouldBe("backend");
     }
 }

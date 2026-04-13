@@ -12,14 +12,14 @@ using Cvoya.Spring.Core.Units;
 using Cvoya.Spring.Dapr.Actors;
 using Cvoya.Spring.Dapr.Auth;
 
-using FluentAssertions;
-
 using global::Dapr.Actors;
 using global::Dapr.Actors.Runtime;
 
 using Microsoft.Extensions.Logging;
 
 using NSubstitute;
+
+using Shouldly;
 
 using Xunit;
 
@@ -98,7 +98,7 @@ public class UnitActorTests
 
         var result = await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
 
-        result.Should().Be(expectedResponse);
+        result.ShouldBe(expectedResponse);
         await _strategy.Received(1).OrchestrateAsync(
             message,
             Arg.Any<IUnitContext>(),
@@ -119,8 +119,8 @@ public class UnitActorTests
 
         await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
 
-        capturedContext.Should().NotBeNull();
-        capturedContext!.UnitAddress.Should().Be(new Address("unit", "test-unit"));
+        capturedContext.ShouldNotBeNull();
+        capturedContext!.UnitAddress.ShouldBe(new Address("unit", "test-unit"));
     }
 
     [Fact]
@@ -142,10 +142,10 @@ public class UnitActorTests
 
         await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
 
-        capturedContext.Should().NotBeNull();
-        capturedContext!.Members.Should().HaveCount(2);
-        capturedContext.Members.Should().Contain(member1);
-        capturedContext.Members.Should().Contain(member2);
+        capturedContext.ShouldNotBeNull();
+        capturedContext!.Members.Count().ShouldBe(2);
+        capturedContext.Members.ShouldContain(member1);
+        capturedContext.Members.ShouldContain(member2);
     }
 
     // --- Control Message Tests ---
@@ -162,13 +162,13 @@ public class UnitActorTests
 
         var result = await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
 
-        result.Should().NotBeNull();
-        result!.Type.Should().Be(MessageType.StatusQuery);
-        result.From.Should().Be(new Address("unit", "test-unit"));
+        result.ShouldNotBeNull();
+        result!.Type.ShouldBe(MessageType.StatusQuery);
+        result.From.ShouldBe(new Address("unit", "test-unit"));
 
         var payload = result.Payload.Deserialize<JsonElement>();
-        payload.GetProperty("Status").GetString().Should().Be("Draft");
-        payload.GetProperty("MemberCount").GetInt32().Should().Be(2);
+        payload.GetProperty("Status").GetString().ShouldBe("Draft");
+        payload.GetProperty("MemberCount").GetInt32().ShouldBe(2);
     }
 
     [Fact]
@@ -178,10 +178,10 @@ public class UnitActorTests
 
         var result = await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
 
-        result.Should().NotBeNull();
-        result!.Type.Should().Be(MessageType.HealthCheck);
+        result.ShouldNotBeNull();
+        result!.Type.ShouldBe(MessageType.HealthCheck);
         var payload = result.Payload.Deserialize<JsonElement>();
-        payload.GetProperty("Healthy").GetBoolean().Should().BeTrue();
+        payload.GetProperty("Healthy").GetBoolean().ShouldBeTrue();
     }
 
     [Fact]
@@ -192,7 +192,7 @@ public class UnitActorTests
 
         var result = await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
 
-        result.Should().NotBeNull();
+        result.ShouldNotBeNull();
         await _stateManager.Received(1).SetStateAsync(
             StateKeys.Policies,
             Arg.Any<JsonElement>(),
@@ -206,7 +206,7 @@ public class UnitActorTests
 
         var result = await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
 
-        result.Should().NotBeNull();
+        result.ShouldNotBeNull();
     }
 
     // --- Member Management Tests ---
@@ -272,8 +272,8 @@ public class UnitActorTests
     {
         var result = await _actor.GetMembersAsync(TestContext.Current.CancellationToken);
 
-        result.Should().NotBeNull();
-        result.Should().BeEmpty();
+        result.ShouldNotBeNull();
+        result.ShouldBeEmpty();
     }
 
     [Fact]
@@ -286,9 +286,9 @@ public class UnitActorTests
 
         var result = await _actor.GetMembersAsync(TestContext.Current.CancellationToken);
 
-        result.Should().HaveCount(2);
-        result.Should().Contain(member1);
-        result.Should().Contain(member2);
+        result.Count().ShouldBe(2);
+        result.ShouldContain(member1);
+        result.ShouldContain(member2);
     }
 
     // --- UnitContext Tests ---
@@ -311,9 +311,9 @@ public class UnitActorTests
 
         await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
 
-        capturedContext.Should().NotBeNull();
-        capturedContext!.UnitAddress.Should().Be(new Address("unit", "test-unit"));
-        capturedContext.Members.Should().ContainSingle().Which.Should().Be(member1);
+        capturedContext.ShouldNotBeNull();
+        capturedContext!.UnitAddress.ShouldBe(new Address("unit", "test-unit"));
+        capturedContext.Members.ShouldHaveSingleItem().ShouldBe(member1);
     }
 
     [Fact]
@@ -330,9 +330,9 @@ public class UnitActorTests
 
         await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
 
-        capturedContext.Should().NotBeNull();
+        capturedContext.ShouldNotBeNull();
         var sendResult = await capturedContext!.SendAsync(message, TestContext.Current.CancellationToken);
-        sendResult.Should().BeNull();
+        sendResult.ShouldBeNull();
     }
 
     // --- Error Handling Tests ---
@@ -346,9 +346,9 @@ public class UnitActorTests
 
         var result = await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
 
-        result.Should().NotBeNull();
+        result.ShouldNotBeNull();
         var payload = result!.Payload.Deserialize<JsonElement>();
-        payload.GetProperty("Error").GetString().Should().Contain("Strategy failed");
+        payload.GetProperty("Error").GetString()!.ShouldContain("Strategy failed");
     }
 
     // --- Human Permission Tests ---
@@ -383,7 +383,7 @@ public class UnitActorTests
 
         var result = await _actor.GetHumanPermissionAsync("human-1", TestContext.Current.CancellationToken);
 
-        result.Should().Be(PermissionLevel.Owner);
+        result.ShouldBe(PermissionLevel.Owner);
     }
 
     [Fact]
@@ -395,7 +395,7 @@ public class UnitActorTests
 
         var result = await _actor.GetHumanPermissionAsync("unknown", TestContext.Current.CancellationToken);
 
-        result.Should().BeNull();
+        result.ShouldBeNull();
     }
 
     [Fact]
@@ -412,7 +412,7 @@ public class UnitActorTests
 
         var result = await _actor.GetHumanPermissionsAsync(TestContext.Current.CancellationToken);
 
-        result.Should().HaveCount(2);
+        result.Count().ShouldBe(2);
     }
 
     // --- Activity Event Emission Tests ---
@@ -504,7 +504,7 @@ public class UnitActorTests
         // Should not throw even though the bus fails.
         var result = await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
 
-        result.Should().BeNull();
+        result.ShouldBeNull();
     }
 
     // --- Lifecycle Status Tests ---
@@ -514,7 +514,7 @@ public class UnitActorTests
     {
         var status = await _actor.GetStatusAsync(TestContext.Current.CancellationToken);
 
-        status.Should().Be(UnitStatus.Draft);
+        status.ShouldBe(UnitStatus.Draft);
     }
 
     [Fact]
@@ -522,9 +522,9 @@ public class UnitActorTests
     {
         var result = await _actor.TransitionAsync(UnitStatus.Stopped, TestContext.Current.CancellationToken);
 
-        result.Success.Should().BeTrue();
-        result.CurrentStatus.Should().Be(UnitStatus.Stopped);
-        result.RejectionReason.Should().BeNull();
+        result.Success.ShouldBeTrue();
+        result.CurrentStatus.ShouldBe(UnitStatus.Stopped);
+        result.RejectionReason.ShouldBeNull();
 
         await _stateManager.Received(1).SetStateAsync(
             StateKeys.UnitStatus,
@@ -540,8 +540,8 @@ public class UnitActorTests
 
         var result = await _actor.TransitionAsync(UnitStatus.Starting, TestContext.Current.CancellationToken);
 
-        result.Success.Should().BeTrue();
-        result.CurrentStatus.Should().Be(UnitStatus.Starting);
+        result.Success.ShouldBeTrue();
+        result.CurrentStatus.ShouldBe(UnitStatus.Starting);
         await _stateManager.Received(1).SetStateAsync(
             StateKeys.UnitStatus,
             UnitStatus.Starting,
@@ -556,8 +556,8 @@ public class UnitActorTests
 
         var result = await _actor.TransitionAsync(UnitStatus.Running, TestContext.Current.CancellationToken);
 
-        result.Success.Should().BeTrue();
-        result.CurrentStatus.Should().Be(UnitStatus.Running);
+        result.Success.ShouldBeTrue();
+        result.CurrentStatus.ShouldBe(UnitStatus.Running);
     }
 
     [Fact]
@@ -568,8 +568,8 @@ public class UnitActorTests
 
         var result = await _actor.TransitionAsync(UnitStatus.Stopping, TestContext.Current.CancellationToken);
 
-        result.Success.Should().BeTrue();
-        result.CurrentStatus.Should().Be(UnitStatus.Stopping);
+        result.Success.ShouldBeTrue();
+        result.CurrentStatus.ShouldBe(UnitStatus.Stopping);
     }
 
     [Fact]
@@ -580,8 +580,8 @@ public class UnitActorTests
 
         var result = await _actor.TransitionAsync(UnitStatus.Stopped, TestContext.Current.CancellationToken);
 
-        result.Success.Should().BeTrue();
-        result.CurrentStatus.Should().Be(UnitStatus.Stopped);
+        result.Success.ShouldBeTrue();
+        result.CurrentStatus.ShouldBe(UnitStatus.Stopped);
     }
 
     [Fact]
@@ -592,8 +592,8 @@ public class UnitActorTests
 
         var result = await _actor.TransitionAsync(UnitStatus.Stopped, TestContext.Current.CancellationToken);
 
-        result.Success.Should().BeTrue();
-        result.CurrentStatus.Should().Be(UnitStatus.Stopped);
+        result.Success.ShouldBeTrue();
+        result.CurrentStatus.ShouldBe(UnitStatus.Stopped);
     }
 
     [Fact]
@@ -604,8 +604,8 @@ public class UnitActorTests
 
         var result = await _actor.TransitionAsync(UnitStatus.Error, TestContext.Current.CancellationToken);
 
-        result.Success.Should().BeTrue();
-        result.CurrentStatus.Should().Be(UnitStatus.Error);
+        result.Success.ShouldBeTrue();
+        result.CurrentStatus.ShouldBe(UnitStatus.Error);
     }
 
     [Fact]
@@ -616,9 +616,11 @@ public class UnitActorTests
 
         var result = await _actor.TransitionAsync(UnitStatus.Draft, TestContext.Current.CancellationToken);
 
-        result.Success.Should().BeFalse();
-        result.CurrentStatus.Should().Be(UnitStatus.Running);
-        result.RejectionReason.Should().Contain("Running").And.Contain("Draft");
+        result.Success.ShouldBeFalse();
+        result.CurrentStatus.ShouldBe(UnitStatus.Running);
+        result.RejectionReason.ShouldNotBeNull();
+        result.RejectionReason.ShouldContain("Running");
+        result.RejectionReason.ShouldContain("Draft");
 
         await _stateManager.DidNotReceive().SetStateAsync(
             StateKeys.UnitStatus,
@@ -634,9 +636,9 @@ public class UnitActorTests
 
         var result = await _actor.TransitionAsync(UnitStatus.Running, TestContext.Current.CancellationToken);
 
-        result.Success.Should().BeFalse();
-        result.CurrentStatus.Should().Be(UnitStatus.Stopped);
-        result.RejectionReason.Should().NotBeNullOrEmpty();
+        result.Success.ShouldBeFalse();
+        result.CurrentStatus.ShouldBe(UnitStatus.Stopped);
+        result.RejectionReason.ShouldNotBeNullOrEmpty();
     }
 
     [Fact]
@@ -678,9 +680,9 @@ public class UnitActorTests
 
         var result = await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
 
-        result.Should().NotBeNull();
+        result.ShouldNotBeNull();
         var payload = result!.Payload.Deserialize<JsonElement>();
-        payload.GetProperty("Status").GetString().Should().Be("Running");
+        payload.GetProperty("Status").GetString().ShouldBe("Running");
     }
 
     // --- Metadata Tests ---
@@ -695,11 +697,11 @@ public class UnitActorTests
 
         var metadata = await _actor.GetMetadataAsync(TestContext.Current.CancellationToken);
 
-        metadata.Should().NotBeNull();
-        metadata.DisplayName.Should().BeNull();
-        metadata.Description.Should().BeNull();
-        metadata.Model.Should().BeNull();
-        metadata.Color.Should().BeNull();
+        metadata.ShouldNotBeNull();
+        metadata.DisplayName.ShouldBeNull();
+        metadata.Description.ShouldBeNull();
+        metadata.Model.ShouldBeNull();
+        metadata.Color.ShouldBeNull();
     }
 
     [Fact]
@@ -712,11 +714,11 @@ public class UnitActorTests
 
         var metadata = await _actor.GetMetadataAsync(TestContext.Current.CancellationToken);
 
-        metadata.Model.Should().Be("gpt-4o");
-        metadata.Color.Should().Be("#ff8800");
+        metadata.Model.ShouldBe("gpt-4o");
+        metadata.Color.ShouldBe("#ff8800");
         // DisplayName and Description live on the directory entity, not the actor.
-        metadata.DisplayName.Should().BeNull();
-        metadata.Description.Should().BeNull();
+        metadata.DisplayName.ShouldBeNull();
+        metadata.Description.ShouldBeNull();
     }
 
     [Fact]

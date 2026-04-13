@@ -7,7 +7,7 @@ using Cvoya.Spring.Core.Directory;
 using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Dapr.Routing;
 
-using FluentAssertions;
+using Shouldly;
 
 using Xunit;
 
@@ -26,8 +26,8 @@ public class DirectoryCacheTests
 
         _cache.Set(address, entry);
 
-        _cache.TryGet(address, out var result).Should().BeTrue();
-        result.Should().Be(entry);
+        _cache.TryGet(address, out var result).ShouldBeTrue();
+        result.ShouldBe(entry);
     }
 
     [Fact]
@@ -39,7 +39,7 @@ public class DirectoryCacheTests
         _cache.Set(address, entry);
         _cache.Invalidate(address);
 
-        _cache.TryGet(address, out _).Should().BeFalse();
+        _cache.TryGet(address, out _).ShouldBeFalse();
     }
 
     [Fact]
@@ -53,8 +53,8 @@ public class DirectoryCacheTests
 
         _cache.Clear();
 
-        _cache.TryGet(address1, out _).Should().BeFalse();
-        _cache.TryGet(address2, out _).Should().BeFalse();
+        _cache.TryGet(address1, out _).ShouldBeFalse();
+        _cache.TryGet(address2, out _).ShouldBeFalse();
     }
 
     private static DirectoryEntry CreateEntry(Address address) =>

@@ -7,13 +7,13 @@ using System.Net;
 
 using Cvoya.Spring.Connector.GitHub.Skills;
 
-using FluentAssertions;
-
 using Microsoft.Extensions.Logging;
 
 using NSubstitute;
 
 using Octokit;
+
+using Shouldly;
 
 using Xunit;
 
@@ -57,8 +57,8 @@ public class DeleteFileSkillTests
             "owner", "repo", "docs/OLD.md", "remove doc", "main",
             TestContext.Current.CancellationToken);
 
-        result.GetProperty("action").GetString().Should().Be("deleted");
-        result.GetProperty("previous_sha").GetString().Should().Be("sha-old");
+        result.GetProperty("action").GetString().ShouldBe("deleted");
+        result.GetProperty("previous_sha").GetString().ShouldBe("sha-old");
 
         await _gitHubClient.Repository.Content.Received(1)
             .DeleteFile("owner", "repo", "docs/OLD.md", Arg.Is<DeleteFileRequest>(
@@ -77,6 +77,6 @@ public class DeleteFileSkillTests
             "owner", "repo", "missing.md", "msg", "main",
             TestContext.Current.CancellationToken);
 
-        await act.Should().ThrowAsync<NotFoundException>();
+        await Should.ThrowAsync<NotFoundException>(act);
     }
 }

@@ -22,5 +22,5 @@ This product includes or depends on the following third-party software:
 | System.Reactive | MIT License | [dotnet/reactive](https://github.com/dotnet/reactive) |
 | YamlDotNet | MIT License | [aaubry/YamlDotNet](https://github.com/aaubry/YamlDotNet) |
 | xunit.v3 | Apache License 2.0 | [xunit/xunit](https://github.com/xunit/xunit) |
-| FluentAssertions | Apache License 2.0 | [fluentassertions/fluentassertions](https://github.com/fluentassertions/fluentassertions) |
+| Shouldly | BSD 3-Clause | [shouldly/shouldly](https://github.com/shouldly/shouldly) |
 | NSubstitute | BSD 3-Clause | [nsubstitute/NSubstitute](https://github.com/nsubstitute/NSubstitute) |

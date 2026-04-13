@@ -14,7 +14,7 @@ using Cvoya.Spring.Cli;
 using Cvoya.Spring.Cli.Commands;
 using Cvoya.Spring.Manifest;
 
-using FluentAssertions;
+using Shouldly;
 
 using Xunit;
 
@@ -59,24 +59,29 @@ public class ApplyCommandTests
     {
         var manifest = ApplyRunner.Parse(EngineeringTeamYaml);
 
-        manifest.Name.Should().Be("engineering-team");
-        manifest.Description.Should().StartWith("A software engineering team");
-        manifest.Structure.Should().Be("hierarchical");
-        manifest.Members.Should().NotBeNull().And.HaveCount(3);
-        manifest.Members![0].Agent.Should().Be("tech-lead");
-        manifest.Members[1].Agent.Should().Be("backend-engineer");
-        manifest.Members[2].Agent.Should().Be("qa-engineer");
+        manifest.Name.ShouldBe("engineering-team");
+        manifest.Description.ShouldStartWith("A software engineering team");
+        manifest.Structure.ShouldBe("hierarchical");
+        manifest.Members.ShouldNotBeNull();
+        manifest.Members!.Count.ShouldBe(3);
+        manifest.Members![0].Agent.ShouldBe("tech-lead");
+        manifest.Members[1].Agent.ShouldBe("backend-engineer");
+        manifest.Members[2].Agent.ShouldBe("qa-engineer");
 
-        manifest.Ai.Should().NotBeNull();
-        manifest.Ai!.Agent.Should().Be("claude");
-        manifest.Ai.Model.Should().Be("claude-sonnet-4-20250514");
-        manifest.Ai.Skills.Should().NotBeNull().And.HaveCount(1);
+        manifest.Ai.ShouldNotBeNull();
+        manifest.Ai!.Agent.ShouldBe("claude");
+        manifest.Ai.Model.ShouldBe("claude-sonnet-4-20250514");
+        manifest.Ai.Skills.ShouldNotBeNull();
+        manifest.Ai.Skills!.Count.ShouldBe(1);
 
-        manifest.Execution.Should().NotBeNull();
-        manifest.Execution!.Image.Should().Be("spring-agent:latest");
-        manifest.Connectors.Should().NotBeNull().And.HaveCount(1);
-        manifest.Policies.Should().NotBeNull().And.ContainKey("communication");
-        manifest.Humans.Should().NotBeNull().And.HaveCount(1);
+        manifest.Execution.ShouldNotBeNull();
+        manifest.Execution!.Image.ShouldBe("spring-agent:latest");
+        manifest.Connectors.ShouldNotBeNull();
+        manifest.Connectors!.Count.ShouldBe(1);
+        manifest.Policies.ShouldNotBeNull();
+        manifest.Policies!.ShouldContainKey("communication");
+        manifest.Humans.ShouldNotBeNull();
+        manifest.Humans!.Count.ShouldBe(1);
     }
 
     [Fact]
@@ -86,14 +91,14 @@ public class ApplyCommandTests
 
         var manifest = ApplyRunner.Parse(yaml);
 
-        manifest.Name.Should().Be("x");
-        manifest.Description.Should().BeNull();
-        manifest.Ai.Should().BeNull();
-        manifest.Members.Should().BeNull();
-        manifest.Connectors.Should().BeNull();
-        manifest.Policies.Should().BeNull();
-        manifest.Humans.Should().BeNull();
-        manifest.Execution.Should().BeNull();
+        manifest.Name.ShouldBe("x");
+        manifest.Description.ShouldBeNull();
+        manifest.Ai.ShouldBeNull();
+        manifest.Members.ShouldBeNull();
+        manifest.Connectors.ShouldBeNull();
+        manifest.Policies.ShouldBeNull();
+        manifest.Humans.ShouldBeNull();
+        manifest.Execution.ShouldBeNull();
     }
 
     [Fact]
@@ -103,8 +108,8 @@ public class ApplyCommandTests
 
         var act = () => ApplyRunner.Parse(yaml);
 
-        act.Should().Throw<ManifestParseException>()
-            .WithMessage("*unit.name*");
+        Should.Throw<ManifestParseException>(act)
+            .Message.ShouldContain("unit.name");
     }
 
     [Fact]
@@ -114,8 +119,8 @@ public class ApplyCommandTests
 
         var act = () => ApplyRunner.Parse(yaml);
 
-        act.Should().Throw<ManifestParseException>()
-            .WithMessage("*'unit' root section*");
+        Should.Throw<ManifestParseException>(act)
+            .Message.ShouldContain("'unit' root section");
     }
 
     [Fact]
@@ -128,13 +133,13 @@ public class ApplyCommandTests
 
         var output = writer.ToString();
 
-        output.Should().Contain("engineering-team");
-        output.Should().Contain("agent:tech-lead");
-        output.Should().Contain("agent:backend-engineer");
-        output.Should().Contain("agent:qa-engineer");
-        output.Should().Contain("no API calls were made");
-        output.Should().Contain("[warn] section 'ai'");
-        output.Should().Contain("[warn] section 'policies'");
+        output.ShouldContain("engineering-team");
+        output.ShouldContain("agent:tech-lead");
+        output.ShouldContain("agent:backend-engineer");
+        output.ShouldContain("agent:qa-engineer");
+        output.ShouldContain("no API calls were made");
+        output.ShouldContain("[warn] section 'ai'");
+        output.ShouldContain("[warn] section 'policies'");
     }
 
     [Fact]
@@ -155,34 +160,34 @@ public class ApplyCommandTests
         var exitCode = await ApplyRunner.ApplyAsync(
             manifest, client, stdout, stderr, TestContext.Current.CancellationToken);
 
-        exitCode.Should().Be(0);
-        stderr.ToString().Should().BeEmpty();
+        exitCode.ShouldBe(0);
+        stderr.ToString().ShouldBeEmpty();
 
-        handler.Calls.Should().HaveCount(4);
-        handler.Calls[0].Method.Should().Be(HttpMethod.Post);
-        handler.Calls[0].Path.Should().Be("/api/v1/units");
-        handler.Calls[1].Path.Should().Be("/api/v1/units/engineering-team/members");
-        handler.Calls[2].Path.Should().Be("/api/v1/units/engineering-team/members");
-        handler.Calls[3].Path.Should().Be("/api/v1/units/engineering-team/members");
+        handler.Calls.Count().ShouldBe(4);
+        handler.Calls[0].Method.ShouldBe(HttpMethod.Post);
+        handler.Calls[0].Path.ShouldBe("/api/v1/units");
+        handler.Calls[1].Path.ShouldBe("/api/v1/units/engineering-team/members");
+        handler.Calls[2].Path.ShouldBe("/api/v1/units/engineering-team/members");
+        handler.Calls[3].Path.ShouldBe("/api/v1/units/engineering-team/members");
 
         // The create-unit POST must carry the full server-side contract
         // (Name + DisplayName + Description) so CreateUnitRequest binds
         // correctly and the description from the manifest is persisted.
         using var createBody = System.Text.Json.JsonDocument.Parse(handler.Calls[0].Body);
-        createBody.RootElement.GetProperty("name").GetString().Should().Be("engineering-team");
-        createBody.RootElement.GetProperty("displayName").GetString().Should().NotBeNullOrEmpty();
+        createBody.RootElement.GetProperty("name").GetString().ShouldBe("engineering-team");
+        createBody.RootElement.GetProperty("displayName").GetString().ShouldNotBeNullOrEmpty();
         createBody.RootElement.GetProperty("description").GetString()
-            .Should().StartWith("A software engineering team");
+            .ShouldStartWith("A software engineering team");
 
         // Bodies record the scheme/path for each member in declaration order.
-        handler.Calls[1].Body.Should().Contain("tech-lead");
-        handler.Calls[2].Body.Should().Contain("backend-engineer");
-        handler.Calls[3].Body.Should().Contain("qa-engineer");
+        handler.Calls[1].Body.ShouldContain("tech-lead");
+        handler.Calls[2].Body.ShouldContain("backend-engineer");
+        handler.Calls[3].Body.ShouldContain("qa-engineer");
 
         var stdoutText = stdout.ToString();
-        stdoutText.Should().Contain("creating unit 'engineering-team'");
-        stdoutText.Should().Contain("added member agent:tech-lead");
-        stdoutText.Should().Contain("3 member(s) added");
+        stdoutText.ShouldContain("creating unit 'engineering-team'");
+        stdoutText.ShouldContain("added member agent:tech-lead");
+        stdoutText.ShouldContain("3 member(s) added");
     }
 
     [Fact]
@@ -215,18 +220,18 @@ public class ApplyCommandTests
         var exitCode = await ApplyRunner.ApplyAsync(
             manifest, client, stdout, stderr, TestContext.Current.CancellationToken);
 
-        exitCode.Should().NotBe(0);
+        exitCode.ShouldNotBe(0);
 
         // Unit creation must have been attempted and reported before failure.
-        stdout.ToString().Should().Contain("creating unit 'engineering-team'");
+        stdout.ToString().ShouldContain("creating unit 'engineering-team'");
 
         // Failure surfaced to stderr.
         var stderrText = stderr.ToString();
-        stderrText.Should().Contain("[error]");
-        stderrText.Should().Contain("tech-lead");
+        stderrText.ShouldContain("[error]");
+        stderrText.ShouldContain("tech-lead");
 
         // Only the create + one member call should have been attempted.
-        handler.Calls.Should().HaveCount(2);
+        handler.Calls.Count().ShouldBe(2);
     }
 
     /// <summary>

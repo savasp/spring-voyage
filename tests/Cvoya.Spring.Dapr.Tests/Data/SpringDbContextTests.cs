@@ -6,9 +6,9 @@ namespace Cvoya.Spring.Dapr.Tests.Data;
 using Cvoya.Spring.Dapr.Data;
 using Cvoya.Spring.Dapr.Data.Entities;
 
-using FluentAssertions;
-
 using Microsoft.EntityFrameworkCore;
+
+using Shouldly;
 
 using Xunit;
 
@@ -45,9 +45,9 @@ public class SpringDbContextTests : IDisposable
 
         var retrieved = await _context.AgentDefinitions.FindAsync([agent.Id], ct);
 
-        retrieved.Should().NotBeNull();
-        retrieved!.AgentId.Should().Be("ada");
-        retrieved.Name.Should().Be("Ada");
+        retrieved.ShouldNotBeNull();
+        retrieved!.AgentId.ShouldBe("ada");
+        retrieved.Name.ShouldBe("Ada");
     }
 
     [Fact]
@@ -67,7 +67,7 @@ public class SpringDbContextTests : IDisposable
 
         var results = await _context.AgentDefinitions.ToListAsync(ct);
 
-        results.Should().NotContain(a => a.Id == agent.Id);
+        results.ShouldNotContain(a => a.Id == agent.Id);
     }
 
     [Fact]
@@ -88,8 +88,10 @@ public class SpringDbContextTests : IDisposable
 
         var after = DateTimeOffset.UtcNow;
 
-        agent.CreatedAt.Should().BeOnOrAfter(before).And.BeOnOrBefore(after);
-        agent.UpdatedAt.Should().BeOnOrAfter(before).And.BeOnOrBefore(after);
+        agent.CreatedAt.ShouldBeGreaterThanOrEqualTo(before);
+        agent.CreatedAt.ShouldBeLessThanOrEqualTo(after);
+        agent.UpdatedAt.ShouldBeGreaterThanOrEqualTo(before);
+        agent.UpdatedAt.ShouldBeLessThanOrEqualTo(after);
     }
 
     [Fact]
@@ -115,7 +117,7 @@ public class SpringDbContextTests : IDisposable
         _context.AgentDefinitions.Update(agent);
         await _context.SaveChangesAsync(ct);
 
-        agent.UpdatedAt.Should().BeAfter(originalUpdatedAt);
+        agent.UpdatedAt.ShouldBeGreaterThan(originalUpdatedAt);
     }
 
     public void Dispose()

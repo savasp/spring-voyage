@@ -8,13 +8,13 @@ using System.Text.Json;
 using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Dapr.Tools;
 
-using FluentAssertions;
-
 using global::Dapr.Actors.Runtime;
 
 using Microsoft.Extensions.Logging;
 
 using NSubstitute;
+
+using Shouldly;
 
 using Xunit;
 
@@ -49,7 +49,7 @@ public class CheckpointToolTests
             JsonSerializer.SerializeToElement(new { }),
             TestContext.Current.CancellationToken);
 
-        result.GetProperty("Success").GetBoolean().Should().BeTrue();
+        result.GetProperty("Success").GetBoolean().ShouldBeTrue();
 
         await _stateManager.Received(1).SetStateAsync(
             "Agent:Checkpoint:conv-1",

@@ -10,12 +10,12 @@ using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Core.Orchestration;
 using Cvoya.Spring.Dapr.Orchestration;
 
-using FluentAssertions;
-
 using Microsoft.Extensions.Logging;
 
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
+
+using Shouldly;
 
 using Xunit;
 
@@ -84,7 +84,7 @@ public class AiOrchestrationStrategyTests
         var message = CreateMessage();
         var result = await _strategy.OrchestrateAsync(message, _context, TestContext.Current.CancellationToken);
 
-        result.Should().Be(expectedResponse);
+        result.ShouldBe(expectedResponse);
         await _context.Received(1).SendAsync(
             Arg.Is<Message>(m => m.To == member2),
             Arg.Any<CancellationToken>());
@@ -101,7 +101,7 @@ public class AiOrchestrationStrategyTests
         var message = CreateMessage();
         var result = await _strategy.OrchestrateAsync(message, _context, TestContext.Current.CancellationToken);
 
-        result.Should().BeNull();
+        result.ShouldBeNull();
         await _context.DidNotReceive().SendAsync(Arg.Any<Message>(), Arg.Any<CancellationToken>());
     }
 
@@ -113,7 +113,7 @@ public class AiOrchestrationStrategyTests
         var message = CreateMessage();
         var result = await _strategy.OrchestrateAsync(message, _context, TestContext.Current.CancellationToken);
 
-        result.Should().BeNull();
+        result.ShouldBeNull();
         await _aiProvider.DidNotReceive().CompleteAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
@@ -127,9 +127,9 @@ public class AiOrchestrationStrategyTests
         var message = CreateMessage();
         var prompt = AiOrchestrationStrategy.BuildRoutingPrompt(message, _context);
 
-        prompt.Should().Contain("agent://agent-1");
-        prompt.Should().Contain("unit://sub-unit");
-        prompt.Should().Contain("process data");
+        prompt.ShouldContain("agent://agent-1");
+        prompt.ShouldContain("unit://sub-unit");
+        prompt.ShouldContain("process data");
     }
 
     [Fact]
@@ -141,7 +141,7 @@ public class AiOrchestrationStrategyTests
 
         var result = AiOrchestrationStrategy.ParseRoutingDecision("agent://agent-2", members);
 
-        result.Should().Be(member2);
+        result.ShouldBe(member2);
     }
 
     [Fact]
@@ -152,6 +152,6 @@ public class AiOrchestrationStrategyTests
 
         var result = AiOrchestrationStrategy.ParseRoutingDecision("unknown://foo", members);
 
-        result.Should().BeNull();
+        result.ShouldBeNull();
     }
 }

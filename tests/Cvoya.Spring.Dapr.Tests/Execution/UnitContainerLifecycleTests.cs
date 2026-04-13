@@ -9,12 +9,12 @@ using Cvoya.Spring.Core.Execution;
 using Cvoya.Spring.Core.State;
 using Cvoya.Spring.Dapr.Execution;
 
-using FluentAssertions;
-
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 using NSubstitute;
+
+using Shouldly;
 
 using Xunit;
 
@@ -76,7 +76,7 @@ public class UnitContainerLifecycleTests
 
         var remaining = await _stateStore.GetAsync<UnitContainerLifecycle.UnitLifecycleHandle>(
             HandleKey, TestContext.Current.CancellationToken);
-        remaining.Should().BeNull();
+        remaining.ShouldBeNull();
     }
 
     [Fact]
@@ -118,7 +118,7 @@ public class UnitContainerLifecycleTests
 
         var remaining = await _stateStore.GetAsync<UnitContainerLifecycle.UnitLifecycleHandle>(
             HandleKey, TestContext.Current.CancellationToken);
-        remaining.Should().BeNull();
+        remaining.ShouldBeNull();
     }
 
     [Fact]
@@ -128,7 +128,7 @@ public class UnitContainerLifecycleTests
 
         var act = () => sut.StartUnitAsync("   ", TestContext.Current.CancellationToken);
 
-        await act.Should().ThrowAsync<ArgumentException>();
+        await Should.ThrowAsync<ArgumentException>(act);
     }
 
     private UnitContainerLifecycle CreateSut()

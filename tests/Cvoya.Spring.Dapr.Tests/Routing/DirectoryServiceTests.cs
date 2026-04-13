@@ -7,11 +7,11 @@ using Cvoya.Spring.Core.Directory;
 using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Dapr.Routing;
 
-using FluentAssertions;
-
 using Microsoft.Extensions.Logging;
 
 using NSubstitute;
+
+using Shouldly;
 
 using Xunit;
 
@@ -42,9 +42,9 @@ public class DirectoryServiceTests
 
         var resolved = await _service.ResolveAsync(address, ct);
 
-        resolved.Should().NotBeNull();
-        resolved!.ActorId.Should().Be("actor-1");
-        resolved.DisplayName.Should().Be("Ada");
+        resolved.ShouldNotBeNull();
+        resolved!.ActorId.ShouldBe("actor-1");
+        resolved.DisplayName.ShouldBe("Ada");
     }
 
     [Fact]
@@ -58,7 +58,7 @@ public class DirectoryServiceTests
         await _service.UnregisterAsync(address, ct);
 
         var resolved = await _service.ResolveAsync(address, ct);
-        resolved.Should().BeNull();
+        resolved.ShouldBeNull();
     }
 
     [Fact]
@@ -72,13 +72,13 @@ public class DirectoryServiceTests
 
         var updated = await _service.UpdateEntryAsync(address, "new-display", "new-desc", ct);
 
-        updated.Should().NotBeNull();
-        updated!.DisplayName.Should().Be("new-display");
-        updated.Description.Should().Be("new-desc");
+        updated.ShouldNotBeNull();
+        updated!.DisplayName.ShouldBe("new-display");
+        updated.Description.ShouldBe("new-desc");
 
         var resolved = await _service.ResolveAsync(address, ct);
-        resolved!.DisplayName.Should().Be("new-display");
-        resolved.Description.Should().Be("new-desc");
+        resolved!.DisplayName.ShouldBe("new-display");
+        resolved.Description.ShouldBe("new-desc");
     }
 
     [Fact]
@@ -92,9 +92,9 @@ public class DirectoryServiceTests
 
         var updated = await _service.UpdateEntryAsync(address, displayName: null, description: "new-desc", ct);
 
-        updated.Should().NotBeNull();
-        updated!.DisplayName.Should().Be("display");
-        updated.Description.Should().Be("new-desc");
+        updated.ShouldNotBeNull();
+        updated!.DisplayName.ShouldBe("display");
+        updated.Description.ShouldBe("new-desc");
     }
 
     [Fact]
@@ -105,7 +105,7 @@ public class DirectoryServiceTests
 
         var updated = await _service.UpdateEntryAsync(address, "display", "desc", ct);
 
-        updated.Should().BeNull();
+        updated.ShouldBeNull();
     }
 
     [Fact]
@@ -125,7 +125,7 @@ public class DirectoryServiceTests
 
         var results = await _service.ResolveByRoleAsync("backend-engineer", ct);
 
-        results.Should().HaveCount(2);
-        results.Select(e => e.ActorId).Should().BeEquivalentTo(["actor-1", "actor-2"]);
+        results.Count().ShouldBe(2);
+        results.Select(e => e.ActorId).ShouldBe(new[] { "actor-1", "actor-2" }, ignoreOrder: true);
     }
 }

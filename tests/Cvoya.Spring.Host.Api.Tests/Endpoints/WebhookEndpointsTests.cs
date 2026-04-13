@@ -12,14 +12,14 @@ using Cvoya.Spring.Core.Directory;
 using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Dapr.Actors;
 
-using FluentAssertions;
-
 using global::Dapr.Actors;
 
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 
 using NSubstitute;
+
+using Shouldly;
 
 using Xunit;
 
@@ -49,7 +49,7 @@ public class WebhookEndpointsTests : IClassFixture<WebhookEndpointsTests.Factory
 
         var response = await _client.SendAsync(request, ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
     }
 
     [Fact]
@@ -63,7 +63,7 @@ public class WebhookEndpointsTests : IClassFixture<WebhookEndpointsTests.Factory
 
         var response = await _client.SendAsync(request, ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
     }
 
     [Fact]
@@ -78,7 +78,7 @@ public class WebhookEndpointsTests : IClassFixture<WebhookEndpointsTests.Factory
 
         var response = await _client.SendAsync(request, ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
     }
 
     [Fact]
@@ -94,7 +94,7 @@ public class WebhookEndpointsTests : IClassFixture<WebhookEndpointsTests.Factory
 
         var response = await _client.SendAsync(request, ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        response.StatusCode.ShouldBe(HttpStatusCode.Accepted);
 
         // "ping" is not a handled event type, so no Message is produced and
         // the MessageRouter (which would call DirectoryService.ResolveAsync) is not invoked.
@@ -159,7 +159,7 @@ public class WebhookEndpointsTests : IClassFixture<WebhookEndpointsTests.Factory
 
         var response = await _client.SendAsync(request, ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        response.StatusCode.ShouldBe(HttpStatusCode.Accepted);
 
         // The endpoint produced a unit-addressed message and MessageRouter resolved it
         // through the directory service to the mocked unit actor.
@@ -197,7 +197,7 @@ public class WebhookEndpointsTests : IClassFixture<WebhookEndpointsTests.Factory
 
         var response = await _client.SendAsync(request, ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.InternalServerError);
+        response.StatusCode.ShouldBe(HttpStatusCode.InternalServerError);
     }
 
     private static HttpRequestMessage BuildRequest(string payload)

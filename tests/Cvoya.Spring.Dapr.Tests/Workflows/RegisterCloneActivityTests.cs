@@ -8,13 +8,13 @@ using Cvoya.Spring.Core.Directory;
 using Cvoya.Spring.Dapr.Workflows;
 using Cvoya.Spring.Dapr.Workflows.Activities;
 
-using FluentAssertions;
-
 using global::Dapr.Workflow;
 
 using Microsoft.Extensions.Logging;
 
 using NSubstitute;
+
+using Shouldly;
 
 using Xunit;
 
@@ -45,7 +45,7 @@ public class RegisterCloneActivityTests
 
         var result = await _activity.RunAsync(_context, input);
 
-        result.Should().BeTrue();
+        result.ShouldBeTrue();
         await _directoryService.Received(1).RegisterAsync(
             Arg.Is<DirectoryEntry>(e =>
                 e.Address.Scheme == "agent" &&

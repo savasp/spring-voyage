@@ -13,14 +13,14 @@ using Cvoya.Spring.Dapr.Auth;
 using Cvoya.Spring.Dapr.Routing;
 using Cvoya.Spring.Dapr.Tools;
 
-using FluentAssertions;
-
 using global::Dapr.Actors.Client;
 using global::Dapr.Actors.Runtime;
 
 using Microsoft.Extensions.Logging;
 
 using NSubstitute;
+
+using Shouldly;
 
 using Xunit;
 
@@ -92,7 +92,7 @@ public class RequestHelpToolTests
             JsonSerializer.SerializeToElement(new { }),
             TestContext.Current.CancellationToken);
 
-        result.GetProperty("Success").GetBoolean().Should().BeTrue();
-        result.GetProperty("Response").GetProperty("Answer").GetString().Should().Be("42");
+        result.GetProperty("Success").GetBoolean().ShouldBeTrue();
+        result.GetProperty("Response").GetProperty("Answer").GetString().ShouldBe("42");
     }
 }

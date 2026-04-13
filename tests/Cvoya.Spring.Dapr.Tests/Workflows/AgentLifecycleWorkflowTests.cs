@@ -7,11 +7,11 @@ using Cvoya.Spring.Core;
 using Cvoya.Spring.Dapr.Workflows;
 using Cvoya.Spring.Dapr.Workflows.Activities;
 
-using FluentAssertions;
-
 using global::Dapr.Workflow;
 
 using NSubstitute;
+
+using Shouldly;
 
 using Xunit;
 
@@ -43,9 +43,9 @@ public class AgentLifecycleWorkflowTests
 
         var result = await _workflow.RunAsync(_context, input);
 
-        result.Success.Should().BeTrue();
-        result.AgentAddress.Should().Be("agent://agent-1");
-        result.Error.Should().BeNull();
+        result.Success.ShouldBeTrue();
+        result.AgentAddress.ShouldBe("agent://agent-1");
+        result.Error.ShouldBeNull();
     }
 
     [Fact]
@@ -59,9 +59,9 @@ public class AgentLifecycleWorkflowTests
 
         var result = await _workflow.RunAsync(_context, input);
 
-        result.Success.Should().BeFalse();
-        result.Error.Should().Contain("Validation failed");
-        result.AgentAddress.Should().BeNull();
+        result.Success.ShouldBeFalse();
+        result.Error!.ShouldContain("Validation failed");
+        result.AgentAddress.ShouldBeNull();
     }
 
     [Fact]
@@ -90,9 +90,9 @@ public class AgentLifecycleWorkflowTests
 
         var result = await _workflow.RunAsync(_context, input);
 
-        result.Success.Should().BeTrue();
-        result.AgentAddress.Should().BeNull();
-        result.Error.Should().BeNull();
+        result.Success.ShouldBeTrue();
+        result.AgentAddress.ShouldBeNull();
+        result.Error.ShouldBeNull();
     }
 
     [Fact]
@@ -103,7 +103,7 @@ public class AgentLifecycleWorkflowTests
 
         var act = () => _workflow.RunAsync(_context, input);
 
-        await act.Should().ThrowAsync<SpringException>()
-            .WithMessage("*Unknown lifecycle operation*");
+        var ex = await Should.ThrowAsync<SpringException>(act);
+        ex.Message.ShouldContain("Unknown lifecycle operation");
     }
 }

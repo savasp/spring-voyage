@@ -15,8 +15,6 @@ using Cvoya.Spring.Dapr.Actors;
 using Cvoya.Spring.Host.Api.Models;
 using Cvoya.Spring.Host.Api.Services;
 
-using FluentAssertions;
-
 using global::Dapr.Actors;
 using global::Dapr.Actors.Client;
 
@@ -25,6 +23,8 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 
 using NSubstitute;
+
+using Shouldly;
 
 using Xunit;
 
@@ -87,25 +87,25 @@ public class UnitCreationEndpointTests : IClassFixture<UnitCreationEndpointTests
             new CreateUnitFromYamlRequest(Yaml, DisplayName: "From YAML"),
             ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        response.StatusCode.ShouldBe(HttpStatusCode.Created);
 
         var body = await response.Content.ReadAsStringAsync(ct);
         using var doc = JsonDocument.Parse(body);
-        doc.RootElement.GetProperty("unit").GetProperty("name").GetString().Should().Be("from-yaml-unit");
-        doc.RootElement.GetProperty("unit").GetProperty("displayName").GetString().Should().Be("From YAML");
-        doc.RootElement.GetProperty("unit").GetProperty("model").GetString().Should().Be("claude-sonnet-4-20250514");
+        doc.RootElement.GetProperty("unit").GetProperty("name").GetString().ShouldBe("from-yaml-unit");
+        doc.RootElement.GetProperty("unit").GetProperty("displayName").GetString().ShouldBe("From YAML");
+        doc.RootElement.GetProperty("unit").GetProperty("model").GetString().ShouldBe("claude-sonnet-4-20250514");
         // Members are routed through MessageRouter, whose success in tests depends on
         // whether the agent-address resolution surfaces an actor proxy for the mock.
         // The key invariant is that manifest members are iterated (via warnings +
         // the property being present), not the exact delivery count.
-        doc.RootElement.TryGetProperty("membersAdded", out _).Should().BeTrue();
+        doc.RootElement.TryGetProperty("membersAdded", out _).ShouldBeTrue();
 
         var warnings = doc.RootElement.GetProperty("warnings")
             .EnumerateArray()
             .Select(w => w.GetString())
             .ToList();
-        warnings.Should().Contain(w => w!.Contains("ai"));
-        warnings.Should().Contain(w => w!.Contains("policies"));
+        warnings.ShouldContain(w => w!.Contains("ai"));
+        warnings.ShouldContain(w => w!.Contains("policies"));
 
         await _factory.DirectoryService.Received(1).RegisterAsync(
             Arg.Is<DirectoryEntry>(e => e.Address.Path == "from-yaml-unit"),
@@ -125,7 +125,7 @@ public class UnitCreationEndpointTests : IClassFixture<UnitCreationEndpointTests
             new CreateUnitFromYamlRequest("not-a-unit: 1"),
             ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
     }
 
     [Fact]
@@ -138,7 +138,7 @@ public class UnitCreationEndpointTests : IClassFixture<UnitCreationEndpointTests
             new CreateUnitFromYamlRequest(string.Empty),
             ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
     }
 
     [Fact]
@@ -147,13 +147,13 @@ public class UnitCreationEndpointTests : IClassFixture<UnitCreationEndpointTests
         var ct = TestContext.Current.CancellationToken;
 
         var response = await _client.GetAsync("/api/v1/packages/templates", ct);
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var body = await response.Content.ReadAsStringAsync(ct);
         using var doc = JsonDocument.Parse(body);
         var entries = doc.RootElement.EnumerateArray().ToList();
-        entries.Should().NotBeEmpty();
-        entries.Should().Contain(e =>
+        entries.ShouldNotBeEmpty();
+        entries.ShouldContain(e =>
             e.GetProperty("package").GetString() == "sample-pkg"
             && e.GetProperty("name").GetString() == "sample-unit");
     }
@@ -168,7 +168,7 @@ public class UnitCreationEndpointTests : IClassFixture<UnitCreationEndpointTests
             new CreateUnitFromTemplateRequest("does-not-exist", "nope"),
             ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 
     [Fact]
@@ -191,12 +191,12 @@ public class UnitCreationEndpointTests : IClassFixture<UnitCreationEndpointTests
             new CreateUnitFromTemplateRequest("sample-pkg", "sample-unit"),
             ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        response.StatusCode.ShouldBe(HttpStatusCode.Created);
 
         var body = await response.Content.ReadAsStringAsync(ct);
         using var doc = JsonDocument.Parse(body);
-        doc.RootElement.GetProperty("unit").GetProperty("name").GetString().Should().Be("sample-unit");
-        doc.RootElement.TryGetProperty("membersAdded", out _).Should().BeTrue();
+        doc.RootElement.GetProperty("unit").GetProperty("name").GetString().ShouldBe("sample-unit");
+        doc.RootElement.TryGetProperty("membersAdded", out _).ShouldBeTrue();
     }
 
     [Fact]
@@ -209,7 +209,7 @@ public class UnitCreationEndpointTests : IClassFixture<UnitCreationEndpointTests
             new CreateUnitFromTemplateRequest("..", "sample-unit"),
             ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 
     private void ResetMocks()

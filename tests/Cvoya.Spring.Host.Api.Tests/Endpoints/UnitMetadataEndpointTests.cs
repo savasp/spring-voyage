@@ -13,12 +13,12 @@ using Cvoya.Spring.Core.Units;
 using Cvoya.Spring.Dapr.Actors;
 using Cvoya.Spring.Host.Api.Models;
 
-using FluentAssertions;
-
 using global::Dapr.Actors;
 using global::Dapr.Actors.Client;
 
 using NSubstitute;
+
+using Shouldly;
 
 using Xunit;
 
@@ -74,7 +74,7 @@ public class UnitMetadataEndpointTests : IClassFixture<CustomWebApplicationFacto
             new CreateUnitRequest(UnitName, "Engineering", "Engineering unit", "claude-opus-4", "#336699"),
             ct);
 
-        createResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+        createResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
 
         await proxy.Received(1).SetMetadataAsync(
             Arg.Is<UnitMetadata>(m => m.Model == "claude-opus-4" && m.Color == "#336699"),
@@ -82,7 +82,7 @@ public class UnitMetadataEndpointTests : IClassFixture<CustomWebApplicationFacto
 
         // GET should surface the new fields from actor metadata.
         var getResponse = await _client.GetAsync($"/api/v1/units/{UnitName}", ct);
-        getResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        getResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var body = await getResponse.Content.ReadAsStringAsync(ct);
         using var doc = JsonDocument.Parse(body);
@@ -90,8 +90,8 @@ public class UnitMetadataEndpointTests : IClassFixture<CustomWebApplicationFacto
         var unitElement = doc.RootElement.TryGetProperty("unit", out var wrapped)
             ? wrapped
             : doc.RootElement;
-        unitElement.GetProperty("model").GetString().Should().Be("claude-opus-4");
-        unitElement.GetProperty("color").GetString().Should().Be("#336699");
+        unitElement.GetProperty("model").GetString().ShouldBe("claude-opus-4");
+        unitElement.GetProperty("color").GetString().ShouldBe("#336699");
     }
 
     [Fact]
@@ -110,7 +110,7 @@ public class UnitMetadataEndpointTests : IClassFixture<CustomWebApplicationFacto
             new UpdateUnitRequest(null, null, "gpt-4o-mini", "#ff00aa"),
             ct);
 
-        patchResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        patchResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         await proxy.Received(1).SetMetadataAsync(
             Arg.Is<UnitMetadata>(m => m.Model == "gpt-4o-mini" && m.Color == "#ff00aa"),
@@ -118,8 +118,8 @@ public class UnitMetadataEndpointTests : IClassFixture<CustomWebApplicationFacto
 
         var body = await patchResponse.Content.ReadAsStringAsync(ct);
         using var doc = JsonDocument.Parse(body);
-        doc.RootElement.GetProperty("model").GetString().Should().Be("gpt-4o-mini");
-        doc.RootElement.GetProperty("color").GetString().Should().Be("#ff00aa");
+        doc.RootElement.GetProperty("model").GetString().ShouldBe("gpt-4o-mini");
+        doc.RootElement.GetProperty("color").GetString().ShouldBe("#ff00aa");
     }
 
     [Fact]
@@ -138,7 +138,7 @@ public class UnitMetadataEndpointTests : IClassFixture<CustomWebApplicationFacto
             new UpdateUnitRequest(Model: "gpt-4o"),
             ct);
 
-        patchResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        patchResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         // The forwarded metadata record must carry Model only; other fields stay null.
         await proxy.Received(1).SetMetadataAsync(
@@ -180,7 +180,7 @@ public class UnitMetadataEndpointTests : IClassFixture<CustomWebApplicationFacto
             new UpdateUnitRequest(DisplayName: "Eng Team", Description: "Builds stuff"),
             ct);
 
-        patchResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        patchResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         // DisplayName/Description must be forwarded to the directory, not persisted on the actor.
         await _factory.DirectoryService.Received(1).UpdateEntryAsync(
@@ -198,8 +198,8 @@ public class UnitMetadataEndpointTests : IClassFixture<CustomWebApplicationFacto
 
         var body = await patchResponse.Content.ReadAsStringAsync(ct);
         using var doc = JsonDocument.Parse(body);
-        doc.RootElement.GetProperty("displayName").GetString().Should().Be("Eng Team");
-        doc.RootElement.GetProperty("description").GetString().Should().Be("Builds stuff");
+        doc.RootElement.GetProperty("displayName").GetString().ShouldBe("Eng Team");
+        doc.RootElement.GetProperty("description").GetString().ShouldBe("Builds stuff");
     }
 
     [Fact]
@@ -218,7 +218,7 @@ public class UnitMetadataEndpointTests : IClassFixture<CustomWebApplicationFacto
             new UpdateUnitRequest(Model: "gpt-4o"),
             ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         await _factory.DirectoryService.DidNotReceive().UpdateEntryAsync(
             Arg.Any<Address>(),
@@ -242,7 +242,7 @@ public class UnitMetadataEndpointTests : IClassFixture<CustomWebApplicationFacto
             new UpdateUnitRequest(Model: "gpt-4o"),
             ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 
     private void ArrangeResolved(IUnitActor proxy)

@@ -7,13 +7,13 @@ using Cvoya.Spring.Connector.GitHub.Auth;
 using Cvoya.Spring.Connector.GitHub.DependencyInjection;
 using Cvoya.Spring.Connector.GitHub.Webhooks;
 
-using FluentAssertions;
-
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 using NSubstitute;
+
+using Shouldly;
 
 using Xunit;
 
@@ -45,10 +45,10 @@ public class ServiceCollectionExtensionsTests
 
         var options = provider.GetRequiredService<GitHubConnectorOptions>();
 
-        options.Should().NotBeNull();
-        options.AppId.Should().Be(12345);
-        options.WebhookSecret.Should().Be("test-secret");
-        options.InstallationId.Should().Be(67890);
+        options.ShouldNotBeNull();
+        options.AppId.ShouldBe(12345);
+        options.WebhookSecret.ShouldBe("test-secret");
+        options.InstallationId.ShouldBe(67890);
     }
 
     [Fact]
@@ -58,7 +58,7 @@ public class ServiceCollectionExtensionsTests
 
         var auth = provider.GetRequiredService<GitHubAppAuth>();
 
-        auth.Should().NotBeNull();
+        auth.ShouldNotBeNull();
     }
 
     [Fact]
@@ -68,7 +68,7 @@ public class ServiceCollectionExtensionsTests
 
         var handler = provider.GetRequiredService<GitHubWebhookHandler>();
 
-        handler.Should().NotBeNull();
+        handler.ShouldNotBeNull();
     }
 
     [Fact]
@@ -78,7 +78,7 @@ public class ServiceCollectionExtensionsTests
 
         var registry = provider.GetRequiredService<GitHubSkillRegistry>();
 
-        registry.Should().NotBeNull();
+        registry.ShouldNotBeNull();
     }
 
     [Fact]
@@ -88,7 +88,7 @@ public class ServiceCollectionExtensionsTests
 
         var connector = provider.GetRequiredService<GitHubConnector>();
 
-        connector.Should().NotBeNull();
+        connector.ShouldNotBeNull();
     }
 
     [Fact]
@@ -118,7 +118,7 @@ public class ServiceCollectionExtensionsTests
         using var provider = servicesWithOverride.BuildServiceProvider();
 
         var resolved = provider.GetRequiredService<GitHubSkillRegistry>();
-        resolved.Should().BeSameAs(customRegistry);
+        resolved.ShouldBeSameAs(customRegistry);
     }
 
     [Fact]
@@ -132,6 +132,6 @@ public class ServiceCollectionExtensionsTests
 
         var result = services.AddCvoyaSpringConnectorGitHub(configuration);
 
-        result.Should().BeSameAs(services);
+        result.ShouldBeSameAs(services);
     }
 }

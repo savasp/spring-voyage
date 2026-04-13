@@ -12,12 +12,12 @@ using Cvoya.Spring.Core;
 using Cvoya.Spring.Core.Skills;
 using Cvoya.Spring.Dapr.Mcp;
 
-using FluentAssertions;
-
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 using NSubstitute;
+
+using Shouldly;
 
 using Xunit;
 
@@ -62,7 +62,7 @@ public class McpServerTests : IAsyncLifetime
     {
         var response = await PostAsync(token: null, new { jsonrpc = "2.0", id = 1, method = "initialize" });
 
-        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
     }
 
     [Fact]
@@ -73,9 +73,9 @@ public class McpServerTests : IAsyncLifetime
         var json = await PostJsonAsync(session.Token, new { jsonrpc = "2.0", id = 1, method = "initialize" });
 
         var result = json.GetProperty("result");
-        result.GetProperty("serverInfo").GetProperty("name").GetString().Should().Be("spring-voyage-mcp");
-        result.GetProperty("meta").GetProperty("agentId").GetString().Should().Be("agent-1");
-        result.GetProperty("meta").GetProperty("conversationId").GetString().Should().Be("conv-1");
+        result.GetProperty("serverInfo").GetProperty("name").GetString().ShouldBe("spring-voyage-mcp");
+        result.GetProperty("meta").GetProperty("agentId").GetString().ShouldBe("agent-1");
+        result.GetProperty("meta").GetProperty("conversationId").GetString().ShouldBe("conv-1");
     }
 
     [Fact]
@@ -86,8 +86,8 @@ public class McpServerTests : IAsyncLifetime
         var json = await PostJsonAsync(session.Token, new { jsonrpc = "2.0", id = 1, method = "tools/list" });
 
         var tools = json.GetProperty("result").GetProperty("tools").EnumerateArray().ToList();
-        tools.Should().HaveCount(1);
-        tools[0].GetProperty("name").GetString().Should().Be("fake_tool");
+        tools.Count().ShouldBe(1);
+        tools[0].GetProperty("name").GetString().ShouldBe("fake_tool");
     }
 
     [Fact]
@@ -107,9 +107,9 @@ public class McpServerTests : IAsyncLifetime
             }
         });
 
-        _registry.LastInvokedName.Should().Be("fake_tool");
+        _registry.LastInvokedName.ShouldBe("fake_tool");
         var content = json.GetProperty("result").GetProperty("content")[0].GetProperty("text").GetString()!;
-        JsonDocument.Parse(content).RootElement.GetProperty("echo").GetString().Should().Be("hello");
+        JsonDocument.Parse(content).RootElement.GetProperty("echo").GetString().ShouldBe("hello");
     }
 
     [Fact]
@@ -125,7 +125,7 @@ public class McpServerTests : IAsyncLifetime
             @params = new { name = "nope", arguments = new { } }
         });
 
-        json.GetProperty("error").GetProperty("code").GetInt32().Should().Be(-32601);
+        json.GetProperty("error").GetProperty("code").GetInt32().ShouldBe(-32601);
     }
 
     [Fact]
@@ -138,7 +138,7 @@ public class McpServerTests : IAsyncLifetime
             session.Token,
             new { jsonrpc = "2.0", id = 1, method = "initialize" });
 
-        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
     }
 
     [Fact]
@@ -152,7 +152,7 @@ public class McpServerTests : IAsyncLifetime
             Options.Create(new McpServerOptions()),
             _loggerFactory);
 
-        act.Should().Throw<SpringException>().WithMessage("*more than one ISkillRegistry*");
+        Should.Throw<SpringException>(act).Message.ShouldContain("more than one ISkillRegistry");
     }
 
     private async Task<HttpResponseMessage> PostAsync(string? token, object body)

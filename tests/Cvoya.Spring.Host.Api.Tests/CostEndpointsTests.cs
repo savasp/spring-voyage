@@ -10,9 +10,9 @@ using Cvoya.Spring.Dapr.Costs;
 using Cvoya.Spring.Dapr.Data;
 using Cvoya.Spring.Host.Api.Models;
 
-using FluentAssertions;
-
 using Microsoft.Extensions.DependencyInjection;
+
+using Shouldly;
 
 using Xunit;
 
@@ -45,14 +45,14 @@ public class CostEndpointsTests : IClassFixture<CustomWebApplicationFactory>
         var response = await _client.GetAsync(
             $"/api/v1/costs/agents/cost-agent-1?from={from}&to={to}", ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var summary = await response.Content.ReadFromJsonAsync<CostSummaryResponse>(ct);
-        summary.Should().NotBeNull();
-        summary!.TotalCost.Should().Be(0.30m);
-        summary.TotalInputTokens.Should().Be(500);
-        summary.TotalOutputTokens.Should().Be(250);
-        summary.RecordCount.Should().Be(2);
+        summary.ShouldNotBeNull();
+        summary!.TotalCost.ShouldBe(0.30m);
+        summary.TotalInputTokens.ShouldBe(500);
+        summary.TotalOutputTokens.ShouldBe(250);
+        summary.RecordCount.ShouldBe(2);
     }
 
     [Fact]
@@ -66,12 +66,12 @@ public class CostEndpointsTests : IClassFixture<CustomWebApplicationFactory>
         var response = await _client.GetAsync(
             $"/api/v1/costs/agents/nonexistent-agent?from={from}&to={to}", ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var summary = await response.Content.ReadFromJsonAsync<CostSummaryResponse>(ct);
-        summary.Should().NotBeNull();
-        summary!.TotalCost.Should().Be(0m);
-        summary.RecordCount.Should().Be(0);
+        summary.ShouldNotBeNull();
+        summary!.TotalCost.ShouldBe(0m);
+        summary.RecordCount.ShouldBe(0);
     }
 
     [Fact]
@@ -92,12 +92,12 @@ public class CostEndpointsTests : IClassFixture<CustomWebApplicationFactory>
         var response = await _client.GetAsync(
             $"/api/v1/costs/units/cost-unit-1?from={from}&to={to}", ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var summary = await response.Content.ReadFromJsonAsync<CostSummaryResponse>(ct);
-        summary.Should().NotBeNull();
-        summary!.TotalCost.Should().Be(0.40m);
-        summary.RecordCount.Should().Be(2);
+        summary.ShouldNotBeNull();
+        summary!.TotalCost.ShouldBe(0.40m);
+        summary.RecordCount.ShouldBe(2);
     }
 
     [Fact]
@@ -118,12 +118,12 @@ public class CostEndpointsTests : IClassFixture<CustomWebApplicationFactory>
         var response = await _client.GetAsync(
             $"/api/v1/costs/tenant?tenantId=cost-tenant-1&from={from}&to={to}", ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var summary = await response.Content.ReadFromJsonAsync<CostSummaryResponse>(ct);
-        summary.Should().NotBeNull();
-        summary!.TotalCost.Should().Be(0.80m);
-        summary.RecordCount.Should().Be(2);
+        summary.ShouldNotBeNull();
+        summary!.TotalCost.ShouldBe(0.80m);
+        summary.RecordCount.ShouldBe(2);
     }
 
     private static CostRecord CreateRecord(

@@ -10,8 +10,6 @@ using Cvoya.Spring.Dapr.DependencyInjection;
 using Cvoya.Spring.Dapr.Orchestration;
 using Cvoya.Spring.Dapr.Routing;
 
-using FluentAssertions;
-
 using global::Dapr.Actors.Client;
 
 using Microsoft.Extensions.Configuration;
@@ -19,6 +17,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 using NSubstitute;
+
+using Shouldly;
 
 using Xunit;
 
@@ -46,7 +46,7 @@ public class ServiceCollectionExtensionsTests
 
         var router = provider.GetService<MessageRouter>();
 
-        router.Should().NotBeNull();
+        router.ShouldNotBeNull();
     }
 
     [Fact]
@@ -56,7 +56,7 @@ public class ServiceCollectionExtensionsTests
 
         var directoryService = provider.GetService<IDirectoryService>();
 
-        directoryService.Should().NotBeNull();
+        directoryService.ShouldNotBeNull();
     }
 
     [Fact]
@@ -67,8 +67,10 @@ public class ServiceCollectionExtensionsTests
         var ai = provider.GetKeyedService<IOrchestrationStrategy>("ai");
         var workflow = provider.GetKeyedService<IOrchestrationStrategy>("workflow");
 
-        ai.Should().NotBeNull().And.BeOfType<AiOrchestrationStrategy>();
-        workflow.Should().NotBeNull().And.BeOfType<WorkflowOrchestrationStrategy>();
+        ai.ShouldNotBeNull();
+        ai.ShouldBeOfType<AiOrchestrationStrategy>();
+        workflow.ShouldNotBeNull();
+        workflow.ShouldBeOfType<WorkflowOrchestrationStrategy>();
     }
 
     [Fact]
@@ -78,6 +80,7 @@ public class ServiceCollectionExtensionsTests
 
         var dispatcher = provider.GetService<IExecutionDispatcher>();
 
-        dispatcher.Should().NotBeNull().And.BeOfType<Cvoya.Spring.Dapr.Execution.DelegatedExecutionDispatcher>();
+        dispatcher.ShouldNotBeNull();
+        dispatcher.ShouldBeOfType<Cvoya.Spring.Dapr.Execution.DelegatedExecutionDispatcher>();
     }
 }

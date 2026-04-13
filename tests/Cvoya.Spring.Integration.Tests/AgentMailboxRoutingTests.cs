@@ -9,11 +9,11 @@ using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Dapr.Actors;
 using Cvoya.Spring.Integration.Tests.TestHelpers;
 
-using FluentAssertions;
-
 using global::Dapr.Actors.Runtime;
 
 using NSubstitute;
+
+using Shouldly;
 
 using Xunit;
 
@@ -32,7 +32,7 @@ public class AgentMailboxRoutingTests
 
         var result = await actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
 
-        result.Should().NotBeNull();
+        result.ShouldNotBeNull();
         await stateManager.Received(1).SetStateAsync(
             StateKeys.ActiveConversation,
             Arg.Is<ConversationChannel>(c => c.ConversationId == conversationId),
@@ -60,7 +60,7 @@ public class AgentMailboxRoutingTests
         var secondMessage = MessageFactory.CreateDomainMessage(conversationId: conversationId, toId: "mailbox-agent");
         var result = await actor.ReceiveAsync(secondMessage, TestContext.Current.CancellationToken);
 
-        result.Should().NotBeNull();
+        result.ShouldNotBeNull();
         await stateManager.Received().SetStateAsync(
             StateKeys.ActiveConversation,
             Arg.Is<ConversationChannel>(c =>
@@ -88,7 +88,7 @@ public class AgentMailboxRoutingTests
         var pendingMessage = MessageFactory.CreateDomainMessage(conversationId: pendingConversationId, toId: "mailbox-agent");
         var result = await actor.ReceiveAsync(pendingMessage, TestContext.Current.CancellationToken);
 
-        result.Should().NotBeNull();
+        result.ShouldNotBeNull();
         await stateManager.Received().SetStateAsync(
             StateKeys.PendingConversations,
             Arg.Is<List<ConversationChannel>>(list =>
@@ -120,13 +120,13 @@ public class AgentMailboxRoutingTests
         var statusQuery = MessageFactory.CreateStatusQuery("requester", "mailbox-agent");
         var result = await actor.ReceiveAsync(statusQuery, TestContext.Current.CancellationToken);
 
-        result.Should().NotBeNull();
-        result!.Type.Should().Be(MessageType.StatusQuery);
+        result.ShouldNotBeNull();
+        result!.Type.ShouldBe(MessageType.StatusQuery);
 
         var payload = result.Payload.Deserialize<JsonElement>();
-        payload.GetProperty("Status").GetString().Should().Be("Active");
-        payload.GetProperty("ActiveConversationId").GetString().Should().Be("conv-active");
-        payload.GetProperty("PendingConversationCount").GetInt32().Should().Be(2);
+        payload.GetProperty("Status").GetString().ShouldBe("Active");
+        payload.GetProperty("ActiveConversationId").GetString().ShouldBe("conv-active");
+        payload.GetProperty("PendingConversationCount").GetInt32().ShouldBe(2);
     }
 
     [Fact]
@@ -137,9 +137,9 @@ public class AgentMailboxRoutingTests
         var statusQuery = MessageFactory.CreateStatusQuery("requester", "idle-agent");
         var result = await actor.ReceiveAsync(statusQuery, TestContext.Current.CancellationToken);
 
-        result.Should().NotBeNull();
+        result.ShouldNotBeNull();
         var payload = result!.Payload.Deserialize<JsonElement>();
-        payload.GetProperty("Status").GetString().Should().Be("Idle");
-        payload.GetProperty("PendingConversationCount").GetInt32().Should().Be(0);
+        payload.GetProperty("Status").GetString().ShouldBe("Idle");
+        payload.GetProperty("PendingConversationCount").GetInt32().ShouldBe(0);
     }
 }

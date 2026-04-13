@@ -17,8 +17,6 @@ using Cvoya.Spring.Dapr.Actors;
 using Cvoya.Spring.Dapr.Auth;
 using Cvoya.Spring.Dapr.Routing;
 
-using FluentAssertions;
-
 using global::Dapr.Actors;
 using global::Dapr.Actors.Client;
 using global::Dapr.Actors.Runtime;
@@ -26,6 +24,8 @@ using global::Dapr.Actors.Runtime;
 using Microsoft.Extensions.Logging;
 
 using NSubstitute;
+
+using Shouldly;
 
 using Xunit;
 
@@ -168,11 +168,11 @@ public class AgentActorDispatchTests
 
         // Actor turn must still return an ack even when the fire-and-forget dispatch task fails.
         var ack = await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
-        ack.Should().NotBeNull();
+        ack.ShouldNotBeNull();
 
         // Awaiting the dispatch task should not surface the exception (it's logged + swallowed).
         var act = () => _actor.PendingDispatchTask!;
-        await act.Should().NotThrowAsync();
+        await Should.NotThrowAsync(act);
     }
 
     [Fact]

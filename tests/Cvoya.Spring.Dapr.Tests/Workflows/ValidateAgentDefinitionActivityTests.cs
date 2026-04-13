@@ -6,13 +6,13 @@ namespace Cvoya.Spring.Dapr.Tests.Workflows;
 using Cvoya.Spring.Dapr.Workflows;
 using Cvoya.Spring.Dapr.Workflows.Activities;
 
-using FluentAssertions;
-
 using global::Dapr.Workflow;
 
 using Microsoft.Extensions.Logging;
 
 using NSubstitute;
+
+using Shouldly;
 
 using Xunit;
 
@@ -40,7 +40,7 @@ public class ValidateAgentDefinitionActivityTests
 
         var result = await _activity.RunAsync(context, input);
 
-        result.Should().BeTrue();
+        result.ShouldBeTrue();
     }
 
     [Fact]
@@ -52,7 +52,7 @@ public class ValidateAgentDefinitionActivityTests
 
         var result = await _activity.RunAsync(context, input);
 
-        result.Should().BeFalse();
+        result.ShouldBeFalse();
     }
 
     [Fact]
@@ -64,7 +64,7 @@ public class ValidateAgentDefinitionActivityTests
 
         var result = await _activity.RunAsync(context, input);
 
-        result.Should().BeFalse();
+        result.ShouldBeFalse();
     }
 
     [Fact]
@@ -76,6 +76,6 @@ public class ValidateAgentDefinitionActivityTests
 
         var result = await _activity.RunAsync(context, input);
 
-        result.Should().BeTrue();
+        result.ShouldBeTrue();
     }
 }

@@ -9,7 +9,7 @@ using Cvoya.Spring.Core.Initiative;
 using Cvoya.Spring.Core.State;
 using Cvoya.Spring.Dapr.Initiative;
 
-using FluentAssertions;
+using Shouldly;
 
 using Xunit;
 
@@ -33,8 +33,8 @@ public class DaprStateAgentPolicyStoreTests
     {
         var result = await _sut.GetPolicyAsync("agent:missing", TestContext.Current.CancellationToken);
 
-        result.Should().NotBeNull();
-        result.MaxLevel.Should().Be(InitiativeLevel.Passive);
+        result.ShouldNotBeNull();
+        result.MaxLevel.ShouldBe(InitiativeLevel.Passive);
     }
 
     [Fact]
@@ -45,7 +45,7 @@ public class DaprStateAgentPolicyStoreTests
         await _sut.SetPolicyAsync("agent:ada", policy, TestContext.Current.CancellationToken);
         var roundTripped = await _sut.GetPolicyAsync("agent:ada", TestContext.Current.CancellationToken);
 
-        roundTripped.MaxLevel.Should().Be(InitiativeLevel.Proactive);
+        roundTripped.MaxLevel.ShouldBe(InitiativeLevel.Proactive);
     }
 
     [Fact]
@@ -55,7 +55,7 @@ public class DaprStateAgentPolicyStoreTests
 
         var level = await _sut.GetEffectiveLevelAsync("ada", TestContext.Current.CancellationToken);
 
-        level.Should().Be(InitiativeLevel.Proactive);
+        level.ShouldBe(InitiativeLevel.Proactive);
     }
 
     [Fact]
@@ -66,7 +66,7 @@ public class DaprStateAgentPolicyStoreTests
 
         var level = await _sut.GetEffectiveLevelAsync("ada", TestContext.Current.CancellationToken);
 
-        level.Should().Be(InitiativeLevel.Attentive);
+        level.ShouldBe(InitiativeLevel.Attentive);
     }
 
     [Fact]
@@ -74,7 +74,7 @@ public class DaprStateAgentPolicyStoreTests
     {
         var level = await _sut.GetEffectiveLevelAsync("ada", TestContext.Current.CancellationToken);
 
-        level.Should().Be(InitiativeLevel.Passive);
+        level.ShouldBe(InitiativeLevel.Passive);
     }
 
     [Fact]
@@ -86,7 +86,7 @@ public class DaprStateAgentPolicyStoreTests
 
         var level = await _sut.GetEffectiveLevelAsync("ada", TestContext.Current.CancellationToken);
 
-        level.Should().Be(InitiativeLevel.Passive);
+        level.ShouldBe(InitiativeLevel.Passive);
     }
 
     [Fact]
@@ -96,7 +96,7 @@ public class DaprStateAgentPolicyStoreTests
         await _sut.SetAgentUnitAsync("ada", null, TestContext.Current.CancellationToken);
 
         var unitId = await _sut.GetAgentUnitAsync("ada", TestContext.Current.CancellationToken);
-        unitId.Should().BeNull();
+        unitId.ShouldBeNull();
     }
 
     [Fact]
@@ -106,7 +106,7 @@ public class DaprStateAgentPolicyStoreTests
 
         var unitId = await _sut.GetAgentUnitAsync("ada", TestContext.Current.CancellationToken);
 
-        unitId.Should().Be("engineering");
+        unitId.ShouldBe("engineering");
     }
 
     [Fact]
@@ -116,7 +116,7 @@ public class DaprStateAgentPolicyStoreTests
 
         var unitId = await _sut.GetAgentUnitAsync("ada", TestContext.Current.CancellationToken);
 
-        unitId.Should().Be("engineering");
+        unitId.ShouldBe("engineering");
     }
 
     [Fact]
@@ -128,7 +128,7 @@ public class DaprStateAgentPolicyStoreTests
         var restartedSut = new DaprStateAgentPolicyStore(_stateStore);
         var policy = await restartedSut.GetPolicyAsync("agent:ada", TestContext.Current.CancellationToken);
 
-        policy.MaxLevel.Should().Be(InitiativeLevel.Proactive);
+        policy.MaxLevel.ShouldBe(InitiativeLevel.Proactive);
     }
 
     /// <summary>

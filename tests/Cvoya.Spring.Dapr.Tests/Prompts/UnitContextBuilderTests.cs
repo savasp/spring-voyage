@@ -9,7 +9,7 @@ using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Core.Skills;
 using Cvoya.Spring.Dapr.Prompts;
 
-using FluentAssertions;
+using Shouldly;
 
 using Xunit;
 
@@ -34,9 +34,9 @@ public class UnitContextBuilderTests
 
         var result = _builder.Build(members, null, null);
 
-        result.Should().Contain("agent://team/alice");
-        result.Should().Contain("agent://team/bob");
-        result.Should().Contain("Peer Directory");
+        result.ShouldContain("agent://team/alice");
+        result.ShouldContain("agent://team/bob");
+        result.ShouldContain("Peer Directory");
     }
 
     /// <summary>
@@ -49,8 +49,8 @@ public class UnitContextBuilderTests
 
         var result = _builder.Build([], policies, null);
 
-        result.Should().Contain("Policies");
-        result.Should().Contain("maxRetries");
+        result.ShouldContain("Policies");
+        result.ShouldContain("maxRetries");
     }
 
     /// <summary>
@@ -68,10 +68,10 @@ public class UnitContextBuilderTests
 
         var result = _builder.Build([], null, skills);
 
-        result.Should().Contain("Available Skills");
-        result.Should().Contain("code-review");
-        result.Should().Contain("Reviews pull requests");
-        result.Should().Contain("analyze");
+        result.ShouldContain("Available Skills");
+        result.ShouldContain("code-review");
+        result.ShouldContain("Reviews pull requests");
+        result.ShouldContain("analyze");
     }
 
     /// <summary>
@@ -82,6 +82,6 @@ public class UnitContextBuilderTests
     {
         var result = _builder.Build([], null, null);
 
-        result.Should().BeEmpty();
+        result.ShouldBeEmpty();
     }
 }

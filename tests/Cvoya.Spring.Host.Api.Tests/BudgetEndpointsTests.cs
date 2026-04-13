@@ -9,9 +9,9 @@ using System.Net.Http.Json;
 using Cvoya.Spring.Dapr.Actors;
 using Cvoya.Spring.Host.Api.Models;
 
-using FluentAssertions;
-
 using NSubstitute;
+
+using Shouldly;
 
 using Xunit;
 
@@ -34,11 +34,11 @@ public class BudgetEndpointsTests : IClassFixture<CustomWebApplicationFactory>
 
         var response = await _client.PutAsJsonAsync("/api/v1/agents/budget-agent-1/budget", request, ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var budget = await response.Content.ReadFromJsonAsync<BudgetResponse>(ct);
-        budget.Should().NotBeNull();
-        budget!.DailyBudget.Should().Be(25.50m);
+        budget.ShouldNotBeNull();
+        budget!.DailyBudget.ShouldBe(25.50m);
 
         await _factory.StateStore.Received(1).SetAsync(
             $"budget-agent-1:{StateKeys.AgentCostBudget}",
@@ -54,7 +54,7 @@ public class BudgetEndpointsTests : IClassFixture<CustomWebApplicationFactory>
 
         var response = await _client.PutAsJsonAsync("/api/v1/agents/budget-agent-2/budget", request, ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
     }
 
     [Fact]
@@ -65,7 +65,7 @@ public class BudgetEndpointsTests : IClassFixture<CustomWebApplicationFactory>
 
         var response = await _client.PutAsJsonAsync("/api/v1/agents/budget-agent-3/budget", request, ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
     }
 
     [Fact]
@@ -80,11 +80,11 @@ public class BudgetEndpointsTests : IClassFixture<CustomWebApplicationFactory>
 
         var response = await _client.GetAsync("/api/v1/agents/budget-get-agent/budget", ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var budget = await response.Content.ReadFromJsonAsync<BudgetResponse>(ct);
-        budget.Should().NotBeNull();
-        budget!.DailyBudget.Should().Be(10.0m);
+        budget.ShouldNotBeNull();
+        budget!.DailyBudget.ShouldBe(10.0m);
     }
 
     [Fact]
@@ -99,7 +99,7 @@ public class BudgetEndpointsTests : IClassFixture<CustomWebApplicationFactory>
 
         var response = await _client.GetAsync("/api/v1/agents/no-budget-agent/budget", ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 
     [Fact]
@@ -110,11 +110,11 @@ public class BudgetEndpointsTests : IClassFixture<CustomWebApplicationFactory>
 
         var response = await _client.PutAsJsonAsync("/api/v1/tenant/budget", request, ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var budget = await response.Content.ReadFromJsonAsync<BudgetResponse>(ct);
-        budget.Should().NotBeNull();
-        budget!.DailyBudget.Should().Be(100.0m);
+        budget.ShouldNotBeNull();
+        budget!.DailyBudget.ShouldBe(100.0m);
 
         await _factory.StateStore.Received().SetAsync(
             $"default:{StateKeys.TenantCostBudget}",
@@ -134,11 +134,11 @@ public class BudgetEndpointsTests : IClassFixture<CustomWebApplicationFactory>
 
         var response = await _client.GetAsync("/api/v1/tenant/budget", ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var budget = await response.Content.ReadFromJsonAsync<BudgetResponse>(ct);
-        budget.Should().NotBeNull();
-        budget!.DailyBudget.Should().Be(50.0m);
+        budget.ShouldNotBeNull();
+        budget!.DailyBudget.ShouldBe(50.0m);
     }
 
     [Fact]
@@ -153,6 +153,6 @@ public class BudgetEndpointsTests : IClassFixture<CustomWebApplicationFactory>
 
         var response = await _client.GetAsync("/api/v1/tenant/budget", ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 }

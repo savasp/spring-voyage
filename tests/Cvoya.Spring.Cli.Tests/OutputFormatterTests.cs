@@ -7,7 +7,7 @@ using System.Text.Json;
 
 using Cvoya.Spring.Cli.Output;
 
-using FluentAssertions;
+using Shouldly;
 
 using Xunit;
 
@@ -25,17 +25,17 @@ public class OutputFormatterTests
 
         var result = OutputFormatter.FormatTable(json, ["id", "name"]);
 
-        result.Should().Contain("ID");
-        result.Should().Contain("NAME");
-        result.Should().Contain("a1");
-        result.Should().Contain("Alice");
-        result.Should().Contain("b2");
-        result.Should().Contain("Bob");
+        result.ShouldContain("ID");
+        result.ShouldContain("NAME");
+        result.ShouldContain("a1");
+        result.ShouldContain("Alice");
+        result.ShouldContain("b2");
+        result.ShouldContain("Bob");
 
         // Verify alignment: header and separator lines should have consistent structure
         var lines = result.Split(Environment.NewLine);
-        lines.Length.Should().BeGreaterThanOrEqualTo(3); // header + separator + at least 1 row
-        lines[1].Should().MatchRegex(@"^-+\s+-+$"); // separator line
+        lines.Length.ShouldBeGreaterThanOrEqualTo(3); // header + separator + at least 1 row
+        lines[1].ShouldMatch(@"^-+\s+-+$"); // separator line
     }
 
     [Fact]
@@ -47,8 +47,8 @@ public class OutputFormatterTests
 
         var result = OutputFormatter.FormatTable(json, ["id", "name"]);
 
-        result.Should().Contain("x1");
-        result.Should().Contain("Xander");
+        result.ShouldContain("x1");
+        result.ShouldContain("Xander");
     }
 
     [Fact]
@@ -58,7 +58,7 @@ public class OutputFormatterTests
 
         var result = OutputFormatter.FormatTable(json, ["id", "name"]);
 
-        result.Should().Be("No results found.");
+        result.ShouldBe("No results found.");
     }
 
     [Fact]
@@ -72,11 +72,11 @@ public class OutputFormatterTests
 
         // Should be valid JSON
         var reparsed = JsonSerializer.Deserialize<JsonElement>(result);
-        reparsed.GetProperty("id").GetString().Should().Be("test");
-        reparsed.GetProperty("value").GetInt32().Should().Be(42);
+        reparsed.GetProperty("id").GetString().ShouldBe("test");
+        reparsed.GetProperty("value").GetInt32().ShouldBe(42);
 
         // Should be indented (contain newlines)
-        result.Should().Contain(Environment.NewLine);
+        result.ShouldContain(Environment.NewLine);
     }
 
     [Fact]
@@ -88,8 +88,8 @@ public class OutputFormatterTests
 
         var result = OutputFormatter.FormatTable(json, ["id", "name"]);
 
-        result.Should().Contain("a1");
+        result.ShouldContain("a1");
         // "name" column should exist in header but value should be empty
-        result.Should().Contain("NAME");
+        result.ShouldContain("NAME");
     }
 }
