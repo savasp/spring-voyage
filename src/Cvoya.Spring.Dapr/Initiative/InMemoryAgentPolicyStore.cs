@@ -9,14 +9,14 @@ using Cvoya.Spring.Core.Initiative;
 
 /// <summary>
 /// Process-local, in-memory <see cref="IAgentPolicyStore"/> implementation backed by a
-/// <see cref="ConcurrentDictionary{TKey, TValue}"/>. Suitable as a default so the DI
-/// object graph resolves end-to-end; a Dapr actor-state-backed implementation will
-/// replace this in a follow-up so policies survive process restarts and are shared
-/// across replicas.
+/// <see cref="ConcurrentDictionary{TKey, TValue}"/>. Retained as a test-friendly default;
+/// production hosts register <see cref="DaprStateAgentPolicyStore"/> so policies survive
+/// process restarts and are shared across replicas.
 /// </summary>
 public class InMemoryAgentPolicyStore : IAgentPolicyStore
 {
     private readonly ConcurrentDictionary<string, InitiativePolicy> _policies = new();
+    private readonly ConcurrentDictionary<string, string> _agentUnitAssignments = new();
 
     /// <inheritdoc />
     /// <remarks>
@@ -49,25 +49,67 @@ public class InMemoryAgentPolicyStore : IAgentPolicyStore
 
     /// <inheritdoc />
     /// <remarks>
-    /// Looks up the agent-scoped policy (<c>"agent:{agentId}"</c>) and returns its
-    /// <see cref="InitiativePolicy.MaxLevel"/>. Unit-ceiling enforcement (intersecting
-    /// the agent policy with the enclosing unit's policy) is a follow-up; the
-    /// agent-unit relationship is not yet modelled here.
+    /// Resolution order:
+    /// <list type="number">
+    ///   <item>If an agent-scoped policy exists under <c>"agent:{agentId}"</c>, return its <see cref="InitiativePolicy.MaxLevel"/>.</item>
+    ///   <item>Otherwise, if the agent has been assigned to a unit via <see cref="SetAgentUnitAsync"/> and that unit has a policy, return the unit's <see cref="InitiativePolicy.MaxLevel"/>.</item>
+    ///   <item>Otherwise, return <see cref="InitiativeLevel.Passive"/>.</item>
+    /// </list>
     /// </remarks>
     public Task<InitiativeLevel> GetEffectiveLevelAsync(string agentId, CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrEmpty(agentId);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var agentKey = agentId.StartsWith("agent:", StringComparison.Ordinal)
-            ? agentId
-            : $"agent:{agentId}";
+        var rawAgentId = StripAgentPrefix(agentId);
+        var agentKey = $"agent:{rawAgentId}";
 
         if (_policies.TryGetValue(agentKey, out var agentPolicy))
         {
             return Task.FromResult(agentPolicy.MaxLevel);
         }
 
+        if (_agentUnitAssignments.TryGetValue(rawAgentId, out var unitId)
+            && _policies.TryGetValue($"unit:{unitId}", out var unitPolicy))
+        {
+            return Task.FromResult(unitPolicy.MaxLevel);
+        }
+
         return Task.FromResult(InitiativeLevel.Passive);
     }
+
+    /// <inheritdoc />
+    public Task SetAgentUnitAsync(string agentId, string? unitId, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(agentId);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var rawAgentId = StripAgentPrefix(agentId);
+        if (string.IsNullOrEmpty(unitId))
+        {
+            _agentUnitAssignments.TryRemove(rawAgentId, out _);
+        }
+        else
+        {
+            _agentUnitAssignments[rawAgentId] = StripUnitPrefix(unitId);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <inheritdoc />
+    public Task<string?> GetAgentUnitAsync(string agentId, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(agentId);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var rawAgentId = StripAgentPrefix(agentId);
+        return Task.FromResult(_agentUnitAssignments.TryGetValue(rawAgentId, out var unitId) ? unitId : null);
+    }
+
+    private static string StripAgentPrefix(string agentId)
+        => agentId.StartsWith("agent:", StringComparison.Ordinal) ? agentId[6..] : agentId;
+
+    private static string StripUnitPrefix(string unitId)
+        => unitId.StartsWith("unit:", StringComparison.Ordinal) ? unitId[5..] : unitId;
 }

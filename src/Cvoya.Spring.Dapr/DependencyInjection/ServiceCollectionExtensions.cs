@@ -109,9 +109,13 @@ public static class ServiceCollectionExtensions
         services.AddHostedService(sp => sp.GetRequiredService<McpServer>());
 
         // Initiative — use TryAdd so the private repo can override any implementation.
+        // The Dapr state-store-backed variants are registered as defaults so policies and
+        // budget state survive process restarts and are shared across replicas; the
+        // in-memory implementations remain available for tests that register them first.
         services.TryAddSingleton<ICancellationManager, CancellationManager>();
-        services.TryAddSingleton<IAgentPolicyStore, InMemoryAgentPolicyStore>();
-        services.TryAddSingleton<IInitiativeBudgetTracker, InMemoryInitiativeBudgetTracker>();
+        services.TryAddSingleton<IAgentPolicyStore, DaprStateAgentPolicyStore>();
+        services.TryAddSingleton<IInitiativeBudgetTracker, DaprStateInitiativeBudgetTracker>();
+        services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton<IInitiativeEngine, InitiativeEngine>();
 
         services.TryAddKeyedSingleton<ICognitionProvider, Tier1CognitionProvider>("tier1");
