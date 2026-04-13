@@ -6,6 +6,7 @@ namespace Cvoya.Spring.Host.Api.Endpoints;
 using System.Text.Json;
 
 using Cvoya.Spring.Connector.GitHub.Webhooks;
+using Cvoya.Spring.Core.Capabilities;
 using Cvoya.Spring.Core.Directory;
 using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Core.Units;
@@ -340,8 +341,12 @@ public static class UnitEndpoints
 
     private static async Task<IResult> DeleteUnitAsync(
         string id,
+        [FromQuery] bool? force,
         [FromServices] IDirectoryService directoryService,
         [FromServices] IActorProxyFactory actorProxyFactory,
+        [FromServices] IUnitContainerLifecycle containerLifecycle,
+        [FromServices] IGitHubWebhookRegistrar webhookRegistrar,
+        [FromServices] IActivityEventBus activityEventBus,
         [FromServices] ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
@@ -356,24 +361,164 @@ public static class UnitEndpoints
 
         // Gate deletion on lifecycle status (#116). Allowing DELETE while the unit is
         // Running/Starting/Stopping leaves the container, sidecar, and network orphaned.
-        // Only Draft (never started) and Stopped (cleanly torn down) are safe. Error-state
-        // units still require an explicit /stop to drive them to Stopped first; a future
-        // force-delete flag can cover unrecoverable Error cases.
+        // Only Draft (never started) and Stopped (cleanly torn down) are safe.
+        // Force-delete (#147) bypasses this gate to recover from stuck Error states
+        // where /stop itself may fail or hang.
         var status = await TryGetUnitStatusAsync(actorProxyFactory, entry.ActorId, logger, id, cancellationToken);
+        var isForce = force == true;
 
-        if (status != UnitStatus.Draft && status != UnitStatus.Stopped)
+        if (!isForce && status != UnitStatus.Draft && status != UnitStatus.Stopped)
         {
             return Results.Conflict(new
             {
                 Error = $"Unit '{id}' is {status}; stop it before deleting.",
                 CurrentStatus = status,
                 Hint = $"POST /api/v1/units/{id}/stop",
+                ForceHint = $"DELETE /api/v1/units/{id}?force=true bypasses the gate for stuck units.",
             });
         }
 
-        await directoryService.UnregisterAsync(address, cancellationToken);
+        if (!isForce || status == UnitStatus.Draft || status == UnitStatus.Stopped)
+        {
+            // Clean-path delete. No runtime teardown required — the gate above
+            // already proved the container / sidecar / webhook are either gone
+            // or never existed.
+            await directoryService.UnregisterAsync(address, cancellationToken);
+            return Results.NoContent();
+        }
+
+        return await ForceDeleteUnitAsync(
+            id, address, entry.ActorId, status,
+            directoryService, actorProxyFactory,
+            containerLifecycle, webhookRegistrar, activityEventBus,
+            logger, cancellationToken);
+    }
+
+    /// <summary>
+    /// Best-effort teardown for a unit that cannot transition through the normal
+    /// /stop → /delete path. Each subsystem is torn down independently — a failure
+    /// in one step is logged and recorded but does not block the others, so a
+    /// broken sidecar can't prevent removal of an already-gone container. The
+    /// directory entry is always removed last so the unit disappears from the API
+    /// regardless of downstream state.
+    /// </summary>
+    private static async Task<IResult> ForceDeleteUnitAsync(
+        string id,
+        Address address,
+        string actorId,
+        UnitStatus previousStatus,
+        IDirectoryService directoryService,
+        IActorProxyFactory actorProxyFactory,
+        IUnitContainerLifecycle containerLifecycle,
+        IGitHubWebhookRegistrar webhookRegistrar,
+        IActivityEventBus activityEventBus,
+        ILogger logger,
+        CancellationToken cancellationToken)
+    {
+        logger.LogWarning(
+            "Force-delete requested for unit {UnitId} in status {Status}. Performing best-effort teardown.",
+            id, previousStatus);
+
+        var failures = new List<string>();
+        var proxy = actorProxyFactory.CreateActorProxy<IUnitActor>(
+            new ActorId(actorId), nameof(IUnitActor));
+
+        try
+        {
+            var githubConfig = await proxy.GetGitHubConfigAsync(cancellationToken);
+            var hookId = await proxy.GetGitHubHookIdAsync(cancellationToken);
+            if (githubConfig is not null && hookId is not null)
+            {
+                await webhookRegistrar.UnregisterAsync(
+                    githubConfig.Owner, githubConfig.Repo, hookId.Value, cancellationToken);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex,
+                "Force-delete: GitHub webhook teardown failed for unit {UnitId}.", id);
+            failures.Add("github-webhook");
+        }
+
+        try
+        {
+            await containerLifecycle.StopUnitAsync(actorId, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex,
+                "Force-delete: container teardown failed for unit {UnitId}.", id);
+            failures.Add("container");
+        }
+
+        try
+        {
+            await directoryService.UnregisterAsync(address, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex,
+                "Force-delete: directory unregister failed for unit {UnitId}.", id);
+            failures.Add("directory");
+        }
+
+        await PublishForceDeleteEventAsync(activityEventBus, address, previousStatus, failures, logger, cancellationToken);
+
+        if (failures.Count > 0)
+        {
+            return Results.Ok(new
+            {
+                UnitId = id,
+                ForceDeleted = true,
+                PreviousStatus = previousStatus,
+                TeardownFailures = failures,
+                Message = "Directory entry removed; some teardown steps failed — inspect operator logs and the activity stream.",
+            });
+        }
 
         return Results.NoContent();
+    }
+
+    private static async Task PublishForceDeleteEventAsync(
+        IActivityEventBus bus,
+        Address unit,
+        UnitStatus previousStatus,
+        IReadOnlyList<string> failures,
+        ILogger logger,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(JsonSerializer.Serialize(new
+            {
+                previousStatus = previousStatus.ToString(),
+                teardownFailures = failures,
+            }));
+
+            var severity = failures.Count > 0 ? ActivitySeverity.Warning : ActivitySeverity.Info;
+            var summary = failures.Count > 0
+                ? $"Force-deleted unit '{unit.Path}' (was {previousStatus}); {failures.Count} teardown step(s) failed."
+                : $"Force-deleted unit '{unit.Path}' (was {previousStatus}).";
+
+            var evt = new ActivityEvent(
+                Guid.NewGuid(),
+                DateTimeOffset.UtcNow,
+                unit,
+                ActivityEventType.StateChanged,
+                severity,
+                summary,
+                doc.RootElement.Clone());
+
+            await bus.PublishAsync(evt, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            // Activity publication is observability only — log and swallow so a
+            // bus failure never converts a successful force-delete into a 500.
+            logger.LogWarning(ex,
+                "Failed to publish force-delete activity event for unit {Unit}.",
+                unit.Path);
+        }
     }
 
     private static async Task<IResult> StartUnitAsync(
