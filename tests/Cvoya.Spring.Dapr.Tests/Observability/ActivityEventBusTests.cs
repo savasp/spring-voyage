@@ -10,7 +10,7 @@ using Cvoya.Spring.Core.Capabilities;
 using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Dapr.Observability;
 
-using FluentAssertions;
+using Shouldly;
 
 using Xunit;
 
@@ -40,7 +40,7 @@ public class ActivityEventBusTests
         var published = CreateEvent();
         bus.Publish(published);
 
-        received.Should().Be(published);
+        received.ShouldBe(published);
     }
 
     [Fact]
@@ -55,8 +55,8 @@ public class ActivityEventBusTests
         var published = CreateEvent();
         bus.Publish(published);
 
-        received1.Should().Be(published);
-        received2.Should().Be(published);
+        received1.ShouldBe(published);
+        received2.ShouldBe(published);
     }
 
     [Fact]
@@ -66,7 +66,7 @@ public class ActivityEventBusTests
 
         var act = () => bus.Publish(CreateEvent());
 
-        act.Should().NotThrow();
+        Should.NotThrow(act);
     }
 
     [Fact]
@@ -83,10 +83,10 @@ public class ActivityEventBusTests
         bus.Publish(event2);
         bus.Publish(event3);
 
-        received.Should().HaveCount(3);
-        received[0].Summary.Should().Be("first");
-        received[1].Summary.Should().Be("second");
-        received[2].Summary.Should().Be("third");
+        received.Count().ShouldBe(3);
+        received[0].Summary.ShouldBe("first");
+        received[1].Summary.ShouldBe("second");
+        received[2].Summary.ShouldBe("third");
     }
 
     [Fact]
@@ -103,8 +103,8 @@ public class ActivityEventBusTests
         bus.Publish(CreateEvent(severity: ActivitySeverity.Warning));
         bus.Publish(CreateEvent(severity: ActivitySeverity.Error));
 
-        warnings.Should().HaveCount(2);
-        warnings.Should().OnlyContain(e => e.Severity >= ActivitySeverity.Warning);
+        warnings.Count().ShouldBe(2);
+        warnings.ShouldAllBe(e => e.Severity >= ActivitySeverity.Warning);
     }
 
     [Fact]
@@ -116,6 +116,6 @@ public class ActivityEventBusTests
 
         bus.Dispose();
 
-        completed.Should().BeTrue();
+        completed.ShouldBeTrue();
     }
 }

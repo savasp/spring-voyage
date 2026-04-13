@@ -8,7 +8,7 @@ using System.Text;
 
 using Cvoya.Spring.Connector.GitHub.Webhooks;
 
-using FluentAssertions;
+using Shouldly;
 
 using Xunit;
 
@@ -24,7 +24,7 @@ public class WebhookSignatureValidatorTests
 
         var result = WebhookSignatureValidator.ValidateCore(Payload, signature, Secret);
 
-        result.Should().BeTrue();
+        result.ShouldBeTrue();
     }
 
     [Fact]
@@ -32,7 +32,7 @@ public class WebhookSignatureValidatorTests
     {
         var result = WebhookSignatureValidator.ValidateCore(Payload, "sha256=invalid", Secret);
 
-        result.Should().BeFalse();
+        result.ShouldBeFalse();
     }
 
     [Fact]
@@ -40,7 +40,7 @@ public class WebhookSignatureValidatorTests
     {
         var result = WebhookSignatureValidator.ValidateCore(Payload, "sha256=abc", string.Empty);
 
-        result.Should().BeFalse();
+        result.ShouldBeFalse();
     }
 
     [Fact]
@@ -48,7 +48,7 @@ public class WebhookSignatureValidatorTests
     {
         var result = WebhookSignatureValidator.ValidateCore(string.Empty, "sha256=abc", Secret);
 
-        result.Should().BeFalse();
+        result.ShouldBeFalse();
     }
 
     [Fact]
@@ -56,7 +56,7 @@ public class WebhookSignatureValidatorTests
     {
         var result = WebhookSignatureValidator.ValidateCore(Payload, "nothash=abc", Secret);
 
-        result.Should().BeFalse();
+        result.ShouldBeFalse();
     }
 
     private static string ComputeSignature(string payload, string secret)

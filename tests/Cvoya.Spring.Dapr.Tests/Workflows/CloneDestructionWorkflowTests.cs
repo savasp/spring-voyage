@@ -7,11 +7,11 @@ using Cvoya.Spring.Core.Cloning;
 using Cvoya.Spring.Dapr.Workflows;
 using Cvoya.Spring.Dapr.Workflows.Activities;
 
-using FluentAssertions;
-
 using global::Dapr.Workflow;
 
 using NSubstitute;
+
+using Shouldly;
 
 using Xunit;
 
@@ -41,8 +41,8 @@ public class CloneDestructionWorkflowTests
 
         var result = await _workflow.RunAsync(_context, input);
 
-        result.Success.Should().BeTrue();
-        result.CloneId.Should().Be("clone-1");
+        result.Success.ShouldBeTrue();
+        result.CloneId.ShouldBe("clone-1");
         await _context.DidNotReceive().CallActivityAsync<bool>(
             nameof(FlowMemoryToParentActivity), Arg.Any<object>());
     }
@@ -61,8 +61,8 @@ public class CloneDestructionWorkflowTests
 
         var result = await _workflow.RunAsync(_context, input);
 
-        result.Success.Should().BeTrue();
-        result.CloneId.Should().Be("clone-1");
+        result.Success.ShouldBeTrue();
+        result.CloneId.ShouldBe("clone-1");
         await _context.Received(1).CallActivityAsync<bool>(
             nameof(FlowMemoryToParentActivity), input);
         await _context.Received(1).CallActivityAsync<bool>(
@@ -81,8 +81,8 @@ public class CloneDestructionWorkflowTests
 
         var result = await _workflow.RunAsync(_context, input);
 
-        result.Success.Should().BeFalse();
-        result.Error.Should().Contain("memory");
+        result.Success.ShouldBeFalse();
+        result.Error!.ShouldContain("memory");
         await _context.DidNotReceive().CallActivityAsync<bool>(
             nameof(DestroyCloneActivity), Arg.Any<object>());
     }
@@ -99,7 +99,7 @@ public class CloneDestructionWorkflowTests
 
         var result = await _workflow.RunAsync(_context, input);
 
-        result.Success.Should().BeFalse();
-        result.Error.Should().Contain("destroy");
+        result.Success.ShouldBeFalse();
+        result.Error!.ShouldContain("destroy");
     }
 }

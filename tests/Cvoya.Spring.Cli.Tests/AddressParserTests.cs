@@ -3,7 +3,7 @@
 
 namespace Cvoya.Spring.Cli.Tests;
 
-using FluentAssertions;
+using Shouldly;
 
 using Xunit;
 
@@ -14,8 +14,8 @@ public class AddressParserTests
     {
         var (scheme, path) = AddressParser.Parse("agent://ada");
 
-        scheme.Should().Be("agent");
-        path.Should().Be("ada");
+        scheme.ShouldBe("agent");
+        path.ShouldBe("ada");
     }
 
     [Fact]
@@ -23,31 +23,25 @@ public class AddressParserTests
     {
         var (scheme, path) = AddressParser.Parse("unit://engineering");
 
-        scheme.Should().Be("unit");
-        path.Should().Be("engineering");
+        scheme.ShouldBe("unit");
+        path.ShouldBe("engineering");
     }
 
     [Fact]
     public void Parse_InvalidFormat_ThrowsFormatException()
     {
-        var act = () => AddressParser.Parse("invalid-address");
-
-        act.Should().Throw<FormatException>();
+        Should.Throw<FormatException>(() => AddressParser.Parse("invalid-address"));
     }
 
     [Fact]
     public void Parse_EmptyScheme_ThrowsFormatException()
     {
-        var act = () => AddressParser.Parse("://path");
-
-        act.Should().Throw<FormatException>();
+        Should.Throw<FormatException>(() => AddressParser.Parse("://path"));
     }
 
     [Fact]
     public void Parse_EmptyPath_ThrowsFormatException()
     {
-        var act = () => AddressParser.Parse("agent://");
-
-        act.Should().Throw<FormatException>();
+        Should.Throw<FormatException>(() => AddressParser.Parse("agent://"));
     }
 }

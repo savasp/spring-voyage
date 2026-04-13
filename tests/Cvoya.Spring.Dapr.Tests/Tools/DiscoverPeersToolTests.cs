@@ -9,11 +9,11 @@ using Cvoya.Spring.Core.Directory;
 using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Dapr.Tools;
 
-using FluentAssertions;
-
 using Microsoft.Extensions.Logging;
 
 using NSubstitute;
+
+using Shouldly;
 
 using Xunit;
 
@@ -63,10 +63,10 @@ public class DiscoverPeersToolTests
             JsonSerializer.SerializeToElement(new { }),
             TestContext.Current.CancellationToken);
 
-        result.ValueKind.Should().Be(JsonValueKind.Array);
-        result.GetArrayLength().Should().Be(2);
-        result[0].GetProperty("DisplayName").GetString().Should().Be("Ada");
-        result[1].GetProperty("DisplayName").GetString().Should().Be("Bob");
+        result.ValueKind.ShouldBe(JsonValueKind.Array);
+        result.GetArrayLength().ShouldBe(2);
+        result[0].GetProperty("DisplayName").GetString().ShouldBe("Ada");
+        result[1].GetProperty("DisplayName").GetString().ShouldBe("Bob");
     }
 
     [Fact]
@@ -82,7 +82,7 @@ public class DiscoverPeersToolTests
             JsonSerializer.SerializeToElement(new { }),
             TestContext.Current.CancellationToken);
 
-        result.ValueKind.Should().Be(JsonValueKind.Array);
-        result.GetArrayLength().Should().Be(0);
+        result.ValueKind.ShouldBe(JsonValueKind.Array);
+        result.GetArrayLength().ShouldBe(0);
     }
 }

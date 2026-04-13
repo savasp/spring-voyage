@@ -9,13 +9,13 @@ using System.Reflection;
 using Cvoya.Spring.Connector.GitHub.Auth;
 using Cvoya.Spring.Connector.GitHub.Webhooks;
 
-using FluentAssertions;
-
 using Microsoft.Extensions.Logging;
 
 using NSubstitute;
 
 using Octokit;
+
+using Shouldly;
 
 using Xunit;
 
@@ -62,7 +62,7 @@ public class GitHubWebhookRegistrarTests
 
         var result = await _registrar.RegisterAsync("owner", "repo", TestContext.Current.CancellationToken);
 
-        result.Should().Be(42);
+        result.ShouldBe(42);
 
         await _gitHubClient.Repository.Hooks.Received(1)
             .Create("owner", "repo", Arg.Is<NewRepositoryHook>(h =>
@@ -83,8 +83,8 @@ public class GitHubWebhookRegistrarTests
 
         var act = () => _registrar.RegisterAsync("owner", "repo", TestContext.Current.CancellationToken);
 
-        await act.Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("*WebhookUrl*");
+        var ex = await Should.ThrowAsync<InvalidOperationException>(act);
+        ex.Message.ShouldContain("WebhookUrl");
     }
 
     [Fact]

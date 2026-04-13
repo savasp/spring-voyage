@@ -10,7 +10,7 @@ using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Dapr.Data.Entities;
 using Cvoya.Spring.Dapr.Observability;
 
-using FluentAssertions;
+using Shouldly;
 
 using Xunit;
 
@@ -33,15 +33,15 @@ public class ActivityEventMapperTests
 
         var record = ActivityEventMapper.ToRecord(activityEvent);
 
-        record.Id.Should().Be(activityEvent.Id);
-        record.Source.Should().Be("agent:team/ada");
-        record.EventType.Should().Be("DecisionMade");
-        record.Severity.Should().Be("Debug");
-        record.Summary.Should().Be("Decision recorded");
-        record.Details!.Value.GetProperty("key").GetString().Should().Be("value");
-        record.CorrelationId.Should().Be("corr-456");
-        record.Cost.Should().Be(1.23m);
-        record.Timestamp.Should().Be(activityEvent.Timestamp);
+        record.Id.ShouldBe(activityEvent.Id);
+        record.Source.ShouldBe("agent:team/ada");
+        record.EventType.ShouldBe("DecisionMade");
+        record.Severity.ShouldBe("Debug");
+        record.Summary.ShouldBe("Decision recorded");
+        record.Details!.Value.GetProperty("key").GetString().ShouldBe("value");
+        record.CorrelationId.ShouldBe("corr-456");
+        record.Cost.ShouldBe(1.23m);
+        record.Timestamp.ShouldBe(activityEvent.Timestamp);
     }
 
     [Fact]
@@ -63,15 +63,15 @@ public class ActivityEventMapperTests
 
         var domain = ActivityEventMapper.ToDomain(record);
 
-        domain.Id.Should().Be(record.Id);
-        domain.Source.Should().Be(new Address("unit", "engineering"));
-        domain.EventType.Should().Be(ActivityEventType.CostIncurred);
-        domain.Severity.Should().Be(ActivitySeverity.Warning);
-        domain.Summary.Should().Be("High cost");
-        domain.Details!.Value.GetProperty("tokens").GetInt32().Should().Be(42);
-        domain.CorrelationId.Should().Be("corr-789");
-        domain.Cost.Should().Be(5.67m);
-        domain.Timestamp.Should().Be(record.Timestamp);
+        domain.Id.ShouldBe(record.Id);
+        domain.Source.ShouldBe(new Address("unit", "engineering"));
+        domain.EventType.ShouldBe(ActivityEventType.CostIncurred);
+        domain.Severity.ShouldBe(ActivitySeverity.Warning);
+        domain.Summary.ShouldBe("High cost");
+        domain.Details!.Value.GetProperty("tokens").GetInt32().ShouldBe(42);
+        domain.CorrelationId.ShouldBe("corr-789");
+        domain.Cost.ShouldBe(5.67m);
+        domain.Timestamp.ShouldBe(record.Timestamp);
     }
 
     [Fact]
@@ -91,15 +91,15 @@ public class ActivityEventMapperTests
         var record = ActivityEventMapper.ToRecord(original);
         var restored = ActivityEventMapper.ToDomain(record);
 
-        restored.Id.Should().Be(original.Id);
-        restored.Source.Should().Be(original.Source);
-        restored.EventType.Should().Be(original.EventType);
-        restored.Severity.Should().Be(original.Severity);
-        restored.Summary.Should().Be(original.Summary);
-        restored.Details.Should().Be(original.Details);
-        restored.CorrelationId.Should().Be(original.CorrelationId);
-        restored.Cost.Should().Be(original.Cost);
-        restored.Timestamp.Should().Be(original.Timestamp);
+        restored.Id.ShouldBe(original.Id);
+        restored.Source.ShouldBe(original.Source);
+        restored.EventType.ShouldBe(original.EventType);
+        restored.Severity.ShouldBe(original.Severity);
+        restored.Summary.ShouldBe(original.Summary);
+        restored.Details.ShouldBe(original.Details);
+        restored.CorrelationId.ShouldBe(original.CorrelationId);
+        restored.Cost.ShouldBe(original.Cost);
+        restored.Timestamp.ShouldBe(original.Timestamp);
     }
 
     [Fact]
@@ -115,8 +115,8 @@ public class ActivityEventMapperTests
 
         var record = ActivityEventMapper.ToRecord(activityEvent);
 
-        record.Details.Should().BeNull();
-        record.CorrelationId.Should().BeNull();
-        record.Cost.Should().BeNull();
+        record.Details.ShouldBeNull();
+        record.CorrelationId.ShouldBeNull();
+        record.Cost.ShouldBeNull();
     }
 }

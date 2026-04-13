@@ -10,13 +10,13 @@ using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Core.Tools;
 using Cvoya.Spring.Dapr.Tools;
 
-using FluentAssertions;
-
 using global::Dapr.Actors.Runtime;
 
 using Microsoft.Extensions.Logging;
 
 using NSubstitute;
+
+using Shouldly;
 
 using Xunit;
 
@@ -58,7 +58,7 @@ public class ToolDispatcherTests
             executionContext,
             TestContext.Current.CancellationToken);
 
-        result.GetProperty("Result").GetString().Should().Be("ok");
+        result.GetProperty("Result").GetString().ShouldBe("ok");
         await tool.Received(1).ExecuteAsync(
             Arg.Any<JsonElement>(),
             Arg.Any<JsonElement>(),
@@ -80,7 +80,7 @@ public class ToolDispatcherTests
             executionContext,
             TestContext.Current.CancellationToken);
 
-        await act.Should().ThrowAsync<SpringException>()
-            .WithMessage("Unknown tool: unknownTool");
+        var ex = await Should.ThrowAsync<SpringException>(act);
+        ex.Message.ShouldBe("Unknown tool: unknownTool");
     }
 }

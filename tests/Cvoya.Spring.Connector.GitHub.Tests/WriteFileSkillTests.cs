@@ -8,13 +8,13 @@ using System.Reflection;
 
 using Cvoya.Spring.Connector.GitHub.Skills;
 
-using FluentAssertions;
-
 using Microsoft.Extensions.Logging;
 
 using NSubstitute;
 
 using Octokit;
+
+using Shouldly;
 
 using Xunit;
 
@@ -49,9 +49,9 @@ public class WriteFileSkillTests
             "owner", "repo", "docs/new.md", "# hello", "add doc", "main",
             TestContext.Current.CancellationToken);
 
-        result.GetProperty("action").GetString().Should().Be("created");
-        result.GetProperty("commit_sha").GetString().Should().Be("sha-commit");
-        result.GetProperty("content_sha").GetString().Should().Be("sha-content");
+        result.GetProperty("action").GetString().ShouldBe("created");
+        result.GetProperty("commit_sha").GetString().ShouldBe("sha-commit");
+        result.GetProperty("content_sha").GetString().ShouldBe("sha-content");
 
         // The ctor for CreateFileRequest base64-encodes the content by default,
         // so assert on the branch/message and the decoded content instead of
@@ -80,8 +80,8 @@ public class WriteFileSkillTests
             "owner", "repo", "docs/new.md", "# updated", "update doc", "main",
             TestContext.Current.CancellationToken);
 
-        result.GetProperty("action").GetString().Should().Be("updated");
-        result.GetProperty("content_sha").GetString().Should().Be("sha-content-2");
+        result.GetProperty("action").GetString().ShouldBe("updated");
+        result.GetProperty("content_sha").GetString().ShouldBe("sha-content-2");
 
         await _gitHubClient.Repository.Content.Received(1)
             .UpdateFile("owner", "repo", "docs/new.md", Arg.Is<UpdateFileRequest>(

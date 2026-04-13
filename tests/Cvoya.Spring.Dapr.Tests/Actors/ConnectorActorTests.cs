@@ -8,14 +8,14 @@ using System.Text.Json;
 using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Dapr.Actors;
 
-using FluentAssertions;
-
 using global::Dapr.Actors;
 using global::Dapr.Actors.Runtime;
 
 using Microsoft.Extensions.Logging;
 
 using NSubstitute;
+
+using Shouldly;
 
 using Xunit;
 
@@ -87,13 +87,13 @@ public class ConnectorActorTests
 
         var result = await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
 
-        result.Should().NotBeNull();
-        result!.Type.Should().Be(MessageType.StatusQuery);
-        result.From.Should().Be(new Address("connector", "test-connector"));
-        result.To.Should().Be(new Address("agent", "test-sender"));
+        result.ShouldNotBeNull();
+        result!.Type.ShouldBe(MessageType.StatusQuery);
+        result.From.ShouldBe(new Address("connector", "test-connector"));
+        result.To.ShouldBe(new Address("agent", "test-sender"));
 
         var payload = result.Payload.Deserialize<JsonElement>();
-        payload.GetProperty("Status").GetString().Should().Be("Connected");
+        payload.GetProperty("Status").GetString().ShouldBe("Connected");
     }
 
     [Fact]
@@ -103,10 +103,10 @@ public class ConnectorActorTests
 
         var result = await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
 
-        result.Should().NotBeNull();
-        result!.Type.Should().Be(MessageType.HealthCheck);
+        result.ShouldNotBeNull();
+        result!.Type.ShouldBe(MessageType.HealthCheck);
         var payload = result.Payload.Deserialize<JsonElement>();
-        payload.GetProperty("Healthy").GetBoolean().Should().BeTrue();
+        payload.GetProperty("Healthy").GetBoolean().ShouldBeTrue();
     }
 
     [Fact]
@@ -116,9 +116,9 @@ public class ConnectorActorTests
 
         var result = await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
 
-        result.Should().NotBeNull();
+        result.ShouldNotBeNull();
         var payload = result!.Payload.Deserialize<JsonElement>();
-        payload.GetProperty("Acknowledged").GetBoolean().Should().BeTrue();
+        payload.GetProperty("Acknowledged").GetBoolean().ShouldBeTrue();
     }
 
     [Fact]
@@ -137,7 +137,7 @@ public class ConnectorActorTests
             .Returns(new ConditionalValue<ConnectionStatus>(true, ConnectionStatus.Connected));
 
         var status = await _actor.GetConnectionStatusAsync(TestContext.Current.CancellationToken);
-        status.Should().Be(ConnectionStatus.Connected);
+        status.ShouldBe(ConnectionStatus.Connected);
     }
 
     [Fact]
@@ -145,6 +145,6 @@ public class ConnectorActorTests
     {
         var status = await _actor.GetConnectionStatusAsync(TestContext.Current.CancellationToken);
 
-        status.Should().Be(ConnectionStatus.Disconnected);
+        status.ShouldBe(ConnectionStatus.Disconnected);
     }
 }

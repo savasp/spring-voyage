@@ -9,11 +9,11 @@ using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Dapr.Actors;
 using Cvoya.Spring.Integration.Tests.TestHelpers;
 
-using FluentAssertions;
-
 using global::Dapr.Actors.Runtime;
 
 using NSubstitute;
+
+using Shouldly;
 
 using Xunit;
 
@@ -33,7 +33,7 @@ public class ConversationLifecycleTests
         // Step 1: Send initial domain message — becomes active conversation.
         var firstMessage = MessageFactory.CreateDomainMessage(conversationId: conversationId, toId: "lifecycle-agent");
         var result1 = await actor.ReceiveAsync(firstMessage, TestContext.Current.CancellationToken);
-        result1.Should().NotBeNull();
+        result1.ShouldNotBeNull();
 
         await stateManager.Received(1).SetStateAsync(
             StateKeys.ActiveConversation,
@@ -52,7 +52,7 @@ public class ConversationLifecycleTests
         // Step 2: Send follow-up on active conversation — appended.
         var followUpMessage = MessageFactory.CreateDomainMessage(conversationId: conversationId, toId: "lifecycle-agent");
         var result2 = await actor.ReceiveAsync(followUpMessage, TestContext.Current.CancellationToken);
-        result2.Should().NotBeNull();
+        result2.ShouldNotBeNull();
 
         await stateManager.Received().SetStateAsync(
             StateKeys.ActiveConversation,
@@ -81,7 +81,7 @@ public class ConversationLifecycleTests
         // Send message for second conversation.
         var pendingMessage = MessageFactory.CreateDomainMessage(conversationId: pendingConvId, toId: "lifecycle-agent");
         var result = await actor.ReceiveAsync(pendingMessage, TestContext.Current.CancellationToken);
-        result.Should().NotBeNull();
+        result.ShouldNotBeNull();
 
         await stateManager.Received().SetStateAsync(
             StateKeys.PendingConversations,
@@ -117,7 +117,7 @@ public class ConversationLifecycleTests
         var cancelMessage = MessageFactory.CreateCancelMessage(activeConvId, "requester", "cancel-agent");
         var result = await actor.ReceiveAsync(cancelMessage, TestContext.Current.CancellationToken);
 
-        result.Should().NotBeNull();
+        result.ShouldNotBeNull();
         await stateManager.Received().TryRemoveStateAsync(StateKeys.ActiveConversation, Arg.Any<CancellationToken>());
     }
 

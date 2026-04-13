@@ -6,8 +6,6 @@ namespace Cvoya.Spring.Dapr.Tests.Auth;
 using Cvoya.Spring.Dapr.Actors;
 using Cvoya.Spring.Dapr.Auth;
 
-using FluentAssertions;
-
 using global::Dapr.Actors;
 using global::Dapr.Actors.Client;
 
@@ -15,6 +13,8 @@ using Microsoft.Extensions.Logging;
 
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
+
+using Shouldly;
 
 using Xunit;
 
@@ -46,7 +46,7 @@ public class PermissionServiceTests
 
         var result = await _service.ResolvePermissionAsync("human-1", "unit-1", ct);
 
-        result.Should().Be(PermissionLevel.Operator);
+        result.ShouldBe(PermissionLevel.Operator);
     }
 
     [Fact]
@@ -62,7 +62,7 @@ public class PermissionServiceTests
 
         var result = await _service.ResolvePermissionAsync("human-1", "unit-1", ct);
 
-        result.Should().BeNull();
+        result.ShouldBeNull();
     }
 
     [Fact]
@@ -79,6 +79,6 @@ public class PermissionServiceTests
 
         var result = await _service.ResolvePermissionAsync("human-1", "unit-1", ct);
 
-        result.Should().BeNull();
+        result.ShouldBeNull();
     }
 }

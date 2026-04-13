@@ -12,9 +12,9 @@ using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Dapr.Actors;
 using Cvoya.Spring.Host.Api.Models;
 
-using FluentAssertions;
-
 using NSubstitute;
+
+using Shouldly;
 
 using Xunit;
 
@@ -42,10 +42,10 @@ public class CloneEndpointsTests : IClassFixture<CustomWebApplicationFactory>
 
         var response = await _client.GetAsync("/api/v1/agents/test-agent/clones", ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var clones = await response.Content.ReadFromJsonAsync<List<CloneResponse>>(ct);
-        clones.Should().BeEmpty();
+        clones.ShouldBeEmpty();
     }
 
     [Fact]
@@ -80,17 +80,17 @@ public class CloneEndpointsTests : IClassFixture<CustomWebApplicationFactory>
 
         var response = await _client.GetAsync($"/api/v1/agents/{agentId}/clones", ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var clones = await response.Content.ReadFromJsonAsync<List<CloneResponse>>(ct);
-        clones.Should().HaveCount(2);
-        clones![0].CloneId.Should().Be("clone-a");
-        clones[0].CloneType.Should().Be("ephemeral-no-memory");
-        clones[0].AttachmentMode.Should().Be("detached");
-        clones[0].Status.Should().Be("active");
-        clones[1].CloneId.Should().Be("clone-b");
-        clones[1].CloneType.Should().Be("ephemeral-with-memory");
-        clones[1].AttachmentMode.Should().Be("attached");
+        clones!.Count().ShouldBe(2);
+        clones![0].CloneId.ShouldBe("clone-a");
+        clones[0].CloneType.ShouldBe("ephemeral-no-memory");
+        clones[0].AttachmentMode.ShouldBe("detached");
+        clones[0].Status.ShouldBe("active");
+        clones[1].CloneId.ShouldBe("clone-b");
+        clones[1].CloneType.ShouldBe("ephemeral-with-memory");
+        clones[1].AttachmentMode.ShouldBe("attached");
     }
 
     [Fact]
@@ -102,7 +102,7 @@ public class CloneEndpointsTests : IClassFixture<CustomWebApplicationFactory>
 
         var response = await _client.GetAsync("/api/v1/agents/nonexistent-list-agent/clones", ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 
     [Fact]
@@ -116,7 +116,7 @@ public class CloneEndpointsTests : IClassFixture<CustomWebApplicationFactory>
 
         var response = await _client.PostAsJsonAsync("/api/v1/agents/nonexistent-agent/clones", request, ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 
     [Fact]
@@ -136,15 +136,15 @@ public class CloneEndpointsTests : IClassFixture<CustomWebApplicationFactory>
 
         var response = await _client.GetAsync($"/api/v1/agents/{parentId}/clones/{cloneId}", ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var clone = await response.Content.ReadFromJsonAsync<CloneResponse>(ct);
-        clone.Should().NotBeNull();
-        clone!.CloneId.Should().Be(cloneId);
-        clone.ParentAgentId.Should().Be(parentId);
-        clone.CloneType.Should().Be("ephemeral-with-memory");
-        clone.AttachmentMode.Should().Be("attached");
-        clone.Status.Should().Be("active");
+        clone.ShouldNotBeNull();
+        clone!.CloneId.ShouldBe(cloneId);
+        clone.ParentAgentId.ShouldBe(parentId);
+        clone.CloneType.ShouldBe("ephemeral-with-memory");
+        clone.AttachmentMode.ShouldBe("attached");
+        clone.Status.ShouldBe("active");
     }
 
     [Fact]
@@ -156,7 +156,7 @@ public class CloneEndpointsTests : IClassFixture<CustomWebApplicationFactory>
 
         var response = await _client.GetAsync("/api/v1/agents/test-agent/clones/nonexistent-clone", ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 
     [Fact]
@@ -168,6 +168,6 @@ public class CloneEndpointsTests : IClassFixture<CustomWebApplicationFactory>
 
         var response = await _client.DeleteAsync("/api/v1/agents/test-agent/clones/nonexistent-clone", ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 }

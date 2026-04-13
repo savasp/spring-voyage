@@ -8,7 +8,7 @@ using System.Text.Json;
 using Cvoya.Spring.Dapr.Data.Entities;
 using Cvoya.Spring.Dapr.Execution;
 
-using FluentAssertions;
+using Shouldly;
 
 using Xunit;
 
@@ -36,11 +36,11 @@ public class DbAgentDefinitionProviderTests
 
         var def = DbAgentDefinitionProvider.Project(entity);
 
-        def.Instructions.Should().Be("Be careful.");
-        def.Execution.Should().NotBeNull();
-        def.Execution!.Tool.Should().Be("claude-code");
-        def.Execution.Image.Should().Be("spring-agent:latest");
-        def.Execution.Runtime.Should().Be("docker");
+        def.Instructions.ShouldBe("Be careful.");
+        def.Execution.ShouldNotBeNull();
+        def.Execution!.Tool.ShouldBe("claude-code");
+        def.Execution.Image.ShouldBe("spring-agent:latest");
+        def.Execution.Runtime.ShouldBe("docker");
     }
 
     [Fact]
@@ -63,9 +63,9 @@ public class DbAgentDefinitionProviderTests
 
         var def = DbAgentDefinitionProvider.Project(entity);
 
-        def.Execution.Should().NotBeNull();
-        def.Execution!.Tool.Should().Be("claude-code");
-        def.Execution.Image.Should().Be("legacy:v1");
+        def.Execution.ShouldNotBeNull();
+        def.Execution!.Tool.ShouldBe("claude-code");
+        def.Execution.Image.ShouldBe("legacy:v1");
     }
 
     [Fact]
@@ -81,8 +81,8 @@ public class DbAgentDefinitionProviderTests
 
         var def = DbAgentDefinitionProvider.Project(entity);
 
-        def.Execution.Should().BeNull();
-        def.Instructions.Should().Be("do things");
+        def.Execution.ShouldBeNull();
+        def.Instructions.ShouldBe("do things");
     }
 
     [Fact]
@@ -98,9 +98,9 @@ public class DbAgentDefinitionProviderTests
 
         var def = DbAgentDefinitionProvider.Project(entity);
 
-        def.AgentId.Should().Be("ada");
-        def.Name.Should().Be("Ada");
-        def.Instructions.Should().BeNull();
-        def.Execution.Should().BeNull();
+        def.AgentId.ShouldBe("ada");
+        def.Name.ShouldBe("Ada");
+        def.Instructions.ShouldBeNull();
+        def.Execution.ShouldBeNull();
     }
 }

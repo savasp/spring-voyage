@@ -11,13 +11,13 @@ using Cvoya.Spring.Dapr.Actors;
 using Cvoya.Spring.Dapr.Workflows;
 using Cvoya.Spring.Dapr.Workflows.Activities;
 
-using FluentAssertions;
-
 using global::Dapr.Workflow;
 
 using Microsoft.Extensions.Logging;
 
 using NSubstitute;
+
+using Shouldly;
 
 using Xunit;
 
@@ -99,6 +99,6 @@ public class DestroyCloneActivityTests
 
         var result = await _activity.RunAsync(_context, input);
 
-        result.Should().BeTrue();
+        result.ShouldBeTrue();
     }
 }

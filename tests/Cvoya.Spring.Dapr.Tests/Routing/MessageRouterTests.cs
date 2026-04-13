@@ -11,8 +11,6 @@ using Cvoya.Spring.Dapr.Actors;
 using Cvoya.Spring.Dapr.Auth;
 using Cvoya.Spring.Dapr.Routing;
 
-using FluentAssertions;
-
 using global::Dapr.Actors;
 using global::Dapr.Actors.Client;
 
@@ -20,6 +18,8 @@ using Microsoft.Extensions.Logging;
 
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
+
+using Shouldly;
 
 using Xunit;
 
@@ -64,8 +64,8 @@ public class MessageRouterTests
 
         var result = await _router.RouteAsync(message, ct);
 
-        result.IsSuccess.Should().BeTrue();
-        result.Value.Should().Be(expectedResponse);
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.ShouldBe(expectedResponse);
     }
 
     [Fact]
@@ -88,8 +88,8 @@ public class MessageRouterTests
 
         var result = await _router.RouteAsync(message, ct);
 
-        result.IsSuccess.Should().BeTrue();
-        result.Value.Should().Be(expectedResponse);
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.ShouldBe(expectedResponse);
 
         // Directory service should NOT have been called.
         await _directoryService.DidNotReceive().ResolveAsync(Arg.Any<Address>(), Arg.Any<CancellationToken>());
@@ -107,8 +107,8 @@ public class MessageRouterTests
 
         var result = await _router.RouteAsync(message, ct);
 
-        result.IsSuccess.Should().BeFalse();
-        result.Error!.Code.Should().Be("ADDRESS_NOT_FOUND");
+        result.IsSuccess.ShouldBeFalse();
+        result.Error!.Code.ShouldBe("ADDRESS_NOT_FOUND");
     }
 
     [Fact]
@@ -146,8 +146,8 @@ public class MessageRouterTests
 
         var result = await _router.RouteAsync(message, ct);
 
-        result.IsSuccess.Should().BeTrue();
-        result.Value.Should().NotBeNull();
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.ShouldNotBeNull();
     }
 
     [Fact]
@@ -168,8 +168,8 @@ public class MessageRouterTests
 
         var result = await _router.RouteAsync(message, ct);
 
-        result.IsSuccess.Should().BeFalse();
-        result.Error!.Code.Should().Be("DELIVERY_FAILED");
+        result.IsSuccess.ShouldBeFalse();
+        result.Error!.Code.ShouldBe("DELIVERY_FAILED");
     }
 
     // --- Permission Check Tests ---
@@ -197,7 +197,7 @@ public class MessageRouterTests
 
         var result = await _router.RouteAsync(message, ct);
 
-        result.IsSuccess.Should().BeTrue();
+        result.IsSuccess.ShouldBeTrue();
     }
 
     [Fact]
@@ -214,8 +214,8 @@ public class MessageRouterTests
 
         var result = await _router.RouteAsync(message, ct);
 
-        result.IsSuccess.Should().BeFalse();
-        result.Error!.Code.Should().Be("PERMISSION_DENIED");
+        result.IsSuccess.ShouldBeFalse();
+        result.Error!.Code.ShouldBe("PERMISSION_DENIED");
     }
 
     [Fact]
@@ -239,7 +239,7 @@ public class MessageRouterTests
 
         var result = await _router.RouteAsync(message, ct);
 
-        result.IsSuccess.Should().BeTrue();
+        result.IsSuccess.ShouldBeTrue();
         // Permission service should NOT have been called for agent-to-unit routing.
         await _permissionService.DidNotReceive().ResolvePermissionAsync(
             Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());

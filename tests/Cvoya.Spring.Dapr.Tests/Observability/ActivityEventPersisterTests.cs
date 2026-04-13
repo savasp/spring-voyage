@@ -8,11 +8,11 @@ using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Dapr.Data;
 using Cvoya.Spring.Dapr.Observability;
 
-using FluentAssertions;
-
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+
+using Shouldly;
 
 using Xunit;
 
@@ -68,7 +68,7 @@ public class ActivityEventPersisterTests : IDisposable
         var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
         var records = await db.ActivityEvents.ToListAsync(ct);
 
-        records.Should().ContainSingle(r => r.Summary == "persisted-event");
+        records.Count(r => r.Summary == "persisted-event").ShouldBe(1);
 
         await persister.StopAsync(ct);
         persister.Dispose();
@@ -93,7 +93,7 @@ public class ActivityEventPersisterTests : IDisposable
         var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
         var records = await db.ActivityEvents.ToListAsync(ct);
 
-        records.Should().HaveCount(5);
+        records.Count().ShouldBe(5);
 
         await persister.StopAsync(ct);
         persister.Dispose();
@@ -114,7 +114,7 @@ public class ActivityEventPersisterTests : IDisposable
         var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
         var records = await db.ActivityEvents.ToListAsync(ct);
 
-        records.Should().BeEmpty();
+        records.ShouldBeEmpty();
 
         persister.Dispose();
     }

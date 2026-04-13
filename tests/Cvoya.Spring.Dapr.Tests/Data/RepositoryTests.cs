@@ -6,9 +6,9 @@ namespace Cvoya.Spring.Dapr.Tests.Data;
 using Cvoya.Spring.Dapr.Data;
 using Cvoya.Spring.Dapr.Data.Entities;
 
-using FluentAssertions;
-
 using Microsoft.EntityFrameworkCore;
+
+using Shouldly;
 
 using Xunit;
 
@@ -45,8 +45,8 @@ public class RepositoryTests : IDisposable
 
         var result = await _repository.GetByIdAsync(agent.Id, ct);
 
-        result.Should().NotBeNull();
-        result!.Name.Should().Be("Test Agent");
+        result.ShouldNotBeNull();
+        result!.Name.ShouldBe("Test Agent");
     }
 
     [Fact]
@@ -56,7 +56,7 @@ public class RepositoryTests : IDisposable
 
         var result = await _repository.GetByIdAsync(Guid.NewGuid(), ct);
 
-        result.Should().BeNull();
+        result.ShouldBeNull();
     }
 
     [Fact]
@@ -73,9 +73,9 @@ public class RepositoryTests : IDisposable
 
         var results = await _repository.GetAllAsync(ct);
 
-        results.Should().HaveCount(2);
-        results.Should().Contain(a => a.Name == "Agent 1");
-        results.Should().Contain(a => a.Name == "Agent 2");
+        results.Count().ShouldBe(2);
+        results.ShouldContain(a => a.Name == "Agent 1");
+        results.ShouldContain(a => a.Name == "Agent 2");
     }
 
     [Fact]
@@ -94,7 +94,7 @@ public class RepositoryTests : IDisposable
 
         // The soft-deleted entity should not appear in filtered queries.
         var results = await _repository.GetAllAsync(ct);
-        results.Should().NotContain(a => a.Id == agent.Id);
+        results.ShouldNotContain(a => a.Id == agent.Id);
     }
 
     [Fact]
@@ -113,7 +113,7 @@ public class RepositoryTests : IDisposable
 
         // Verify through GetAllAsync since FindAsync bypasses query filters.
         var results = await _repository.GetAllAsync(ct);
-        results.Should().NotContain(a => a.Id == agent.Id);
+        results.ShouldNotContain(a => a.Id == agent.Id);
     }
 
     [Fact]
@@ -133,8 +133,8 @@ public class RepositoryTests : IDisposable
         await _repository.UpdateAsync(agent, ct);
 
         var result = await _repository.GetByIdAsync(agent.Id, ct);
-        result.Should().NotBeNull();
-        result!.Name.Should().Be("Updated Name");
+        result.ShouldNotBeNull();
+        result!.Name.ShouldBe("Updated Name");
     }
 
     public void Dispose()

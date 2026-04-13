@@ -7,11 +7,11 @@ using Cvoya.Spring.Core.Cloning;
 using Cvoya.Spring.Dapr.Workflows;
 using Cvoya.Spring.Dapr.Workflows.Activities;
 
-using FluentAssertions;
-
 using global::Dapr.Workflow;
 
 using NSubstitute;
+
+using Shouldly;
 
 using Xunit;
 
@@ -46,10 +46,10 @@ public class CloningLifecycleWorkflowTests
 
         var result = await _workflow.RunAsync(_context, input);
 
-        result.Success.Should().BeTrue();
-        result.CloneId.Should().Be("clone-1");
-        result.CloneAgentAddress.Should().Be("agent/clone-1");
-        result.Error.Should().BeNull();
+        result.Success.ShouldBeTrue();
+        result.CloneId.ShouldBe("clone-1");
+        result.CloneAgentAddress.ShouldBe("agent/clone-1");
+        result.Error.ShouldBeNull();
     }
 
     [Fact]
@@ -64,10 +64,10 @@ public class CloningLifecycleWorkflowTests
 
         var result = await _workflow.RunAsync(_context, input);
 
-        result.Success.Should().BeFalse();
-        result.Error.Should().Contain("validation failed");
-        result.CloneId.Should().BeNull();
-        result.CloneAgentAddress.Should().BeNull();
+        result.Success.ShouldBeFalse();
+        result.Error!.ShouldContain("validation failed");
+        result.CloneId.ShouldBeNull();
+        result.CloneAgentAddress.ShouldBeNull();
     }
 
     [Fact]
@@ -102,8 +102,8 @@ public class CloningLifecycleWorkflowTests
 
         var result = await _workflow.RunAsync(_context, input);
 
-        result.Success.Should().BeFalse();
-        result.Error.Should().Contain("create clone actor");
+        result.Success.ShouldBeFalse();
+        result.Error!.ShouldContain("create clone actor");
     }
 
     [Fact]
@@ -140,8 +140,8 @@ public class CloningLifecycleWorkflowTests
 
         var result = await _workflow.RunAsync(_context, input);
 
-        result.Success.Should().BeFalse();
-        result.Error.Should().Contain("register clone");
+        result.Success.ShouldBeFalse();
+        result.Error!.ShouldContain("register clone");
     }
 
     [Fact]
@@ -161,7 +161,7 @@ public class CloningLifecycleWorkflowTests
 
         var result = await _workflow.RunAsync(_context, input);
 
-        result.Success.Should().BeTrue();
+        result.Success.ShouldBeTrue();
         await _context.Received(1).CallActivityAsync<bool>(
             nameof(ValidateCloneRequestActivity), input);
         await _context.Received(1).CallActivityAsync<bool>(

@@ -8,14 +8,14 @@ using System.Text.Json;
 using Cvoya.Spring.Core.Execution;
 using Cvoya.Spring.Dapr.Observability;
 
-using FluentAssertions;
-
 using global::Dapr.Client;
 
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 using NSubstitute;
+
+using Shouldly;
 
 using Xunit;
 

@@ -8,11 +8,11 @@ using System.Text.Json;
 using Cvoya.Spring.Connector.GitHub.Auth;
 using Cvoya.Spring.Connector.GitHub.Webhooks;
 
-using FluentAssertions;
-
 using Microsoft.Extensions.Logging;
 
 using NSubstitute;
+
+using Shouldly;
 
 using Xunit;
 
@@ -38,8 +38,9 @@ public class GitHubSkillRegistryTests
     {
         var tools = _registry.GetToolDefinitions();
 
-        tools.Should().HaveCount(11);
-        tools.Select(t => t.Name).Should().BeEquivalentTo([
+        tools.Count().ShouldBe(11);
+        tools.Select(t => t.Name).ShouldBe(new[]
+        {
             "github_create_branch",
             "github_create_pull_request",
             "github_comment_on_issue",
@@ -50,8 +51,8 @@ public class GitHubSkillRegistryTests
             "github_list_files",
             "github_get_issue_details",
             "github_get_pull_request_diff",
-            "github_manage_labels"
-        ]);
+            "github_manage_labels",
+        }, ignoreOrder: true);
     }
 
     [Fact]
@@ -61,11 +62,11 @@ public class GitHubSkillRegistryTests
 
         foreach (var tool in tools)
         {
-            tool.Name.Should().NotBeNullOrWhiteSpace();
-            tool.Description.Should().NotBeNullOrWhiteSpace();
-            tool.InputSchema.ValueKind.Should().Be(JsonValueKind.Object);
-            tool.InputSchema.GetProperty("type").GetString().Should().Be("object");
-            tool.InputSchema.TryGetProperty("properties", out _).Should().BeTrue();
+            tool.Name.ShouldNotBeNullOrWhiteSpace();
+            tool.Description.ShouldNotBeNullOrWhiteSpace();
+            tool.InputSchema.ValueKind.ShouldBe(JsonValueKind.Object);
+            tool.InputSchema.GetProperty("type").GetString().ShouldBe("object");
+            tool.InputSchema.TryGetProperty("properties", out _).ShouldBeTrue();
         }
     }
 }

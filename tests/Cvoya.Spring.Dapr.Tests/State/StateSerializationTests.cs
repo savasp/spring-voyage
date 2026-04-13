@@ -8,7 +8,7 @@ using System.Text.Json;
 using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Dapr.Actors;
 
-using FluentAssertions;
+using Shouldly;
 
 using Xunit;
 
@@ -46,17 +46,17 @@ public class StateSerializationTests
         var json = JsonSerializer.Serialize(original, Options);
         var deserialized = JsonSerializer.Deserialize<ConversationChannel>(json, Options);
 
-        deserialized.Should().NotBeNull();
-        deserialized!.ConversationId.Should().Be(original.ConversationId);
-        deserialized.Messages.Should().HaveCount(1);
-        deserialized.CreatedAt.Should().Be(original.CreatedAt);
+        deserialized.ShouldNotBeNull();
+        deserialized!.ConversationId.ShouldBe(original.ConversationId);
+        deserialized.Messages.Count().ShouldBe(1);
+        deserialized.CreatedAt.ShouldBe(original.CreatedAt);
 
         var message = deserialized.Messages[0];
-        message.Id.Should().Be(original.Messages[0].Id);
-        message.From.Should().Be(original.Messages[0].From);
-        message.To.Should().Be(original.Messages[0].To);
-        message.Type.Should().Be(MessageType.Domain);
-        message.ConversationId.Should().Be("conv-123");
+        message.Id.ShouldBe(original.Messages[0].Id);
+        message.From.ShouldBe(original.Messages[0].From);
+        message.To.ShouldBe(original.Messages[0].To);
+        message.Type.ShouldBe(MessageType.Domain);
+        message.ConversationId.ShouldBe("conv-123");
     }
 
     [Fact]
@@ -74,14 +74,14 @@ public class StateSerializationTests
         var json = JsonSerializer.Serialize(original, Options);
         var deserialized = JsonSerializer.Deserialize<Message>(json, Options);
 
-        deserialized.Should().NotBeNull();
-        deserialized!.Id.Should().Be(original.Id);
-        deserialized.From.Should().Be(original.From);
-        deserialized.To.Should().Be(original.To);
-        deserialized.Type.Should().Be(MessageType.StatusQuery);
-        deserialized.ConversationId.Should().Be("conv-456");
-        deserialized.Timestamp.Should().Be(original.Timestamp);
-        deserialized.Payload.GetProperty("Status").GetString().Should().Be("Active");
+        deserialized.ShouldNotBeNull();
+        deserialized!.Id.ShouldBe(original.Id);
+        deserialized.From.ShouldBe(original.From);
+        deserialized.To.ShouldBe(original.To);
+        deserialized.Type.ShouldBe(MessageType.StatusQuery);
+        deserialized.ConversationId.ShouldBe("conv-456");
+        deserialized.Timestamp.ShouldBe(original.Timestamp);
+        deserialized.Payload.GetProperty("Status").GetString().ShouldBe("Active");
     }
 
     [Fact]
@@ -92,9 +92,9 @@ public class StateSerializationTests
         var json = JsonSerializer.Serialize(original, Options);
         var deserialized = JsonSerializer.Deserialize<Address>(json, Options);
 
-        deserialized.Should().NotBeNull();
-        deserialized!.Scheme.Should().Be("connector");
-        deserialized.Path.Should().Be("github/spring-voyage");
+        deserialized.ShouldNotBeNull();
+        deserialized!.Scheme.ShouldBe("connector");
+        deserialized.Path.ShouldBe("github/spring-voyage");
     }
 
     [Fact]
@@ -112,8 +112,8 @@ public class StateSerializationTests
         var json = JsonSerializer.Serialize(original, Options);
         var deserialized = JsonSerializer.Deserialize<Message>(json, Options);
 
-        deserialized.Should().NotBeNull();
-        deserialized!.ConversationId.Should().BeNull();
+        deserialized.ShouldNotBeNull();
+        deserialized!.ConversationId.ShouldBeNull();
     }
 
     [Fact]
@@ -129,8 +129,8 @@ public class StateSerializationTests
         var json = JsonSerializer.Serialize(original, Options);
         var deserialized = JsonSerializer.Deserialize<ConversationChannel>(json, Options);
 
-        deserialized.Should().NotBeNull();
-        deserialized!.ConversationId.Should().Be("empty-conv");
-        deserialized.Messages.Should().BeEmpty();
+        deserialized.ShouldNotBeNull();
+        deserialized!.ConversationId.ShouldBe("empty-conv");
+        deserialized.Messages.ShouldBeEmpty();
     }
 }

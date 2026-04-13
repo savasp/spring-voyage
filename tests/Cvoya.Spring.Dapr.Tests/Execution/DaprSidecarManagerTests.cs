@@ -6,7 +6,7 @@ namespace Cvoya.Spring.Dapr.Tests.Execution;
 using Cvoya.Spring.Core.Execution;
 using Cvoya.Spring.Dapr.Execution;
 
-using FluentAssertions;
+using Shouldly;
 
 using Xunit;
 
@@ -28,17 +28,17 @@ public class DaprSidecarManagerTests
 
         var args = DaprSidecarManager.BuildSidecarRunArguments(config, sidecarName);
 
-        args.Should().StartWith("run -d --name spring-dapr-test");
-        args.Should().Contain("--label spring.managed=true");
-        args.Should().Contain("--label spring.role=dapr-sidecar");
-        args.Should().Contain("--label spring.app-id=my-app");
-        args.Should().Contain("daprio/daprd:latest");
-        args.Should().Contain("--app-id my-app");
-        args.Should().Contain("--app-port 8080");
-        args.Should().Contain("--dapr-http-port 3500");
-        args.Should().Contain("--dapr-grpc-port 50001");
-        args.Should().NotContain("--network");
-        args.Should().NotContain("--resources-path");
+        args.ShouldStartWith("run -d --name spring-dapr-test");
+        args.ShouldContain("--label spring.managed=true");
+        args.ShouldContain("--label spring.role=dapr-sidecar");
+        args.ShouldContain("--label spring.app-id=my-app");
+        args.ShouldContain("daprio/daprd:latest");
+        args.ShouldContain("--app-id my-app");
+        args.ShouldContain("--app-port 8080");
+        args.ShouldContain("--dapr-http-port 3500");
+        args.ShouldContain("--dapr-grpc-port 50001");
+        args.ShouldNotContain("--network");
+        args.ShouldNotContain("--resources-path");
     }
 
     [Fact]
@@ -54,7 +54,7 @@ public class DaprSidecarManagerTests
 
         var args = DaprSidecarManager.BuildSidecarRunArguments(config, sidecarName);
 
-        args.Should().Contain("--network spring-net-abc");
+        args.ShouldContain("--network spring-net-abc");
     }
 
     [Fact]
@@ -70,8 +70,8 @@ public class DaprSidecarManagerTests
 
         var args = DaprSidecarManager.BuildSidecarRunArguments(config, sidecarName);
 
-        args.Should().Contain("-v /home/user/dapr/components:/components");
-        args.Should().Contain("--resources-path /components");
+        args.ShouldContain("-v /home/user/dapr/components:/components");
+        args.ShouldContain("--resources-path /components");
     }
 
     [Fact]
@@ -93,7 +93,7 @@ public class DaprSidecarManagerTests
         var networkIndex = args.IndexOf("--network my-network", StringComparison.Ordinal);
         var appIdIndex = args.IndexOf("--app-id workflow-1", StringComparison.Ordinal);
 
-        networkIndex.Should().BeLessThan(imageIndex, "network flag should come before image");
-        appIdIndex.Should().BeGreaterThan(imageIndex, "daprd args should come after image");
+        networkIndex.ShouldBeLessThan(imageIndex, "network flag should come before image");
+        appIdIndex.ShouldBeGreaterThan(imageIndex, "daprd args should come after image");
     }
 }

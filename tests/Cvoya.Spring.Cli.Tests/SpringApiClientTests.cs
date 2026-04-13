@@ -6,7 +6,7 @@ namespace Cvoya.Spring.Cli.Tests;
 using System.Net;
 using System.Text.Json;
 
-using FluentAssertions;
+using Shouldly;
 
 using Xunit;
 
@@ -25,8 +25,8 @@ public class SpringApiClientTests
 
         var result = await client.ListAgentsAsync(TestContext.Current.CancellationToken);
 
-        result.ValueKind.Should().Be(JsonValueKind.Array);
-        handler.WasCalled.Should().BeTrue();
+        result.ValueKind.ShouldBe(JsonValueKind.Array);
+        handler.WasCalled.ShouldBeTrue();
     }
 
     [Fact]
@@ -39,9 +39,9 @@ public class SpringApiClientTests
             validateRequestBody: body =>
             {
                 var json = JsonSerializer.Deserialize<JsonElement>(body);
-                json.GetProperty("id").GetString().Should().Be("ada");
-                json.GetProperty("name").GetString().Should().Be("Ada");
-                json.GetProperty("role").GetString().Should().Be("coder");
+                json.GetProperty("id").GetString().ShouldBe("ada");
+                json.GetProperty("name").GetString().ShouldBe("Ada");
+                json.GetProperty("role").GetString().ShouldBe("coder");
             });
 
         var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:5000") };
@@ -49,8 +49,8 @@ public class SpringApiClientTests
 
         var result = await client.CreateAgentAsync("ada", "Ada", "coder", TestContext.Current.CancellationToken);
 
-        result.GetProperty("id").GetString().Should().Be("ada");
-        handler.WasCalled.Should().BeTrue();
+        result.GetProperty("id").GetString().ShouldBe("ada");
+        handler.WasCalled.ShouldBeTrue();
     }
 
     [Fact]
@@ -63,9 +63,9 @@ public class SpringApiClientTests
             validateRequestBody: body =>
             {
                 var json = JsonSerializer.Deserialize<JsonElement>(body);
-                json.GetProperty("to").GetProperty("scheme").GetString().Should().Be("agent");
-                json.GetProperty("to").GetProperty("path").GetString().Should().Be("ada");
-                json.GetProperty("text").GetString().Should().Be("Review PR #42");
+                json.GetProperty("to").GetProperty("scheme").GetString().ShouldBe("agent");
+                json.GetProperty("to").GetProperty("path").GetString().ShouldBe("ada");
+                json.GetProperty("text").GetString().ShouldBe("Review PR #42");
             });
 
         var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:5000") };
@@ -73,8 +73,8 @@ public class SpringApiClientTests
 
         var result = await client.SendMessageAsync("agent", "ada", "Review PR #42", null, TestContext.Current.CancellationToken);
 
-        result.GetProperty("messageId").GetString().Should().Be("msg-1");
-        handler.WasCalled.Should().BeTrue();
+        result.GetProperty("messageId").GetString().ShouldBe("msg-1");
+        handler.WasCalled.ShouldBeTrue();
     }
 
     [Fact]
@@ -91,7 +91,7 @@ public class SpringApiClientTests
 
         await client.DeleteAgentAsync("ada", TestContext.Current.CancellationToken);
 
-        handler.WasCalled.Should().BeTrue();
+        handler.WasCalled.ShouldBeTrue();
     }
 
     [Fact]
@@ -107,8 +107,8 @@ public class SpringApiClientTests
 
         var result = await client.ListTokensAsync(TestContext.Current.CancellationToken);
 
-        result.ValueKind.Should().Be(JsonValueKind.Array);
-        handler.WasCalled.Should().BeTrue();
+        result.ValueKind.ShouldBe(JsonValueKind.Array);
+        handler.WasCalled.ShouldBeTrue();
     }
 }
 
@@ -128,8 +128,8 @@ internal class MockHttpMessageHandler(
     {
         WasCalled = true;
 
-        request.RequestUri!.AbsolutePath.Should().Be(expectedPath);
-        request.Method.Should().Be(expectedMethod);
+        request.RequestUri!.AbsolutePath.ShouldBe(expectedPath);
+        request.Method.ShouldBe(expectedMethod);
 
         if (validateRequestBody is not null && request.Content is not null)
         {

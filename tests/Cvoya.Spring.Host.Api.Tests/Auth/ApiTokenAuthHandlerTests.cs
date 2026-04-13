@@ -14,8 +14,6 @@ using Cvoya.Spring.Dapr.Data.Entities;
 using Cvoya.Spring.Dapr.Routing;
 using Cvoya.Spring.Host.Api.Auth;
 
-using FluentAssertions;
-
 using global::Dapr.Actors.Client;
 using global::Dapr.Client;
 using global::Dapr.Workflow;
@@ -27,6 +25,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 using NSubstitute;
+
+using Shouldly;
 
 using Xunit;
 
@@ -133,7 +133,7 @@ public class ApiTokenAuthHandlerTests : IDisposable
 
         var response = await client.GetAsync("/api/v1/auth/tokens", ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
     }
 
     [Fact]
@@ -150,7 +150,7 @@ public class ApiTokenAuthHandlerTests : IDisposable
 
         var response = await client.GetAsync("/api/v1/auth/tokens", ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
     }
 
     [Fact]
@@ -167,7 +167,7 @@ public class ApiTokenAuthHandlerTests : IDisposable
 
         var response = await client.GetAsync("/api/v1/auth/tokens", ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
     }
 
     [Fact]
@@ -180,7 +180,7 @@ public class ApiTokenAuthHandlerTests : IDisposable
 
         var response = await client.GetAsync("/api/v1/auth/tokens", ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
     }
 
     [Fact]
@@ -193,7 +193,7 @@ public class ApiTokenAuthHandlerTests : IDisposable
 
         var response = await client.GetAsync("/api/v1/auth/tokens", ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
     }
 
     private async Task SeedTokenAsync(

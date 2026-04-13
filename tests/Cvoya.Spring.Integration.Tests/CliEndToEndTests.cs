@@ -10,11 +10,11 @@ using Cvoya.Spring.Core.Orchestration;
 using Cvoya.Spring.Dapr.Actors;
 using Cvoya.Spring.Integration.Tests.TestHelpers;
 
-using FluentAssertions;
-
 using global::Dapr.Actors.Runtime;
 
 using NSubstitute;
+
+using Shouldly;
 
 using Xunit;
 
@@ -48,7 +48,7 @@ public class CliEndToEndTests
 
         // Verify members.
         var members = await unitActor.GetMembersAsync(TestContext.Current.CancellationToken);
-        members.Should().HaveCount(2);
+        members.Count().ShouldBe(2);
 
         // Step 3: Send a domain message to the unit.
         var message = MessageFactory.CreateDomainMessage(toId: "cli-unit", toType: "unit");
@@ -66,10 +66,10 @@ public class CliEndToEndTests
         var statusQuery = MessageFactory.CreateStatusQuery("cli-requester", "cli-unit", toType: "unit");
         var statusResult = await unitActor.ReceiveAsync(statusQuery, TestContext.Current.CancellationToken);
 
-        statusResult.Should().NotBeNull();
-        statusResult!.Type.Should().Be(MessageType.StatusQuery);
+        statusResult.ShouldNotBeNull();
+        statusResult!.Type.ShouldBe(MessageType.StatusQuery);
         var payload = statusResult.Payload.Deserialize<JsonElement>();
-        payload.GetProperty("MemberCount").GetInt32().Should().Be(2);
+        payload.GetProperty("MemberCount").GetInt32().ShouldBe(2);
     }
 
     [Fact]
@@ -96,11 +96,11 @@ public class CliEndToEndTests
         var statusQuery = MessageFactory.CreateStatusQuery("cli-requester", "cli-agent");
         var statusResult = await agentActor.ReceiveAsync(statusQuery, TestContext.Current.CancellationToken);
 
-        statusResult.Should().NotBeNull();
+        statusResult.ShouldNotBeNull();
         var payload = statusResult!.Payload.Deserialize<JsonElement>();
-        payload.GetProperty("Status").GetString().Should().Be("Active");
-        payload.GetProperty("ActiveConversationId").GetString().Should().Be(conversationId);
-        payload.GetProperty("PendingConversationCount").GetInt32().Should().Be(0);
+        payload.GetProperty("Status").GetString().ShouldBe("Active");
+        payload.GetProperty("ActiveConversationId").GetString().ShouldBe(conversationId);
+        payload.GetProperty("PendingConversationCount").GetInt32().ShouldBe(0);
     }
 
     [Fact]
@@ -127,6 +127,6 @@ public class CliEndToEndTests
             .Returns(new ConditionalValue<List<Address>>(true, [agent2]));
 
         var members = await unitActor.GetMembersAsync(TestContext.Current.CancellationToken);
-        members.Should().ContainSingle().Which.Should().Be(agent2);
+        members.ShouldHaveSingleItem().ShouldBe(agent2);
     }
 }

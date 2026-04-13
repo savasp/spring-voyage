@@ -5,12 +5,12 @@ namespace Cvoya.Spring.Dapr.Tests.State;
 
 using Cvoya.Spring.Dapr.State;
 
-using FluentAssertions;
-
 using global::Dapr.Actors;
 using global::Dapr.Actors.Runtime;
 
 using NSubstitute;
+
+using Shouldly;
 
 using Xunit;
 
@@ -35,7 +35,7 @@ public class ActorStateStoreAdapterTests
 
         var result = await _sut.GetAsync<string>("key1", TestContext.Current.CancellationToken);
 
-        result.Should().Be("hello");
+        result.ShouldBe("hello");
     }
 
     [Fact]
@@ -46,7 +46,7 @@ public class ActorStateStoreAdapterTests
 
         var result = await _sut.GetAsync<string>("missing", TestContext.Current.CancellationToken);
 
-        result.Should().BeNull();
+        result.ShouldBeNull();
     }
 
     [Fact]
@@ -57,7 +57,7 @@ public class ActorStateStoreAdapterTests
 
         var result = await _sut.GetAsync<int>("missing-int", TestContext.Current.CancellationToken);
 
-        result.Should().Be(0);
+        result.ShouldBe(0);
     }
 
     [Fact]
@@ -84,7 +84,7 @@ public class ActorStateStoreAdapterTests
 
         var result = await _sut.ContainsAsync("key1", TestContext.Current.CancellationToken);
 
-        result.Should().BeTrue();
+        result.ShouldBeTrue();
     }
 
     [Fact]
@@ -95,6 +95,6 @@ public class ActorStateStoreAdapterTests
 
         var result = await _sut.ContainsAsync("missing", TestContext.Current.CancellationToken);
 
-        result.Should().BeFalse();
+        result.ShouldBeFalse();
     }
 }

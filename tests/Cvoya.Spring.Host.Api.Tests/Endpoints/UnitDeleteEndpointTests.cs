@@ -12,12 +12,12 @@ using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Core.Units;
 using Cvoya.Spring.Dapr.Actors;
 
-using FluentAssertions;
-
 using global::Dapr.Actors;
 using global::Dapr.Actors.Client;
 
 using NSubstitute;
+
+using Shouldly;
 
 using Xunit;
 
@@ -48,7 +48,7 @@ public class UnitDeleteEndpointTests : IClassFixture<CustomWebApplicationFactory
 
         var response = await _client.DeleteAsync($"/api/v1/units/{UnitName}", ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        response.StatusCode.ShouldBe(HttpStatusCode.NoContent);
 
         await _factory.DirectoryService.Received(1).UnregisterAsync(
             Arg.Is<Address>(a => a.Scheme == "unit" && a.Path == UnitName),
@@ -63,7 +63,7 @@ public class UnitDeleteEndpointTests : IClassFixture<CustomWebApplicationFactory
 
         var response = await _client.DeleteAsync($"/api/v1/units/{UnitName}", ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        response.StatusCode.ShouldBe(HttpStatusCode.NoContent);
 
         await _factory.DirectoryService.Received(1).UnregisterAsync(
             Arg.Is<Address>(a => a.Scheme == "unit" && a.Path == UnitName),
@@ -82,7 +82,7 @@ public class UnitDeleteEndpointTests : IClassFixture<CustomWebApplicationFactory
 
         var response = await _client.DeleteAsync($"/api/v1/units/{UnitName}", ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
 
         await _factory.DirectoryService.DidNotReceive().UnregisterAsync(
             Arg.Any<Address>(), Arg.Any<CancellationToken>());
@@ -96,7 +96,7 @@ public class UnitDeleteEndpointTests : IClassFixture<CustomWebApplicationFactory
 
         var response = await _client.DeleteAsync($"/api/v1/units/{UnitName}?force=true", ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        response.StatusCode.ShouldBe(HttpStatusCode.NoContent);
 
         await _factory.UnitContainerLifecycle.Received(1).StopUnitAsync(
             ActorId, Arg.Any<CancellationToken>());
@@ -124,15 +124,15 @@ public class UnitDeleteEndpointTests : IClassFixture<CustomWebApplicationFactory
 
         var response = await _client.DeleteAsync($"/api/v1/units/{UnitName}?force=true", ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var body = await response.Content.ReadAsStringAsync(ct);
         using var doc = JsonDocument.Parse(body);
-        doc.RootElement.GetProperty("forceDeleted").GetBoolean().Should().BeTrue();
+        doc.RootElement.GetProperty("forceDeleted").GetBoolean().ShouldBeTrue();
         doc.RootElement.GetProperty("teardownFailures")
             .EnumerateArray()
             .Select(e => e.GetString())
-            .Should().Contain("container");
+            .ShouldContain("container");
 
         // Directory entry removal still happens even if the container step failed —
         // that's the whole point of force-delete.
@@ -158,7 +158,7 @@ public class UnitDeleteEndpointTests : IClassFixture<CustomWebApplicationFactory
 
         var response = await _client.DeleteAsync($"/api/v1/units/{UnitName}?force=true", ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        response.StatusCode.ShouldBe(HttpStatusCode.NoContent);
 
         await _factory.UnitContainerLifecycle.DidNotReceive().StopUnitAsync(
             Arg.Any<string>(), Arg.Any<CancellationToken>());
@@ -179,7 +179,7 @@ public class UnitDeleteEndpointTests : IClassFixture<CustomWebApplicationFactory
 
         var response = await _client.DeleteAsync("/api/v1/units/does-not-exist", ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 
     private void ArrangeUnit(UnitStatus status)

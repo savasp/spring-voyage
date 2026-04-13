@@ -10,12 +10,12 @@ using System.Text.Json;
 using Cvoya.Spring.Core;
 using Cvoya.Spring.Dapr.Execution;
 
-using FluentAssertions;
-
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 using NSubstitute;
+
+using Shouldly;
 
 using Xunit;
 
@@ -69,10 +69,10 @@ public class AnthropicProviderTests
 
         var result = await provider.CompleteAsync("test prompt", TestContext.Current.CancellationToken);
 
-        result.Should().Be("Hello, world!");
-        handler.LastRequest.Should().NotBeNull();
-        handler.LastRequest!.Headers.GetValues("x-api-key").Should().Contain("test-api-key");
-        handler.LastRequest.Headers.GetValues("anthropic-version").Should().Contain("2023-06-01");
+        result.ShouldBe("Hello, world!");
+        handler.LastRequest.ShouldNotBeNull();
+        handler.LastRequest!.Headers.GetValues("x-api-key").ShouldContain("test-api-key");
+        handler.LastRequest.Headers.GetValues("anthropic-version").ShouldContain("2023-06-01");
     }
 
     /// <summary>
@@ -88,7 +88,7 @@ public class AnthropicProviderTests
 
         var act = () => provider.CompleteAsync("test prompt", cts.Token);
 
-        await act.Should().ThrowAsync<OperationCanceledException>();
+        await Should.ThrowAsync<OperationCanceledException>(act);
     }
 
     /// <summary>
@@ -104,8 +104,8 @@ public class AnthropicProviderTests
 
         var act = () => provider.CompleteAsync("test prompt", TestContext.Current.CancellationToken);
 
-        await act.Should().ThrowAsync<SpringException>()
-            .WithMessage("*Unauthorized*");
+        var ex = await Should.ThrowAsync<SpringException>(act);
+        ex.Message.ShouldContain("Unauthorized");
     }
 
     /// <summary>
@@ -141,9 +141,10 @@ public class AnthropicProviderTests
 
         var act = () => provider.CompleteAsync("test prompt", TestContext.Current.CancellationToken);
 
-        await act.Should().ThrowAsync<SpringException>()
-            .WithMessage("*TooManyRequests*3 attempts*");
-        handler.CallCount.Should().Be(3);
+        var ex = await Should.ThrowAsync<SpringException>(act);
+        ex.Message.ShouldContain("TooManyRequests");
+        ex.Message.ShouldContain("3 attempts");
+        handler.CallCount.ShouldBe(3);
     }
 
     /// <summary>

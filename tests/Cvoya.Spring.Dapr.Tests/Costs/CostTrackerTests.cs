@@ -11,11 +11,11 @@ using Cvoya.Spring.Dapr.Costs;
 using Cvoya.Spring.Dapr.Data;
 using Cvoya.Spring.Dapr.Observability;
 
-using FluentAssertions;
-
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+
+using Shouldly;
 
 using Xunit;
 
@@ -85,16 +85,16 @@ public class CostTrackerTests : IDisposable
         var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
         var records = await db.CostRecords.ToListAsync(ct);
 
-        records.Should().ContainSingle();
+        records.ShouldHaveSingleItem();
         var record = records[0];
-        record.AgentId.Should().Be("test-agent");
-        record.Cost.Should().Be(0.05m);
-        record.InputTokens.Should().Be(100);
-        record.OutputTokens.Should().Be(50);
-        record.Model.Should().Be("claude-3-opus");
-        record.UnitId.Should().Be("test-unit");
-        record.TenantId.Should().Be("default");
-        record.Duration.Should().NotBeNull();
+        record.AgentId.ShouldBe("test-agent");
+        record.Cost.ShouldBe(0.05m);
+        record.InputTokens.ShouldBe(100);
+        record.OutputTokens.ShouldBe(50);
+        record.Model.ShouldBe("claude-3-opus");
+        record.UnitId.ShouldBe("test-unit");
+        record.TenantId.ShouldBe("default");
+        record.Duration.ShouldNotBeNull();
 
         await tracker.StopAsync(ct);
         tracker.Dispose();
@@ -123,7 +123,7 @@ public class CostTrackerTests : IDisposable
         var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
         var records = await db.CostRecords.ToListAsync(ct);
 
-        records.Should().BeEmpty();
+        records.ShouldBeEmpty();
 
         await tracker.StopAsync(ct);
         tracker.Dispose();
@@ -141,12 +141,12 @@ public class CostTrackerTests : IDisposable
 
         var record = CostTracker.MapToRecord(costEvent);
 
-        record.Should().NotBeNull();
-        record!.AgentId.Should().Be("agent-a");
-        record.Cost.Should().Be(0.10m);
-        record.InputTokens.Should().Be(200);
-        record.OutputTokens.Should().Be(100);
-        record.Model.Should().Be("claude-3-haiku");
+        record.ShouldNotBeNull();
+        record!.AgentId.ShouldBe("agent-a");
+        record.Cost.ShouldBe(0.10m);
+        record.InputTokens.ShouldBe(200);
+        record.OutputTokens.ShouldBe(100);
+        record.Model.ShouldBe("claude-3-haiku");
     }
 
     [Fact]
@@ -163,7 +163,7 @@ public class CostTrackerTests : IDisposable
 
         var record = CostTracker.MapToRecord(costEvent);
 
-        record.Should().BeNull();
+        record.ShouldBeNull();
     }
 
     public void Dispose()

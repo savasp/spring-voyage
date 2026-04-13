@@ -6,13 +6,13 @@ namespace Cvoya.Spring.Dapr.Tests.Execution;
 using Cvoya.Spring.Core.Execution;
 using Cvoya.Spring.Dapr.Execution;
 
-using FluentAssertions;
-
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
+
+using Shouldly;
 
 using Xunit;
 
@@ -85,7 +85,7 @@ public class ContainerLifecycleManagerTests
 
         // Should not throw.
         var act = () => _manager.TeardownAsync("app-container", "sidecar-container", "test-network", TestContext.Current.CancellationToken);
-        await act.Should().NotThrowAsync();
+        await Should.NotThrowAsync(act);
     }
 
     [Fact]

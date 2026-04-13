@@ -8,7 +8,7 @@ using System.Text.Json;
 using Cvoya.Spring.Core.Capabilities;
 using Cvoya.Spring.Core.Messaging;
 
-using FluentAssertions;
+using Shouldly;
 
 using Xunit;
 
@@ -20,7 +20,7 @@ public class AddressTests
         var address1 = new Address("agent", "engineering-team/ada");
         var address2 = new Address("agent", "engineering-team/ada");
 
-        address1.Should().Be(address2);
+        address1.ShouldBe(address2);
     }
 
     [Fact]
@@ -29,7 +29,7 @@ public class AddressTests
         var address1 = new Address("agent", "engineering-team/ada");
         var address2 = new Address("unit", "engineering-team/ada");
 
-        address1.Should().NotBe(address2);
+        address1.ShouldNotBe(address2);
     }
 
     [Fact]
@@ -38,7 +38,7 @@ public class AddressTests
         var address1 = new Address("agent", "engineering-team/ada");
         var address2 = new Address("agent", "engineering-team/bob");
 
-        address1.Should().NotBe(address2);
+        address1.ShouldNotBe(address2);
     }
 
     [Fact]
@@ -47,7 +47,7 @@ public class AddressTests
         var address1 = new Address("agent", "engineering-team/ada");
         var address2 = new Address("agent", "engineering-team/ada");
 
-        address1.GetHashCode().Should().Be(address2.GetHashCode());
+        address1.GetHashCode().ShouldBe(address2.GetHashCode());
     }
 }
 
@@ -64,13 +64,13 @@ public class MessageTests
 
         var message = new Message(id, from, to, MessageType.Domain, "conv-1", payload, timestamp);
 
-        message.Id.Should().Be(id);
-        message.From.Should().Be(from);
-        message.To.Should().Be(to);
-        message.Type.Should().Be(MessageType.Domain);
-        message.ConversationId.Should().Be("conv-1");
-        message.Payload.GetProperty("key").GetString().Should().Be("value");
-        message.Timestamp.Should().Be(timestamp);
+        message.Id.ShouldBe(id);
+        message.From.ShouldBe(from);
+        message.To.ShouldBe(to);
+        message.Type.ShouldBe(MessageType.Domain);
+        message.ConversationId.ShouldBe("conv-1");
+        message.Payload.GetProperty("key").GetString().ShouldBe("value");
+        message.Timestamp.ShouldBe(timestamp);
     }
 
     [Fact]
@@ -87,7 +87,7 @@ public class MessageTests
             payload,
             DateTimeOffset.UtcNow);
 
-        message.ConversationId.Should().BeNull();
+        message.ConversationId.ShouldBeNull();
     }
 
     [Fact]
@@ -102,7 +102,7 @@ public class MessageTests
         var message1 = new Message(id, from, to, MessageType.Domain, "conv-1", payload, timestamp);
         var message2 = new Message(id, from, to, MessageType.Domain, "conv-1", payload, timestamp);
 
-        message1.Should().Be(message2);
+        message1.ShouldBe(message2);
     }
 }
 
@@ -113,8 +113,8 @@ public class ResultTests
     {
         var result = Result<int, string>.Success(42);
 
-        result.IsSuccess.Should().BeTrue();
-        result.Value.Should().Be(42);
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.ShouldBe(42);
     }
 
     [Fact]
@@ -122,8 +122,8 @@ public class ResultTests
     {
         var result = Result<int, string>.Failure("something went wrong");
 
-        result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Be("something went wrong");
+        result.IsSuccess.ShouldBeFalse();
+        result.Error.ShouldBe("something went wrong");
     }
 
     [Fact]
@@ -131,7 +131,7 @@ public class ResultTests
     {
         var result = Result<int, string>.Success(42);
 
-        result.Error.Should().BeNull();
+        result.Error.ShouldBeNull();
     }
 
     [Fact]
@@ -139,7 +139,7 @@ public class ResultTests
     {
         var result = Result<int, string>.Failure("error");
 
-        result.Value.Should().Be(default);
+        result.Value.ShouldBe(default);
     }
 }
 
@@ -158,15 +158,15 @@ public class ActivityEventTests
             ActivitySeverity.Info,
             "Agent completed the task");
 
-        activityEvent.Id.Should().Be(id);
-        activityEvent.Timestamp.Should().Be(timestamp);
-        activityEvent.Source.Should().Be(source);
-        activityEvent.EventType.Should().Be(ActivityEventType.ConversationCompleted);
-        activityEvent.Severity.Should().Be(ActivitySeverity.Info);
-        activityEvent.Summary.Should().Be("Agent completed the task");
-        activityEvent.Details.Should().BeNull();
-        activityEvent.CorrelationId.Should().BeNull();
-        activityEvent.Cost.Should().BeNull();
+        activityEvent.Id.ShouldBe(id);
+        activityEvent.Timestamp.ShouldBe(timestamp);
+        activityEvent.Source.ShouldBe(source);
+        activityEvent.EventType.ShouldBe(ActivityEventType.ConversationCompleted);
+        activityEvent.Severity.ShouldBe(ActivitySeverity.Info);
+        activityEvent.Summary.ShouldBe("Agent completed the task");
+        activityEvent.Details.ShouldBeNull();
+        activityEvent.CorrelationId.ShouldBeNull();
+        activityEvent.Cost.ShouldBeNull();
     }
 
     [Fact]
@@ -186,10 +186,10 @@ public class ActivityEventTests
             "corr-123",
             0.0042m);
 
-        activityEvent.Details.Should().NotBeNull();
-        activityEvent.Details!.Value.GetProperty("tokens").GetInt32().Should().Be(150);
-        activityEvent.CorrelationId.Should().Be("corr-123");
-        activityEvent.Cost.Should().Be(0.0042m);
+        activityEvent.Details.ShouldNotBeNull();
+        activityEvent.Details!.Value.GetProperty("tokens").GetInt32().ShouldBe(150);
+        activityEvent.CorrelationId.ShouldBe("corr-123");
+        activityEvent.Cost.ShouldBe(0.0042m);
     }
 
     [Fact]
@@ -202,7 +202,7 @@ public class ActivityEventTests
         var event1 = new ActivityEvent(id, timestamp, source, ActivityEventType.MessageSent, ActivitySeverity.Info, "Done");
         var event2 = new ActivityEvent(id, timestamp, source, ActivityEventType.MessageSent, ActivitySeverity.Info, "Done");
 
-        event1.Should().Be(event2);
+        event1.ShouldBe(event2);
     }
 }
 
@@ -211,6 +211,6 @@ public class InterfaceHierarchyTests
     [Fact]
     public void IMessageReceiver_ExtendsIAddressable()
     {
-        typeof(IMessageReceiver).GetInterfaces().Should().Contain(typeof(IAddressable));
+        typeof(IMessageReceiver).GetInterfaces().ShouldContain(typeof(IAddressable));
     }
 }

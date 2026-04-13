@@ -7,7 +7,7 @@ using System.CommandLine;
 
 using Cvoya.Spring.Cli.Commands;
 
-using FluentAssertions;
+using Shouldly;
 
 using Xunit;
 
@@ -32,9 +32,9 @@ public class CommandParsingTests
 
         var parseResult = rootCommand.Parse("agent create my-agent --name \"My Agent\"");
 
-        parseResult.Errors.Should().BeEmpty();
-        parseResult.GetValue<string>("id").Should().Be("my-agent");
-        parseResult.GetValue<string>("--name").Should().Be("My Agent");
+        parseResult.Errors.ShouldBeEmpty();
+        parseResult.GetValue<string>("id").ShouldBe("my-agent");
+        parseResult.GetValue<string>("--name").ShouldBe("My Agent");
     }
 
     [Fact]
@@ -47,9 +47,9 @@ public class CommandParsingTests
 
         var parseResult = rootCommand.Parse("message send agent://ada \"Review PR #42\"");
 
-        parseResult.Errors.Should().BeEmpty();
-        parseResult.GetValue<string>("address").Should().Be("agent://ada");
-        parseResult.GetValue<string>("text").Should().Be("Review PR #42");
+        parseResult.Errors.ShouldBeEmpty();
+        parseResult.GetValue<string>("address").ShouldBe("agent://ada");
+        parseResult.GetValue<string>("text").ShouldBe("Review PR #42");
     }
 
     [Fact]
@@ -66,10 +66,10 @@ public class CommandParsingTests
         var parseResult = rootCommand.Parse(
             "unit create eng-team --display-name \"Engineering Team\" --description \"Builds the product\"");
 
-        parseResult.Errors.Should().BeEmpty();
-        parseResult.GetValue<string>("name").Should().Be("eng-team");
-        parseResult.GetValue<string>("--display-name").Should().Be("Engineering Team");
-        parseResult.GetValue<string>("--description").Should().Be("Builds the product");
+        parseResult.Errors.ShouldBeEmpty();
+        parseResult.GetValue<string>("name").ShouldBe("eng-team");
+        parseResult.GetValue<string>("--display-name").ShouldBe("Engineering Team");
+        parseResult.GetValue<string>("--description").ShouldBe("Builds the product");
     }
 
     [Fact]
@@ -81,8 +81,8 @@ public class CommandParsingTests
 
         var parseResult = rootCommand.Parse("apply -f manifest.yaml");
 
-        parseResult.Errors.Should().BeEmpty();
-        parseResult.GetValue<string>("-f").Should().Be("manifest.yaml");
+        parseResult.Errors.ShouldBeEmpty();
+        parseResult.GetValue<string>("-f").ShouldBe("manifest.yaml");
     }
 
     [Fact]
@@ -95,8 +95,8 @@ public class CommandParsingTests
 
         var parseResult = rootCommand.Parse("--output json agent list");
 
-        parseResult.Errors.Should().BeEmpty();
-        parseResult.GetValue(outputOption).Should().Be("json");
+        parseResult.Errors.ShouldBeEmpty();
+        parseResult.GetValue(outputOption).ShouldBe("json");
     }
 
     [Fact]
@@ -109,7 +109,7 @@ public class CommandParsingTests
 
         var parseResult = rootCommand.Parse("agent list");
 
-        parseResult.Errors.Should().BeEmpty();
-        parseResult.GetValue(outputOption).Should().Be("table");
+        parseResult.Errors.ShouldBeEmpty();
+        parseResult.GetValue(outputOption).ShouldBe("table");
     }
 }

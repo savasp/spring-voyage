@@ -8,7 +8,7 @@ using System.Text.Json;
 using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Dapr.Prompts;
 
-using FluentAssertions;
+using Shouldly;
 
 using Xunit;
 
@@ -45,10 +45,10 @@ public class ConversationContextBuilderTests
 
         var result = _builder.Build(messages, null);
 
-        result.Should().Contain("Prior Messages");
-        result.Should().Contain("agent://team/alice");
-        result.Should().Contain("Hello there");
-        result.Should().Contain("Hi Alice");
+        result.ShouldContain("Prior Messages");
+        result.ShouldContain("agent://team/alice");
+        result.ShouldContain("Hello there");
+        result.ShouldContain("Hi Alice");
     }
 
     /// <summary>
@@ -59,8 +59,8 @@ public class ConversationContextBuilderTests
     {
         var result = _builder.Build([], "Step 3 of 5 completed");
 
-        result.Should().Contain("Last Checkpoint");
-        result.Should().Contain("Step 3 of 5 completed");
+        result.ShouldContain("Last Checkpoint");
+        result.ShouldContain("Step 3 of 5 completed");
     }
 
     /// <summary>
@@ -71,6 +71,6 @@ public class ConversationContextBuilderTests
     {
         var result = _builder.Build([], null);
 
-        result.Should().BeEmpty();
+        result.ShouldBeEmpty();
     }
 }

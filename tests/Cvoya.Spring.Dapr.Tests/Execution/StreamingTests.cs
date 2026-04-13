@@ -9,12 +9,12 @@ using System.Text;
 using Cvoya.Spring.Core.Execution;
 using Cvoya.Spring.Dapr.Execution;
 
-using FluentAssertions;
-
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 using NSubstitute;
+
+using Shouldly;
 
 using Xunit;
 
@@ -74,18 +74,18 @@ public class StreamingTests
             events.Add(evt);
         }
 
-        events.Should().ContainItemsAssignableTo<StreamEvent.TokenDelta>();
+        events.ShouldContain(e => e is StreamEvent.TokenDelta);
         var tokenDeltas = events.OfType<StreamEvent.TokenDelta>().ToList();
-        tokenDeltas.Should().HaveCount(2);
-        tokenDeltas[0].Text.Should().Be("Hello");
-        tokenDeltas[1].Text.Should().Be(" world");
+        tokenDeltas.Count().ShouldBe(2);
+        tokenDeltas[0].Text.ShouldBe("Hello");
+        tokenDeltas[1].Text.ShouldBe(" world");
 
         // Should end with a Completed event
-        events.Last().Should().BeOfType<StreamEvent.Completed>();
+        events.Last().ShouldBeOfType<StreamEvent.Completed>();
         var completed = (StreamEvent.Completed)events.Last();
-        completed.InputTokens.Should().Be(10);
-        completed.OutputTokens.Should().Be(5);
-        completed.StopReason.Should().Be("end_turn");
+        completed.InputTokens.ShouldBe(10);
+        completed.OutputTokens.ShouldBe(5);
+        completed.StopReason.ShouldBe("end_turn");
     }
 
     [Fact]
@@ -106,8 +106,8 @@ public class StreamingTests
             events.Add(evt);
         }
 
-        events.OfType<StreamEvent.ThinkingDelta>().Should().ContainSingle()
-            .Which.Text.Should().Be("Let me think...");
+        events.OfType<StreamEvent.ThinkingDelta>().ShouldHaveSingleItem()
+            .Text.ShouldBe("Let me think...");
     }
 
     [Fact]
@@ -126,8 +126,8 @@ public class StreamingTests
             }
         };
 
-        await act.Should().ThrowAsync<Core.SpringException>()
-            .WithMessage("*BadRequest*");
+        var ex = await Should.ThrowAsync<Core.SpringException>(act);
+        ex.Message.ShouldContain("BadRequest");
     }
 
     [Fact]
@@ -150,7 +150,7 @@ public class StreamingTests
             }
         };
 
-        await act.Should().ThrowAsync<OperationCanceledException>();
+        await Should.ThrowAsync<OperationCanceledException>(act);
     }
 
     [Fact]
@@ -171,8 +171,8 @@ public class StreamingTests
         }
 
         // TokenDelta + Completed
-        events.OfType<StreamEvent.TokenDelta>().Should().ContainSingle();
-        events.Last().Should().BeOfType<StreamEvent.Completed>();
+        events.OfType<StreamEvent.TokenDelta>().ShouldHaveSingleItem();
+        events.Last().ShouldBeOfType<StreamEvent.Completed>();
     }
 
     /// <summary>

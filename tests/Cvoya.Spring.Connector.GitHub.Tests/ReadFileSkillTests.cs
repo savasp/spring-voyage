@@ -7,13 +7,13 @@ using System.Reflection;
 
 using Cvoya.Spring.Connector.GitHub.Skills;
 
-using FluentAssertions;
-
 using Microsoft.Extensions.Logging;
 
 using NSubstitute;
 
 using Octokit;
+
+using Shouldly;
 
 using Xunit;
 
@@ -42,9 +42,9 @@ public class ReadFileSkillTests
         var result = await _skill.ExecuteAsync("owner", "repo", "README.md",
             cancellationToken: TestContext.Current.CancellationToken);
 
-        result.GetProperty("name").GetString().Should().Be("README.md");
-        result.GetProperty("path").GetString().Should().Be("README.md");
-        result.GetProperty("content").GetString().Should().Be("# Hello");
+        result.GetProperty("name").GetString().ShouldBe("README.md");
+        result.GetProperty("path").GetString().ShouldBe("README.md");
+        result.GetProperty("content").GetString().ShouldBe("# Hello");
     }
 
     private static RepositoryContent CreateRepositoryContentViaReflection(string name, string path, string content)

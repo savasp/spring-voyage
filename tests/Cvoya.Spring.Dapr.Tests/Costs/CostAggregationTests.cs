@@ -6,9 +6,9 @@ namespace Cvoya.Spring.Dapr.Tests.Costs;
 using Cvoya.Spring.Dapr.Costs;
 using Cvoya.Spring.Dapr.Data;
 
-using FluentAssertions;
-
 using Microsoft.EntityFrameworkCore;
+
+using Shouldly;
 
 using Xunit;
 
@@ -63,10 +63,10 @@ public class CostAggregationTests : IDisposable
         var service = CreateService();
         var result = await service.GetAgentCostAsync("agent-a", now.AddHours(-1), now.AddHours(1), ct);
 
-        result.TotalCost.Should().Be(0.30m);
-        result.TotalInputTokens.Should().Be(500);
-        result.TotalOutputTokens.Should().Be(250);
-        result.RecordCount.Should().Be(2);
+        result.TotalCost.ShouldBe(0.30m);
+        result.TotalInputTokens.ShouldBe(500);
+        result.TotalOutputTokens.ShouldBe(250);
+        result.RecordCount.ShouldBe(2);
     }
 
     [Fact]
@@ -78,8 +78,8 @@ public class CostAggregationTests : IDisposable
         var service = CreateService();
         var result = await service.GetAgentCostAsync("nonexistent", now.AddHours(-1), now.AddHours(1), ct);
 
-        result.TotalCost.Should().Be(0m);
-        result.RecordCount.Should().Be(0);
+        result.TotalCost.ShouldBe(0m);
+        result.RecordCount.ShouldBe(0);
     }
 
     [Fact]
@@ -96,8 +96,8 @@ public class CostAggregationTests : IDisposable
         var service = CreateService();
         var result = await service.GetUnitCostAsync("unit-x", now.AddHours(-1), now.AddHours(1), ct);
 
-        result.TotalCost.Should().Be(0.40m);
-        result.RecordCount.Should().Be(2);
+        result.TotalCost.ShouldBe(0.40m);
+        result.RecordCount.ShouldBe(2);
     }
 
     [Fact]
@@ -114,8 +114,8 @@ public class CostAggregationTests : IDisposable
         var service = CreateService();
         var result = await service.GetTenantCostAsync("acme", now.AddHours(-1), now.AddHours(1), ct);
 
-        result.TotalCost.Should().Be(0.80m);
-        result.RecordCount.Should().Be(2);
+        result.TotalCost.ShouldBe(0.80m);
+        result.RecordCount.ShouldBe(2);
     }
 
     [Fact]
@@ -131,8 +131,8 @@ public class CostAggregationTests : IDisposable
         var service = CreateService();
         var result = await service.GetAgentCostAsync("agent-a", now.AddHours(-1), now.AddHours(1), ct);
 
-        result.TotalCost.Should().Be(0.20m);
-        result.RecordCount.Should().Be(1);
+        result.TotalCost.ShouldBe(0.20m);
+        result.RecordCount.ShouldBe(1);
     }
 
     public void Dispose()

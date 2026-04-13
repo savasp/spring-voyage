@@ -10,11 +10,11 @@ using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Core.Skills;
 using Cvoya.Spring.Dapr.Prompts;
 
-using FluentAssertions;
-
 using Microsoft.Extensions.Logging;
 
 using NSubstitute;
+
+using Shouldly;
 
 using Xunit;
 
@@ -70,10 +70,10 @@ public class PromptAssemblerTests
 
         var result = await _assembler.AssembleAsync(message, context, TestContext.Current.CancellationToken);
 
-        result.Should().Contain("## Platform Instructions");
-        result.Should().Contain("## Unit Context");
-        result.Should().Contain("## Conversation Context");
-        result.Should().Contain("## Agent Instructions");
+        result.ShouldContain("## Platform Instructions");
+        result.ShouldContain("## Unit Context");
+        result.ShouldContain("## Conversation Context");
+        result.ShouldContain("## Agent Instructions");
 
         // Verify ordering
         var platformIdx = result.IndexOf("## Platform Instructions", StringComparison.Ordinal);
@@ -81,9 +81,9 @@ public class PromptAssemblerTests
         var convIdx = result.IndexOf("## Conversation Context", StringComparison.Ordinal);
         var agentIdx = result.IndexOf("## Agent Instructions", StringComparison.Ordinal);
 
-        platformIdx.Should().BeLessThan(unitIdx);
-        unitIdx.Should().BeLessThan(convIdx);
-        convIdx.Should().BeLessThan(agentIdx);
+        platformIdx.ShouldBeLessThan(unitIdx);
+        unitIdx.ShouldBeLessThan(convIdx);
+        convIdx.ShouldBeLessThan(agentIdx);
     }
 
     /// <summary>
@@ -103,10 +103,10 @@ public class PromptAssemblerTests
 
         var result = await _assembler.AssembleAsync(message, context, TestContext.Current.CancellationToken);
 
-        result.Should().Contain("## Platform Instructions");
-        result.Should().NotContain("## Unit Context");
-        result.Should().NotContain("## Conversation Context");
-        result.Should().NotContain("## Agent Instructions");
+        result.ShouldContain("## Platform Instructions");
+        result.ShouldNotContain("## Unit Context");
+        result.ShouldNotContain("## Conversation Context");
+        result.ShouldNotContain("## Agent Instructions");
     }
 
     /// <summary>
@@ -119,10 +119,10 @@ public class PromptAssemblerTests
 
         var result = await _assembler.AssembleAsync(message, context: null, TestContext.Current.CancellationToken);
 
-        result.Should().Contain("## Platform Instructions");
-        result.Should().NotContain("## Unit Context");
-        result.Should().NotContain("## Conversation Context");
-        result.Should().NotContain("## Agent Instructions");
+        result.ShouldContain("## Platform Instructions");
+        result.ShouldNotContain("## Unit Context");
+        result.ShouldNotContain("## Conversation Context");
+        result.ShouldNotContain("## Agent Instructions");
     }
 
     /// <summary>
@@ -144,9 +144,9 @@ public class PromptAssemblerTests
 
         var result = await _assembler.AssembleAsync(message, context, TestContext.Current.CancellationToken);
 
-        result.Should().Contain("## Unit Context");
-        result.Should().Contain("deploy");
-        result.Should().Contain("Deploys services");
-        result.Should().Contain("run-deploy");
+        result.ShouldContain("## Unit Context");
+        result.ShouldContain("deploy");
+        result.ShouldContain("Deploys services");
+        result.ShouldContain("run-deploy");
     }
 }

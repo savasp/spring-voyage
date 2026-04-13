@@ -5,7 +5,7 @@ namespace Cvoya.Spring.Dapr.Tests.Prompts;
 
 using Cvoya.Spring.Dapr.Prompts;
 
-using FluentAssertions;
+using Shouldly;
 
 using Xunit;
 
@@ -24,6 +24,6 @@ public class PlatformPromptProviderTests
 
         var result = await provider.GetPlatformPromptAsync(TestContext.Current.CancellationToken);
 
-        result.Should().NotBeNullOrWhiteSpace();
+        result.ShouldNotBeNullOrWhiteSpace();
     }
 }

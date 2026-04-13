@@ -6,7 +6,7 @@ namespace Cvoya.Spring.Host.Api.Tests;
 using System.Net;
 using System.Net.Http.Json;
 
-using FluentAssertions;
+using Shouldly;
 
 using Xunit;
 
@@ -25,10 +25,10 @@ public class HealthEndpointTests : IClassFixture<CustomWebApplicationFactory>
         var ct = TestContext.Current.CancellationToken;
         var response = await _client.GetAsync("/health", ct);
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var body = await response.Content.ReadFromJsonAsync<HealthResponse>(ct);
-        body!.Status.Should().Be("Healthy");
+        body!.Status.ShouldBe("Healthy");
     }
 
     private record HealthResponse(string Status);

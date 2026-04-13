@@ -8,11 +8,11 @@ using Cvoya.Spring.Core.Orchestration;
 using Cvoya.Spring.Dapr.Actors;
 using Cvoya.Spring.Integration.Tests.TestHelpers;
 
-using FluentAssertions;
-
 using global::Dapr.Actors.Runtime;
 
 using NSubstitute;
+
+using Shouldly;
 
 using Xunit;
 
@@ -60,10 +60,10 @@ public class UnitOrchestrationTests
 
         await actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
 
-        capturedContext.Should().NotBeNull();
-        capturedContext!.Members.Should().HaveCount(2);
-        capturedContext.Members.Should().Contain(member1);
-        capturedContext.Members.Should().Contain(member2);
+        capturedContext.ShouldNotBeNull();
+        capturedContext!.Members.Count().ShouldBe(2);
+        capturedContext.Members.ShouldContain(member1);
+        capturedContext.Members.ShouldContain(member2);
     }
 
     [Fact]
@@ -89,9 +89,9 @@ public class UnitOrchestrationTests
 
         var members = await actor.GetMembersAsync(TestContext.Current.CancellationToken);
 
-        members.Should().HaveCount(2);
-        members.Should().Contain(member1);
-        members.Should().Contain(member2);
+        members.Count().ShouldBe(2);
+        members.ShouldContain(member1);
+        members.ShouldContain(member2);
     }
 
     [Fact]
@@ -106,7 +106,7 @@ public class UnitOrchestrationTests
 
         var result = await actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
 
-        result.Should().Be(expectedResponse);
+        result.ShouldBe(expectedResponse);
     }
 
     [Fact]
@@ -125,7 +125,7 @@ public class UnitOrchestrationTests
 
         await actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
 
-        capturedContext.Should().NotBeNull();
-        capturedContext!.UnitAddress.Should().Be(new Address("unit", "addr-unit"));
+        capturedContext.ShouldNotBeNull();
+        capturedContext!.UnitAddress.ShouldBe(new Address("unit", "addr-unit"));
     }
 }

@@ -16,8 +16,6 @@ using Cvoya.Spring.Dapr.Actors;
 using Cvoya.Spring.Dapr.Auth;
 using Cvoya.Spring.Dapr.Routing;
 
-using FluentAssertions;
-
 using global::Dapr.Actors;
 using global::Dapr.Actors.Client;
 using global::Dapr.Actors.Runtime;
@@ -25,6 +23,8 @@ using global::Dapr.Actors.Runtime;
 using Microsoft.Extensions.Logging;
 
 using NSubstitute;
+
+using Shouldly;
 
 using Xunit;
 
@@ -119,7 +119,7 @@ public class AgentActorTests
 
         var result = await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
 
-        result.Should().NotBeNull();
+        result.ShouldNotBeNull();
         await _stateManager.Received(1).SetStateAsync(
             StateKeys.ActiveConversation,
             Arg.Is<ConversationChannel>(c => c.ConversationId == conversationId),
@@ -142,7 +142,7 @@ public class AgentActorTests
         var newMessage = CreateMessage(conversationId: conversationId);
         var result = await _actor.ReceiveAsync(newMessage, TestContext.Current.CancellationToken);
 
-        result.Should().NotBeNull();
+        result.ShouldNotBeNull();
         await _stateManager.Received().SetStateAsync(
             StateKeys.ActiveConversation,
             Arg.Is<ConversationChannel>(c =>
@@ -168,7 +168,7 @@ public class AgentActorTests
         var message = CreateMessage(conversationId: pendingConversationId);
         var result = await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
 
-        result.Should().NotBeNull();
+        result.ShouldNotBeNull();
         await _stateManager.Received().SetStateAsync(
             StateKeys.PendingConversations,
             Arg.Is<List<ConversationChannel>>(list =>
@@ -186,14 +186,14 @@ public class AgentActorTests
 
         var result = await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
 
-        result.Should().NotBeNull();
-        result!.Type.Should().Be(MessageType.StatusQuery);
-        result.From.Should().Be(new Address("agent", "test-agent"));
-        result.To.Should().Be(new Address("agent", "test-sender"));
+        result.ShouldNotBeNull();
+        result!.Type.ShouldBe(MessageType.StatusQuery);
+        result.From.ShouldBe(new Address("agent", "test-agent"));
+        result.To.ShouldBe(new Address("agent", "test-sender"));
 
         var payload = result.Payload.Deserialize<JsonElement>();
-        payload.GetProperty("Status").GetString().Should().Be("Idle");
-        payload.GetProperty("PendingConversationCount").GetInt32().Should().Be(0);
+        payload.GetProperty("Status").GetString().ShouldBe("Idle");
+        payload.GetProperty("PendingConversationCount").GetInt32().ShouldBe(0);
     }
 
     [Fact]
@@ -211,10 +211,10 @@ public class AgentActorTests
 
         var result = await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
 
-        result.Should().NotBeNull();
+        result.ShouldNotBeNull();
         var payload = result!.Payload.Deserialize<JsonElement>();
-        payload.GetProperty("Status").GetString().Should().Be("Active");
-        payload.GetProperty("ActiveConversationId").GetString().Should().Be("conv-active");
+        payload.GetProperty("Status").GetString().ShouldBe("Active");
+        payload.GetProperty("ActiveConversationId").GetString().ShouldBe("conv-active");
     }
 
     [Fact]
@@ -224,10 +224,10 @@ public class AgentActorTests
 
         var result = await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
 
-        result.Should().NotBeNull();
-        result!.Type.Should().Be(MessageType.HealthCheck);
+        result.ShouldNotBeNull();
+        result!.Type.ShouldBe(MessageType.HealthCheck);
         var payload = result.Payload.Deserialize<JsonElement>();
-        payload.GetProperty("Healthy").GetBoolean().Should().BeTrue();
+        payload.GetProperty("Healthy").GetBoolean().ShouldBeTrue();
     }
 
     [Fact]
@@ -238,7 +238,7 @@ public class AgentActorTests
 
         var result = await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
 
-        result.Should().NotBeNull();
+        result.ShouldNotBeNull();
         await _stateManager.Received(1).SetStateAsync(
             "Agent:LastPolicyUpdate",
             Arg.Any<JsonElement>(),
@@ -377,7 +377,7 @@ public class AgentActorTests
 
         var result = await _actor.ReceiveAsync(cancelMessage, TestContext.Current.CancellationToken);
 
-        result.Should().NotBeNull();
+        result.ShouldNotBeNull();
     }
 
     [Fact]
@@ -452,7 +452,7 @@ public class AgentActorTests
 
         var result = await _actor.IsCloneAsync(TestContext.Current.CancellationToken);
 
-        result.Should().BeFalse();
+        result.ShouldBeFalse();
     }
 
     [Fact]
@@ -465,7 +465,7 @@ public class AgentActorTests
 
         var result = await _actor.IsCloneAsync(TestContext.Current.CancellationToken);
 
-        result.Should().BeTrue();
+        result.ShouldBeTrue();
     }
 
     [Fact]
@@ -476,7 +476,7 @@ public class AgentActorTests
 
         var result = await _actor.GetCloneIdentityAsync(TestContext.Current.CancellationToken);
 
-        result.Should().BeNull();
+        result.ShouldBeNull();
     }
 
     [Fact]
@@ -489,11 +489,11 @@ public class AgentActorTests
 
         var result = await _actor.GetCloneIdentityAsync(TestContext.Current.CancellationToken);
 
-        result.Should().NotBeNull();
-        result!.ParentAgentId.Should().Be("parent-agent");
-        result.CloneId.Should().Be("test-agent");
-        result.CloningPolicy.Should().Be(CloningPolicy.EphemeralWithMemory);
-        result.AttachmentMode.Should().Be(AttachmentMode.Attached);
+        result.ShouldNotBeNull();
+        result!.ParentAgentId.ShouldBe("parent-agent");
+        result.CloneId.ShouldBe("test-agent");
+        result.CloningPolicy.ShouldBe(CloningPolicy.EphemeralWithMemory);
+        result.AttachmentMode.ShouldBe(AttachmentMode.Attached);
     }
 
     [Fact]
@@ -506,7 +506,7 @@ public class AgentActorTests
 
         var result = await _actor.GetCostAttributionTargetAsync(TestContext.Current.CancellationToken);
 
-        result.Should().Be("parent-agent");
+        result.ShouldBe("parent-agent");
     }
 
     [Fact]
@@ -517,7 +517,7 @@ public class AgentActorTests
 
         var result = await _actor.GetCostAttributionTargetAsync(TestContext.Current.CancellationToken);
 
-        result.Should().BeNull();
+        result.ShouldBeNull();
     }
 
     // --- Activity Event Emission Tests ---
@@ -557,7 +557,7 @@ public class AgentActorTests
         // Should not throw even though the bus fails.
         var result = await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
 
-        result.Should().NotBeNull();
+        result.ShouldNotBeNull();
     }
 
     [Fact]

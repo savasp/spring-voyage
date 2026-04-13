@@ -12,11 +12,11 @@ using Cvoya.Spring.Dapr.Actors;
 using Cvoya.Spring.Dapr.Costs;
 using Cvoya.Spring.Dapr.Observability;
 
-using FluentAssertions;
-
 using Microsoft.Extensions.Logging.Abstractions;
 
 using NSubstitute;
+
+using Shouldly;
 
 using Xunit;
 
