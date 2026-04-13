@@ -29,15 +29,78 @@ Checks:
 
 ## Database Migrations
 
-Schema changes use EF Core migrations:
+Schema changes use EF Core migrations. `SpringDbContext` lives in the
+`Cvoya.Spring.Dapr` project, and migrations target the Npgsql
+(PostgreSQL) provider.
+
+### Auto-migrate on startup (default)
+
+The API and Worker hosts run a hosted service
+(`Cvoya.Spring.Dapr.Data.DatabaseMigrator`) on startup that applies any
+pending EF Core migrations. This is on by default so fresh
+deployments and local dev databases come up with an up-to-date schema
+without operator intervention.
+
+You can disable it if you run migrations out-of-band (CI/CD pipeline,
+scripted SQL deployment, or manual `dotnet ef database update`) by
+setting the following in `appsettings.json` or an equivalent
+environment variable:
+
+```json
+{
+  "Database": {
+    "AutoMigrate": false
+  }
+}
+```
+
+With the flag disabled, the host will log that it is skipping
+migrations and assume the schema is already up to date.
+
+### Adding a new migration
+
+Run from the repository root after making model changes:
 
 ```
-# Add a new migration
-dotnet ef migrations add <MigrationName> --project src/Cvoya.Spring.Host.Api
-
-# Apply migrations
-dotnet ef database update --project src/Cvoya.Spring.Host.Api
+dotnet tool restore
+dotnet ef migrations add <MigrationName> \
+  --project src/Cvoya.Spring.Dapr \
+  --output-dir Data/Migrations
 ```
+
+Commit the generated files under `src/Cvoya.Spring.Dapr/Data/Migrations/`.
+
+### Applying migrations externally
+
+```
+dotnet ef database update \
+  --project src/Cvoya.Spring.Dapr \
+  --connection "Host=...;Database=...;Username=...;Password=..."
+```
+
+To emit an idempotent SQL script (for a DBA-managed deployment):
+
+```
+dotnet ef migrations script \
+  --idempotent \
+  --project src/Cvoya.Spring.Dapr \
+  --output spring-migrations.sql
+```
+
+### Design-time connection
+
+`dotnet ef` uses `Cvoya.Spring.Dapr.Data.SpringDbContextDesignTimeFactory`
+to build the context at design time. It uses a placeholder connection
+string (never opened) to pin the Npgsql provider so generated
+migrations target PostgreSQL. Pass `--connection` at `database update`
+time to hit a real database.
+
+### Test databases
+
+Unit and integration tests run against the EF Core in-memory provider,
+which does not support migrations. Test harnesses continue to rely on
+the implicit schema that the in-memory provider materializes from the
+model; `DatabaseMigrator` is a no-op against non-relational providers.
 
 ## Troubleshooting
 
