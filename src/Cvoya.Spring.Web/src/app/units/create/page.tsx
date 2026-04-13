@@ -48,6 +48,16 @@ const STEP_LABELS: Record<Step, string> = {
   5: "Finalize",
 };
 
+interface PendingSecret {
+  // `id` is only used for React list keys while the user edits the
+  // form — it is never sent to the server and never persisted.
+  id: string;
+  name: string;
+  mode: "value" | "externalStoreKey";
+  value: string;
+  externalStoreKey: string;
+}
+
 interface FormState {
   name: string;
   displayName: string;
@@ -60,6 +70,8 @@ interface FormState {
   // YAML mode
   yamlText: string;
   yamlFileName: string | null;
+  // Secrets (#122) — optional, applied after unit creation succeeds.
+  secrets: PendingSecret[];
 }
 
 const INITIAL_FORM: FormState = {
@@ -72,6 +84,7 @@ const INITIAL_FORM: FormState = {
   templateId: null,
   yamlText: "",
   yamlFileName: null,
+  secrets: [],
 };
 
 function StepIndicator({ current }: { current: Step }) {
@@ -206,11 +219,38 @@ export default function CreateUnitPage() {
     setForm((prev) => ({ ...prev, yamlText: text, yamlFileName: file.name }));
   };
 
+  const applyPendingSecrets = async (unitName: string): Promise<string[]> => {
+    // Apply Step 4 secrets after the unit exists. Each failure is
+    // collected as a warning so a single bad secret doesn't block the
+    // rest — the user gets a clear list back and can retry from the
+    // unit's Secrets tab.
+    const warnings: string[] = [];
+    for (const s of form.secrets) {
+      const name = s.name.trim();
+      if (!name) continue;
+      try {
+        await api.createUnitSecret(unitName, {
+          name,
+          value: s.mode === "value" ? s.value : undefined,
+          externalStoreKey:
+            s.mode === "externalStoreKey" ? s.externalStoreKey.trim() : undefined,
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        warnings.push(`Secret '${name}': ${message}`);
+      }
+    }
+    return warnings;
+  };
+
   const handleCreate = async () => {
     setSubmitError(null);
     setSubmitWarnings([]);
     setSubmitting(true);
     try {
+      let createdName: string | null = null;
+      const warnings: string[] = [];
+
       // Route through the correct endpoint based on the chosen mode. All three
       // paths ultimately go through the server-side unit-creation service, so
       // the actor-create + directory-register logic is identical.
@@ -221,13 +261,9 @@ export default function CreateUnitPage() {
           color: form.color.trim() || undefined,
           model: form.model.trim() || undefined,
         });
-        setSubmitWarnings(resp.warnings ?? []);
-        toast({ title: "Unit created", description: resp.unit.name });
-        router.push(`/units/${encodeURIComponent(resp.unit.name)}`);
-        return;
-      }
-
-      if (form.mode === "template") {
+        warnings.push(...(resp.warnings ?? []));
+        createdName = resp.unit.name;
+      } else if (form.mode === "template") {
         const template = templates?.find(
           (t) => `${t.package}/${t.name}` === form.templateId,
         );
@@ -242,22 +278,30 @@ export default function CreateUnitPage() {
           color: form.color.trim() || undefined,
           model: form.model.trim() || undefined,
         });
-        setSubmitWarnings(resp.warnings ?? []);
-        toast({ title: "Unit created", description: resp.unit.name });
-        router.push(`/units/${encodeURIComponent(resp.unit.name)}`);
-        return;
+        warnings.push(...(resp.warnings ?? []));
+        createdName = resp.unit.name;
+      } else {
+        // Scratch — legacy path.
+        const created = await api.createUnit({
+          name: form.name.trim(),
+          displayName: form.displayName.trim() || form.name.trim(),
+          description: form.description.trim(),
+          model: form.model.trim() || undefined,
+          color: form.color.trim() || undefined,
+        });
+        createdName = created.name;
       }
 
-      // Scratch — legacy path.
-      const created = await api.createUnit({
-        name: form.name.trim(),
-        displayName: form.displayName.trim() || form.name.trim(),
-        description: form.description.trim(),
-        model: form.model.trim() || undefined,
-        color: form.color.trim() || undefined,
-      });
-      toast({ title: "Unit created", description: created.name });
-      router.push(`/units/${encodeURIComponent(created.name)}`);
+      if (createdName && form.secrets.length > 0) {
+        const secretWarnings = await applyPendingSecrets(createdName);
+        warnings.push(...secretWarnings);
+      }
+
+      if (warnings.length > 0) setSubmitWarnings(warnings);
+      if (createdName) {
+        toast({ title: "Unit created", description: createdName });
+        router.push(`/units/${encodeURIComponent(createdName)}`);
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setSubmitError(message);
@@ -543,19 +587,147 @@ export default function CreateUnitPage() {
       )}
 
       {step === 4 && (
-        <Card className="bg-muted/40">
+        <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <KeyRound className="h-5 w-5" /> Secrets
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3 text-sm text-muted-foreground">
-            <p>
-              Unit secrets CRUD is tracked in follow-up{" "}
-              <span className="font-mono text-foreground">#122</span>. Skip for
-              now — you can finish creating the unit without it.
+          <CardContent className="space-y-3 text-sm">
+            <p className="text-muted-foreground">
+              Optionally register one or more unit-scoped secrets. Each entry
+              is applied after the unit is created — a single failing secret
+              surfaces as a warning on the final step and can be retried from
+              the unit&apos;s Secrets tab.
             </p>
-            <Button onClick={handleNext}>Skip for now</Button>
+
+            {form.secrets.length === 0 && (
+              <p className="text-muted-foreground">No secrets queued.</p>
+            )}
+
+            {form.secrets.map((s, idx) => (
+              <div
+                key={s.id}
+                className="space-y-2 rounded-md border border-border p-3"
+              >
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={s.name}
+                    onChange={(e) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        secrets: prev.secrets.map((it, i) =>
+                          i === idx ? { ...it, name: e.target.value } : it,
+                        ),
+                      }))
+                    }
+                    placeholder="secret name"
+                    autoComplete="off"
+                  />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      setForm((prev) => ({
+                        ...prev,
+                        secrets: prev.secrets.filter((_, i) => i !== idx),
+                      }))
+                    }
+                    aria-label="Remove secret"
+                  >
+                    Remove
+                  </Button>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant={s.mode === "value" ? "default" : "outline"}
+                    onClick={() =>
+                      setForm((prev) => ({
+                        ...prev,
+                        secrets: prev.secrets.map((it, i) =>
+                          i === idx ? { ...it, mode: "value" } : it,
+                        ),
+                      }))
+                    }
+                  >
+                    Pass-through value
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={
+                      s.mode === "externalStoreKey" ? "default" : "outline"
+                    }
+                    onClick={() =>
+                      setForm((prev) => ({
+                        ...prev,
+                        secrets: prev.secrets.map((it, i) =>
+                          i === idx
+                            ? { ...it, mode: "externalStoreKey" }
+                            : it,
+                        ),
+                      }))
+                    }
+                  >
+                    External reference
+                  </Button>
+                </div>
+                {s.mode === "value" ? (
+                  <Input
+                    type="password"
+                    value={s.value}
+                    onChange={(e) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        secrets: prev.secrets.map((it, i) =>
+                          i === idx ? { ...it, value: e.target.value } : it,
+                        ),
+                      }))
+                    }
+                    placeholder="Value (stored server-side; never returned)"
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                ) : (
+                  <Input
+                    value={s.externalStoreKey}
+                    onChange={(e) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        secrets: prev.secrets.map((it, i) =>
+                          i === idx
+                            ? { ...it, externalStoreKey: e.target.value }
+                            : it,
+                        ),
+                      }))
+                    }
+                    placeholder="kv://vault/secret-id"
+                    autoComplete="off"
+                  />
+                )}
+              </div>
+            ))}
+
+            <Button
+              variant="outline"
+              onClick={() =>
+                setForm((prev) => ({
+                  ...prev,
+                  secrets: [
+                    ...prev.secrets,
+                    {
+                      id: `s-${Date.now()}-${prev.secrets.length}`,
+                      name: "",
+                      mode: "value",
+                      value: "",
+                      externalStoreKey: "",
+                    },
+                  ],
+                }))
+              }
+            >
+              Add secret
+            </Button>
           </CardContent>
         </Card>
       )}
@@ -636,9 +808,9 @@ export default function CreateUnitPage() {
         >
           Back
         </Button>
-        {/* Steps 3 and 4 are placeholders with an embedded "Skip for now"
+        {/* Step 3 is still a placeholder with an embedded "Skip for now"
             primary action — don't show a second Next button there. */}
-        {step !== 3 && step !== 4 && step < 5 && (
+        {step !== 3 && step < 5 && (
           <Button onClick={handleNext} disabled={!canGoNext}>
             Next
           </Button>

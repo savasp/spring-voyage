@@ -33,6 +33,9 @@ public class SpringDbContext(DbContextOptions<SpringDbContext> options) : DbCont
     /// <summary>Gets the set of cost records.</summary>
     public DbSet<CostRecord> CostRecords => Set<CostRecord>();
 
+    /// <summary>Gets the set of secret-registry entries.</summary>
+    public DbSet<SecretRegistryEntry> SecretRegistryEntries => Set<SecretRegistryEntry>();
+
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
