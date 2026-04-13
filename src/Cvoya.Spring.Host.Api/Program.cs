@@ -1,6 +1,8 @@
 // Copyright CVOYA LLC. Licensed under the Business Source License 1.1.
 // See LICENSE.md in the project root for full license terms.
 
+using System.Text.Json.Serialization;
+
 using Cvoya.Spring.Connector.GitHub.DependencyInjection;
 using Cvoya.Spring.Dapr.Auth;
 using Cvoya.Spring.Dapr.DependencyInjection;
@@ -41,6 +43,15 @@ else
 builder.Services.AddAuthorization(options => options.AddUnitPermissionPolicies());
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddSingleton<IAuthorizationHandler, PermissionHandler>();
+
+// Serialize every enum as its string name (case-insensitive on the way in)
+// so clients get "Running" instead of 3 and don't have to reconstruct the
+// numeric ordering. Individual endpoints no longer need to call .ToString().
+builder.Services.ConfigureHttpJsonOptions(options =>
+{
+    options.SerializerOptions.Converters.Add(
+        new JsonStringEnumConverter(allowIntegerValues: false));
+});
 
 builder.Services.AddProblemDetails();
 builder.Services.AddEndpointsApiExplorer();

@@ -96,7 +96,7 @@ export interface UnitResponse {
   displayName: string;
   description: string;
   registeredAt: string;
-  status?: UnitStatus | number | string;
+  status?: UnitStatus;
   model?: string | null;
   color?: string | null;
 }
