@@ -33,7 +33,7 @@ public class EfSecretRegistry : ISecretRegistry
     }
 
     /// <inheritdoc />
-    public async Task RegisterAsync(SecretRef @ref, string storeKey, CancellationToken ct)
+    public async Task RegisterAsync(SecretRef @ref, string storeKey, SecretOrigin origin, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(@ref);
         ArgumentException.ThrowIfNullOrWhiteSpace(storeKey);
@@ -58,19 +58,21 @@ public class EfSecretRegistry : ISecretRegistry
                 OwnerId = @ref.OwnerId,
                 Name = @ref.Name,
                 StoreKey = storeKey,
+                Origin = origin,
                 CreatedAt = DateTimeOffset.UtcNow,
             });
         }
         else
         {
             existing.StoreKey = storeKey;
+            existing.Origin = origin;
         }
 
         await _db.SaveChangesAsync(ct);
     }
 
     /// <inheritdoc />
-    public async Task<string?> LookupStoreKeyAsync(SecretRef @ref, CancellationToken ct)
+    public async Task<SecretPointer?> LookupAsync(SecretRef @ref, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(@ref);
 
@@ -85,7 +87,14 @@ public class EfSecretRegistry : ISecretRegistry
                   && e.Name == @ref.Name,
                 ct);
 
-        return entry?.StoreKey;
+        return entry is null ? null : new SecretPointer(entry.StoreKey, entry.Origin);
+    }
+
+    /// <inheritdoc />
+    public async Task<string?> LookupStoreKeyAsync(SecretRef @ref, CancellationToken ct)
+    {
+        var pointer = await LookupAsync(@ref, ct);
+        return pointer?.StoreKey;
     }
 
     /// <inheritdoc />

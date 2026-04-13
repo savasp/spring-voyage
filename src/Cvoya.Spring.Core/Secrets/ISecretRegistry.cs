@@ -23,12 +23,33 @@ public interface ISecretRegistry
     /// </summary>
     /// <param name="ref">The structural reference.</param>
     /// <param name="storeKey">The opaque store key returned by <see cref="ISecretStore"/>.</param>
+    /// <param name="origin">
+    /// Who owns the underlying storage slot — see
+    /// <see cref="SecretOrigin"/>. A <see cref="SecretOrigin.PlatformOwned"/>
+    /// value means the platform wrote the plaintext via
+    /// <see cref="ISecretStore.WriteAsync"/>; a
+    /// <see cref="SecretOrigin.ExternalReference"/> value means the caller
+    /// supplied an externally-managed key and the platform must never
+    /// mutate the backing store slot.
+    /// </param>
     /// <param name="ct">Cancellation token.</param>
-    Task RegisterAsync(SecretRef @ref, string storeKey, CancellationToken ct);
+    Task RegisterAsync(SecretRef @ref, string storeKey, SecretOrigin origin, CancellationToken ct);
+
+    /// <summary>
+    /// Returns the <see cref="SecretPointer"/> (store key + origin)
+    /// recorded for the given structural reference, or <c>null</c> if no
+    /// such reference exists in the current tenant.
+    /// </summary>
+    /// <param name="ref">The structural reference.</param>
+    /// <param name="ct">Cancellation token.</param>
+    Task<SecretPointer?> LookupAsync(SecretRef @ref, CancellationToken ct);
 
     /// <summary>
     /// Returns the store key recorded for the given structural reference,
     /// or <c>null</c> if no such reference exists in the current tenant.
+    /// Prefer <see cref="LookupAsync"/> — this overload is kept for
+    /// resolver paths that only need the opaque pointer and never touch
+    /// the store-delete path.
     /// </summary>
     /// <param name="ref">The structural reference.</param>
     /// <param name="ct">Cancellation token.</param>
@@ -48,9 +69,10 @@ public interface ISecretRegistry
     /// Removes the structural reference for the given triple from the
     /// current tenant. A missing reference is not an error. The caller
     /// is responsible for separately deleting the underlying value from
-    /// <see cref="ISecretStore"/> (look up the store key with
-    /// <see cref="LookupStoreKeyAsync"/> before deleting the registry
-    /// entry).
+    /// <see cref="ISecretStore"/> — and must first check the
+    /// <see cref="SecretPointer.Origin"/> returned by
+    /// <see cref="LookupAsync"/>: only <see cref="SecretOrigin.PlatformOwned"/>
+    /// pointers may be deleted through <see cref="ISecretStore.DeleteAsync"/>.
     /// </summary>
     /// <param name="ref">The structural reference.</param>
     /// <param name="ct">Cancellation token.</param>

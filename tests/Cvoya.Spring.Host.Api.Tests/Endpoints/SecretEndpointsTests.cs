@@ -202,6 +202,136 @@ public class SecretEndpointsTests : IClassFixture<CustomWebApplicationFactory>
     }
 
     [Fact]
+    public async Task Delete_PlatformOwnedSecret_CallsStoreDelete()
+    {
+        // The DELETE path must mutate the backing store slot when the
+        // platform owns it — otherwise pass-through writes would leak
+        // plaintext via ISecretStore forever.
+        var ct = TestContext.Current.CancellationToken;
+        var unit = NewUnitId();
+        StubUnit(unit);
+        _factory.SecretStore.ClearReceivedCalls();
+
+        var postResponse = await _client.PostAsJsonAsync(
+            $"/api/v1/units/{unit}/secrets",
+            new CreateSecretRequest("owned", "hunter2"),
+            ct);
+        postResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
+
+        // Capture the opaque store key the stub returned, then DELETE.
+        string? storeKey;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
+            var tenant = scope.ServiceProvider.GetRequiredService<ITenantContext>().CurrentTenantId;
+            storeKey = db.SecretRegistryEntries
+                .Single(e => e.TenantId == tenant && e.OwnerId == unit && e.Name == "owned")
+                .StoreKey;
+        }
+
+        var deleteResponse = await _client.DeleteAsync(
+            $"/api/v1/units/{unit}/secrets/owned", ct);
+        deleteResponse.StatusCode.ShouldBe(HttpStatusCode.NoContent);
+
+        await _factory.SecretStore.Received(1)
+            .DeleteAsync(storeKey!, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Delete_ExternalReferenceSecret_DoesNotCallStoreDelete()
+    {
+        // CRITICAL invariant: DELETE on an external-reference entry must
+        // remove the registry row ONLY. Calling ISecretStore.DeleteAsync
+        // on an externally-managed key would destroy a customer-owned
+        // secret in the private-cloud Key Vault implementation.
+        var ct = TestContext.Current.CancellationToken;
+        var unit = NewUnitId();
+        StubUnit(unit);
+        _factory.SecretStore.ClearReceivedCalls();
+
+        var postResponse = await _client.PostAsJsonAsync(
+            $"/api/v1/units/{unit}/secrets",
+            new CreateSecretRequest("ext", ExternalStoreKey: "kv://vault1/secret1"),
+            ct);
+        postResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
+
+        var deleteResponse = await _client.DeleteAsync(
+            $"/api/v1/units/{unit}/secrets/ext", ct);
+        deleteResponse.StatusCode.ShouldBe(HttpStatusCode.NoContent);
+
+        await _factory.SecretStore.DidNotReceive()
+            .DeleteAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+
+        // Registry row is gone; the external key remains wherever the
+        // caller manages it.
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
+        db.SecretRegistryEntries
+            .Where(e => e.OwnerId == unit && e.Name == "ext")
+            .ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task Post_PassThrough_Records_PlatformOwnedOrigin()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var unit = NewUnitId();
+        StubUnit(unit);
+
+        var response = await _client.PostAsJsonAsync(
+            $"/api/v1/units/{unit}/secrets",
+            new CreateSecretRequest("owned", "hunter2"),
+            ct);
+        response.StatusCode.ShouldBe(HttpStatusCode.Created);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
+        var row = db.SecretRegistryEntries.Single(
+            e => e.OwnerId == unit && e.Name == "owned");
+        row.Origin.ShouldBe(SecretOrigin.PlatformOwned);
+    }
+
+    [Fact]
+    public async Task Post_ExternalReference_Records_ExternalReferenceOrigin()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var unit = NewUnitId();
+        StubUnit(unit);
+
+        var response = await _client.PostAsJsonAsync(
+            $"/api/v1/units/{unit}/secrets",
+            new CreateSecretRequest("ext", ExternalStoreKey: "kv://vault/x"),
+            ct);
+        response.StatusCode.ShouldBe(HttpStatusCode.Created);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
+        var row = db.SecretRegistryEntries.Single(
+            e => e.OwnerId == unit && e.Name == "ext");
+        row.Origin.ShouldBe(SecretOrigin.ExternalReference);
+    }
+
+    [Fact]
+    public async Task List_Returns403_WhenAccessPolicyDenies()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var unit = NewUnitId();
+        StubUnit(unit);
+
+        _factory.SecretAccessPolicy
+            .IsAuthorizedAsync(SecretAccessAction.List, SecretScope.Unit, unit, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(false));
+
+        var response = await _client.GetAsync($"/api/v1/units/{unit}/secrets", ct);
+        response.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+
+        // Reset for other tests running against the same factory.
+        _factory.SecretAccessPolicy
+            .IsAuthorizedAsync(SecretAccessAction.List, SecretScope.Unit, unit, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(true));
+    }
+
+    [Fact]
     public async Task Delete_MissingSecret_Returns404()
     {
         var ct = TestContext.Current.CancellationToken;

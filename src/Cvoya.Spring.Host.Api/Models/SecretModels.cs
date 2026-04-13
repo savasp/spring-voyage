@@ -26,6 +26,15 @@ public record SecretMetadata(
 public record UnitSecretsListResponse(IReadOnlyList<SecretMetadata> Secrets);
 
 /// <summary>
+/// Response body for scope-keyed secret listing endpoints
+/// (<c>GET /api/v1/tenant/secrets</c>, <c>GET /api/v1/platform/secrets</c>).
+/// Mirrors <see cref="UnitSecretsListResponse"/> — same contract, the two
+/// shapes only differ in name to keep the unit-scoped response stable.
+/// </summary>
+/// <param name="Secrets">The metadata entries for the scope/owner.</param>
+public record SecretsListResponse(IReadOnlyList<SecretMetadata> Secrets);
+
+/// <summary>
 /// Request body for POST <c>/api/v1/units/{id}/secrets</c>. Exactly one
 /// of <paramref name="Value"/> or <paramref name="ExternalStoreKey"/>
 /// must be provided — "pass-through" write vs "external reference"
