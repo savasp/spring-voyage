@@ -806,4 +806,129 @@ public class UnitActorTests
             Arg.Any<string>(),
             Arg.Any<CancellationToken>());
     }
+
+    // --- Agent slot tests ---
+
+    private void SetAgentSlots(Dictionary<string, UnitAgentSlot>? slots)
+    {
+        _stateManager.TryGetStateAsync<Dictionary<string, UnitAgentSlot>>(
+                StateKeys.UnitAgentSlots, Arg.Any<CancellationToken>())
+            .Returns(slots is null
+                ? new ConditionalValue<Dictionary<string, UnitAgentSlot>>(false, default!)
+                : new ConditionalValue<Dictionary<string, UnitAgentSlot>>(true, slots));
+    }
+
+    [Fact]
+    public async Task GetAgentSlotsAsync_NoStateYet_ReturnsEmpty()
+    {
+        SetAgentSlots(null);
+
+        var slots = await _actor.GetAgentSlotsAsync(TestContext.Current.CancellationToken);
+
+        slots.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task AssignAgentAsync_NewAgent_PersistsAndEmitsAssignedEvent()
+    {
+        SetAgentSlots(null);
+        var slot = new UnitAgentSlot("ada", "claude-opus", "reviewer",
+            Enabled: true, ExecutionMode: AgentExecutionMode.Auto);
+
+        await _actor.AssignAgentAsync(slot, TestContext.Current.CancellationToken);
+
+        await _stateManager.Received(1).SetStateAsync(
+            StateKeys.UnitAgentSlots,
+            Arg.Is<Dictionary<string, UnitAgentSlot>>(d =>
+                d.Count == 1 && d.ContainsKey("ada") && d["ada"].Specialty == "reviewer"),
+            Arg.Any<CancellationToken>());
+
+        await _activityEventBus.Received().PublishAsync(
+            Arg.Is<ActivityEvent>(e =>
+                e.EventType == ActivityEventType.StateChanged &&
+                e.Summary.Contains("assigned to unit")),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task AssignAgentAsync_ExistingAgent_ReplacesSlotAndEmitsUpdatedEvent()
+    {
+        var existing = new UnitAgentSlot("ada", "claude-opus", "reviewer",
+            Enabled: true, ExecutionMode: AgentExecutionMode.Auto);
+        SetAgentSlots(new Dictionary<string, UnitAgentSlot> { ["ada"] = existing });
+
+        var replacement = new UnitAgentSlot("ada", Model: null, Specialty: "implementer",
+            Enabled: false, ExecutionMode: AgentExecutionMode.OnDemand);
+
+        await _actor.AssignAgentAsync(replacement, TestContext.Current.CancellationToken);
+
+        await _stateManager.Received(1).SetStateAsync(
+            StateKeys.UnitAgentSlots,
+            Arg.Is<Dictionary<string, UnitAgentSlot>>(d =>
+                d["ada"].Specialty == "implementer" &&
+                d["ada"].Enabled == false &&
+                d["ada"].ExecutionMode == AgentExecutionMode.OnDemand &&
+                d["ada"].Model == null),
+            Arg.Any<CancellationToken>());
+
+        // Replacement, not a new assignment — the activity summary should
+        // not claim "assigned" to keep the audit trail honest.
+        await _activityEventBus.Received().PublishAsync(
+            Arg.Is<ActivityEvent>(e => e.Summary.Contains("slot updated")),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task AssignAgentAsync_EmptyAgentId_Throws()
+    {
+        SetAgentSlots(null);
+        var slot = new UnitAgentSlot("", null, null, Enabled: true, ExecutionMode: AgentExecutionMode.Auto);
+
+        await Should.ThrowAsync<ArgumentException>(
+            () => _actor.AssignAgentAsync(slot, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task UnassignAgentAsync_ExistingSlot_RemovesAndEmitsEvent()
+    {
+        var slots = new Dictionary<string, UnitAgentSlot>
+        {
+            ["ada"] = new("ada", null, null, Enabled: true, ExecutionMode: AgentExecutionMode.Auto),
+            ["bob"] = new("bob", null, null, Enabled: true, ExecutionMode: AgentExecutionMode.Auto),
+        };
+        SetAgentSlots(slots);
+
+        await _actor.UnassignAgentAsync("ada", TestContext.Current.CancellationToken);
+
+        await _stateManager.Received(1).SetStateAsync(
+            StateKeys.UnitAgentSlots,
+            Arg.Is<Dictionary<string, UnitAgentSlot>>(d =>
+                d.Count == 1 && d.ContainsKey("bob") && !d.ContainsKey("ada")),
+            Arg.Any<CancellationToken>());
+
+        await _activityEventBus.Received().PublishAsync(
+            Arg.Is<ActivityEvent>(e =>
+                e.EventType == ActivityEventType.StateChanged &&
+                e.Summary.Contains("unassigned")),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task UnassignAgentAsync_UnknownAgent_IsNoop()
+    {
+        SetAgentSlots(new Dictionary<string, UnitAgentSlot>
+        {
+            ["ada"] = new("ada", null, null, Enabled: true, ExecutionMode: AgentExecutionMode.Auto),
+        });
+
+        await _actor.UnassignAgentAsync("ghost", TestContext.Current.CancellationToken);
+
+        // No write and no activity event for a missing slot.
+        await _stateManager.DidNotReceive().SetStateAsync(
+            StateKeys.UnitAgentSlots,
+            Arg.Any<Dictionary<string, UnitAgentSlot>>(),
+            Arg.Any<CancellationToken>());
+        await _activityEventBus.DidNotReceive().PublishAsync(
+            Arg.Any<ActivityEvent>(), Arg.Any<CancellationToken>());
+    }
 }

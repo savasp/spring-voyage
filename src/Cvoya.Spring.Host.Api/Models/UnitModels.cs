@@ -136,3 +136,41 @@ public record UnitTemplateSummary(
     string Name,
     string? Description,
     string Path);
+
+/// <summary>
+/// Response body for a single unit-scoped agent slot (see <see cref="UnitAgentSlot"/>).
+/// </summary>
+/// <param name="AgentId">The agent identifier.</param>
+/// <param name="Model">Per-unit model override, or <c>null</c> to inherit.</param>
+/// <param name="Specialty">Free-form per-unit specialty label, or <c>null</c>.</param>
+/// <param name="Enabled">Whether orchestration should consider this agent.</param>
+/// <param name="ExecutionMode">How the agent participates in dispatch.</param>
+public record UnitAgentSlotResponse(
+    string AgentId,
+    string? Model,
+    string? Specialty,
+    bool Enabled,
+    AgentExecutionMode ExecutionMode);
+
+/// <summary>
+/// Request body for <c>POST /api/v1/units/{id}/agents/{agentId}</c> (assign).
+/// All fields optional; unspecified values take defaults
+/// (<c>Enabled = true</c>, <c>ExecutionMode = Auto</c>). POST has upsert
+/// semantics — a subsequent assign replaces the slot in full.
+/// </summary>
+public record AssignAgentRequest(
+    string? Model = null,
+    string? Specialty = null,
+    bool? Enabled = null,
+    AgentExecutionMode? ExecutionMode = null);
+
+/// <summary>
+/// Request body for <c>PATCH /api/v1/units/{id}/agents/{agentId}</c>.
+/// Only non-<c>null</c> fields are applied; the rest inherit from the
+/// existing slot. The slot must exist — PATCH does not create.
+/// </summary>
+public record UpdateAgentSlotRequest(
+    string? Model = null,
+    string? Specialty = null,
+    bool? Enabled = null,
+    AgentExecutionMode? ExecutionMode = null);

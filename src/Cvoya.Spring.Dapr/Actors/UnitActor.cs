@@ -333,6 +333,95 @@ public class UnitActor : Actor, IUnitActor
         await StateManager.SetStateAsync(StateKeys.UnitGitHubHookId, hookId.Value, ct);
     }
 
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<UnitAgentSlot>> GetAgentSlotsAsync(CancellationToken ct = default)
+    {
+        var slots = await GetAgentSlotsMapAsync(ct);
+        return slots.Values.ToList();
+    }
+
+    /// <inheritdoc />
+    public async Task AssignAgentAsync(UnitAgentSlot slot, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(slot);
+
+        if (string.IsNullOrWhiteSpace(slot.AgentId))
+        {
+            throw new ArgumentException("AgentId must be non-empty.", nameof(slot));
+        }
+
+        var slots = await GetAgentSlotsMapAsync(ct);
+        var isNew = !slots.ContainsKey(slot.AgentId);
+        slots[slot.AgentId] = slot;
+
+        await StateManager.SetStateAsync(StateKeys.UnitAgentSlots, slots, ct);
+
+        _logger.LogInformation(
+            "Unit {ActorId} {Action} agent slot {AgentId} (enabled={Enabled}, mode={Mode}).",
+            Id.GetId(), isNew ? "assigned" : "updated", slot.AgentId, slot.Enabled, slot.ExecutionMode);
+
+        await EmitActivityEventAsync(ActivityEventType.StateChanged,
+            isNew
+                ? $"Agent {slot.AgentId} assigned to unit."
+                : $"Agent {slot.AgentId} slot updated.",
+            ct,
+            details: JsonSerializer.SerializeToElement(new
+            {
+                action = isNew ? "AgentAssigned" : "AgentSlotUpdated",
+                agentId = slot.AgentId,
+                model = slot.Model,
+                specialty = slot.Specialty,
+                enabled = slot.Enabled,
+                executionMode = slot.ExecutionMode.ToString(),
+                totalSlots = slots.Count,
+            }));
+    }
+
+    /// <inheritdoc />
+    public async Task UnassignAgentAsync(string agentId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(agentId))
+        {
+            throw new ArgumentException("agentId must be non-empty.", nameof(agentId));
+        }
+
+        var slots = await GetAgentSlotsMapAsync(ct);
+        if (!slots.Remove(agentId))
+        {
+            _logger.LogDebug(
+                "Unit {ActorId} has no slot for agent {AgentId}; unassign is a no-op.",
+                Id.GetId(), agentId);
+            return;
+        }
+
+        await StateManager.SetStateAsync(StateKeys.UnitAgentSlots, slots, ct);
+
+        _logger.LogInformation(
+            "Unit {ActorId} unassigned agent slot {AgentId}. Remaining slots: {Count}",
+            Id.GetId(), agentId, slots.Count);
+
+        await EmitActivityEventAsync(ActivityEventType.StateChanged,
+            $"Agent {agentId} unassigned from unit.",
+            ct,
+            details: JsonSerializer.SerializeToElement(new
+            {
+                action = "AgentUnassigned",
+                agentId,
+                totalSlots = slots.Count,
+            }));
+    }
+
+    /// <summary>
+    /// Retrieves the agent slot map from state, returning an empty dictionary if none exists.
+    /// </summary>
+    private async Task<Dictionary<string, UnitAgentSlot>> GetAgentSlotsMapAsync(CancellationToken ct)
+    {
+        var result = await StateManager
+            .TryGetStateAsync<Dictionary<string, UnitAgentSlot>>(StateKeys.UnitAgentSlots, ct);
+
+        return result.HasValue ? result.Value : [];
+    }
+
     /// <summary>
     /// Reads the persisted lifecycle status, defaulting to <see cref="UnitStatus.Draft"/> when unset.
     /// </summary>

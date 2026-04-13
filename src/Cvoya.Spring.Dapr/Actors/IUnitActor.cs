@@ -147,4 +147,24 @@ public interface IUnitActor : IActor
     /// <param name="hookId">The webhook id returned by GitHub, or <c>null</c> to clear.</param>
     /// <param name="ct">A token to cancel the operation.</param>
     Task SetGitHubHookIdAsync(long? hookId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Returns all agent slots currently configured on this unit. Order matches
+    /// insertion order; callers that need a stable UI ordering should sort by
+    /// <see cref="UnitAgentSlot.AgentId"/>.
+    /// </summary>
+    Task<IReadOnlyList<UnitAgentSlot>> GetAgentSlotsAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Creates or replaces the slot for <paramref name="slot"/>'s agent.
+    /// Upsert semantics: an existing slot with the same <see cref="UnitAgentSlot.AgentId"/>
+    /// is overwritten in full. Partial updates should be composed at the caller.
+    /// </summary>
+    Task AssignAgentAsync(UnitAgentSlot slot, CancellationToken ct = default);
+
+    /// <summary>
+    /// Removes the agent's slot from this unit. Idempotent — calling for an
+    /// agent that has no slot is a no-op.
+    /// </summary>
+    Task UnassignAgentAsync(string agentId, CancellationToken ct = default);
 }

@@ -1,7 +1,9 @@
 import type {
   AgentDashboardSummary,
   AgentDetailResponse,
+  AgentResponse,
   ActivityQueryResult,
+  AssignAgentRequest,
   BudgetResponse,
   CloneResponse,
   CostDashboardSummary,
@@ -12,12 +14,14 @@ import type {
   InitiativeLevelResponse,
   InitiativePolicy,
   SetBudgetRequest,
+  UnitAgentSlot,
   UnitCreationResponse,
   UnitDashboardSummary,
   UnitDetailResponse,
   UnitResponse,
   UnitStatus,
   UnitTemplateSummary,
+  UpdateAgentSlotRequest,
 } from "./types";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
@@ -110,6 +114,7 @@ export const api = {
     fetchJSON<CostDashboardSummary>("/api/v1/dashboard/costs"),
 
   // Agents
+  listAgents: () => fetchJSON<AgentResponse[]>("/api/v1/agents"),
   getAgent: (id: string) =>
     fetchJSON<AgentDetailResponse>(`/api/v1/agents/${encodeURIComponent(id)}`),
   deleteAgent: (id: string) =>
@@ -171,6 +176,34 @@ export const api = {
     }),
   removeMember: (unitId: string, memberId: string) =>
     deleteJSON(`/api/v1/units/${encodeURIComponent(unitId)}/members/${encodeURIComponent(memberId)}`),
+
+  // Unit-scoped agent slots
+  listUnitAgents: (unitId: string) =>
+    fetchJSON<UnitAgentSlot[]>(
+      `/api/v1/units/${encodeURIComponent(unitId)}/agents`,
+    ),
+  assignUnitAgent: (
+    unitId: string,
+    agentId: string,
+    body: AssignAgentRequest = {},
+  ) =>
+    postJSON<UnitAgentSlot>(
+      `/api/v1/units/${encodeURIComponent(unitId)}/agents/${encodeURIComponent(agentId)}`,
+      body,
+    ),
+  updateUnitAgent: (
+    unitId: string,
+    agentId: string,
+    patch: UpdateAgentSlotRequest,
+  ) =>
+    patchJSON<UnitAgentSlot>(
+      `/api/v1/units/${encodeURIComponent(unitId)}/agents/${encodeURIComponent(agentId)}`,
+      patch,
+    ),
+  unassignUnitAgent: (unitId: string, agentId: string) =>
+    deleteJSON(
+      `/api/v1/units/${encodeURIComponent(unitId)}/agents/${encodeURIComponent(agentId)}`,
+    ),
 
   // Costs
   getAgentCost: (id: string) =>

@@ -51,6 +51,12 @@ public static class StateKeys
     public const string Members = "Unit:Members";
 
     /// <summary>
+    /// State key for the unit's per-agent slot map (agentId -> <c>UnitAgentSlot</c>).
+    /// Independent from <see cref="Members"/> — see <c>UnitAgentSlot</c>.
+    /// </summary>
+    public const string UnitAgentSlots = "Unit:AgentSlots";
+
+    /// <summary>
     /// State key for unit policies.
     /// </summary>
     public const string Policies = "Unit:Policies";

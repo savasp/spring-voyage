@@ -101,6 +101,22 @@ public static class UnitEndpoints
             .WithSummary("Get all human permissions for a unit")
             .RequireAuthorization(PermissionPolicies.UnitViewer);
 
+        group.MapGet("/{id}/agents", ListUnitAgentsAsync)
+            .WithName("ListUnitAgents")
+            .WithSummary("List the agent slots configured on a unit");
+
+        group.MapPost("/{id}/agents/{agentId}", AssignUnitAgentAsync)
+            .WithName("AssignUnitAgent")
+            .WithSummary("Assign (or replace) an agent slot on a unit");
+
+        group.MapPatch("/{id}/agents/{agentId}", UpdateUnitAgentAsync)
+            .WithName("UpdateUnitAgentSlot")
+            .WithSummary("Partially update an existing agent slot on a unit");
+
+        group.MapDelete("/{id}/agents/{agentId}", UnassignUnitAgentAsync)
+            .WithName("UnassignUnitAgent")
+            .WithSummary("Remove an agent slot from a unit");
+
         return group;
     }
 
@@ -932,4 +948,127 @@ public static class UnitEndpoints
             status,
             metadata?.Model,
             metadata?.Color);
+
+    private static async Task<IResult> ListUnitAgentsAsync(
+        string id,
+        [FromServices] IDirectoryService directoryService,
+        [FromServices] IActorProxyFactory actorProxyFactory,
+        CancellationToken cancellationToken)
+    {
+        var entry = await directoryService.ResolveAsync(new Address("unit", id), cancellationToken);
+        if (entry is null)
+        {
+            return Results.NotFound(new { Error = $"Unit '{id}' not found" });
+        }
+
+        var proxy = actorProxyFactory.CreateActorProxy<IUnitActor>(
+            new ActorId(entry.ActorId), nameof(IUnitActor));
+
+        var slots = await proxy.GetAgentSlotsAsync(cancellationToken);
+
+        return Results.Ok(slots.Select(ToSlotResponse).ToList());
+    }
+
+    private static async Task<IResult> AssignUnitAgentAsync(
+        string id,
+        string agentId,
+        AssignAgentRequest? request,
+        [FromServices] IDirectoryService directoryService,
+        [FromServices] IActorProxyFactory actorProxyFactory,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(agentId))
+        {
+            return Results.BadRequest(new { Error = "agentId is required." });
+        }
+
+        var entry = await directoryService.ResolveAsync(new Address("unit", id), cancellationToken);
+        if (entry is null)
+        {
+            return Results.NotFound(new { Error = $"Unit '{id}' not found" });
+        }
+
+        // Defaults match the record description on AssignAgentRequest: new
+        // slots are Enabled with Auto mode unless the caller says otherwise.
+        var body = request ?? new AssignAgentRequest();
+        var slot = new UnitAgentSlot(
+            AgentId: agentId,
+            Model: body.Model,
+            Specialty: body.Specialty,
+            Enabled: body.Enabled ?? true,
+            ExecutionMode: body.ExecutionMode ?? AgentExecutionMode.Auto);
+
+        var proxy = actorProxyFactory.CreateActorProxy<IUnitActor>(
+            new ActorId(entry.ActorId), nameof(IUnitActor));
+
+        await proxy.AssignAgentAsync(slot, cancellationToken);
+
+        return Results.Ok(ToSlotResponse(slot));
+    }
+
+    private static async Task<IResult> UpdateUnitAgentAsync(
+        string id,
+        string agentId,
+        UpdateAgentSlotRequest request,
+        [FromServices] IDirectoryService directoryService,
+        [FromServices] IActorProxyFactory actorProxyFactory,
+        CancellationToken cancellationToken)
+    {
+        var entry = await directoryService.ResolveAsync(new Address("unit", id), cancellationToken);
+        if (entry is null)
+        {
+            return Results.NotFound(new { Error = $"Unit '{id}' not found" });
+        }
+
+        var proxy = actorProxyFactory.CreateActorProxy<IUnitActor>(
+            new ActorId(entry.ActorId), nameof(IUnitActor));
+
+        var existing = (await proxy.GetAgentSlotsAsync(cancellationToken))
+            .FirstOrDefault(s => s.AgentId == agentId);
+
+        if (existing is null)
+        {
+            return Results.NotFound(new
+            {
+                Error = $"Agent '{agentId}' is not slotted in unit '{id}'.",
+                Hint = $"POST /api/v1/units/{id}/agents/{agentId} to assign first.",
+            });
+        }
+
+        var merged = existing with
+        {
+            Model = request.Model ?? existing.Model,
+            Specialty = request.Specialty ?? existing.Specialty,
+            Enabled = request.Enabled ?? existing.Enabled,
+            ExecutionMode = request.ExecutionMode ?? existing.ExecutionMode,
+        };
+
+        await proxy.AssignAgentAsync(merged, cancellationToken);
+
+        return Results.Ok(ToSlotResponse(merged));
+    }
+
+    private static async Task<IResult> UnassignUnitAgentAsync(
+        string id,
+        string agentId,
+        [FromServices] IDirectoryService directoryService,
+        [FromServices] IActorProxyFactory actorProxyFactory,
+        CancellationToken cancellationToken)
+    {
+        var entry = await directoryService.ResolveAsync(new Address("unit", id), cancellationToken);
+        if (entry is null)
+        {
+            return Results.NotFound(new { Error = $"Unit '{id}' not found" });
+        }
+
+        var proxy = actorProxyFactory.CreateActorProxy<IUnitActor>(
+            new ActorId(entry.ActorId), nameof(IUnitActor));
+
+        await proxy.UnassignAgentAsync(agentId, cancellationToken);
+
+        return Results.NoContent();
+    }
+
+    private static UnitAgentSlotResponse ToSlotResponse(UnitAgentSlot slot) =>
+        new(slot.AgentId, slot.Model, slot.Specialty, slot.Enabled, slot.ExecutionMode);
 }

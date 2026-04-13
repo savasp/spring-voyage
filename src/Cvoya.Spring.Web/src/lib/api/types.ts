@@ -107,6 +107,34 @@ export interface UnitDetailResponse {
   details?: unknown;
 }
 
+/** Matches Cvoya.Spring.Core.Units.AgentExecutionMode enum. */
+export type AgentExecutionMode = "Auto" | "OnDemand";
+
+/** Entry returned by GET /api/v1/units/{id}/agents. */
+export interface UnitAgentSlot {
+  agentId: string;
+  model?: string | null;
+  specialty?: string | null;
+  enabled: boolean;
+  executionMode: AgentExecutionMode;
+}
+
+/** POST /api/v1/units/{id}/agents/{agentId} body (all optional, defaults applied server-side). */
+export interface AssignAgentRequest {
+  model?: string | null;
+  specialty?: string | null;
+  enabled?: boolean;
+  executionMode?: AgentExecutionMode;
+}
+
+/** PATCH /api/v1/units/{id}/agents/{agentId} body. Only non-null fields applied. */
+export interface UpdateAgentSlotRequest {
+  model?: string | null;
+  specialty?: string | null;
+  enabled?: boolean;
+  executionMode?: AgentExecutionMode;
+}
+
 /** GET /api/v1/costs/agents/{id} or /units/{id} response. */
 export interface CostSummaryResponse {
   totalCost: number;
