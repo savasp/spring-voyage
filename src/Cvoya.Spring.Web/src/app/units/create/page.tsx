@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -10,7 +10,6 @@ import {
   FileText,
   Github,
   KeyRound,
-  Lock,
   Rocket,
   Sparkles,
 } from "lucide-react";
@@ -25,6 +24,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
 import { api } from "@/lib/api/client";
+import type { UnitTemplateSummary } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 
 // Default matches the platform-wide default model hint. Keep in sync with
@@ -35,7 +35,7 @@ const DEFAULT_COLOR = "#6366f1";
 const NAME_PATTERN = /^[a-z0-9-]+$/;
 
 // Follow-up issues for the placeholder steps in this wizard:
-//   #119 template catalog, #120 YAML import, #121 GitHub App, #122 unit secrets.
+//   #121 GitHub App, #122 unit secrets.
 
 type Step = 1 | 2 | 3 | 4 | 5;
 type Mode = "template" | "scratch" | "yaml";
@@ -55,6 +55,11 @@ interface FormState {
   model: string;
   color: string;
   mode: Mode | null;
+  // Template mode
+  templateId: string | null; // "{package}/{name}"
+  // YAML mode
+  yamlText: string;
+  yamlFileName: string | null;
 }
 
 const INITIAL_FORM: FormState = {
@@ -64,6 +69,9 @@ const INITIAL_FORM: FormState = {
   model: DEFAULT_MODEL,
   color: DEFAULT_COLOR,
   mode: null,
+  templateId: null,
+  yamlText: "",
+  yamlFileName: null,
 };
 
 function StepIndicator({ current }: { current: Step }) {
@@ -112,24 +120,59 @@ export default function CreateUnitPage() {
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
   const [stepError, setStepError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitWarnings, setSubmitWarnings] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
+
+  // Template catalog state (#119): fetched once when the wizard mounts so the
+  // Template card can render a picker without a per-click round-trip.
+  const [templates, setTemplates] = useState<UnitTemplateSummary[] | null>(null);
+  const [templatesError, setTemplatesError] = useState<string | null>(null);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setTemplatesLoading(true);
+    api
+      .listUnitTemplates()
+      .then((list) => {
+        if (cancelled) return;
+        setTemplates(list);
+        setTemplatesError(null);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        const message = err instanceof Error ? err.message : String(err);
+        setTemplatesError(message);
+        setTemplates([]);
+      })
+      .finally(() => {
+        if (!cancelled) setTemplatesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
   const validateStep1 = (): string | null => {
-    if (!form.name.trim()) return "Name is required.";
-    if (!NAME_PATTERN.test(form.name))
-      return "Name must be URL-safe (lowercase letters, digits, and hyphens).";
+    if (form.mode !== "yaml" && form.mode !== "template") {
+      // Scratch / pre-mode-selection — name is required and URL-safe.
+      if (!form.name.trim()) return "Name is required.";
+      if (!NAME_PATTERN.test(form.name))
+        return "Name must be URL-safe (lowercase letters, digits, and hyphens).";
+    }
     return null;
   };
 
   const validateStep2 = (): string | null => {
-    if (form.mode !== "scratch") {
-      // Template and YAML are disabled in this pass.
-      return "Select a mode to continue. Only Scratch is available right now.";
-    }
+    if (form.mode === null) return "Select a mode to continue.";
+    if (form.mode === "template" && !form.templateId)
+      return "Pick a template to continue.";
+    if (form.mode === "yaml" && !form.yamlText.trim())
+      return "Paste or upload a unit manifest to continue.";
     return null;
   };
 
@@ -158,10 +201,54 @@ export default function CreateUnitPage() {
     if (step > 1) setStep((s) => (s - 1) as Step);
   };
 
+  const handleYamlFile = async (file: File) => {
+    const text = await file.text();
+    setForm((prev) => ({ ...prev, yamlText: text, yamlFileName: file.name }));
+  };
+
   const handleCreate = async () => {
     setSubmitError(null);
+    setSubmitWarnings([]);
     setSubmitting(true);
     try {
+      // Route through the correct endpoint based on the chosen mode. All three
+      // paths ultimately go through the server-side unit-creation service, so
+      // the actor-create + directory-register logic is identical.
+      if (form.mode === "yaml") {
+        const resp = await api.createUnitFromYaml({
+          yaml: form.yamlText,
+          displayName: form.displayName.trim() || undefined,
+          color: form.color.trim() || undefined,
+          model: form.model.trim() || undefined,
+        });
+        setSubmitWarnings(resp.warnings ?? []);
+        toast({ title: "Unit created", description: resp.unit.name });
+        router.push(`/units/${encodeURIComponent(resp.unit.name)}`);
+        return;
+      }
+
+      if (form.mode === "template") {
+        const template = templates?.find(
+          (t) => `${t.package}/${t.name}` === form.templateId,
+        );
+        if (!template) {
+          setSubmitError("Selected template is no longer available.");
+          return;
+        }
+        const resp = await api.createUnitFromTemplate({
+          package: template.package,
+          name: template.name,
+          displayName: form.displayName.trim() || undefined,
+          color: form.color.trim() || undefined,
+          model: form.model.trim() || undefined,
+        });
+        setSubmitWarnings(resp.warnings ?? []);
+        toast({ title: "Unit created", description: resp.unit.name });
+        router.push(`/units/${encodeURIComponent(resp.unit.name)}`);
+        return;
+      }
+
+      // Scratch — legacy path.
       const created = await api.createUnit({
         name: form.name.trim(),
         displayName: form.displayName.trim() || form.name.trim(),
@@ -185,8 +272,18 @@ export default function CreateUnitPage() {
   };
 
   const canGoNext = useMemo(() => {
-    if (step === 1) return form.name.trim().length > 0;
-    if (step === 2) return form.mode === "scratch";
+    if (step === 1) {
+      // For YAML/template modes the manifest itself supplies the name, so we
+      // don't gate advancement on form.name.
+      if (form.mode === "yaml" || form.mode === "template") return true;
+      return form.name.trim().length > 0;
+    }
+    if (step === 2) {
+      if (form.mode === null) return false;
+      if (form.mode === "template") return form.templateId !== null;
+      if (form.mode === "yaml") return form.yamlText.trim().length > 0;
+      return true;
+    }
     return true;
   }, [step, form]);
 
@@ -226,7 +323,8 @@ export default function CreateUnitPage() {
               />
               <span className="block text-xs text-muted-foreground">
                 URL-safe: lowercase letters, digits, and hyphens only. Used as
-                the unit&apos;s address.
+                the unit&apos;s address. Ignored when importing a YAML manifest
+                or starting from a template — the manifest&apos;s name wins.
               </span>
             </label>
 
@@ -297,12 +395,73 @@ export default function CreateUnitPage() {
             <ModeCard
               icon={<FileText className="h-5 w-5" />}
               title="Template"
-              description="Start from a pre-built team template."
-              disabled
-              tooltip="Template catalog is tracked in follow-up #119."
-              selected={false}
-              onSelect={() => {}}
+              description="Start from a pre-built team template shipped with a package."
+              selected={form.mode === "template"}
+              onSelect={() => update("mode", "template")}
             />
+
+            {form.mode === "template" && (
+              <div className="ml-11 space-y-2 rounded-md border border-border bg-muted/30 p-3">
+                {templatesLoading && (
+                  <p className="text-xs text-muted-foreground">
+                    Loading templates…
+                  </p>
+                )}
+                {templatesError && (
+                  <p className="text-xs text-destructive">
+                    Failed to load templates: {templatesError}
+                  </p>
+                )}
+                {!templatesLoading && templates && templates.length === 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    No templates discovered. Make sure the API is running from a
+                    repo checkout that includes <code>packages/</code>.
+                  </p>
+                )}
+                {templates && templates.length > 0 && (
+                  <ul className="space-y-1.5">
+                    {templates.map((t) => {
+                      const id = `${t.package}/${t.name}`;
+                      const isSelected = form.templateId === id;
+                      return (
+                        <li key={id}>
+                          <button
+                            type="button"
+                            onClick={() => update("templateId", id)}
+                            className={cn(
+                              "flex w-full items-start gap-2 rounded-md border p-2 text-left text-sm transition-colors",
+                              isSelected
+                                ? "border-primary bg-primary/5"
+                                : "border-border hover:bg-accent/50",
+                            )}
+                          >
+                            <span className="mt-0.5 h-4 w-4 shrink-0 rounded-full border border-border bg-background">
+                              {isSelected && (
+                                <span className="block h-full w-full rounded-full bg-primary" />
+                              )}
+                            </span>
+                            <span className="flex-1">
+                              <span className="font-medium">
+                                {t.package}/{t.name}
+                              </span>
+                              {t.description && (
+                                <span className="block text-xs text-muted-foreground">
+                                  {t.description}
+                                </span>
+                              )}
+                              <span className="block text-[11px] text-muted-foreground">
+                                {t.path}
+                              </span>
+                            </span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+            )}
+
             <ModeCard
               icon={<Sparkles className="h-5 w-5" />}
               title="Scratch"
@@ -310,15 +469,49 @@ export default function CreateUnitPage() {
               selected={form.mode === "scratch"}
               onSelect={() => update("mode", "scratch")}
             />
+
             <ModeCard
               icon={<FileCode className="h-5 w-5" />}
               title="YAML"
-              description="Import an existing unit manifest."
-              disabled
-              tooltip="YAML import is tracked in follow-up #120."
-              selected={false}
-              onSelect={() => {}}
+              description="Import an existing unit manifest (same grammar as the CLI's spring apply)."
+              selected={form.mode === "yaml"}
+              onSelect={() => update("mode", "yaml")}
             />
+
+            {form.mode === "yaml" && (
+              <div className="ml-11 space-y-2 rounded-md border border-border bg-muted/30 p-3">
+                <label className="block space-y-1 text-xs text-muted-foreground">
+                  <span>Upload a .yaml file</span>
+                  <input
+                    type="file"
+                    accept=".yaml,.yml,text/yaml"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (file) await handleYamlFile(file);
+                    }}
+                    className="block text-sm"
+                  />
+                </label>
+                <label className="block space-y-1 text-xs text-muted-foreground">
+                  <span>
+                    Manifest contents
+                    {form.yamlFileName && (
+                      <span className="ml-2 text-[11px] text-muted-foreground">
+                        ({form.yamlFileName})
+                      </span>
+                    )}
+                  </span>
+                  <textarea
+                    value={form.yamlText}
+                    onChange={(e) => update("yamlText", e.target.value)}
+                    placeholder={"unit:\n  name: engineering-team\n  description: ..."}
+                    rows={10}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-xs"
+                    spellCheck={false}
+                  />
+                </label>
+              </div>
+            )}
 
             {stepError && (
               <p className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -374,27 +567,56 @@ export default function CreateUnitPage() {
           </CardHeader>
           <CardContent className="space-y-4 text-sm">
             <div className="rounded-md border border-border p-3 space-y-1">
-              <SummaryRow label="Name" value={form.name} />
+              <SummaryRow label="Name" value={renderNameSummary(form)} />
               <SummaryRow
                 label="Display name"
-                value={form.displayName || form.name}
+                value={form.displayName || "—"}
               />
-              <SummaryRow
-                label="Description"
-                value={form.description || "—"}
-              />
+              {form.mode === "scratch" && (
+                <SummaryRow
+                  label="Description"
+                  value={form.description || "—"}
+                />
+              )}
               <SummaryRow label="Model" value={form.model || DEFAULT_MODEL} />
               <SummaryRow label="Color" value={form.color || DEFAULT_COLOR} />
               <SummaryRow
                 label="Mode"
                 value={form.mode ? form.mode : "—"}
               />
+              {form.mode === "template" && form.templateId && (
+                <SummaryRow label="Template" value={form.templateId} />
+              )}
+              {form.mode === "yaml" && (
+                <SummaryRow
+                  label="YAML"
+                  value={
+                    form.yamlFileName
+                      ? form.yamlFileName
+                      : `${form.yamlText.split("\n").length} lines pasted`
+                  }
+                />
+              )}
             </div>
 
             {submitError && (
               <p className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                 {submitError}
               </p>
+            )}
+
+            {submitWarnings.length > 0 && (
+              <div className="rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-sm text-amber-900 dark:text-amber-200">
+                <p className="font-medium">
+                  Unit created with {submitWarnings.length} warning
+                  {submitWarnings.length === 1 ? "" : "s"}:
+                </p>
+                <ul className="mt-1 list-disc pl-5">
+                  {submitWarnings.map((w, i) => (
+                    <li key={i}>{w}</li>
+                  ))}
+                </ul>
+              </div>
             )}
 
             <Button onClick={handleCreate} disabled={submitting}>
@@ -424,35 +646,38 @@ export default function CreateUnitPage() {
   );
 }
 
+function renderNameSummary(form: FormState): string {
+  if (form.mode === "template" && form.templateId) {
+    return `(from template ${form.templateId})`;
+  }
+  if (form.mode === "yaml") {
+    return "(from YAML manifest)";
+  }
+  return form.name || "—";
+}
+
 function ModeCard({
   icon,
   title,
   description,
   selected,
-  disabled,
-  tooltip,
   onSelect,
 }: {
   icon: React.ReactNode;
   title: string;
   description: string;
   selected: boolean;
-  disabled?: boolean;
-  tooltip?: string;
   onSelect: () => void;
 }) {
   return (
     <button
       type="button"
-      onClick={() => !disabled && onSelect()}
-      disabled={disabled}
-      title={tooltip}
+      onClick={onSelect}
       className={cn(
         "flex w-full items-start gap-3 rounded-md border p-4 text-left transition-colors",
         selected
           ? "border-primary bg-primary/5"
           : "border-border hover:bg-accent/50",
-        disabled && "cursor-not-allowed opacity-60 hover:bg-transparent",
       )}
     >
       <div
@@ -466,18 +691,8 @@ function ModeCard({
       <div className="flex-1">
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium">{title}</span>
-          {disabled && (
-            <span className="inline-flex items-center gap-1 rounded-full border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">
-              <Lock className="h-3 w-3" /> Coming soon
-            </span>
-          )}
         </div>
         <div className="text-xs text-muted-foreground">{description}</div>
-        {disabled && tooltip && (
-          <div className="mt-1 text-[11px] text-muted-foreground">
-            {tooltip}
-          </div>
-        )}
       </div>
     </button>
   );

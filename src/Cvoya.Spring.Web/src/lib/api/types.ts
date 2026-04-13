@@ -193,3 +193,35 @@ export interface InitiativePolicy {
 export interface InitiativeLevelResponse {
   level: InitiativeLevel;
 }
+
+/** GET /api/v1/packages/templates response item. */
+export interface UnitTemplateSummary {
+  package: string;
+  name: string;
+  description?: string | null;
+  path: string;
+}
+
+/** Response body from POST /api/v1/units/from-yaml and /from-template. */
+export interface UnitCreationResponse {
+  unit: UnitResponse;
+  warnings: string[];
+  membersAdded: number;
+}
+
+/** POST /api/v1/units/from-yaml request body. */
+export interface CreateUnitFromYamlRequest {
+  yaml: string;
+  displayName?: string;
+  color?: string;
+  model?: string;
+}
+
+/** POST /api/v1/units/from-template request body. */
+export interface CreateUnitFromTemplateRequest {
+  package: string;
+  name: string;
+  displayName?: string;
+  color?: string;
+  model?: string;
+}

@@ -7,11 +7,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Cvoya.Spring.Core\Cvoya.Spring.Core.csproj" />
+    <ProjectReference Include="..\Cvoya.Spring.Manifest\Cvoya.Spring.Manifest.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="System.CommandLine" />
-    <PackageReference Include="YamlDotNet" />
   </ItemGroup>
 
 </Project>

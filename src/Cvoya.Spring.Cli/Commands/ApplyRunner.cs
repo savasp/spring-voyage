@@ -8,68 +8,34 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 
-using YamlDotNet.Serialization;
-using YamlDotNet.Serialization.NamingConventions;
+using Cvoya.Spring.Manifest;
 
 /// <summary>
 /// Parses a unit manifest YAML file and applies it against a <see cref="SpringApiClient"/>.
-/// Extracted from <see cref="ApplyCommand"/> so the parse + apply logic can be unit tested
-/// without going through <c>System.CommandLine</c>.
+/// Thin wrapper over <see cref="ManifestParser"/> so the parse + apply logic can be unit
+/// tested without going through <c>System.CommandLine</c>. The parser itself now lives
+/// in <c>Cvoya.Spring.Manifest</c> so the API host can reuse it from the
+/// <c>/units/from-yaml</c> and <c>/units/from-template</c> endpoints.
 /// </summary>
 public static class ApplyRunner
 {
     /// <summary>
     /// Sections of the unit manifest grammar that are parsed but not yet wired up
-    /// through <see cref="SpringApiClient"/>. Listed here so we can emit a consistent
-    /// warning line per section during both dry-run and real apply.
+    /// through <see cref="SpringApiClient"/>. Exposed via the shared parser so the
+    /// CLI and API emit the same warning vocabulary.
     /// </summary>
-    internal static readonly string[] UnsupportedSections = new[]
-    {
-        "ai", "connectors", "policies", "humans", "execution",
-    };
+    internal static IReadOnlyList<string> UnsupportedSections => ManifestParser.UnsupportedSections;
 
     /// <summary>
-    /// Parses the manifest YAML text into a <see cref="UnitManifest"/>.
-    /// Throws <see cref="ManifestParseException"/> if the document is malformed
-    /// or the required <c>unit.name</c> field is missing.
+    /// Parses the manifest YAML text. Delegates to <see cref="ManifestParser.Parse"/>.
     /// </summary>
-    public static UnitManifest Parse(string yamlText)
-    {
-        ManifestDocument? doc;
-        try
-        {
-            var deserializer = new DeserializerBuilder()
-                .WithNamingConvention(UnderscoredNamingConvention.Instance)
-                .IgnoreUnmatchedProperties()
-                .Build();
-            doc = deserializer.Deserialize<ManifestDocument>(yamlText);
-        }
-        catch (YamlDotNet.Core.YamlException ex)
-        {
-            throw new ManifestParseException($"Invalid YAML: {ex.Message}", ex);
-        }
-
-        if (doc?.Unit is null)
-        {
-            throw new ManifestParseException("Manifest is missing the required 'unit' root section.");
-        }
-
-        if (string.IsNullOrWhiteSpace(doc.Unit.Name))
-        {
-            throw new ManifestParseException("Manifest is missing the required 'unit.name' field.");
-        }
-
-        return doc.Unit;
-    }
+    public static UnitManifest Parse(string yamlText) => ManifestParser.Parse(yamlText);
 
     /// <summary>
-    /// Parses the manifest at <paramref name="filePath"/> and returns the resolved unit manifest.
+    /// Parses the manifest at <paramref name="filePath"/>. Delegates to
+    /// <see cref="ManifestParser.ParseFile"/>.
     /// </summary>
-    public static UnitManifest ParseFile(string filePath)
-    {
-        var text = File.ReadAllText(filePath);
-        return Parse(text);
-    }
+    public static UnitManifest ParseFile(string filePath) => ManifestParser.ParseFile(filePath);
 
     /// <summary>
     /// Applies a parsed manifest through <paramref name="client"/>.
@@ -174,36 +140,10 @@ public static class ApplyRunner
 
     private static void WarnUnsupportedSections(UnitManifest manifest, TextWriter stdout)
     {
-        foreach (var section in UnsupportedSections)
+        foreach (var section in ManifestParser.CollectUnsupportedSections(manifest))
         {
-            if (IsSectionPresent(manifest, section))
-            {
-                stdout.WriteLine(
-                    $"[warn] section '{section}' is parsed but not yet applied (follow-up issue pending)");
-            }
+            stdout.WriteLine(
+                $"[warn] section '{section}' is parsed but not yet applied (follow-up issue pending)");
         }
     }
-
-    private static bool IsSectionPresent(UnitManifest manifest, string section) => section switch
-    {
-        "ai" => manifest.Ai is not null,
-        "connectors" => manifest.Connectors is { Count: > 0 },
-        "policies" => manifest.Policies is { Count: > 0 },
-        "humans" => manifest.Humans is { Count: > 0 },
-        "execution" => manifest.Execution is not null,
-        _ => false,
-    };
-}
-
-/// <summary>
-/// Thrown when a manifest YAML document cannot be parsed into a valid
-/// <see cref="UnitManifest"/>.
-/// </summary>
-public class ManifestParseException : System.Exception
-{
-    /// <summary>Creates a new <see cref="ManifestParseException"/>.</summary>
-    public ManifestParseException(string message) : base(message) { }
-
-    /// <summary>Creates a new <see cref="ManifestParseException"/> with an inner cause.</summary>
-    public ManifestParseException(string message, System.Exception inner) : base(message, inner) { }
 }

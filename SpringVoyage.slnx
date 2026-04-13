@@ -7,6 +7,7 @@
     <Project Path="src/Cvoya.Spring.Dapr/Cvoya.Spring.Dapr.csproj" />
     <Project Path="src/Cvoya.Spring.Host.Api/Cvoya.Spring.Host.Api.csproj" />
     <Project Path="src/Cvoya.Spring.Host.Worker/Cvoya.Spring.Host.Worker.csproj" />
+    <Project Path="src/Cvoya.Spring.Manifest/Cvoya.Spring.Manifest.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Cvoya.Spring.Cli.Tests/Cvoya.Spring.Cli.Tests.csproj" />

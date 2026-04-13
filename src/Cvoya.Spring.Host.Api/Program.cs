@@ -6,6 +6,7 @@ using Cvoya.Spring.Dapr.Auth;
 using Cvoya.Spring.Dapr.DependencyInjection;
 using Cvoya.Spring.Host.Api.Auth;
 using Cvoya.Spring.Host.Api.Endpoints;
+using Cvoya.Spring.Host.Api.Services;
 
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
@@ -23,7 +24,8 @@ if (isLocalDev)
 builder.Services
     .AddCvoyaSpringCore()
     .AddCvoyaSpringDapr(builder.Configuration)
-    .AddCvoyaSpringConnectorGitHub(builder.Configuration);
+    .AddCvoyaSpringConnectorGitHub(builder.Configuration)
+    .AddCvoyaSpringApiServices(builder.Configuration);
 
 if (isLocalDev)
 {
@@ -64,6 +66,7 @@ app.MapGet("/health", () => Results.Ok(new { Status = "Healthy" }))
 app.MapAuthEndpoints();
 app.MapAgentEndpoints().RequireAuthorization();
 app.MapUnitEndpoints().RequireAuthorization();
+app.MapPackageEndpoints().RequireAuthorization();
 app.MapMessageEndpoints().RequireAuthorization();
 app.MapDirectoryEndpoints().RequireAuthorization();
 app.MapCloneEndpoints().RequireAuthorization();

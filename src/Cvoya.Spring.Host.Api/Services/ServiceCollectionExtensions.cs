@@ -1,0 +1,61 @@
+// Copyright CVOYA LLC. Licensed under the Business Source License 1.1.
+// See LICENSE.md in the project root for full license terms.
+
+namespace Cvoya.Spring.Host.Api.Services;
+
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+
+/// <summary>
+/// DI registration helpers for the API host's own services (unit creation
+/// pipeline, package catalog). Uses <c>TryAdd*</c> so the private cloud repo
+/// can register tenant-scoped replacements ahead of the API host.
+/// </summary>
+public static class ServiceCollectionExtensions
+{
+    /// <summary>
+    /// Registers the unit creation service and the file-system backed package
+    /// catalog. The packages root is read from <c>Packages:Root</c> (falling
+    /// back to <c>SPRING_PACKAGES_ROOT</c> via standard configuration binding).
+    /// </summary>
+    public static IServiceCollection AddCvoyaSpringApiServices(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        services.TryAddScoped<IUnitCreationService, UnitCreationService>();
+
+        var configuredRoot = configuration["Packages:Root"]
+            ?? System.Environment.GetEnvironmentVariable("SPRING_PACKAGES_ROOT");
+
+        var options = new PackageCatalogOptions
+        {
+            Root = configuredRoot ?? DiscoverPackagesRoot(),
+        };
+        services.TryAddSingleton(options);
+        services.TryAddSingleton<IPackageCatalogService, FileSystemPackageCatalogService>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Walks upward from the current working directory looking for a
+    /// <c>packages/</c> sibling — useful for developers running the API from
+    /// <c>src/Cvoya.Spring.Host.Api</c> during <c>dotnet run</c>.
+    /// Returns <c>null</c> when no such directory can be found, in which case
+    /// the catalog is simply empty at runtime.
+    /// </summary>
+    private static string? DiscoverPackagesRoot()
+    {
+        var current = new System.IO.DirectoryInfo(System.IO.Directory.GetCurrentDirectory());
+        for (var depth = 0; depth < 6 && current is not null; depth++, current = current.Parent)
+        {
+            var candidate = System.IO.Path.Combine(current.FullName, "packages");
+            if (System.IO.Directory.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+        return null;
+    }
+}

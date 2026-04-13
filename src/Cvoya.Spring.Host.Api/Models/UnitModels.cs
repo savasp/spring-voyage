@@ -71,3 +71,59 @@ public record SetHumanPermissionRequest(
     string Permission,
     string? Identity = null,
     bool? Notifications = null);
+
+/// <summary>
+/// Request body for <c>POST /api/v1/units/from-yaml</c>. The caller supplies
+/// the raw manifest plus optional overrides that take precedence over values
+/// the manifest would otherwise supply.
+/// </summary>
+/// <param name="Yaml">Raw manifest YAML text (required).</param>
+/// <param name="DisplayName">Optional override for the unit's display name.</param>
+/// <param name="Color">Optional override for the unit's UI colour.</param>
+/// <param name="Model">Optional override for the default model hint.</param>
+public record CreateUnitFromYamlRequest(
+    string Yaml,
+    string? DisplayName = null,
+    string? Color = null,
+    string? Model = null);
+
+/// <summary>
+/// Request body for <c>POST /api/v1/units/from-template</c>.
+/// </summary>
+/// <param name="Package">The package that owns the template (e.g. <c>software-engineering</c>).</param>
+/// <param name="Name">The template's unit name (file basename without extension).</param>
+/// <param name="DisplayName">Optional override for the unit's display name.</param>
+/// <param name="Color">Optional override for the unit's UI colour.</param>
+/// <param name="Model">Optional override for the default model hint.</param>
+public record CreateUnitFromTemplateRequest(
+    string Package,
+    string Name,
+    string? DisplayName = null,
+    string? Color = null,
+    string? Model = null);
+
+/// <summary>
+/// Response body for a unit created through the manifest-backed flows
+/// (<c>/from-yaml</c> or <c>/from-template</c>). Layers non-fatal warnings
+/// on top of <see cref="UnitResponse"/> so the wizard can surface them.
+/// </summary>
+/// <param name="Unit">The created unit.</param>
+/// <param name="Warnings">Non-fatal warnings (e.g. unsupported manifest sections).</param>
+/// <param name="MembersAdded">Number of members successfully wired up.</param>
+public record UnitCreationResponse(
+    UnitResponse Unit,
+    IReadOnlyList<string> Warnings,
+    int MembersAdded);
+
+/// <summary>
+/// Entry returned by <c>GET /api/v1/packages/templates</c>.
+/// </summary>
+/// <param name="Package">The package that owns the template.</param>
+/// <param name="Name">The unit name declared by the template's YAML.</param>
+/// <param name="Description">Optional human-readable description.</param>
+/// <param name="Path">Repo-relative path to the template YAML (for display).</param>
+public record UnitTemplateSummary(
+    string Package,
+    string Name,
+    string? Description,
+    string Path);
