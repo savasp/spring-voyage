@@ -4,6 +4,7 @@ import type { paths } from "./schema";
 import type {
   AgentDetailResponse,
   CreateCloneRequest,
+  CreateSecretRequest,
   CreateUnitFromTemplateRequest,
   CreateUnitFromYamlRequest,
   InitiativePolicy,
@@ -433,4 +434,29 @@ export const api = {
         { params: { path: { unitId } }, body },
       ),
     ),
+  // Unit-scoped secrets (#122).
+  //
+  // The API never returns plaintext values. `createUnitSecret` is the
+  // only path through which a plaintext leaves this client — the
+  // browser POSTs the value once and never holds it beyond the fetch.
+  listUnitSecrets: async (unitId: string) =>
+    unwrap(
+      await fetchClient.GET("/api/v1/units/{id}/secrets", {
+        params: { path: { id: unitId } },
+      }),
+    ),
+  createUnitSecret: async (unitId: string, body: CreateSecretRequest) =>
+    unwrap(
+      await fetchClient.POST("/api/v1/units/{id}/secrets", {
+        params: { path: { id: unitId } },
+        body,
+      }),
+    ),
+  deleteUnitSecret: async (unitId: string, name: string): Promise<void> => {
+    assertOk(
+      await fetchClient.DELETE("/api/v1/units/{id}/secrets/{name}", {
+        params: { path: { id: unitId, name } },
+      }),
+    );
+  },
 };

@@ -11,7 +11,9 @@ using Cvoya.Spring.Core.Initiative;
 using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Core.Observability;
 using Cvoya.Spring.Core.Orchestration;
+using Cvoya.Spring.Core.Secrets;
 using Cvoya.Spring.Core.State;
+using Cvoya.Spring.Core.Tenancy;
 using Cvoya.Spring.Core.Units;
 using Cvoya.Spring.Dapr.Auth;
 using Cvoya.Spring.Dapr.Costs;
@@ -24,7 +26,9 @@ using Cvoya.Spring.Dapr.Observability;
 using Cvoya.Spring.Dapr.Orchestration;
 using Cvoya.Spring.Dapr.Prompts;
 using Cvoya.Spring.Dapr.Routing;
+using Cvoya.Spring.Dapr.Secrets;
 using Cvoya.Spring.Dapr.State;
+using Cvoya.Spring.Dapr.Tenancy;
 
 using global::Dapr.Actors.Client;
 using global::Dapr.Workflow;
@@ -136,6 +140,22 @@ public static class ServiceCollectionExtensions
         // State
         services.AddOptions<DaprStateStoreOptions>().BindConfiguration(DaprStateStoreOptions.SectionName);
         services.AddSingleton<IStateStore, DaprStateStore>();
+
+        // Tenancy + Secrets. TryAdd so the private cloud repo can replace
+        // any of these without touching call sites:
+        //   - ITenantContext: OSS uses a singleton bound to Secrets:DefaultTenantId;
+        //     private cloud swaps in a scoped resolver that reads the tenant
+        //     from the authenticated principal.
+        //   - ISecretStore: OSS persists plaintext via Dapr state store
+        //     (dev-only; no at-rest encryption); private cloud routes writes
+        //     to Azure Key Vault via the Dapr secret-store building block.
+        //   - ISecretRegistry / ISecretResolver: composed from the above;
+        //     decorators layer RBAC and audit logging.
+        services.AddOptions<SecretsOptions>().BindConfiguration(SecretsOptions.SectionName);
+        services.TryAddSingleton<ITenantContext, ConfiguredTenantContext>();
+        services.TryAddSingleton<ISecretStore, DaprStateBackedSecretStore>();
+        services.TryAddScoped<ISecretRegistry, EfSecretRegistry>();
+        services.TryAddScoped<ISecretResolver, ComposedSecretResolver>();
 
         // Observability
         services.AddSingleton<ActivityEventBus>();

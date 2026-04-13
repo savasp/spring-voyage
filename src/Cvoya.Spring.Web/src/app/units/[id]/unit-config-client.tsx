@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   ArrowLeft,
   DollarSign,
+  Github,
   KeyRound,
   Play,
   Settings,
@@ -13,6 +14,7 @@ import {
 
 import { AgentsTab } from "./agents-tab";
 import { ConnectorTab } from "./connector-tab";
+import { SecretsTab } from "./secrets-tab";
 import { SkillsTab } from "./skills-tab";
 
 import { Badge } from "@/components/ui/badge";
@@ -442,11 +444,7 @@ export default function UnitConfigClient({ id }: ClientProps) {
         </TabsContent>
 
         <TabsContent value="secrets">
-          <PlaceholderCard
-            icon={<KeyRound className="h-5 w-5" />}
-            title="Secrets"
-            body="Unit secrets CRUD lives here. Follow-up: #122."
-          />
+          <SecretsTab unitId={id} />
         </TabsContent>
 
         <TabsContent value="skills">

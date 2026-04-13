@@ -104,6 +104,21 @@ export type InitiativePolicy = Schemas["InitiativePolicy"];
 /** GET /api/v1/agents/{id}/initiative/level response. */
 export type InitiativeLevelResponse = Schemas["InitiativeLevelResponse"];
 
+/** Matches Cvoya.Spring.Core.Secrets.SecretScope enum. */
+export type SecretScope = Schemas["SecretScope"];
+
+/** Entry in the unit-scoped secrets list. */
+export type SecretMetadata = Schemas["SecretMetadata"];
+
+/** GET /api/v1/units/{id}/secrets response body. */
+export type UnitSecretsListResponse = Schemas["UnitSecretsListResponse"];
+
+/** POST /api/v1/units/{id}/secrets request body. */
+export type CreateSecretRequest = Schemas["CreateSecretRequest"];
+
+/** POST /api/v1/units/{id}/secrets response body. */
+export type CreateSecretResponse = Schemas["CreateSecretResponse"];
+
 // ---------------------------------------------------------------------------
 // Connectors (generic + GitHub)
 // ---------------------------------------------------------------------------
