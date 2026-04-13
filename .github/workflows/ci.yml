@@ -20,9 +20,51 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: true
 
 jobs:
+  # Detect which file groups changed so downstream jobs can skip when irrelevant.
+  # Runs on pull_request and merge_group (diff against base ref) and on push
+  # (diff against previous commit). When the event doesn't carry a meaningful
+  # diff (manual workflow_dispatch), dorny/paths-filter defaults every filter
+  # to true so nothing is skipped.
+  changes:
+    name: Detect changed paths
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      dotnet: ${{ steps.filter.outputs.dotnet }}
+      openapi: ${{ steps.filter.outputs.openapi }}
+      agents: ${{ steps.filter.outputs.agents }}
+      workflows: ${{ steps.filter.outputs.workflows }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            dotnet:
+              - '**/*.cs'
+              - '**/*.csproj'
+              - '**/*.slnx'
+              - 'Directory.Packages.props'
+              - 'Directory.Build.props'
+              - 'global.json'
+              - 'NuGet.config'
+              - '.config/dotnet-tools.json'
+            openapi:
+              - 'src/Cvoya.Spring.Host.Api/**'
+              - 'src/Cvoya.Spring.Cli/**'
+              - 'src/Cvoya.Spring.Web/**'
+              - '.config/dotnet-tools.json'
+            agents:
+              - 'packages/**/agents/**'
+            workflows:
+              - '.github/workflows/**'
+
   build:
     name: Build
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.dotnet == 'true' || needs.changes.outputs.workflows == 'true'
     timeout-minutes: 20
 
     steps:
@@ -50,7 +92,8 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
-    needs: build
+    needs: [changes, build]
+    if: needs.changes.outputs.dotnet == 'true' || needs.changes.outputs.workflows == 'true'
     timeout-minutes: 30
 
     steps:
@@ -90,6 +133,13 @@ jobs:
   format:
     name: Format check
     runs-on: ubuntu-latest
+    needs: changes
+    # Skipped in the merge queue: formatting is a static-input check of the
+    # PR's own code (no dependency on the state of main), so a pass on the
+    # pull_request run stays valid through the queue.
+    if: >
+      github.event_name != 'merge_group' &&
+      (needs.changes.outputs.dotnet == 'true' || needs.changes.outputs.workflows == 'true')
     timeout-minutes: 15
 
     steps:
@@ -122,6 +172,14 @@ jobs:
   agent-definitions-lint:
     name: Lint agent definitions
     runs-on: ubuntu-latest
+    needs: changes
+    # Skipped in the merge queue: this validates static intra-file references
+    # that don't depend on any integration. Another PR merging ahead can't
+    # silently break these - either its own queue run would have failed lint,
+    # or it didn't touch agent definitions.
+    if: >
+      github.event_name != 'merge_group' &&
+      (needs.changes.outputs.agents == 'true' || needs.changes.outputs.workflows == 'true')
     timeout-minutes: 10
 
     steps:
@@ -182,6 +240,8 @@ jobs:
   openapi-drift:
     name: OpenAPI contract drift
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.openapi == 'true' || needs.changes.outputs.workflows == 'true'
     timeout-minutes: 15
 
     steps:
@@ -234,7 +294,7 @@ jobs:
           rm -rf src/Cvoya.Spring.Cli/Generated
           dotnet build src/Cvoya.Spring.Cli/Cvoya.Spring.Cli.csproj --no-restore --configuration Release
           if [ ! -f src/Cvoya.Spring.Cli/Generated/kiota-lock.json ]; then
-            echo "::error::Kiota did not regenerate src/Cvoya.Spring.Cli/Generated/ — check the GenerateKiotaClient MSBuild target and the dotnet-tools manifest."
+            echo "::error::Kiota did not regenerate src/Cvoya.Spring.Cli/Generated/ - check the GenerateKiotaClient MSBuild target and the dotnet-tools manifest."
             exit 1
           fi
 
@@ -242,16 +302,20 @@ jobs:
     name: Required checks
     runs-on: ubuntu-latest
     needs:
+      - changes
       - build
       - test
       - format
       - agent-definitions-lint
       - openapi-drift
+    # Always runs - branch protection depends on a single "Required checks"
+    # context, so this job must report a status even when upstream jobs were
+    # path-filtered out.
     if: ${{ always() }}
     timeout-minutes: 5
 
     steps:
-      - name: Verify all required jobs passed
+      - name: Verify all required jobs passed (or were skipped by path filter)
         shell: bash
         env:
           BUILD_RESULT: ${{ needs.build.result }}
@@ -259,15 +323,29 @@ jobs:
           FORMAT_RESULT: ${{ needs.format.result }}
           LINT_RESULT: ${{ needs.agent-definitions-lint.result }}
           OPENAPI_RESULT: ${{ needs.openapi-drift.result }}
+          CHANGES_RESULT: ${{ needs.changes.result }}
         run: |
+          echo "changes=$CHANGES_RESULT"
           echo "build=$BUILD_RESULT"
           echo "test=$TEST_RESULT"
           echo "format=$FORMAT_RESULT"
           echo "agent-definitions-lint=$LINT_RESULT"
           echo "openapi-drift=$OPENAPI_RESULT"
 
-          [[ "$BUILD_RESULT" == "success" ]] || exit 1
-          [[ "$TEST_RESULT" == "success" ]] || exit 1
-          [[ "$FORMAT_RESULT" == "success" ]] || exit 1
-          [[ "$LINT_RESULT" == "success" ]] || exit 1
-          [[ "$OPENAPI_RESULT" == "success" ]] || exit 1
+          # The 'changes' gate itself must have run cleanly - if path detection
+          # failed we can't trust the skip decisions downstream.
+          if [[ "$CHANGES_RESULT" != "success" ]]; then
+            echo "::error::changes detection job failed"
+            exit 1
+          fi
+
+          # Each real job must be either success (ran and passed) or skipped
+          # (path filter decided it wasn't needed). Anything else - failure,
+          # cancellation, timeout - fails the PR.
+          ok() { [[ "$1" == "success" || "$1" == "skipped" ]]; }
+
+          ok "$BUILD_RESULT"   || { echo "::error::build failed"; exit 1; }
+          ok "$TEST_RESULT"    || { echo "::error::test failed"; exit 1; }
+          ok "$FORMAT_RESULT"  || { echo "::error::format failed"; exit 1; }
+          ok "$LINT_RESULT"    || { echo "::error::agent-definitions-lint failed"; exit 1; }
+          ok "$OPENAPI_RESULT" || { echo "::error::openapi-drift failed"; exit 1; }
