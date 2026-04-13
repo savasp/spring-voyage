@@ -4,6 +4,7 @@
 namespace Cvoya.Spring.Dapr.Secrets;
 
 using Cvoya.Spring.Core.Secrets;
+using Cvoya.Spring.Core.Tenancy;
 using Cvoya.Spring.Dapr.Tenancy;
 
 using global::Dapr.Client;
@@ -13,26 +14,32 @@ using Microsoft.Extensions.Options;
 
 /// <summary>
 /// OSS <see cref="ISecretStore"/> implementation backed by the Dapr
-/// state-management building block (component name defaults to
-/// <c>statestore</c>). Plaintext values are written under an opaque
-/// GUID key; the structural metadata (tenant / scope / owner / name) is
-/// kept in <see cref="ISecretRegistry"/>, which is the sole authority
-/// for tenant-to-secret correlation.
+/// state-management building block. Values are wrapped in an
+/// application-layer AES-GCM envelope (see <see cref="ISecretsEncryptor"/>)
+/// before being handed to Dapr so plaintext never lands in the backing
+/// state store (Redis in local dev, etc.).
 ///
 /// <para>
-/// <b>OSS — dev only.</b> Values are persisted without app-layer
-/// at-rest encryption: the security of the persisted plaintext is only
-/// as strong as whatever the Dapr state store component provides
-/// (Redis in local dev is effectively plaintext). Production deployments
-/// use the private cloud implementation, which routes writes to Azure
-/// Key Vault via Dapr's secret-store building block. At-rest encryption
-/// for the OSS implementation is tracked separately — see the follow-up
-/// issue referenced in the PR that introduced this type.
+/// <b>Component selection.</b> By default all tenants share a single
+/// Dapr state store component (<see cref="SecretsOptions.StoreComponent"/>).
+/// When <see cref="SecretsOptions.ComponentNameFormat"/> contains
+/// <c>{tenantId}</c>, the store resolves to per-tenant components at
+/// call time — a misconfigured caller targeting the wrong component
+/// cross-reads nothing, and the AES envelope's tenant-bound AAD rejects
+/// transplanted ciphertexts if the components were ever swapped.
+/// </para>
+///
+/// <para>
+/// <b>Backwards compatibility.</b> Values persisted before at-rest
+/// encryption was introduced (plain UTF-8 strings without the version
+/// byte) are readable as-is and are re-enveloped on the next write.
 /// </para>
 /// </summary>
 public class DaprStateBackedSecretStore : ISecretStore
 {
     private readonly DaprClient _daprClient;
+    private readonly ISecretsEncryptor _encryptor;
+    private readonly ITenantContext _tenantContext;
     private readonly IOptions<SecretsOptions> _options;
     private readonly ILogger<DaprStateBackedSecretStore> _logger;
 
@@ -41,10 +48,14 @@ public class DaprStateBackedSecretStore : ISecretStore
     /// </summary>
     public DaprStateBackedSecretStore(
         DaprClient daprClient,
+        ISecretsEncryptor encryptor,
+        ITenantContext tenantContext,
         IOptions<SecretsOptions> options,
         ILogger<DaprStateBackedSecretStore> logger)
     {
         _daprClient = daprClient;
+        _encryptor = encryptor;
+        _tenantContext = tenantContext;
         _options = options;
         _logger = logger;
     }
@@ -55,16 +66,20 @@ public class DaprStateBackedSecretStore : ISecretStore
         ArgumentNullException.ThrowIfNull(plaintext);
 
         var storeKey = Guid.NewGuid().ToString("N");
+        var tenantId = _tenantContext.CurrentTenantId;
+        var component = ResolveComponent(tenantId);
         var backendKey = BuildBackendKey(storeKey);
 
+        var envelope = _encryptor.Encrypt(plaintext, tenantId, storeKey);
+
         _logger.LogDebug(new EventId(2400, "SecretWriteStarted"),
-            "Writing secret to store {StoreName} under backend key {BackendKey}",
-            _options.Value.StoreComponent, backendKey);
+            "Writing secret to component {Component} under backend key {BackendKey}",
+            component, backendKey);
 
         await _daprClient.SaveStateAsync(
-            _options.Value.StoreComponent,
+            component,
             backendKey,
-            plaintext,
+            envelope,
             cancellationToken: ct);
 
         _logger.LogDebug(new EventId(2401, "SecretWriteCompleted"),
@@ -78,22 +93,55 @@ public class DaprStateBackedSecretStore : ISecretStore
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(storeKey);
 
+        var tenantId = _tenantContext.CurrentTenantId;
+        var component = ResolveComponent(tenantId);
         var backendKey = BuildBackendKey(storeKey);
 
         _logger.LogDebug(new EventId(2402, "SecretReadStarted"),
-            "Reading secret from store {StoreName} under backend key {BackendKey}",
-            _options.Value.StoreComponent, backendKey);
+            "Reading secret from component {Component} under backend key {BackendKey}",
+            component, backendKey);
 
-        var value = await _daprClient.GetStateAsync<string?>(
-            _options.Value.StoreComponent,
+        var stored = await _daprClient.GetStateAsync<string?>(
+            component,
             backendKey,
             cancellationToken: ct);
 
-        _logger.LogDebug(new EventId(2403, "SecretReadCompleted"),
-            "Read secret under backend key {BackendKey}; found: {Found}",
-            backendKey, value is not null);
+        if (string.IsNullOrEmpty(stored))
+        {
+            // Legacy fallback: older deployments may have used a backend
+            // key that embedded the tenant id. Try that shape once before
+            // giving up. A one-time rewrite is only needed if operators
+            // flip ComponentNameFormat on existing data — see docs.
+            var legacyKey = BuildLegacyBackendKey(tenantId, storeKey);
+            if (legacyKey != backendKey)
+            {
+                stored = await _daprClient.GetStateAsync<string?>(
+                    component,
+                    legacyKey,
+                    cancellationToken: ct);
 
-        return value;
+                if (!string.IsNullOrEmpty(stored))
+                {
+                    _logger.LogDebug(new EventId(2406, "SecretLegacyKeyHit"),
+                        "Read secret from legacy tenant-prefixed backend key {LegacyKey}", legacyKey);
+                }
+            }
+        }
+
+        if (string.IsNullOrEmpty(stored))
+        {
+            _logger.LogDebug(new EventId(2403, "SecretReadCompleted"),
+                "Read secret under backend key {BackendKey}; found: false", backendKey);
+            return null;
+        }
+
+        var plaintext = _encryptor.Decrypt(stored, tenantId, storeKey, out var wasEnveloped);
+
+        _logger.LogDebug(new EventId(2403, "SecretReadCompleted"),
+            "Read secret under backend key {BackendKey}; found: true; enveloped: {Enveloped}",
+            backendKey, wasEnveloped);
+
+        return plaintext;
     }
 
     /// <inheritdoc />
@@ -101,26 +149,55 @@ public class DaprStateBackedSecretStore : ISecretStore
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(storeKey);
 
+        var tenantId = _tenantContext.CurrentTenantId;
+        var component = ResolveComponent(tenantId);
         var backendKey = BuildBackendKey(storeKey);
 
         _logger.LogDebug(new EventId(2404, "SecretDeleteStarted"),
-            "Deleting secret from store {StoreName} under backend key {BackendKey}",
-            _options.Value.StoreComponent, backendKey);
+            "Deleting secret from component {Component} under backend key {BackendKey}",
+            component, backendKey);
 
         await _daprClient.DeleteStateAsync(
-            _options.Value.StoreComponent,
+            component,
             backendKey,
             cancellationToken: ct);
+
+        // Best-effort legacy cleanup so the row doesn't linger after a
+        // format migration. Missing keys are not an error for Dapr state.
+        var legacyKey = BuildLegacyBackendKey(tenantId, storeKey);
+        if (legacyKey != backendKey)
+        {
+            await _daprClient.DeleteStateAsync(
+                component,
+                legacyKey,
+                cancellationToken: ct);
+        }
 
         _logger.LogDebug(new EventId(2405, "SecretDeleteCompleted"),
             "Deleted secret under backend key {BackendKey}", backendKey);
     }
 
-    // The backend key is just the KeyPrefix + the opaque storeKey.
-    // Tenant correlation lives in the registry (ISecretRegistry), which
-    // is the sole authority. Embedding the tenant here would be redundant
-    // at best and a cross-tenant-leak vector at worst (a bug in prefix
-    // construction would have no corresponding guard).
+    // The canonical backend key is KeyPrefix + opaque storeKey. Tenant
+    // correlation lives in the registry (ISecretRegistry); the key
+    // carries no structural metadata.
     private string BuildBackendKey(string storeKey) =>
         $"{_options.Value.KeyPrefix}{storeKey}";
+
+    // Legacy backend-key shape that older deployments may have used.
+    // Kept only for read-path fallback so operators who enable per-tenant
+    // component isolation on existing data don't need to migrate rows
+    // eagerly — the next write re-enveloped them under the canonical key.
+    private string BuildLegacyBackendKey(string tenantId, string storeKey) =>
+        $"{_options.Value.KeyPrefix}{tenantId}/{storeKey}";
+
+    private string ResolveComponent(string tenantId)
+    {
+        var format = _options.Value.ComponentNameFormat;
+        if (string.IsNullOrWhiteSpace(format))
+        {
+            return _options.Value.StoreComponent;
+        }
+
+        return format.Replace("{tenantId}", tenantId, StringComparison.Ordinal);
+    }
 }

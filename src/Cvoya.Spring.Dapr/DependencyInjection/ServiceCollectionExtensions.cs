@@ -154,6 +154,7 @@ public static class ServiceCollectionExtensions
         //     decorators layer RBAC and audit logging.
         services.AddOptions<SecretsOptions>().BindConfiguration(SecretsOptions.SectionName);
         services.TryAddSingleton<ITenantContext, ConfiguredTenantContext>();
+        services.TryAddSingleton<ISecretsEncryptor, SecretsEncryptor>();
         services.TryAddSingleton<ISecretStore, DaprStateBackedSecretStore>();
         services.TryAddScoped<ISecretRegistry, EfSecretRegistry>();
         services.TryAddScoped<ISecretResolver, ComposedSecretResolver>();

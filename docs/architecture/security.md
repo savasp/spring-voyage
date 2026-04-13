@@ -99,6 +99,10 @@ Token management:
 - Pluggable secret stores
 - Access control policies restrict actor → building block access
 
+### Secret Store At-Rest Encryption
+
+The OSS `DaprStateBackedSecretStore` wraps every value in an AES-GCM-256 envelope before handing it to the Dapr state store, with the `(tenantId, storeKey)` tuple bound in as Additional Authenticated Data so a ciphertext cannot be transplanted across tenants or keys. Operators can also opt into per-tenant Dapr components (`Secrets:ComponentNameFormat`) for defence-in-depth on top of the registry's tenant filter. See [OSS Secret Store: At-Rest Encryption & Per-Tenant Components](../developer/secret-store.md) for key sources, rotation, and migration guidance. Production deployments should still externalize key material via a KMS-backed `ISecretStore` implementation provided by the cloud host.
+
 ### Resilience
 
 Dapr provides pluggable resiliency policies (retries, timeouts, circuit breakers) configured per building block via YAML — no application code changes. Key resilience concerns:
