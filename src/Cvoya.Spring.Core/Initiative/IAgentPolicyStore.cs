@@ -35,4 +35,24 @@ public interface IAgentPolicyStore
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>The effective <see cref="InitiativeLevel"/>.</returns>
     Task<InitiativeLevel> GetEffectiveLevelAsync(string agentId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Record the enclosing unit for an agent. The mapping is consulted by
+    /// <see cref="GetEffectiveLevelAsync"/> so that an agent with no agent-scoped policy
+    /// inherits its unit's <see cref="InitiativePolicy.MaxLevel"/>. Pass <c>null</c> for
+    /// <paramref name="unitId"/> to detach the agent from any unit.
+    /// </summary>
+    /// <param name="agentId">The agent identifier.</param>
+    /// <param name="unitId">The enclosing unit identifier, or <c>null</c> to clear the assignment.</param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    Task SetAgentUnitAsync(string agentId, string? unitId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Get the enclosing unit assigned to an agent via <see cref="SetAgentUnitAsync"/>,
+    /// or <c>null</c> if no assignment has been recorded.
+    /// </summary>
+    /// <param name="agentId">The agent identifier.</param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>The enclosing unit identifier, or <c>null</c> if none is recorded.</returns>
+    Task<string?> GetAgentUnitAsync(string agentId, CancellationToken cancellationToken);
 }

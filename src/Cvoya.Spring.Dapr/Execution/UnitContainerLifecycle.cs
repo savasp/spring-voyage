@@ -3,9 +3,8 @@
 
 namespace Cvoya.Spring.Dapr.Execution;
 
-using System.Collections.Concurrent;
-
 using Cvoya.Spring.Core.Execution;
+using Cvoya.Spring.Core.State;
 using Cvoya.Spring.Core.Units;
 
 using Microsoft.Extensions.Logging;
@@ -13,16 +12,23 @@ using Microsoft.Extensions.Options;
 
 /// <summary>
 /// Default <see cref="IUnitContainerLifecycle"/> implementation that adapts <see cref="ContainerLifecycleManager"/>
-/// into the simpler start/stop surface used by the unit API. Tracks the sidecar and network produced by each
-/// start so the corresponding stop can dispatch them to <see cref="ContainerLifecycleManager.TeardownAsync"/>.
+/// into the simpler start/stop surface used by the unit API.
 /// </summary>
+/// <remarks>
+/// Container/sidecar/network identifiers produced by <see cref="StartUnitAsync"/> are
+/// persisted to the Dapr state store under <c>"Unit:ContainerHandle:{unitId}"</c> so a
+/// subsequent <see cref="StopUnitAsync"/> call can tear them down even after an API-host
+/// restart. Using one state-store entry per unit (rather than a single map) avoids the
+/// read-modify-write race that would occur when two units start concurrently.
+/// </remarks>
 public class UnitContainerLifecycle(
     ContainerLifecycleManager lifecycleManager,
+    IStateStore stateStore,
     IOptions<UnitRuntimeOptions> options,
     ILoggerFactory loggerFactory) : IUnitContainerLifecycle
 {
-    // TODO(#81 follow-up): lifecycle handles are in-memory only. They should be persisted to survive API host restarts.
-    private readonly ConcurrentDictionary<string, UnitLifecycleHandle> _handles = new(StringComparer.Ordinal);
+    private const string HandleKeyPrefix = "Unit:ContainerHandle:";
+
     private readonly ILogger<UnitContainerLifecycle> _logger = loggerFactory.CreateLogger<UnitContainerLifecycle>();
     private readonly UnitRuntimeOptions _options = options.Value;
 
@@ -54,7 +60,7 @@ public class UnitContainerLifecycle(
             result.SidecarInfo.SidecarId,
             result.NetworkName);
 
-        _handles[unitId] = handle;
+        await stateStore.SetAsync(HandleKey(unitId), handle, ct);
     }
 
     /// <inheritdoc />
@@ -62,7 +68,10 @@ public class UnitContainerLifecycle(
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(unitId);
 
-        if (!_handles.TryRemove(unitId, out var handle))
+        var key = HandleKey(unitId);
+        var handle = await stateStore.GetAsync<UnitLifecycleHandle>(key, ct);
+
+        if (handle is null)
         {
             _logger.LogWarning(
                 "No lifecycle handle tracked for unit {UnitId}; issuing teardown with null identifiers.",
@@ -75,6 +84,9 @@ public class UnitContainerLifecycle(
             handle.SidecarId,
             handle.NetworkName,
             ct);
+
+        // Clear the handle after a successful teardown so a subsequent restart starts clean.
+        await stateStore.DeleteAsync(key, ct);
     }
 
     private static string BuildAppId(string unitId)
@@ -83,5 +95,15 @@ public class UnitContainerLifecycle(
         return raw.Length > 32 ? raw[..32] : raw;
     }
 
-    private sealed record UnitLifecycleHandle(string? ContainerId, string? SidecarId, string? NetworkName);
+    private static string HandleKey(string unitId) => HandleKeyPrefix + unitId;
+
+    /// <summary>
+    /// Persistable record of the container, sidecar, and network identifiers produced
+    /// by a successful <see cref="StartUnitAsync"/>. Nullability accommodates partial
+    /// launches and legacy entries.
+    /// </summary>
+    /// <param name="ContainerId">The application container identifier, or <c>null</c>.</param>
+    /// <param name="SidecarId">The Dapr sidecar container identifier, or <c>null</c>.</param>
+    /// <param name="NetworkName">The container network name, or <c>null</c>.</param>
+    public sealed record UnitLifecycleHandle(string? ContainerId, string? SidecarId, string? NetworkName);
 }
