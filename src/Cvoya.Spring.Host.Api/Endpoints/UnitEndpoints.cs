@@ -366,7 +366,7 @@ public static class UnitEndpoints
             return Results.Conflict(new
             {
                 Error = $"Unit '{id}' is {status}; stop it before deleting.",
-                CurrentStatus = status.ToString(),
+                CurrentStatus = status,
                 Hint = $"POST /api/v1/units/{id}/stop",
             });
         }
@@ -426,7 +426,7 @@ public static class UnitEndpoints
                 extensions: new Dictionary<string, object?>
                 {
                     ["unitId"] = id,
-                    ["currentStatus"] = errorTransition.CurrentStatus.ToString()
+                    ["currentStatus"] = errorTransition.CurrentStatus
                 });
         }
 
@@ -470,7 +470,7 @@ public static class UnitEndpoints
         return Results.Accepted($"/api/v1/units/{id}", new
         {
             UnitId = id,
-            Status = runningTransition.CurrentStatus.ToString()
+            Status = runningTransition.CurrentStatus
         });
     }
 
@@ -545,7 +545,7 @@ public static class UnitEndpoints
                 extensions: new Dictionary<string, object?>
                 {
                     ["unitId"] = id,
-                    ["currentStatus"] = errorTransition.CurrentStatus.ToString()
+                    ["currentStatus"] = errorTransition.CurrentStatus
                 });
         }
 
@@ -565,7 +565,7 @@ public static class UnitEndpoints
         return Results.Accepted($"/api/v1/units/{id}", new
         {
             UnitId = id,
-            Status = stoppedTransition.CurrentStatus.ToString()
+            Status = stoppedTransition.CurrentStatus
         });
     }
 
@@ -694,7 +694,7 @@ public static class UnitEndpoints
 
         await humanProxy.SetPermissionForUnitAsync(id, permissionLevel, cancellationToken);
 
-        return Results.Ok(new { HumanId = humanId, Permission = permissionLevel.ToString() });
+        return Results.Ok(new { HumanId = humanId, Permission = permissionLevel });
     }
 
     private static async Task<IResult> GetHumanPermissionsAsync(

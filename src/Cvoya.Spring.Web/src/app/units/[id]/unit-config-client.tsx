@@ -39,28 +39,6 @@ import { cn, formatCost } from "@/lib/utils";
 // assignment, #125 GitHub connector config, #122 unit secrets CRUD,
 // #126 per-agent skill assignment.
 
-const STATUS_NAMES: UnitStatus[] = [
-  "Draft",
-  "Stopped",
-  "Starting",
-  "Running",
-  "Stopping",
-  "Error",
-];
-
-function normalizeStatus(raw: unknown): UnitStatus {
-  if (typeof raw === "number") {
-    return STATUS_NAMES[raw] ?? "Draft";
-  }
-  if (typeof raw === "string") {
-    const match = STATUS_NAMES.find(
-      (s) => s.toLowerCase() === raw.toLowerCase(),
-    );
-    return match ?? "Draft";
-  }
-  return "Draft";
-}
-
 function statusBadgeVariant(
   status: UnitStatus,
 ): "default" | "success" | "warning" | "destructive" | "outline" {
@@ -125,7 +103,7 @@ export default function UnitConfigClient({ id }: ClientProps) {
 
   const applyUnit = useCallback((u: UnitResponse) => {
     setUnit(u);
-    setStatus(normalizeStatus(u.status));
+    setStatus(u.status ?? "Draft");
     setFormDisplayName(u.displayName ?? "");
     setFormDescription(u.description ?? "");
     setFormModel(u.model ?? "");
@@ -189,7 +167,7 @@ export default function UnitConfigClient({ id }: ClientProps) {
     setActionPending(true);
     try {
       const res = await api.startUnit(id);
-      setStatus(normalizeStatus(res.status));
+      setStatus(res.status);
       toast({ title: "Unit started", description: id });
       refresh();
     } catch (err) {
@@ -210,7 +188,7 @@ export default function UnitConfigClient({ id }: ClientProps) {
     setActionPending(true);
     try {
       const res = await api.stopUnit(id);
-      setStatus(normalizeStatus(res.status));
+      setStatus(res.status);
       toast({ title: "Unit stopped", description: id });
       refresh();
     } catch (err) {
