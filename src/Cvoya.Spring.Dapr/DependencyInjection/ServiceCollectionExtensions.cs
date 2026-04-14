@@ -77,6 +77,12 @@ public static class ServiceCollectionExtensions
             }
         });
 
+        // Database startup: apply pending migrations on host start by
+        // default. Operators running migrations out-of-band can set
+        // Database:AutoMigrate=false.
+        services.AddOptions<DatabaseOptions>().BindConfiguration(DatabaseOptions.SectionName);
+        services.AddHostedService<DatabaseMigrator>();
+
         // Repositories
         services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
 
