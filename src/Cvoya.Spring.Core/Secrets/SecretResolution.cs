@@ -6,8 +6,9 @@ namespace Cvoya.Spring.Core.Secrets;
 /// <summary>
 /// The detailed result of an <see cref="ISecretResolver.ResolveWithPathAsync"/>
 /// call. Exposes the plaintext value along with the
-/// <see cref="SecretResolvePath"/> that produced it and the effective
-/// <see cref="SecretRef"/> whose registry entry was read. The effective
+/// <see cref="SecretResolvePath"/> that produced it, the effective
+/// <see cref="SecretRef"/> whose registry entry was read, and the
+/// <see cref="Version"/> of that entry when known. The effective
 /// reference differs from the requested reference only when inheritance
 /// fired — e.g. a request for
 /// <c>(Unit, "engineering", "gh-token")</c> that falls through to the
@@ -33,7 +34,18 @@ namespace Cvoya.Spring.Core.Secrets;
 /// <see cref="SecretResolvePath.InheritedFromTenant"/>;
 /// <c>null</c> for <see cref="SecretResolvePath.NotFound"/>.
 /// </param>
+/// <param name="Version">
+/// The registry entry's current version when <see cref="Path"/> is
+/// <see cref="SecretResolvePath.Direct"/> or
+/// <see cref="SecretResolvePath.InheritedFromTenant"/>, or <c>null</c>
+/// for entries predating the version column and for
+/// <see cref="SecretResolvePath.NotFound"/>. The version is incremented
+/// by <see cref="ISecretRegistry.RotateAsync"/>; audit-log decorators
+/// record which version was served so rotations are traceable across
+/// consumers.
+/// </param>
 public record SecretResolution(
     string? Value,
     SecretResolvePath Path,
-    SecretRef? EffectiveRef);
+    SecretRef? EffectiveRef,
+    int? Version = null);

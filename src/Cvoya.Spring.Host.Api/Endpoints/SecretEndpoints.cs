@@ -86,6 +86,14 @@ public static class SecretEndpoints
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status429TooManyRequests);
 
+        unitGroup.MapPut("/{name}", RotateUnitSecretAsync)
+            .WithName("RotateUnitSecret")
+            .WithSummary("Rotate a unit-scoped secret. Replaces the value/pointer and bumps the version atomically. Provide exactly one of 'value' or 'externalStoreKey'. The entry must already exist — use POST to create.")
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
         unitGroup.MapDelete("/{name}", DeleteUnitSecretAsync)
             .WithName("DeleteUnitSecret")
             .WithSummary("Delete a unit-scoped secret. The underlying plaintext is removed only for platform-owned entries; external references leave the external store key untouched.")
@@ -111,6 +119,14 @@ public static class SecretEndpoints
             .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status429TooManyRequests);
 
+        tenantGroup.MapPut("/{name}", RotateTenantSecretAsync)
+            .WithName("RotateTenantSecret")
+            .WithSummary("Rotate a tenant-scoped secret. Replaces the value/pointer and bumps the version atomically. Provide exactly one of 'value' or 'externalStoreKey'. The entry must already exist — use POST to create.")
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
         tenantGroup.MapDelete("/{name}", DeleteTenantSecretAsync)
             .WithName("DeleteTenantSecret")
             .WithSummary("Delete a tenant-scoped secret. The underlying plaintext is removed only for platform-owned entries; external references leave the external store key untouched.")
@@ -135,6 +151,14 @@ public static class SecretEndpoints
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status429TooManyRequests);
+
+        platformGroup.MapPut("/{name}", RotatePlatformSecretAsync)
+            .WithName("RotatePlatformSecret")
+            .WithSummary("Rotate a platform-scoped secret. Replaces the value/pointer and bumps the version atomically. Provide exactly one of 'value' or 'externalStoreKey'. The entry must already exist — use POST to create.")
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         platformGroup.MapDelete("/{name}", DeletePlatformSecretAsync)
             .WithName("DeletePlatformSecret")
@@ -212,6 +236,25 @@ public static class SecretEndpoints
             SecretScope.Unit, id, request, store, registry, db, options.Value, cancellationToken);
     }
 
+    private static async Task<IResult> RotateUnitSecretAsync(
+        string id,
+        string name,
+        RotateSecretRequest request,
+        [FromServices] ISecretStore store,
+        [FromServices] ISecretRegistry registry,
+        [FromServices] ISecretAccessPolicy accessPolicy,
+        [FromServices] IOptions<SecretsOptions> options,
+        CancellationToken cancellationToken)
+    {
+        if (!await accessPolicy.IsAuthorizedAsync(SecretAccessAction.Rotate, SecretScope.Unit, id, cancellationToken))
+        {
+            return Forbidden(SecretScope.Unit, SecretAccessAction.Rotate);
+        }
+
+        return await RotateSecretAsync(
+            SecretScope.Unit, id, name, request, store, registry, options.Value, cancellationToken);
+    }
+
     private static async Task<IResult> DeleteUnitSecretAsync(
         string id,
         string name,
@@ -277,6 +320,26 @@ public static class SecretEndpoints
             SecretScope.Tenant, ownerId, request, store, registry, db, options.Value, cancellationToken);
     }
 
+    private static async Task<IResult> RotateTenantSecretAsync(
+        string name,
+        RotateSecretRequest request,
+        [FromServices] ISecretStore store,
+        [FromServices] ISecretRegistry registry,
+        [FromServices] ISecretAccessPolicy accessPolicy,
+        [FromServices] ITenantContext tenantContext,
+        [FromServices] IOptions<SecretsOptions> options,
+        CancellationToken cancellationToken)
+    {
+        var ownerId = tenantContext.CurrentTenantId;
+        if (!await accessPolicy.IsAuthorizedAsync(SecretAccessAction.Rotate, SecretScope.Tenant, ownerId, cancellationToken))
+        {
+            return Forbidden(SecretScope.Tenant, SecretAccessAction.Rotate);
+        }
+
+        return await RotateSecretAsync(
+            SecretScope.Tenant, ownerId, name, request, store, registry, options.Value, cancellationToken);
+    }
+
     private static async Task<IResult> DeleteTenantSecretAsync(
         string name,
         [FromServices] ISecretStore store,
@@ -339,6 +402,24 @@ public static class SecretEndpoints
             SecretScope.Platform, PlatformOwnerId, request, store, registry, db, options.Value, cancellationToken);
     }
 
+    private static async Task<IResult> RotatePlatformSecretAsync(
+        string name,
+        RotateSecretRequest request,
+        [FromServices] ISecretStore store,
+        [FromServices] ISecretRegistry registry,
+        [FromServices] ISecretAccessPolicy accessPolicy,
+        [FromServices] IOptions<SecretsOptions> options,
+        CancellationToken cancellationToken)
+    {
+        if (!await accessPolicy.IsAuthorizedAsync(SecretAccessAction.Rotate, SecretScope.Platform, PlatformOwnerId, cancellationToken))
+        {
+            return Forbidden(SecretScope.Platform, SecretAccessAction.Rotate);
+        }
+
+        return await RotateSecretAsync(
+            SecretScope.Platform, PlatformOwnerId, name, request, store, registry, options.Value, cancellationToken);
+    }
+
     private static async Task<IResult> DeletePlatformSecretAsync(
         string name,
         [FromServices] ISecretStore store,
@@ -394,6 +475,143 @@ public static class SecretEndpoints
         }
 
         return null;
+    }
+
+    private static IResult? ValidateRotateRequest(RotateSecretRequest request, SecretsOptions options)
+    {
+        // Mirrors ValidateCreateRequest but over the rotation shape (no
+        // 'name' field — the name is route-bound). The same two config
+        // flags gate rotation; rotating onto a disabled write mode is
+        // as much a policy violation as creating in that mode.
+        var hasValue = !string.IsNullOrEmpty(request.Value);
+        var hasExternal = !string.IsNullOrWhiteSpace(request.ExternalStoreKey);
+
+        if (hasValue == hasExternal)
+        {
+            return Results.Problem(
+                detail: "Request body must include exactly one of 'value' or 'externalStoreKey'.",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        if (hasValue && !options.AllowPassThroughWrites)
+        {
+            return Results.Problem(
+                detail: "Pass-through secret writes are disabled (Secrets:AllowPassThroughWrites = false).",
+                statusCode: StatusCodes.Status403Forbidden);
+        }
+
+        if (hasExternal && !options.AllowExternalReferenceWrites)
+        {
+            return Results.Problem(
+                detail: "External-reference secret writes are disabled (Secrets:AllowExternalReferenceWrites = false).",
+                statusCode: StatusCodes.Status403Forbidden);
+        }
+
+        return null;
+    }
+
+    private static async Task<IResult> RotateSecretAsync(
+        SecretScope scope,
+        string ownerId,
+        string name,
+        RotateSecretRequest request,
+        ISecretStore store,
+        ISecretRegistry registry,
+        SecretsOptions options,
+        CancellationToken cancellationToken)
+    {
+        var validationError = ValidateRotateRequest(request, options);
+        if (validationError is not null)
+        {
+            return validationError;
+        }
+
+        var secretRef = new SecretRef(scope, ownerId, name);
+
+        // Pre-flight check: rotate requires an existing entry. We look
+        // up explicitly so we can return 404 with a ProblemDetails body
+        // — the registry throws InvalidOperationException otherwise.
+        var pointer = await registry.LookupAsync(secretRef, cancellationToken);
+        if (pointer is null)
+        {
+            return Results.Problem(
+                detail: $"Secret '{name}' not found for {scope} '{ownerId}'. Use POST to create.",
+                statusCode: StatusCodes.Status404NotFound);
+        }
+
+        var hasValue = !string.IsNullOrEmpty(request.Value);
+        string newStoreKey;
+        SecretOrigin newOrigin;
+        if (hasValue)
+        {
+            // Write the fresh plaintext first; the registry swap happens
+            // transactionally inside RotateAsync. If the registry call
+            // then fails, we clean up the orphaned new slot — symmetric
+            // with CreateSecretAsync.
+            newStoreKey = await store.WriteAsync(request.Value!, cancellationToken);
+            newOrigin = SecretOrigin.PlatformOwned;
+        }
+        else
+        {
+            newStoreKey = request.ExternalStoreKey!;
+            newOrigin = SecretOrigin.ExternalReference;
+        }
+
+        try
+        {
+            // RotateAsync handles the origin-safe old-slot cleanup via
+            // the delegate we pass in. We give it ISecretStore.DeleteAsync
+            // only if the previous pointer was platform-owned — if the
+            // previous pointer was external we never hand the delegate
+            // a key, so the registry's internal gate doubles as our
+            // outer gate. The registry enforces "platform-owned-only
+            // invokes the delegate" regardless of what we pass.
+            await registry.RotateAsync(
+                secretRef,
+                newStoreKey,
+                newOrigin,
+                async (oldKey, ct) => await store.DeleteAsync(oldKey, ct),
+                cancellationToken);
+        }
+        catch (InvalidOperationException)
+        {
+            // Race between the LookupAsync pre-flight and the rotate —
+            // the entry was removed concurrently. Clean up the orphaned
+            // new slot (if we wrote one) and surface 404.
+            if (newOrigin == SecretOrigin.PlatformOwned)
+            {
+                try
+                {
+                    await store.DeleteAsync(newStoreKey, CancellationToken.None);
+                }
+                catch
+                {
+                    // Swallow — reconciliation sweep handles orphans.
+                }
+            }
+            return Results.Problem(
+                detail: $"Secret '{name}' not found for {scope} '{ownerId}'. Use POST to create.",
+                statusCode: StatusCodes.Status404NotFound);
+        }
+        catch
+        {
+            // Registry-side failure after a successful pass-through
+            // write — orphaned slot cleanup mirrors CreateSecretAsync.
+            if (newOrigin == SecretOrigin.PlatformOwned)
+            {
+                try
+                {
+                    await store.DeleteAsync(newStoreKey, CancellationToken.None);
+                }
+                catch
+                {
+                    // Reconciliation handles orphans.
+                }
+            }
+            throw;
+        }
+
+        return Results.NoContent();
     }
 
     private static async Task<IResult> CreateSecretAsync(

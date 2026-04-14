@@ -203,6 +203,184 @@ public class EfSecretRegistryTests : IDisposable
         pointer.Origin.ShouldBe(SecretOrigin.ExternalReference);
     }
 
+    [Fact]
+    public async Task Register_NewEntry_StartsAtVersionOne()
+    {
+        // Pre-existing registration behavior: new rows initialize at
+        // version 1 so audit decorators always see a stable starting
+        // version. Legacy rows predating the migration remain at null.
+        var ct = TestContext.Current.CancellationToken;
+        var sut = NewRegistry("t1");
+
+        await sut.RegisterAsync(
+            new SecretRef(SecretScope.Unit, "u1", "foo"), "sk-1", SecretOrigin.PlatformOwned, ct);
+
+        var lookup = await sut.LookupWithVersionAsync(
+            new SecretRef(SecretScope.Unit, "u1", "foo"), ct);
+
+        lookup.ShouldNotBeNull();
+        lookup!.Value.Version.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task RotateAsync_PassThrough_IncrementsVersion_AndInvokesDelete()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var sut = NewRegistry("t1");
+
+        await sut.RegisterAsync(
+            new SecretRef(SecretScope.Unit, "u1", "foo"), "sk-1", SecretOrigin.PlatformOwned, ct);
+
+        var deleteCalls = new List<string>();
+        var rotation = await sut.RotateAsync(
+            new SecretRef(SecretScope.Unit, "u1", "foo"),
+            "sk-2",
+            SecretOrigin.PlatformOwned,
+            (key, _) => { deleteCalls.Add(key); return Task.CompletedTask; },
+            ct);
+
+        rotation.FromVersion.ShouldBe(1);
+        rotation.ToVersion.ShouldBe(2);
+        rotation.PreviousPointer.StoreKey.ShouldBe("sk-1");
+        rotation.PreviousPointer.Origin.ShouldBe(SecretOrigin.PlatformOwned);
+        rotation.NewPointer.StoreKey.ShouldBe("sk-2");
+        rotation.NewPointer.Origin.ShouldBe(SecretOrigin.PlatformOwned);
+        rotation.PreviousStoreKeyDeleted.ShouldBeTrue();
+
+        // Immediate-delete policy: the old store slot was reclaimed
+        // before the rotate returned.
+        deleteCalls.ShouldBe(new[] { "sk-1" });
+
+        // The registry now points at the new key / bumped version.
+        var pointer = await sut.LookupWithVersionAsync(
+            new SecretRef(SecretScope.Unit, "u1", "foo"), ct);
+        pointer.ShouldNotBeNull();
+        pointer!.Value.Pointer.StoreKey.ShouldBe("sk-2");
+        pointer.Value.Version.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task RotateAsync_ExternalReference_SkipsDelete()
+    {
+        // External-reference entries point at customer-owned slots;
+        // rotation must never invoke the delete delegate, otherwise a
+        // private-cloud Key Vault implementation would destroy data
+        // the platform does not own.
+        var ct = TestContext.Current.CancellationToken;
+        var sut = NewRegistry("t1");
+
+        await sut.RegisterAsync(
+            new SecretRef(SecretScope.Unit, "u1", "foo"), "kv://old", SecretOrigin.ExternalReference, ct);
+
+        var deleteCalls = new List<string>();
+        var rotation = await sut.RotateAsync(
+            new SecretRef(SecretScope.Unit, "u1", "foo"),
+            "kv://new",
+            SecretOrigin.ExternalReference,
+            (key, _) => { deleteCalls.Add(key); return Task.CompletedTask; },
+            ct);
+
+        rotation.PreviousPointer.Origin.ShouldBe(SecretOrigin.ExternalReference);
+        rotation.PreviousStoreKeyDeleted.ShouldBeFalse();
+        deleteCalls.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task RotateAsync_SwitchOrigin_PlatformToExternal_InvokesDeleteOnOldPlatformSlot()
+    {
+        // A rotation that flips origin (platform-owned to external-
+        // reference) still reclaims the old platform-owned slot — the
+        // decision hinges on the PREVIOUS origin, not the new one.
+        var ct = TestContext.Current.CancellationToken;
+        var sut = NewRegistry("t1");
+
+        await sut.RegisterAsync(
+            new SecretRef(SecretScope.Unit, "u1", "foo"), "sk-old", SecretOrigin.PlatformOwned, ct);
+
+        var deleteCalls = new List<string>();
+        var rotation = await sut.RotateAsync(
+            new SecretRef(SecretScope.Unit, "u1", "foo"),
+            "kv://new",
+            SecretOrigin.ExternalReference,
+            (key, _) => { deleteCalls.Add(key); return Task.CompletedTask; },
+            ct);
+
+        rotation.PreviousPointer.Origin.ShouldBe(SecretOrigin.PlatformOwned);
+        rotation.NewPointer.Origin.ShouldBe(SecretOrigin.ExternalReference);
+        rotation.PreviousStoreKeyDeleted.ShouldBeTrue();
+        deleteCalls.ShouldBe(new[] { "sk-old" });
+
+        var pointer = await sut.LookupAsync(
+            new SecretRef(SecretScope.Unit, "u1", "foo"), ct);
+        pointer!.StoreKey.ShouldBe("kv://new");
+        pointer.Origin.ShouldBe(SecretOrigin.ExternalReference);
+    }
+
+    [Fact]
+    public async Task RotateAsync_MissingRef_Throws()
+    {
+        // Rotation is NOT a create operation. A missing reference is
+        // a precondition failure surfaced to the endpoint layer as 404.
+        var ct = TestContext.Current.CancellationToken;
+        var sut = NewRegistry("t1");
+
+        await Should.ThrowAsync<InvalidOperationException>(() =>
+            sut.RotateAsync(
+                new SecretRef(SecretScope.Unit, "u1", "missing"),
+                "sk-new",
+                SecretOrigin.PlatformOwned,
+                null,
+                ct));
+    }
+
+    [Fact]
+    public async Task RotateAsync_NullDelegate_DoesNotThrow()
+    {
+        // A null delete delegate is legitimate — tests (and any caller
+        // that doesn't want cleanup) can omit it.
+        var ct = TestContext.Current.CancellationToken;
+        var sut = NewRegistry("t1");
+
+        await sut.RegisterAsync(
+            new SecretRef(SecretScope.Unit, "u1", "foo"), "sk-1", SecretOrigin.PlatformOwned, ct);
+
+        var rotation = await sut.RotateAsync(
+            new SecretRef(SecretScope.Unit, "u1", "foo"),
+            "sk-2",
+            SecretOrigin.PlatformOwned,
+            null,
+            ct);
+
+        rotation.ToVersion.ShouldBe(2);
+        // Delegate was null, so no cleanup happened.
+        rotation.PreviousStoreKeyDeleted.ShouldBeFalse();
+    }
+
+    [Theory]
+    [InlineData("t1")]
+    [InlineData("t2")]
+    public async Task RotateAsync_CrossTenantIsolation_TreatsOtherTenantAsMissing(string tenant)
+    {
+        // Tenant isolation applies to rotate exactly as it does to lookup
+        // and delete. An entry owned by tenant B must look "missing" to
+        // a rotator running as tenant A.
+        var ct = TestContext.Current.CancellationToken;
+
+        var other = tenant == "t1" ? "t2" : "t1";
+        await NewRegistry(other).RegisterAsync(
+            new SecretRef(SecretScope.Unit, "u1", "foo"), "sk-other", SecretOrigin.PlatformOwned, ct);
+
+        var sut = NewRegistry(tenant);
+
+        await Should.ThrowAsync<InvalidOperationException>(() =>
+            sut.RotateAsync(
+                new SecretRef(SecretScope.Unit, "u1", "foo"),
+                "sk-new",
+                SecretOrigin.PlatformOwned,
+                null,
+                ct));
+    }
+
     private EfSecretRegistry NewRegistry(string tenantId)
     {
         var tenantContext = Substitute.For<ITenantContext>();

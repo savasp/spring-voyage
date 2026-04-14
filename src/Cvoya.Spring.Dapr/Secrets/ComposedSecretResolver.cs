@@ -77,14 +77,14 @@ public class ComposedSecretResolver : ISecretResolver
         if (!await _accessPolicy.IsAuthorizedAsync(
             SecretAccessAction.Read, @ref.Scope, @ref.OwnerId, ct))
         {
-            return new SecretResolution(null, SecretResolvePath.NotFound, null);
+            return new SecretResolution(null, SecretResolvePath.NotFound, null, null);
         }
 
         // Direct lookup at the requested scope.
-        var direct = await TryReadAsync(@ref, ct);
+        var (direct, directVersion) = await TryReadWithVersionAsync(@ref, ct);
         if (direct is not null)
         {
-            return new SecretResolution(direct, SecretResolvePath.Direct, @ref);
+            return new SecretResolution(direct, SecretResolvePath.Direct, @ref, directVersion);
         }
 
         // Unit → Tenant fall-through. Only fires for unit-scope requests;
@@ -93,7 +93,7 @@ public class ComposedSecretResolver : ISecretResolver
         // isolation requirements can opt out.
         if (@ref.Scope != SecretScope.Unit || !_options.Value.InheritTenantFromUnit)
         {
-            return new SecretResolution(null, SecretResolvePath.NotFound, null);
+            return new SecretResolution(null, SecretResolvePath.NotFound, null, null);
         }
 
         var tenantRef = new SecretRef(
@@ -108,30 +108,31 @@ public class ComposedSecretResolver : ISecretResolver
         if (!await _accessPolicy.IsAuthorizedAsync(
             SecretAccessAction.Read, tenantRef.Scope, tenantRef.OwnerId, ct))
         {
-            return new SecretResolution(null, SecretResolvePath.NotFound, null);
+            return new SecretResolution(null, SecretResolvePath.NotFound, null, null);
         }
 
-        var inherited = await TryReadAsync(tenantRef, ct);
+        var (inherited, inheritedVersion) = await TryReadWithVersionAsync(tenantRef, ct);
         if (inherited is not null)
         {
-            return new SecretResolution(inherited, SecretResolvePath.InheritedFromTenant, tenantRef);
+            return new SecretResolution(inherited, SecretResolvePath.InheritedFromTenant, tenantRef, inheritedVersion);
         }
 
-        return new SecretResolution(null, SecretResolvePath.NotFound, null);
+        return new SecretResolution(null, SecretResolvePath.NotFound, null, null);
     }
 
     /// <inheritdoc />
     public Task<IReadOnlyList<SecretRef>> ListAsync(SecretScope scope, string ownerId, CancellationToken ct)
         => _registry.ListAsync(scope, ownerId, ct);
 
-    private async Task<string?> TryReadAsync(SecretRef @ref, CancellationToken ct)
+    private async Task<(string? Value, int? Version)> TryReadWithVersionAsync(SecretRef @ref, CancellationToken ct)
     {
-        var storeKey = await _registry.LookupStoreKeyAsync(@ref, ct);
-        if (storeKey is null)
+        var lookup = await _registry.LookupWithVersionAsync(@ref, ct);
+        if (lookup is null)
         {
-            return null;
+            return (null, null);
         }
 
-        return await _store.ReadAsync(storeKey, ct);
+        var plaintext = await _store.ReadAsync(lookup.Value.Pointer.StoreKey, ct);
+        return (plaintext, lookup.Value.Version);
     }
 }
