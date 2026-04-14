@@ -15,10 +15,12 @@ WORKDIR /src
 
 # Copy solution manifests first for better layer caching.
 COPY SpringVoyage.slnx global.json Directory.Build.props Directory.Packages.props ./
-COPY NuGet.config* ./
+COPY .config/ .config/
 COPY src/ src/
 
-RUN dotnet restore SpringVoyage.slnx
+RUN dotnet restore src/Cvoya.Spring.Host.Api/Cvoya.Spring.Host.Api.csproj \
+ && dotnet restore src/Cvoya.Spring.Host.Worker/Cvoya.Spring.Host.Worker.csproj \
+ && dotnet restore src/Cvoya.Spring.Cli/Cvoya.Spring.Cli.csproj
 
 RUN dotnet publish src/Cvoya.Spring.Host.Api/Cvoya.Spring.Host.Api.csproj \
         --configuration Release --no-restore \
@@ -31,18 +33,30 @@ RUN dotnet publish src/Cvoya.Spring.Host.Api/Cvoya.Spring.Host.Api.csproj \
         --output /publish/cli
 
 # ------------------------------------------------------------------
-# Stage 2: build the Next.js dashboard
+# Stage 2: build the Next.js dashboard (npm workspace at repo root)
 # ------------------------------------------------------------------
+# The Web project is a member of the repo-root npm workspace alongside
+# sibling connector packages under src/Cvoya.Spring.Connector.*/web.
+# Copy workspace manifests first for cacheable `npm ci`, then sources.
 FROM node:22-bookworm-slim AS web-build
-WORKDIR /web
+WORKDIR /build
 
-COPY src/Cvoya.Spring.Web/package.json src/Cvoya.Spring.Web/package-lock.json ./
+COPY package.json package-lock.json ./
+COPY src/Cvoya.Spring.Web/package.json ./src/Cvoya.Spring.Web/
+COPY src/Cvoya.Spring.Connector.GitHub/web/package.json ./src/Cvoya.Spring.Connector.GitHub/web/
+
 RUN npm ci
 
-COPY src/Cvoya.Spring.Web/ ./
-# next.config.ts must set `output: 'standalone'` for this to succeed.
-# If it doesn't, the build still emits .next/; the runtime falls back to `next start`.
-RUN npm run build
+# Web sources + the committed OpenAPI doc that the dashboard's `prebuild`
+# hook consumes to regenerate typed API clients.
+COPY src/Cvoya.Spring.Web/ ./src/Cvoya.Spring.Web/
+COPY src/Cvoya.Spring.Connector.GitHub/web/ ./src/Cvoya.Spring.Connector.GitHub/web/
+COPY src/Cvoya.Spring.Host.Api/openapi.json ./src/Cvoya.Spring.Host.Api/openapi.json
+
+# next.config.ts sets `output: 'standalone'` with outputFileTracingRoot
+# pinned to the workspace root — the standalone tree preserves the
+# `src/Cvoya.Spring.Web/` path, so server.js lives nested in the output.
+RUN npm run build --workspace=spring-voyage-dashboard
 
 # ------------------------------------------------------------------
 # Stage 3: runtime image
@@ -69,10 +83,11 @@ COPY --from=dotnet-build /publish/api/    /app/
 COPY --from=dotnet-build /publish/worker/ /app/
 COPY --from=dotnet-build /publish/cli/    /app/cli/
 
-# Copy Next.js standalone output (if produced) plus fallback.
-COPY --from=web-build /web/.next/standalone /app/web/
-COPY --from=web-build /web/.next/static     /app/web/.next/static
-COPY --from=web-build /web/public           /app/web/public
+# Copy Next.js standalone output. With outputFileTracingRoot pinned to the
+# monorepo root, the standalone tree mirrors the workspace layout — the
+# server entrypoint is at /app/web/src/Cvoya.Spring.Web/server.js.
+COPY --from=web-build /build/src/Cvoya.Spring.Web/.next/standalone /app/web/
+COPY --from=web-build /build/src/Cvoya.Spring.Web/.next/static     /app/web/src/Cvoya.Spring.Web/.next/static
 
 # Copy Dapr component YAML and Dapr Configuration for both the local and
 # production profiles. Sidecars select a profile via `--resources-path`
