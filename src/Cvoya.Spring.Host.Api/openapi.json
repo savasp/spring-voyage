@@ -1118,7 +1118,7 @@
         "tags": [
           "Units"
         ],
-        "summary": "Assign an agent to this unit. Sets the agent's parent-unit pointer and adds it to the unit's members. 409 if the agent already belongs to a different unit.",
+        "summary": "Assign an agent to this unit. Creates a membership row (M:N per #160) and adds the agent to the unit's members list; no conflict is raised if the agent is also a member of another unit.",
         "operationId": "AssignUnitAgent",
         "parameters": [
           {
@@ -1168,9 +1168,196 @@
                 }
               }
             }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Units"
+        ],
+        "summary": "Unassign an agent from this unit. Deletes the membership row and removes the agent from the unit's members list; other memberships the agent holds are unaffected.",
+        "operationId": "UnassignUnitAgent",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           },
-          "409": {
-            "description": "Conflict",
+          {
+            "name": "agentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/agents/{id}/memberships": {
+      "get": {
+        "tags": [
+          "Agents"
+        ],
+        "summary": "List every unit this agent belongs to, with per-membership config overrides",
+        "operationId": "ListAgentMemberships",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/UnitMembershipResponse"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/units/{id}/memberships": {
+      "get": {
+        "tags": [
+          "Units"
+        ],
+        "summary": "List every agent that is a member of this unit, with per-membership config overrides",
+        "operationId": "ListUnitMemberships",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/UnitMembershipResponse"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/units/{unitId}/memberships/{agentAddress}": {
+      "put": {
+        "tags": [
+          "Units"
+        ],
+        "summary": "Create or update the per-membership config overrides for an agent in this unit",
+        "operationId": "UpsertUnitMembership",
+        "parameters": [
+          {
+            "name": "unitId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "agentAddress",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertMembershipRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnitMembershipResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -1185,11 +1372,11 @@
         "tags": [
           "Units"
         ],
-        "summary": "Unassign an agent from this unit. Clears the agent's parent-unit pointer and removes it from the unit's members.",
-        "operationId": "UnassignUnitAgent",
+        "summary": "Remove an agent's membership of this unit",
+        "operationId": "DeleteUnitMembership",
         "parameters": [
           {
-            "name": "id",
+            "name": "unitId",
             "in": "path",
             "required": true,
             "schema": {
@@ -1197,7 +1384,7 @@
             }
           },
           {
-            "name": "agentId",
+            "name": "agentAddress",
             "in": "path",
             "required": true,
             "schema": {
@@ -4321,6 +4508,60 @@
           }
         }
       },
+      "UnitMembershipResponse": {
+        "required": [
+          "unitId",
+          "agentAddress",
+          "model",
+          "specialty",
+          "enabled",
+          "executionMode",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "unitId": {
+            "type": "string"
+          },
+          "agentAddress": {
+            "type": "string"
+          },
+          "model": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "specialty": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "executionMode": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AgentExecutionMode"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
       "UnitPermissionEntry": {
         "required": [
           "humanId",
@@ -4500,6 +4741,39 @@
             "type": [
               "null",
               "string"
+            ]
+          }
+        }
+      },
+      "UpsertMembershipRequest": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "specialty": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "enabled": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "executionMode": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AgentExecutionMode"
+              }
             ]
           }
         }

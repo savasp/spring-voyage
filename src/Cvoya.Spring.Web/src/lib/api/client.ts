@@ -266,6 +266,54 @@ export const api = {
     );
   },
 
+  // Membership (M:N) surface (#160 / C2b-1). Assign / unassign above remain
+  // the high-level wire-compatible surface; these endpoints expose the
+  // per-membership config overrides directly.
+  listAgentMemberships: async (agentId: string) =>
+    unwrap(
+      await fetchClient.GET("/api/v1/agents/{id}/memberships", {
+        params: { path: { id: agentId } },
+      }),
+    ),
+  listUnitMemberships: async (unitId: string) =>
+    unwrap(
+      await fetchClient.GET("/api/v1/units/{id}/memberships", {
+        params: { path: { id: unitId } },
+      }),
+    ),
+  upsertUnitMembership: async (
+    unitId: string,
+    agentAddress: string,
+    body: {
+      model?: string | null;
+      specialty?: string | null;
+      enabled?: boolean | null;
+      executionMode?: "Auto" | "OnDemand" | null;
+    },
+  ) =>
+    unwrap(
+      await fetchClient.PUT(
+        "/api/v1/units/{unitId}/memberships/{agentAddress}",
+        {
+          params: { path: { unitId, agentAddress } },
+          body,
+        },
+      ),
+    ),
+  deleteUnitMembership: async (
+    unitId: string,
+    agentAddress: string,
+  ): Promise<void> => {
+    assertOk(
+      await fetchClient.DELETE(
+        "/api/v1/units/{unitId}/memberships/{agentAddress}",
+        {
+          params: { path: { unitId, agentAddress } },
+        },
+      ),
+    );
+  },
+
   // Costs
   getAgentCost: async (id: string) =>
     unwrap(

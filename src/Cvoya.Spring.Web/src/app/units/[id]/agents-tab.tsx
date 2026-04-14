@@ -67,10 +67,12 @@ export function AgentsTab({ unitId }: AgentsTabProps) {
     load();
   }, [load]);
 
-  // An agent is eligible for assignment here if it has no parent unit yet.
-  // Agents belonging to *this* unit are already in `agents`; agents with a
-  // different parentUnit should be unassigned from that unit first.
-  const assignable = availableAgents.filter((a) => !a.parentUnit);
+  // Post-C2b-1 an agent may belong to multiple units (M:N). "Assignable"
+  // is just "not already a member of THIS unit" — membership of some
+  // other unit is no longer a blocker, and the backend no longer issues
+  // a 409 for cross-unit conflict.
+  const membersInThisUnit = new Set(agents.map((a) => a.name));
+  const assignable = availableAgents.filter((a) => !membersInThisUnit.has(a.name));
 
   const handleAdd = async () => {
     if (!addAgentId) return;
@@ -257,7 +259,7 @@ export function AgentsTab({ unitId }: AgentsTabProps) {
           <p className="text-sm font-medium">Assign an agent</p>
           {assignable.length === 0 ? (
             <p className="text-xs text-muted-foreground">
-              All registered agents already belong to a unit.
+              Every registered agent is already a member of this unit.
             </p>
           ) : (
             <div className="flex items-end gap-2">

@@ -9,6 +9,7 @@ using Cvoya.Spring.Core.Agents;
 using Cvoya.Spring.Core.Directory;
 using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Core.Skills;
+using Cvoya.Spring.Core.Units;
 using Cvoya.Spring.Dapr.Actors;
 using Cvoya.Spring.Dapr.Routing;
 using Cvoya.Spring.Host.Api.Models;
@@ -100,6 +101,7 @@ public static class AgentEndpoints
         string id,
         [FromServices] IDirectoryService directoryService,
         [FromServices] IActorProxyFactory actorProxyFactory,
+        [FromServices] IUnitMembershipRepository membershipRepository,
         [FromServices] MessageRouter messageRouter,
         CancellationToken cancellationToken)
     {
@@ -111,7 +113,9 @@ public static class AgentEndpoints
             return Results.Problem(detail: $"Agent '{id}' not found", statusCode: StatusCodes.Status404NotFound);
         }
 
-        var metadata = await TryGetAgentMetadataAsync(actorProxyFactory, entry.ActorId, cancellationToken);
+        var proxy = actorProxyFactory.CreateActorProxy<IAgentActor>(
+            new ActorId(entry.ActorId), nameof(IAgentActor));
+        var metadata = await GetDerivedAgentMetadataAsync(proxy, membershipRepository, id, cancellationToken);
 
         // Send a StatusQuery message to the agent.
         var statusQuery = new Message(
@@ -300,5 +304,44 @@ public static class AgentEndpoints
                 actorId);
             return null;
         }
+    }
+
+    /// <summary>
+    /// Reads the agent's actor-owned metadata and overrides
+    /// <see cref="AgentMetadata.ParentUnit"/> with a server-side derivation
+    /// from the membership table. The derivation rule is "first by
+    /// <c>CreatedAt</c>" — C2b-1 leaves it simple; a future
+    /// <c>IsPrimary</c> flag may refine this without a wire-shape change.
+    /// See #160: the membership table is authoritative; the cached
+    /// <c>Agent:ParentUnit</c> state on the actor is a legacy mirror kept
+    /// for non-critical readers and the backfill path.
+    /// </summary>
+    internal static async Task<AgentMetadata?> GetDerivedAgentMetadataAsync(
+        IAgentActor proxy,
+        IUnitMembershipRepository membershipRepository,
+        string agentAddress,
+        CancellationToken cancellationToken)
+    {
+        AgentMetadata? metadata = null;
+        try
+        {
+            metadata = await proxy.GetMetadataAsync(cancellationToken);
+        }
+        catch
+        {
+            // Falls through to the membership-driven projection below.
+        }
+
+        var memberships = await membershipRepository.ListByAgentAsync(agentAddress, cancellationToken);
+        var derivedParent = memberships.Count > 0 ? memberships[0].UnitId : null;
+
+        if (metadata is null)
+        {
+            // No actor state; synthesise a metadata record so the response
+            // still carries the derived parent (and defaults for the rest).
+            return new AgentMetadata(ParentUnit: derivedParent);
+        }
+
+        return metadata with { ParentUnit = derivedParent };
     }
 }

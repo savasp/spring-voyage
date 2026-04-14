@@ -1,0 +1,185 @@
+// Copyright CVOYA LLC. Licensed under the Business Source License 1.1.
+// See LICENSE.md in the project root for full license terms.
+
+namespace Cvoya.Spring.Host.Api.Endpoints;
+
+using Cvoya.Spring.Core.Directory;
+using Cvoya.Spring.Core.Messaging;
+using Cvoya.Spring.Core.Units;
+using Cvoya.Spring.Host.Api.Models;
+
+using Microsoft.AspNetCore.Mvc;
+
+/// <summary>
+/// Maps the unit-membership API surface introduced in #160 / C2b-1:
+/// <c>GET /api/v1/agents/{id}/memberships</c>,
+/// <c>GET /api/v1/units/{id}/memberships</c>,
+/// <c>PUT /api/v1/units/{unitId}/memberships/{agentAddress}</c>, and
+/// <c>DELETE /api/v1/units/{unitId}/memberships/{agentAddress}</c>.
+/// </summary>
+/// <remarks>
+/// Per-membership config overrides (<c>model</c>, <c>specialty</c>,
+/// <c>enabled</c>, <c>executionMode</c>) are PERSISTED here but NOT YET
+/// CONSULTED at dispatch time. Receive-path consumption lands in the
+/// follow-on C2b-2 work.
+/// </remarks>
+public static class MembershipEndpoints
+{
+    /// <summary>
+    /// Registers all membership endpoints at the top-level route builder.
+    /// Call from <c>Program.cs</c> alongside <c>MapAgentEndpoints</c> and
+    /// <c>MapUnitEndpoints</c>. Returns a single
+    /// <see cref="RouteGroupBuilder"/> with no common prefix so callers
+    /// can apply <c>RequireAuthorization()</c> uniformly.
+    /// </summary>
+    public static RouteGroupBuilder MapMembershipEndpoints(this IEndpointRouteBuilder app)
+    {
+        var group = app.MapGroup(string.Empty);
+
+        group.MapGet("/api/v1/agents/{id}/memberships", ListAgentMembershipsAsync)
+            .WithTags("Agents")
+            .WithName("ListAgentMemberships")
+            .WithSummary("List every unit this agent belongs to, with per-membership config overrides")
+            .Produces<UnitMembershipResponse[]>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
+        group.MapGet("/api/v1/units/{id}/memberships", ListUnitMembershipsAsync)
+            .WithTags("Units")
+            .WithName("ListUnitMemberships")
+            .WithSummary("List every agent that is a member of this unit, with per-membership config overrides")
+            .Produces<UnitMembershipResponse[]>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
+        group.MapPut("/api/v1/units/{unitId}/memberships/{agentAddress}", UpsertMembershipAsync)
+            .WithTags("Units")
+            .WithName("UpsertUnitMembership")
+            .WithSummary("Create or update the per-membership config overrides for an agent in this unit")
+            .Produces<UnitMembershipResponse>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
+        group.MapDelete("/api/v1/units/{unitId}/memberships/{agentAddress}", DeleteMembershipAsync)
+            .WithTags("Units")
+            .WithName("DeleteUnitMembership")
+            .WithSummary("Remove an agent's membership of this unit")
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
+        return group;
+    }
+
+    private static async Task<IResult> ListAgentMembershipsAsync(
+        string id,
+        [FromServices] IDirectoryService directoryService,
+        [FromServices] IUnitMembershipRepository repository,
+        CancellationToken cancellationToken)
+    {
+        var address = new Address("agent", id);
+        var entry = await directoryService.ResolveAsync(address, cancellationToken);
+        if (entry is null)
+        {
+            return Results.Problem(
+                detail: $"Agent '{id}' not found",
+                statusCode: StatusCodes.Status404NotFound);
+        }
+
+        var memberships = await repository.ListByAgentAsync(address.Path, cancellationToken);
+        return Results.Ok(memberships.Select(ToResponse).ToArray());
+    }
+
+    private static async Task<IResult> ListUnitMembershipsAsync(
+        string id,
+        [FromServices] IDirectoryService directoryService,
+        [FromServices] IUnitMembershipRepository repository,
+        CancellationToken cancellationToken)
+    {
+        var address = new Address("unit", id);
+        var entry = await directoryService.ResolveAsync(address, cancellationToken);
+        if (entry is null)
+        {
+            return Results.Problem(
+                detail: $"Unit '{id}' not found",
+                statusCode: StatusCodes.Status404NotFound);
+        }
+
+        var memberships = await repository.ListByUnitAsync(id, cancellationToken);
+        return Results.Ok(memberships.Select(ToResponse).ToArray());
+    }
+
+    private static async Task<IResult> UpsertMembershipAsync(
+        string unitId,
+        string agentAddress,
+        UpsertMembershipRequest request,
+        [FromServices] IDirectoryService directoryService,
+        [FromServices] IUnitMembershipRepository repository,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (string.IsNullOrWhiteSpace(unitId) || string.IsNullOrWhiteSpace(agentAddress))
+        {
+            return Results.Problem(
+                detail: "unitId and agentAddress are required.",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        var unitEntry = await directoryService.ResolveAsync(new Address("unit", unitId), cancellationToken);
+        if (unitEntry is null)
+        {
+            return Results.Problem(
+                detail: $"Unit '{unitId}' not found",
+                statusCode: StatusCodes.Status404NotFound);
+        }
+
+        var agentEntry = await directoryService.ResolveAsync(new Address("agent", agentAddress), cancellationToken);
+        if (agentEntry is null)
+        {
+            return Results.Problem(
+                detail: $"Agent '{agentAddress}' not found",
+                statusCode: StatusCodes.Status404NotFound);
+        }
+
+        var membership = new UnitMembership(
+            UnitId: unitId,
+            AgentAddress: agentAddress,
+            Model: request.Model,
+            Specialty: request.Specialty,
+            Enabled: request.Enabled ?? true,
+            ExecutionMode: request.ExecutionMode);
+
+        await repository.UpsertAsync(membership, cancellationToken);
+
+        var persisted = await repository.GetAsync(unitId, agentAddress, cancellationToken);
+        // persisted cannot be null here — we just wrote the row — but guard for safety.
+        return Results.Ok(persisted is null ? ToResponse(membership) : ToResponse(persisted));
+    }
+
+    private static async Task<IResult> DeleteMembershipAsync(
+        string unitId,
+        string agentAddress,
+        [FromServices] IUnitMembershipRepository repository,
+        CancellationToken cancellationToken)
+    {
+        var existing = await repository.GetAsync(unitId, agentAddress, cancellationToken);
+        if (existing is null)
+        {
+            return Results.Problem(
+                detail: $"No membership exists for agent '{agentAddress}' in unit '{unitId}'.",
+                statusCode: StatusCodes.Status404NotFound);
+        }
+
+        await repository.DeleteAsync(unitId, agentAddress, cancellationToken);
+        return Results.NoContent();
+    }
+
+    internal static UnitMembershipResponse ToResponse(UnitMembership m) =>
+        new(
+            m.UnitId,
+            m.AgentAddress,
+            m.Model,
+            m.Specialty,
+            m.Enabled,
+            m.ExecutionMode,
+            m.CreatedAt,
+            m.UpdatedAt);
+}
