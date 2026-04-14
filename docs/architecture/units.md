@@ -177,7 +177,7 @@ Members of a unit may be either agents (`agent://`) or sub-units (`unit://`). Ne
 
 Membership has two invariants:
 
-1. **Agents are leaves with a 1:N parent** (`parentUnit`). An agent belongs to at most one unit. This invariant is enforced at the unit-agent assignment endpoints and remains unchanged — nesting lives on the unit-unit axis.
+1. **Agents are leaves with M:N memberships.** An agent may belong to any number of units. Each `(unit, agent)` edge is stored as a row in the `unit_memberships` table with optional per-membership config overrides (model, specialty, enabled, execution mode). The pre-#160 1:N `parentUnit` pointer is preserved on the `AgentMetadata` / `AgentResponse` wire shape but is derived server-side from the membership list (first row by `CreatedAt`) — there is no authoritative 1:N invariant any more. **Unit-typed members stay 1:N** per #217: a sub-unit has exactly one parent unit, and nesting lives on the unit-unit axis.
 2. **Unit membership is acyclic.** The graph of `unit://` members must be a DAG — no unit may contain itself, directly or transitively.
 
 **Cycle detection.** Every call to `IUnitActor.AddMemberAsync` with a `unit://` member walks the candidate's sub-unit graph before persisting the new edge. The walk:

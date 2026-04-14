@@ -85,6 +85,11 @@ public static class ServiceCollectionExtensions
 
         // Repositories
         services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
+        services.TryAddScoped<IUnitMembershipRepository, UnitMembershipRepository>();
+
+        // Unit-membership backfill hosted service (#160 / C2b-1).
+        // Gated by Database:BackfillMemberships; idempotent; short-lived.
+        services.AddHostedService<UnitMembershipBackfillService>();
 
         // Options
         services.AddOptions<AiProviderOptions>().BindConfiguration(AiProviderOptions.SectionName);

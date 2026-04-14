@@ -36,6 +36,9 @@ public class SpringDbContext(DbContextOptions<SpringDbContext> options) : DbCont
     /// <summary>Gets the set of secret-registry entries.</summary>
     public DbSet<SecretRegistryEntry> SecretRegistryEntries => Set<SecretRegistryEntry>();
 
+    /// <summary>Gets the set of unit-membership rows.</summary>
+    public DbSet<UnitMembershipEntity> UnitMemberships => Set<UnitMembershipEntity>();
+
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

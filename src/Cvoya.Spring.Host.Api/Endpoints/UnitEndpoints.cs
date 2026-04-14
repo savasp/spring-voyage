@@ -138,15 +138,14 @@ public static class UnitEndpoints
 
         group.MapPost("/{id}/agents/{agentId}", AssignUnitAgentAsync)
             .WithName("AssignUnitAgent")
-            .WithSummary("Assign an agent to this unit. Sets the agent's parent-unit pointer and adds it to the unit's members. 409 if the agent already belongs to a different unit.")
+            .WithSummary("Assign an agent to this unit. Creates a membership row (M:N per #160) and adds the agent to the unit's members list; no conflict is raised if the agent is also a member of another unit.")
             .Produces<AgentResponse>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status400BadRequest)
-            .ProducesProblem(StatusCodes.Status404NotFound)
-            .ProducesProblem(StatusCodes.Status409Conflict);
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapDelete("/{id}/agents/{agentId}", UnassignUnitAgentAsync)
             .WithName("UnassignUnitAgent")
-            .WithSummary("Unassign an agent from this unit. Clears the agent's parent-unit pointer and removes it from the unit's members.")
+            .WithSummary("Unassign an agent from this unit. Deletes the membership row and removes the agent from the unit's members list; other memberships the agent holds are unaffected.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status404NotFound);
 
@@ -1008,6 +1007,7 @@ public static class UnitEndpoints
         string id,
         [FromServices] IDirectoryService directoryService,
         [FromServices] IActorProxyFactory actorProxyFactory,
+        [FromServices] IUnitMembershipRepository membershipRepository,
         [FromServices] ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
@@ -1032,7 +1032,8 @@ public static class UnitEndpoints
 
         // Resolve and enrich in parallel. N+1 is fine here — units typically
         // hold single-digit numbers of agents, and the actor metadata read is
-        // a single state lookup.
+        // a single state lookup. ParentUnit on each response is derived
+        // from the membership table, not read from the legacy cached state.
         var enrichmentTasks = agentMembers.Select(async member =>
         {
             var entry = await directoryService.ResolveAsync(member, cancellationToken);
@@ -1045,8 +1046,10 @@ public static class UnitEndpoints
                     id, member);
                 return null;
             }
-            var metadata = await AgentEndpoints.TryGetAgentMetadataAsync(
-                actorProxyFactory, entry.ActorId, cancellationToken, logger);
+            var proxy = actorProxyFactory.CreateActorProxy<IAgentActor>(
+                new ActorId(entry.ActorId), nameof(IAgentActor));
+            var metadata = await AgentEndpoints.GetDerivedAgentMetadataAsync(
+                proxy, membershipRepository, member.Path, cancellationToken);
             return AgentEndpoints.ToAgentResponse(entry, metadata);
         });
 
@@ -1063,6 +1066,7 @@ public static class UnitEndpoints
         string agentId,
         [FromServices] IDirectoryService directoryService,
         [FromServices] IActorProxyFactory actorProxyFactory,
+        [FromServices] IUnitMembershipRepository membershipRepository,
         [FromServices] ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
@@ -1087,39 +1091,35 @@ public static class UnitEndpoints
             return Results.Problem(detail: $"Agent '{agentId}' not found", statusCode: StatusCodes.Status404NotFound);
         }
 
-        var agentProxy = actorProxyFactory.CreateActorProxy<IAgentActor>(
-            new ActorId(agentEntry.ActorId), nameof(IAgentActor));
+        // C2b-1: M:N membership model (see #160). An agent may be a member
+        // of multiple units. No 1:N conflict check — the old guard is gone
+        // and operators may freely add the same agent to several units.
+        // Existing membership rows are preserved (idempotent re-assign).
+        var existing = await membershipRepository.GetAsync(id, agentId, cancellationToken);
+        var membership = existing is null
+            ? new UnitMembership(UnitId: id, AgentAddress: agentId, Enabled: true)
+            : existing with { UnitId = id, AgentAddress = agentId };
 
-        // 1:N invariant: an agent belongs to at most one unit. If the agent
-        // already has a parent pointing at a *different* unit, refuse — the
-        // operator has to unassign from the other unit first. Re-assigning
-        // to the same unit is idempotent.
-        var existing = await agentProxy.GetMetadataAsync(cancellationToken);
-        if (existing.ParentUnit is not null && existing.ParentUnit != id)
-        {
-            return Results.Conflict(new
-            {
-                Error = $"Agent '{agentId}' already belongs to unit '{existing.ParentUnit}'.",
-                CurrentParent = existing.ParentUnit,
-                Hint = $"DELETE /api/v1/units/{existing.ParentUnit}/agents/{agentId} first.",
-            });
-        }
-
-        // Set the parent pointer first. If we added to members first and the
-        // parent-pointer write failed, we'd leave a member with no parent —
-        // harder to detect than the reverse.
-        await agentProxy.SetMetadataAsync(
-            new AgentMetadata(ParentUnit: id),
-            cancellationToken);
+        await membershipRepository.UpsertAsync(membership, cancellationToken);
 
         var unitProxy = actorProxyFactory.CreateActorProxy<IUnitActor>(
             new ActorId(unitEntry.ActorId), nameof(IUnitActor));
         await unitProxy.AddMemberAsync(agentAddress, cancellationToken);
 
+        // Also sync the legacy cached pointer on the agent actor so any
+        // reader still relying on it sees a consistent value. The
+        // authoritative source is the membership table.
+        var agentProxy = actorProxyFactory.CreateActorProxy<IAgentActor>(
+            new ActorId(agentEntry.ActorId), nameof(IAgentActor));
+        await agentProxy.SetMetadataAsync(
+            new AgentMetadata(ParentUnit: id),
+            cancellationToken);
+
         logger.LogInformation(
             "Agent {AgentId} assigned to unit {UnitId}.", agentId, id);
 
-        var refreshed = await agentProxy.GetMetadataAsync(cancellationToken);
+        var refreshed = await AgentEndpoints.GetDerivedAgentMetadataAsync(
+            agentProxy, membershipRepository, agentId, cancellationToken);
         return Results.Ok(AgentEndpoints.ToAgentResponse(agentEntry, refreshed));
     }
 
@@ -1128,6 +1128,7 @@ public static class UnitEndpoints
         string agentId,
         [FromServices] IDirectoryService directoryService,
         [FromServices] IActorProxyFactory actorProxyFactory,
+        [FromServices] IUnitMembershipRepository membershipRepository,
         [FromServices] ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
@@ -1147,18 +1148,30 @@ public static class UnitEndpoints
             return Results.Problem(detail: $"Agent '{agentId}' not found", statusCode: StatusCodes.Status404NotFound);
         }
 
-        // Remove from the unit's members first. If the agent's parent-pointer
-        // clear fails, we leave a stale pointer — detectable and repairable.
-        // The opposite ordering (clear pointer then fail to remove from
-        // members) leaves an orphaned member, which the routing layer would
-        // dispatch to despite the agent "thinking" it's standalone.
+        // Delete the membership row. Other units the agent still belongs to
+        // are unaffected — this is the point of M:N.
+        await membershipRepository.DeleteAsync(id, agentId, cancellationToken);
+
         var unitProxy = actorProxyFactory.CreateActorProxy<IUnitActor>(
             new ActorId(unitEntry.ActorId), nameof(IUnitActor));
         await unitProxy.RemoveMemberAsync(agentAddress, cancellationToken);
 
+        // Refresh the cached pointer on the agent actor. If any memberships
+        // remain, the derivation rule (first by CreatedAt) picks the new
+        // "primary" unit; if this was the last membership, clear the pointer.
+        var remaining = await membershipRepository.ListByAgentAsync(agentId, cancellationToken);
         var agentProxy = actorProxyFactory.CreateActorProxy<IAgentActor>(
             new ActorId(agentEntry.ActorId), nameof(IAgentActor));
-        await agentProxy.ClearParentUnitAsync(cancellationToken);
+        if (remaining.Count == 0)
+        {
+            await agentProxy.ClearParentUnitAsync(cancellationToken);
+        }
+        else
+        {
+            await agentProxy.SetMetadataAsync(
+                new AgentMetadata(ParentUnit: remaining[0].UnitId),
+                cancellationToken);
+        }
 
         logger.LogInformation(
             "Agent {AgentId} unassigned from unit {UnitId}.", agentId, id);
