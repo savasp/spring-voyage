@@ -136,7 +136,7 @@ start_web() {
         --env-file "${ENV_FILE}" \
         -e "NEXT_PUBLIC_API_URL=http://spring-api:8080" \
         "${SPRING_PLATFORM_IMAGE:-localhost/spring-voyage:latest}" \
-        node /app/web/server.js
+        node /app/web/src/Cvoya.Spring.Web/server.js
 }
 
 start_caddy() {

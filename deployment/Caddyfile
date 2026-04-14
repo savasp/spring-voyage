@@ -10,18 +10,19 @@
 #
 # Environment variables (all substituted by Caddy at container start):
 #
+#   DEPLOY_SCHEME    "http" for local dev (no TLS, default) or "https"
+#                    for a real FQDN deployment with automatic Let's
+#                    Encrypt certificates.
 #   DEPLOY_HOSTNAME  Public FQDN for all routes. Leave as "localhost"
-#                    (the default) to run on :80 without TLS. Set to a
+#                    (the default) with DEPLOY_SCHEME=http. Set to a
 #                    real FQDN with public DNS + ports 80/443 reachable
-#                    to enable automatic Let's Encrypt certificates.
+#                    and DEPLOY_SCHEME=https to enable auto-TLS.
 #   ACME_EMAIL       Contact email for Let's Encrypt expiry / revocation
-#                    notices. Recommended for production.
+#                    notices. Optional. If set for a real FQDN deployment,
+#                    add a global block at the top of this file:
+#                      { email {$ACME_EMAIL} }
 
-{
-    email {$ACME_EMAIL}
-}
-
-{$DEPLOY_HOSTNAME:localhost} {
+{$DEPLOY_SCHEME:http}://{$DEPLOY_HOSTNAME:localhost} {
     encode zstd gzip
 
     # Webhook endpoint — inbound events from third-party providers

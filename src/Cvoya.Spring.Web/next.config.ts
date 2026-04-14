@@ -24,7 +24,8 @@ import type { NextConfig } from "next";
 const monorepoRoot = path.resolve(__dirname, "..", "..");
 
 const nextConfig: NextConfig = {
-  output: "export",
+  output: "standalone",
+  outputFileTracingRoot: monorepoRoot,
   images: { unoptimized: true },
   turbopack: {
     root: monorepoRoot,
