@@ -21,27 +21,56 @@ using Octokit.Internal;
 /// live on <see cref="GitHubSkillRegistry"/> (which uses this connector to
 /// authenticate).
 /// </summary>
-public class GitHubConnector(
-    GitHubAppAuth auth,
-    GitHubWebhookHandler webhookHandler,
-    IWebhookSignatureValidator signatureValidator,
-    GitHubConnectorOptions options,
-    IGitHubRateLimitTracker rateLimitTracker,
-    GitHubRetryOptions retryOptions,
-    ILoggerFactory loggerFactory) : IGitHubConnector
+public class GitHubConnector : IGitHubConnector
 {
-    private readonly ILogger _logger = loggerFactory.CreateLogger<GitHubConnector>();
-    private readonly ILoggerFactory _loggerFactory = loggerFactory;
+    private readonly GitHubAppAuth _auth;
+    private readonly GitHubWebhookHandler _webhookHandler;
+    private readonly IWebhookSignatureValidator _signatureValidator;
+    private readonly GitHubConnectorOptions _options;
+    private readonly IGitHubRateLimitTracker _rateLimitTracker;
+    private readonly GitHubRetryOptions _retryOptions;
+    private readonly IInstallationTokenCache _tokenCache;
+    private readonly ILoggerFactory _loggerFactory;
+    private readonly ILogger _logger;
+
+    /// <summary>
+    /// Initializes the connector. When <paramref name="tokenCache"/> is null
+    /// (legacy call sites in tests that don't wire it up) the connector falls
+    /// back to a best-effort no-op cache so behaviour stays equivalent to
+    /// re-minting on every call.
+    /// </summary>
+    public GitHubConnector(
+        GitHubAppAuth auth,
+        GitHubWebhookHandler webhookHandler,
+        IWebhookSignatureValidator signatureValidator,
+        GitHubConnectorOptions options,
+        IGitHubRateLimitTracker rateLimitTracker,
+        GitHubRetryOptions retryOptions,
+        ILoggerFactory loggerFactory,
+        IInstallationTokenCache? tokenCache = null)
+    {
+        _auth = auth;
+        _webhookHandler = webhookHandler;
+        _signatureValidator = signatureValidator;
+        _options = options;
+        _rateLimitTracker = rateLimitTracker;
+        _retryOptions = retryOptions;
+        _loggerFactory = loggerFactory;
+        _tokenCache = tokenCache ?? new InstallationTokenCache(
+            new InstallationTokenCacheOptions(),
+            loggerFactory);
+        _logger = loggerFactory.CreateLogger<GitHubConnector>();
+    }
 
     /// <summary>
     /// Gets the webhook handler for processing inbound GitHub events.
     /// </summary>
-    public IGitHubWebhookHandler WebhookHandler => webhookHandler;
+    public IGitHubWebhookHandler WebhookHandler => _webhookHandler;
 
     /// <summary>
     /// Gets the authentication handler for GitHub App operations.
     /// </summary>
-    public GitHubAppAuth Auth => auth;
+    public GitHubAppAuth Auth => _auth;
 
     /// <summary>
     /// Processes an incoming webhook payload, validates its signature, and
@@ -57,14 +86,14 @@ public class GitHubConnector(
     /// </returns>
     public WebhookHandleResult HandleWebhook(string eventType, string payload, string signature)
     {
-        if (!signatureValidator.Validate(payload, signature, options.WebhookSecret))
+        if (!_signatureValidator.Validate(payload, signature, _options.WebhookSecret))
         {
             _logger.LogWarning("Invalid webhook signature received for event {EventType}", eventType);
             return WebhookHandleResult.InvalidSignature;
         }
 
         using var document = JsonDocument.Parse(payload);
-        var message = webhookHandler.TranslateEvent(eventType, document.RootElement);
+        var message = _webhookHandler.TranslateEvent(eventType, document.RootElement);
 
         return message is null
             ? WebhookHandleResult.Ignored
@@ -78,12 +107,15 @@ public class GitHubConnector(
     /// <returns>An authenticated GitHub client.</returns>
     public virtual async Task<IGitHubClient> CreateAuthenticatedClientAsync(CancellationToken cancellationToken = default)
     {
-        var installationId = options.InstallationId
+        var installationId = _options.InstallationId
             ?? throw new InvalidOperationException("InstallationId must be configured to create an authenticated client.");
 
-        var token = await auth.GetInstallationTokenAsync(installationId, cancellationToken);
+        var minted = await _tokenCache.GetOrMintAsync(
+            installationId,
+            (id, ct) => _auth.MintInstallationTokenAsync(id, ct),
+            cancellationToken);
 
-        var client = new GitHubClient(BuildConnection(token));
+        var client = new GitHubClient(BuildConnection(minted.Token));
 
         _logger.LogDebug("Created authenticated GitHub client for installation {InstallationId}", installationId);
 
@@ -115,8 +147,8 @@ public class GitHubConnector(
         // inner handler; replicate that and wrap it in the retry handler so
         // every outbound request goes through the rate-limit tracker.
         var retryHandler = new GitHubRetryHandler(
-            rateLimitTracker,
-            retryOptions,
+            _rateLimitTracker,
+            _retryOptions,
             _loggerFactory)
         {
             InnerHandler = new HttpClientHandler(),

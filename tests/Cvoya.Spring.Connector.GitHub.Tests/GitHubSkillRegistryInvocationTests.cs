@@ -41,7 +41,8 @@ public class GitHubSkillRegistryInvocationTests
         var connector = new GitHubConnector(auth, webhookHandler, signatureValidator, options, tracker, retryOptions, loggerFactory);
         var labelStateMachine = new Cvoya.Spring.Connector.GitHub.Labels.LabelStateMachine(
             Cvoya.Spring.Connector.GitHub.Labels.LabelStateMachineOptions.Default());
-        _registry = new GitHubSkillRegistry(connector, labelStateMachine, loggerFactory);
+        var installations = Substitute.For<IGitHubInstallationsClient>();
+        _registry = new GitHubSkillRegistry(connector, labelStateMachine, installations, loggerFactory);
     }
 
     [Fact]
@@ -103,6 +104,13 @@ public class GitHubSkillRegistryInvocationTests
             "github_search_mentions",
             "github_get_prior_work_context",
             "github_label_transition",
+            "github_list_webhooks",
+            "github_update_webhook",
+            "github_delete_webhook",
+            "github_test_webhook",
+            "github_list_installations",
+            "github_list_installation_repositories",
+            "github_find_installation_for_repo",
         }, ignoreOrder: true);
     }
 }

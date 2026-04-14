@@ -5,6 +5,7 @@ namespace Cvoya.Spring.Connector.GitHub;
 
 using System.Text.Json;
 
+using Cvoya.Spring.Connector.GitHub.Auth;
 using Cvoya.Spring.Connector.GitHub.Labels;
 using Cvoya.Spring.Connector.GitHub.Skills;
 using Cvoya.Spring.Core.Skills;
@@ -24,29 +25,35 @@ public class GitHubSkillRegistry : ISkillRegistry
 {
     private readonly GitHubConnector _connector;
     private readonly LabelStateMachine _labelStateMachine;
+    private readonly IGitHubInstallationsClient _installations;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger _logger;
     private readonly IReadOnlyList<ToolDefinition> _tools;
     private readonly Dictionary<string, Func<IGitHubClient, JsonElement, CancellationToken, Task<JsonElement>>> _dispatchers;
+    private readonly Dictionary<string, Func<JsonElement, CancellationToken, Task<JsonElement>>> _installationDispatchers;
 
     /// <summary>
     /// Initializes the registry with the GitHub connector used to authenticate
     /// outbound Octokit calls, the configured <see cref="LabelStateMachine"/>
-    /// (used by the label-transition skill), and a logger factory for per-skill
-    /// loggers.
+    /// (used by the label-transition skill), the installations client (used by
+    /// topology skills that need App-JWT auth rather than installation auth),
+    /// and a logger factory for per-skill loggers.
     /// </summary>
     public GitHubSkillRegistry(
         GitHubConnector connector,
         LabelStateMachine labelStateMachine,
+        IGitHubInstallationsClient installations,
         ILoggerFactory loggerFactory)
     {
         _connector = connector;
         _labelStateMachine = labelStateMachine;
+        _installations = installations;
         _loggerFactory = loggerFactory;
         _logger = loggerFactory.CreateLogger<GitHubSkillRegistry>();
 
         _tools = BuildToolDefinitions();
         _dispatchers = BuildDispatchers();
+        _installationDispatchers = BuildInstallationDispatchers();
     }
 
     /// <inheritdoc />
@@ -61,14 +68,44 @@ public class GitHubSkillRegistry : ISkillRegistry
         JsonElement arguments,
         CancellationToken cancellationToken = default)
     {
+        _logger.LogInformation("Invoking GitHub skill {ToolName}", toolName);
+
+        // Installation-topology skills authenticate via the App JWT (not an
+        // installation token), so they don't need the per-call authenticated
+        // IGitHubClient the Octokit-backed skills use. Dispatch them first so
+        // we avoid a pointless mint call.
+        if (_installationDispatchers.TryGetValue(toolName, out var installDispatch))
+        {
+            return await installDispatch(arguments, cancellationToken);
+        }
+
         if (!_dispatchers.TryGetValue(toolName, out var dispatch))
         {
             throw new SkillNotFoundException(toolName);
         }
 
-        _logger.LogInformation("Invoking GitHub skill {ToolName}", toolName);
         var client = await _connector.CreateAuthenticatedClientAsync(cancellationToken);
         return await dispatch(client, arguments, cancellationToken);
+    }
+
+    private Dictionary<string, Func<JsonElement, CancellationToken, Task<JsonElement>>> BuildInstallationDispatchers()
+    {
+        return new Dictionary<string, Func<JsonElement, CancellationToken, Task<JsonElement>>>(StringComparer.Ordinal)
+        {
+            ["github_list_installations"] = (args, ct) =>
+                new ListInstallationsSkill(_installations, _loggerFactory).ExecuteAsync(ct),
+
+            ["github_list_installation_repositories"] = (args, ct) =>
+                new ListInstallationRepositoriesSkill(_installations, _loggerFactory).ExecuteAsync(
+                    GetLong(args, "installationId"),
+                    ct),
+
+            ["github_find_installation_for_repo"] = (args, ct) =>
+                new FindInstallationForRepoSkill(_installations, _loggerFactory).ExecuteAsync(
+                    GetString(args, "owner"),
+                    GetString(args, "repo"),
+                    ct),
+        };
     }
 
     private Dictionary<string, Func<IGitHubClient, JsonElement, CancellationToken, Task<JsonElement>>> BuildDispatchers()
@@ -371,6 +408,39 @@ public class GitHubSkillRegistry : ISkillRegistry
                     GetInt(args, "number"),
                     GetString(args, "toState"),
                     ct),
+
+            ["github_list_webhooks"] = (client, args, ct) =>
+                new ListWebhooksSkill(client, _loggerFactory).ExecuteAsync(
+                    GetString(args, "owner"),
+                    GetString(args, "repo"),
+                    ct),
+
+            ["github_update_webhook"] = (client, args, ct) =>
+                new UpdateWebhookSkill(client, _loggerFactory).ExecuteAsync(
+                    GetString(args, "owner"),
+                    GetString(args, "repo"),
+                    GetLong(args, "hookId"),
+                    GetOptionalStringArray(args, "events"),
+                    GetOptionalBool(args, "active"),
+                    GetOptionalString(args, "url"),
+                    GetOptionalString(args, "contentType"),
+                    GetOptionalString(args, "secret"),
+                    GetOptionalBool(args, "insecureSsl"),
+                    ct),
+
+            ["github_delete_webhook"] = (client, args, ct) =>
+                new DeleteWebhookSkill(client, _loggerFactory).ExecuteAsync(
+                    GetString(args, "owner"),
+                    GetString(args, "repo"),
+                    GetLong(args, "hookId"),
+                    ct),
+
+            ["github_test_webhook"] = (client, args, ct) =>
+                new TestWebhookSkill(client, _loggerFactory).ExecuteAsync(
+                    GetString(args, "owner"),
+                    GetString(args, "repo"),
+                    GetLong(args, "hookId"),
+                    ct),
         };
     }
 
@@ -415,6 +485,18 @@ public class GitHubSkillRegistry : ISkillRegistry
         if (!args.TryGetProperty(name, out var prop) || prop.ValueKind != JsonValueKind.Array)
         {
             return [];
+        }
+        return prop.EnumerateArray()
+            .Where(e => e.ValueKind == JsonValueKind.String)
+            .Select(e => e.GetString()!)
+            .ToArray();
+    }
+
+    private static string[]? GetOptionalStringArray(JsonElement args, string name)
+    {
+        if (!args.TryGetProperty(name, out var prop) || prop.ValueKind != JsonValueKind.Array)
+        {
+            return null;
         }
         return prop.EnumerateArray()
             .Where(e => e.ValueKind == JsonValueKind.String)
@@ -1038,6 +1120,108 @@ public class GitHubSkillRegistry : ISkillRegistry
                         toState = new { type = "string", description = "The destination state label; must be in the configured state set" }
                     },
                     required = new[] { "owner", "repo", "number", "toState" }
+                }),
+
+            CreateToolDefinition(
+                "github_list_webhooks",
+                "Lists every repository webhook configured on the given repo, including events, config (url, content-type, insecure-ssl), and active flag.",
+                new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        owner = new { type = "string", description = "The repository owner" },
+                        repo = new { type = "string", description = "The repository name" }
+                    },
+                    required = new[] { "owner", "repo" }
+                }),
+
+            CreateToolDefinition(
+                "github_update_webhook",
+                "Updates an existing repository webhook. Any input left unset is preserved on the hook. Supports changing events, toggling active, and patching config (url, content-type, secret, insecure-ssl).",
+                new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        owner = new { type = "string", description = "The repository owner" },
+                        repo = new { type = "string", description = "The repository name" },
+                        hookId = new { type = "integer", description = "The webhook id returned by list or create" },
+                        events = new { type = "array", items = new { type = "string" }, description = "Replacement events list; omit to preserve" },
+                        active = new { type = "boolean", description = "Whether deliveries are active" },
+                        url = new { type = "string", description = "Replacement delivery URL" },
+                        contentType = new { type = "string", description = "json or form" },
+                        secret = new { type = "string", description = "Replacement shared secret" },
+                        insecureSsl = new { type = "boolean", description = "Whether to skip TLS verification on delivery (NOT recommended in production)" }
+                    },
+                    required = new[] { "owner", "repo", "hookId" }
+                }),
+
+            CreateToolDefinition(
+                "github_delete_webhook",
+                "Deletes a repository webhook by id. Returns deleted=false with reason=not_found when the hook is already gone; other errors surface normally.",
+                new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        owner = new { type = "string", description = "The repository owner" },
+                        repo = new { type = "string", description = "The repository name" },
+                        hookId = new { type = "integer", description = "The webhook id" }
+                    },
+                    required = new[] { "owner", "repo", "hookId" }
+                }),
+
+            CreateToolDefinition(
+                "github_test_webhook",
+                "Asks GitHub to redeliver the most recent push event to the hook for end-to-end validation (POST /repos/:o/:r/hooks/:id/tests).",
+                new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        owner = new { type = "string", description = "The repository owner" },
+                        repo = new { type = "string", description = "The repository name" },
+                        hookId = new { type = "integer", description = "The webhook id" }
+                    },
+                    required = new[] { "owner", "repo", "hookId" }
+                }),
+
+            CreateToolDefinition(
+                "github_list_installations",
+                "Lists every GitHub App installation the configured App can see. Authenticates with the App JWT (not an installation token).",
+                new
+                {
+                    type = "object",
+                    properties = new { },
+                    required = Array.Empty<string>()
+                }),
+
+            CreateToolDefinition(
+                "github_list_installation_repositories",
+                "Lists the repositories accessible to a specific GitHub App installation (GET /installation/repositories).",
+                new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        installationId = new { type = "integer", description = "The numeric installation id" }
+                    },
+                    required = new[] { "installationId" }
+                }),
+
+            CreateToolDefinition(
+                "github_find_installation_for_repo",
+                "Resolves which installation covers the given repo. Returns installed=false when the App is not installed for that repo (structured, not an error).",
+                new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        owner = new { type = "string", description = "The repository owner" },
+                        repo = new { type = "string", description = "The repository name" }
+                    },
+                    required = new[] { "owner", "repo" }
                 })
         ];
     }

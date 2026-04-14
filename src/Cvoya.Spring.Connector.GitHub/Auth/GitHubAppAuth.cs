@@ -12,11 +12,31 @@ using Microsoft.IdentityModel.Tokens;
 
 /// <summary>
 /// Handles GitHub App authentication including JWT generation and
-/// installation token management.
+/// installation-token minting. Minting is exposed raw so the layer above
+/// (<see cref="IInstallationTokenCache"/>) owns the caching / proactive-refresh
+/// policy — this class is a thin transport over GitHub's
+/// <c>POST /app/installations/{id}/access_tokens</c> endpoint.
 /// </summary>
-public class GitHubAppAuth(GitHubConnectorOptions options, ILoggerFactory loggerFactory)
+public class GitHubAppAuth
 {
-    private readonly ILogger _logger = loggerFactory.CreateLogger<GitHubAppAuth>();
+    private readonly GitHubConnectorOptions _options;
+    private readonly TimeProvider _timeProvider;
+    private readonly ILogger _logger;
+
+    /// <summary>
+    /// Initializes the auth helper with connector options, a logger factory,
+    /// and an optional <see cref="TimeProvider"/> used only for JWT timestamp
+    /// stability in tests (defaults to <see cref="TimeProvider.System"/>).
+    /// </summary>
+    public GitHubAppAuth(
+        GitHubConnectorOptions options,
+        ILoggerFactory loggerFactory,
+        TimeProvider? timeProvider = null)
+    {
+        _options = options;
+        _timeProvider = timeProvider ?? TimeProvider.System;
+        _logger = loggerFactory.CreateLogger<GitHubAppAuth>();
+    }
 
     /// <summary>
     /// Generates a JSON Web Token (JWT) signed with the GitHub App's private key.
@@ -25,10 +45,10 @@ public class GitHubAppAuth(GitHubConnectorOptions options, ILoggerFactory logger
     /// <returns>A signed JWT string.</returns>
     public string GenerateJwt()
     {
-        var now = DateTimeOffset.UtcNow;
+        var now = _timeProvider.GetUtcNow();
 
         using var rsa = RSA.Create();
-        rsa.ImportFromPem(options.PrivateKeyPem);
+        rsa.ImportFromPem(_options.PrivateKeyPem);
 
         var credentials = new SigningCredentials(
             new RsaSecurityKey(rsa),
@@ -36,7 +56,7 @@ public class GitHubAppAuth(GitHubConnectorOptions options, ILoggerFactory logger
 
         var descriptor = new SecurityTokenDescriptor
         {
-            Issuer = options.AppId.ToString(),
+            Issuer = _options.AppId.ToString(System.Globalization.CultureInfo.InvariantCulture),
             IssuedAt = now.UtcDateTime.AddSeconds(-60),
             Expires = now.UtcDateTime.AddMinutes(10),
             SigningCredentials = credentials
@@ -45,19 +65,21 @@ public class GitHubAppAuth(GitHubConnectorOptions options, ILoggerFactory logger
         var handler = new JwtSecurityTokenHandler();
         var token = handler.CreateToken(descriptor);
 
-        _logger.LogDebug("Generated JWT for GitHub App {AppId}", options.AppId);
+        _logger.LogDebug("Generated JWT for GitHub App {AppId}", _options.AppId);
 
         return handler.WriteToken(token);
     }
 
     /// <summary>
-    /// Obtains an installation access token from the GitHub API by exchanging
-    /// the App JWT for an installation-scoped token.
+    /// Mints a fresh installation access token by posting to GitHub's
+    /// <c>/app/installations/{id}/access_tokens</c> endpoint. The returned
+    /// record carries the server-reported <c>expires_at</c> so the caller can
+    /// drive proactive refresh off the real TTL.
     /// </summary>
     /// <param name="installationId">The GitHub App installation ID.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
-    /// <returns>The installation access token.</returns>
-    public async Task<string> GetInstallationTokenAsync(
+    /// <returns>The minted token with its actual expiration timestamp.</returns>
+    public virtual async Task<InstallationAccessToken> MintInstallationTokenAsync(
         long installationId,
         CancellationToken cancellationToken = default)
     {
@@ -76,14 +98,40 @@ public class GitHubAppAuth(GitHubConnectorOptions options, ILoggerFactory logger
         response.EnsureSuccessStatusCode();
 
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
-        var doc = JsonDocument.Parse(json);
-        var token = doc.RootElement.GetProperty("token").GetString()
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        var token = root.GetProperty("token").GetString()
             ?? throw new InvalidOperationException("GitHub API returned a null token.");
 
-        _logger.LogInformation(
-            "Obtained installation token for installation {InstallationId}",
-            installationId);
+        // `expires_at` is ISO-8601 UTC. If GitHub ever drops it, we conservatively
+        // fall back to 55 minutes (one hour minus a small safety margin) so the
+        // cache's refresh window still applies.
+        var expiresAt = root.TryGetProperty("expires_at", out var exp)
+            && exp.ValueKind == JsonValueKind.String
+            && DateTimeOffset.TryParse(exp.GetString(), out var parsed)
+                ? parsed
+                : _timeProvider.GetUtcNow().AddMinutes(55);
 
-        return token;
+        _logger.LogInformation(
+            "Minted installation token for installation {InstallationId}; expires_at={ExpiresAt:o}",
+            installationId, expiresAt);
+
+        return new InstallationAccessToken(token, expiresAt);
+    }
+
+    /// <summary>
+    /// Backwards-compatible overload that returns just the token string. New
+    /// callers should use <see cref="MintInstallationTokenAsync"/> and flow
+    /// the minted token through <see cref="IInstallationTokenCache"/>.
+    /// </summary>
+    /// <param name="installationId">The GitHub App installation ID.</param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>The installation access token.</returns>
+    public async Task<string> GetInstallationTokenAsync(
+        long installationId,
+        CancellationToken cancellationToken = default)
+    {
+        var minted = await MintInstallationTokenAsync(installationId, cancellationToken);
+        return minted.Token;
     }
 }
