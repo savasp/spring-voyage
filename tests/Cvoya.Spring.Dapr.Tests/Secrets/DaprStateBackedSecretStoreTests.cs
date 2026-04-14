@@ -3,6 +3,9 @@
 
 namespace Cvoya.Spring.Dapr.Tests.Secrets;
 
+using System.Collections.Generic;
+
+using Cvoya.Spring.Core.Tenancy;
 using Cvoya.Spring.Dapr.Secrets;
 using Cvoya.Spring.Dapr.Tenancy;
 
@@ -20,25 +23,52 @@ using Xunit;
 /// <summary>
 /// Tests for <see cref="DaprStateBackedSecretStore"/>. Verifies that the
 /// returned storeKey is an opaque GUID, that plaintext round-trips
-/// through the <see cref="DaprClient"/>, and that no tenant or other
-/// structural information is embedded in the backend key — the registry
-/// is the sole authority for tenant correlation.
+/// through the <see cref="DaprClient"/> with AES-GCM envelope encryption,
+/// that tenant-bound AAD is enforced, and that the per-tenant component
+/// format path (<see cref="SecretsOptions.ComponentNameFormat"/>) resolves
+/// the correct component.
 /// </summary>
 public class DaprStateBackedSecretStoreTests
 {
     private const string Component = "statestore";
-    private readonly DaprClient _dapr = Substitute.For<DaprClient>();
-    private readonly DaprStateBackedSecretStore _sut;
+    private const string TenantId = "acme";
 
-    public DaprStateBackedSecretStoreTests()
+    private readonly DaprClient _dapr = Substitute.For<DaprClient>();
+
+    private static ITenantContext TenantContext(string tenantId = TenantId)
+    {
+        var ctx = Substitute.For<ITenantContext>();
+        ctx.CurrentTenantId.Returns(tenantId);
+        return ctx;
+    }
+
+    private static ISecretsEncryptor RealEncryptor(bool allowEphemeral = true)
     {
         var options = Options.Create(new SecretsOptions
+        {
+            AllowEphemeralDevKey = allowEphemeral,
+        });
+        var logger = Substitute.For<ILogger<SecretsEncryptor>>();
+        return new SecretsEncryptor(options, logger);
+    }
+
+    private DaprStateBackedSecretStore CreateSut(
+        SecretsOptions? options = null,
+        ISecretsEncryptor? encryptor = null,
+        ITenantContext? tenantContext = null)
+    {
+        var opts = Options.Create(options ?? new SecretsOptions
         {
             StoreComponent = Component,
             KeyPrefix = "secrets/",
         });
         var logger = Substitute.For<ILogger<DaprStateBackedSecretStore>>();
-        _sut = new DaprStateBackedSecretStore(_dapr, options, logger);
+        return new DaprStateBackedSecretStore(
+            _dapr,
+            encryptor ?? RealEncryptor(),
+            tenantContext ?? TenantContext(),
+            opts,
+            logger);
     }
 
     [Fact]
@@ -46,7 +76,8 @@ public class DaprStateBackedSecretStoreTests
     {
         var ct = TestContext.Current.CancellationToken;
 
-        var key = await _sut.WriteAsync("hunter2", ct);
+        var sut = CreateSut();
+        var key = await sut.WriteAsync("hunter2", ct);
 
         key.ShouldNotBeNullOrWhiteSpace();
         Guid.TryParseExact(key, "N", out _).ShouldBeTrue();
@@ -54,17 +85,18 @@ public class DaprStateBackedSecretStoreTests
     }
 
     [Fact]
-    public async Task WriteAsync_CallsDaprClient_WithPrefixedOpaqueKey()
+    public async Task WriteAsync_EncryptsPlaintextBeforeHandingToDapr()
     {
         var ct = TestContext.Current.CancellationToken;
 
-        var key = await _sut.WriteAsync("hunter2", ct);
+        var sut = CreateSut();
+        var key = await sut.WriteAsync("hunter2", ct);
 
         await _dapr.Received(1).SaveStateAsync(
             Component,
             $"secrets/{key}",
-            "hunter2",
-            Arg.Any<global::Dapr.Client.StateOptions?>(),
+            Arg.Is<string>(v => !v.Contains("hunter2")),
+            Arg.Any<StateOptions?>(),
             Arg.Any<IReadOnlyDictionary<string, string>?>(),
             Arg.Any<CancellationToken>());
     }
@@ -74,31 +106,78 @@ public class DaprStateBackedSecretStoreTests
     {
         var ct = TestContext.Current.CancellationToken;
 
-        await _sut.WriteAsync("hunter2", ct);
+        var sut = CreateSut();
+        await sut.WriteAsync("hunter2", ct);
 
-        // The backend key must carry no tenant segment. The registry
-        // (ISecretRegistry) is the sole authority for tenant correlation.
         await _dapr.Received().SaveStateAsync(
             Component,
-            Arg.Is<string>(k => !k.Contains("t1") && !k.Contains("local") && !k.Contains("tenant")),
+            Arg.Is<string>(k => !k.Contains("acme") && !k.Contains("local") && !k.Contains("tenant")),
             Arg.Any<string>(),
-            Arg.Any<global::Dapr.Client.StateOptions?>(),
+            Arg.Any<StateOptions?>(),
             Arg.Any<IReadOnlyDictionary<string, string>?>(),
             Arg.Any<CancellationToken>());
     }
 
     [Fact]
-    public async Task ReadAsync_ReturnsStoredValue()
+    public async Task ReadAsync_RoundTripsThroughEncryptor()
     {
         var ct = TestContext.Current.CancellationToken;
+        var encryptor = RealEncryptor();
+        var sut = CreateSut(encryptor: encryptor);
+
+        string? captured = null;
+        _dapr
+            .When(d => d.SaveStateAsync(
+                Component,
+                Arg.Any<string>(),
+                Arg.Any<string>(),
+                Arg.Any<StateOptions?>(),
+                Arg.Any<IReadOnlyDictionary<string, string>?>(),
+                Arg.Any<CancellationToken>()))
+            .Do(ci => captured = ci.ArgAt<string>(2));
+
+        var storeKey = await sut.WriteAsync("hunter2", ct);
+
+        _dapr
+            .GetStateAsync<string?>(Component, $"secrets/{storeKey}", cancellationToken: Arg.Any<CancellationToken>())
+            .Returns(captured);
+
+        var round = await sut.ReadAsync(storeKey, ct);
+        round.ShouldBe("hunter2");
+    }
+
+    [Fact]
+    public async Task ReadAsync_LegacyPlaintextValue_ReturnedAsIs()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var sut = CreateSut();
 
         _dapr
             .GetStateAsync<string?>(Component, "secrets/abc", cancellationToken: Arg.Any<CancellationToken>())
-            .Returns("hunter2");
+            .Returns("legacy-plaintext");
 
-        var result = await _sut.ReadAsync("abc", ct);
+        var result = await sut.ReadAsync("abc", ct);
+        result.ShouldBe("legacy-plaintext");
+    }
 
-        result.ShouldBe("hunter2");
+    [Fact]
+    public async Task ReadAsync_EnvelopedWithWrongTenant_FailsAuthentication()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var encryptor = RealEncryptor();
+
+        // Encrypt as tenant "acme" but attempt to read with the store
+        // configured for tenant "mallory" — the AAD mismatch must fail.
+        var envelope = encryptor.Encrypt("hunter2", "acme", "storekey123");
+
+        var sut = CreateSut(encryptor: encryptor, tenantContext: TenantContext("mallory"));
+
+        _dapr
+            .GetStateAsync<string?>(Component, "secrets/storekey123", cancellationToken: Arg.Any<CancellationToken>())
+            .Returns(envelope);
+
+        await Should.ThrowAsync<System.Security.Cryptography.CryptographicException>(
+            async () => await sut.ReadAsync("storekey123", ct));
     }
 
     [Fact]
@@ -106,13 +185,83 @@ public class DaprStateBackedSecretStoreTests
     {
         var ct = TestContext.Current.CancellationToken;
 
-        await _sut.DeleteAsync("abc", ct);
+        var sut = CreateSut();
+        await sut.DeleteAsync("abc", ct);
 
         await _dapr.Received(1).DeleteStateAsync(
             Component,
             "secrets/abc",
-            Arg.Any<global::Dapr.Client.StateOptions?>(),
+            Arg.Any<StateOptions?>(),
             Arg.Any<IReadOnlyDictionary<string, string>?>(),
             Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task WriteAsync_PerTenantComponentFormat_ResolvesPerTenantComponent()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        var sut = CreateSut(options: new SecretsOptions
+        {
+            StoreComponent = "statestore",
+            ComponentNameFormat = "statestore-{tenantId}",
+            KeyPrefix = "secrets/",
+        }, tenantContext: TenantContext("acme"));
+
+        await sut.WriteAsync("hunter2", ct);
+
+        await _dapr.Received(1).SaveStateAsync(
+            "statestore-acme",
+            Arg.Any<string>(),
+            Arg.Any<string>(),
+            Arg.Any<StateOptions?>(),
+            Arg.Any<IReadOnlyDictionary<string, string>?>(),
+            Arg.Any<CancellationToken>());
+        await _dapr.DidNotReceive().SaveStateAsync(
+            "statestore",
+            Arg.Any<string>(),
+            Arg.Any<string>(),
+            Arg.Any<StateOptions?>(),
+            Arg.Any<IReadOnlyDictionary<string, string>?>(),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ReadAsync_PerTenantComponentFormat_UsesPerTenantComponent()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        var sut = CreateSut(options: new SecretsOptions
+        {
+            ComponentNameFormat = "statestore-{tenantId}",
+            KeyPrefix = "secrets/",
+        }, tenantContext: TenantContext("acme"));
+
+        _dapr
+            .GetStateAsync<string?>("statestore-acme", "secrets/abc", cancellationToken: Arg.Any<CancellationToken>())
+            .Returns("legacy-plaintext");
+
+        var result = await sut.ReadAsync("abc", ct);
+        result.ShouldBe("legacy-plaintext");
+    }
+
+    [Fact]
+    public async Task ReadAsync_LegacyTenantPrefixedKey_Fallback()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        var sut = CreateSut(tenantContext: TenantContext("acme"));
+
+        // Canonical key misses.
+        _dapr
+            .GetStateAsync<string?>(Component, "secrets/abc", cancellationToken: Arg.Any<CancellationToken>())
+            .Returns((string?)null);
+        // Legacy key hits with a plain value.
+        _dapr
+            .GetStateAsync<string?>(Component, "secrets/acme/abc", cancellationToken: Arg.Any<CancellationToken>())
+            .Returns("hunter2");
+
+        var result = await sut.ReadAsync("abc", ct);
+        result.ShouldBe("hunter2");
     }
 }

@@ -1,0 +1,110 @@
+# OSS Secret Store: At-Rest Encryption & Per-Tenant Components
+
+The OSS `ISecretStore` implementation (`DaprStateBackedSecretStore`) persists secret plaintext through the Dapr state-management building block. Two layers of defence protect that data on disk:
+
+1. **Application-layer AES-GCM envelope encryption** wraps every value before handing it to Dapr.
+2. **Optional per-tenant Dapr component isolation** — each tenant can be routed to its own `statestore-<tenantId>` Dapr component.
+
+Neither layer replaces a proper KMS-backed store in production, but together they make "plaintext in Redis" a non-issue in local dev and reduce the blast radius of a leaked backend snapshot.
+
+---
+
+## Envelope Encryption (AES-GCM-256)
+
+Every `WriteAsync` call wraps the plaintext in a versioned envelope:
+
+```
+[version(1)][nonce(12)][ciphertext(N)][auth tag(16)]   →   base64
+```
+
+- **Version 1** is AES-GCM-256 with a random per-write nonce.
+- **Associated Data** is `"{tenantId}:{storeKey}"`. A ciphertext cannot be transplanted across tenants or store keys — authentication fails on read.
+- **Pre-encryption legacy values** (plain UTF-8 strings with no version prefix) are still readable; they get re-enveloped on the next write.
+
+Platform-scoped secrets use the literal string `"platform"` as the tenant id in the AAD — this matches how platform-owned registry entries identify themselves everywhere else in the system.
+
+### Key Sources
+
+In priority order:
+
+1. **`SPRING_SECRETS_AES_KEY` environment variable** — base64-encoded 32-byte key.
+2. **`Secrets:AesKeyFile` config value** — filesystem path to a file whose contents are the base64-encoded key. Useful for container deployments that mount a secret volume.
+3. **Ephemeral dev key** — only if `Secrets:AllowEphemeralDevKey=true`. Generates a random key in memory at startup, logs a warning, and does **not** persist it. Intended only to keep `dotnet run` frictionless locally. Restarts leave pre-existing envelopes unreadable.
+
+If none of the above is satisfied, the service refuses to boot.
+
+### Startup Self-Check
+
+The encryptor fails fast on obviously weak keys:
+
+- Wrong length (anything other than 32 bytes decoded).
+- All zeros or all `0xFF`.
+- Sentinel/test patterns (`0x00, 0x01, 0x02, …` ascending; ASCII `"changeme…"`; ASCII `"testtest…"`; all spaces; all `A`).
+
+Error messages name the key source and list all three configuration options, so operators don't have to guess.
+
+### Generating a Key
+
+```bash
+# Generate a fresh base64-encoded 32-byte key.
+openssl rand -base64 32
+```
+
+Export it:
+
+```bash
+export SPRING_SECRETS_AES_KEY="$(openssl rand -base64 32)"
+```
+
+Or write it to a mounted file:
+
+```bash
+openssl rand -base64 32 > /secrets/spring-aes.key
+# ...and set Secrets:AesKeyFile=/secrets/spring-aes.key in config.
+```
+
+### Rotation
+
+Spring Voyage v2 does **not** yet ship an in-place rotation tool. Until it does, rotation is operator-driven:
+
+1. Stand up a new environment with the new key.
+2. Export secrets from the old environment (via the API, which emits plaintext once the caller passes authorization), re-import into the new one.
+3. Retire the old key.
+
+Tracked in the secrets-rotation issue (`#201`). Production deployments that need transparent rotation should externalize key material via the private cloud `ISecretStore` implementation (Azure Key Vault / AWS KMS), which supports native rotation policies.
+
+---
+
+## Per-Tenant Dapr Component Isolation
+
+By default the OSS store uses a single Dapr component (`Secrets:StoreComponent`, defaulting to `statestore`) for every tenant. Structural tenant isolation comes from the registry; the shared component is a dev convenience.
+
+Set `Secrets:ComponentNameFormat` to a template containing `{tenantId}` to switch to per-tenant components:
+
+```json
+{
+  "Secrets": {
+    "ComponentNameFormat": "statestore-{tenantId}"
+  }
+}
+```
+
+With this setting, a call from tenant `acme` reads and writes via the Dapr component named `statestore-acme`. Operators are responsible for provisioning those components (see [Dapr's multi-component guide](https://docs.dapr.io/operations/components/component-scopes/)). A misconfigured caller that targets the wrong component sees nothing — this is defence in depth on top of the registry's tenant filter.
+
+### Legacy Key Fallback
+
+The canonical backend key is `Secrets:KeyPrefix + storeKey` (no tenant segment). An earlier shape embedded the tenant — `secrets/{tenantId}/{storeKey}` — and the store still tries that form if the canonical read misses. This keeps data readable immediately after flipping `ComponentNameFormat` on; writes migrate the row to the canonical key naturally, and `DeleteAsync` best-effort cleans up both shapes.
+
+A one-time rewrite is only needed if operators want to reclaim storage eagerly; the resolver tolerates the mixed state.
+
+---
+
+## Recommended Defaults
+
+| Environment   | `SPRING_SECRETS_AES_KEY` | `AllowEphemeralDevKey` | `ComponentNameFormat` |
+|---------------|--------------------------|-------------------------|-----------------------|
+| Local dev     | unset                    | `true`                  | unset (shared)        |
+| CI            | generated per run        | `false`                 | unset                 |
+| Staging/Prod  | sourced from vault       | `false`                 | `"statestore-{tenantId}"` when running multi-tenant |
+
+Production deployments should not rely on this at-rest layer as their primary protection — use the KMS-backed store implementation provided by the cloud host. The envelope layer is a belt-and-braces guard against backup leaks and operator errors.
