@@ -204,6 +204,139 @@ public class GitHubSkillRegistry : ISkillRegistry
                     GetString(args, "repo"),
                     GetInt(args, "number"),
                     ct),
+
+            ["github_update_comment"] = (client, args, ct) =>
+                new UpdateCommentSkill(client, _loggerFactory).ExecuteAsync(
+                    GetString(args, "owner"),
+                    GetString(args, "repo"),
+                    GetLong(args, "commentId"),
+                    GetString(args, "body"),
+                    ct),
+
+            ["github_list_comments"] = (client, args, ct) =>
+                new ListCommentsSkill(client, _loggerFactory).ExecuteAsync(
+                    GetString(args, "owner"),
+                    GetString(args, "repo"),
+                    GetInt(args, "number"),
+                    GetOptionalInt(args, "maxResults") ?? 30,
+                    ct),
+
+            ["github_get_pull_request"] = (client, args, ct) =>
+                new GetPullRequestSkill(client, _loggerFactory).ExecuteAsync(
+                    GetString(args, "owner"),
+                    GetString(args, "repo"),
+                    GetInt(args, "number"),
+                    ct),
+
+            ["github_list_pull_requests"] = (client, args, ct) =>
+                new ListPullRequestsSkill(client, _loggerFactory).ExecuteAsync(
+                    GetString(args, "owner"),
+                    GetString(args, "repo"),
+                    GetOptionalString(args, "state"),
+                    GetOptionalString(args, "head"),
+                    GetOptionalString(args, "base"),
+                    GetOptionalString(args, "sort"),
+                    GetOptionalString(args, "direction"),
+                    GetOptionalInt(args, "maxResults") ?? 30,
+                    ct),
+
+            ["github_find_pull_request_for_branch"] = (client, args, ct) =>
+                new FindPullRequestForBranchSkill(client, _loggerFactory).ExecuteAsync(
+                    GetString(args, "owner"),
+                    GetString(args, "repo"),
+                    GetString(args, "branch"),
+                    GetOptionalString(args, "headOwner"),
+                    GetOptionalBool(args, "includeClosed") ?? false,
+                    ct),
+
+            ["github_list_pull_requests_by_author"] = (client, args, ct) =>
+                new ListPullRequestsByUserSkill(client, _loggerFactory).ExecuteAsync(
+                    GetString(args, "owner"),
+                    GetString(args, "repo"),
+                    GetString(args, "login"),
+                    ListPullRequestsByUserSkill.UserRole.Author,
+                    GetOptionalString(args, "state"),
+                    GetOptionalInt(args, "maxResults") ?? 30,
+                    ct),
+
+            ["github_list_pull_requests_by_assignee"] = (client, args, ct) =>
+                new ListPullRequestsByUserSkill(client, _loggerFactory).ExecuteAsync(
+                    GetString(args, "owner"),
+                    GetString(args, "repo"),
+                    GetString(args, "login"),
+                    ListPullRequestsByUserSkill.UserRole.Assignee,
+                    GetOptionalString(args, "state"),
+                    GetOptionalInt(args, "maxResults") ?? 30,
+                    ct),
+
+            ["github_list_pull_request_reviews"] = (client, args, ct) =>
+                new ListPullRequestReviewsSkill(client, _loggerFactory).ExecuteAsync(
+                    GetString(args, "owner"),
+                    GetString(args, "repo"),
+                    GetInt(args, "number"),
+                    ct),
+
+            ["github_list_pull_request_review_comments"] = (client, args, ct) =>
+                new ListPullRequestReviewCommentsSkill(client, _loggerFactory).ExecuteAsync(
+                    GetString(args, "owner"),
+                    GetString(args, "repo"),
+                    GetInt(args, "number"),
+                    GetOptionalInt(args, "maxResults") ?? 30,
+                    ct),
+
+            ["github_has_approved_review"] = (client, args, ct) =>
+                new HasApprovedReviewSkill(client, _loggerFactory).ExecuteAsync(
+                    GetString(args, "owner"),
+                    GetString(args, "repo"),
+                    GetInt(args, "number"),
+                    GetOptionalString(args, "requiredReviewer"),
+                    ct),
+
+            ["github_merge_pull_request"] = (client, args, ct) =>
+                new MergePullRequestSkill(client, _loggerFactory).ExecuteAsync(
+                    GetString(args, "owner"),
+                    GetString(args, "repo"),
+                    GetInt(args, "number"),
+                    GetOptionalString(args, "mergeMethod"),
+                    GetOptionalString(args, "commitTitle"),
+                    GetOptionalString(args, "commitMessage"),
+                    GetOptionalString(args, "sha"),
+                    ct),
+
+            ["github_enable_auto_merge"] = (client, args, ct) =>
+                new EnableAutoMergeSkill(client, _loggerFactory).ExecuteAsync(
+                    GetString(args, "owner"),
+                    GetString(args, "repo"),
+                    GetInt(args, "number"),
+                    GetOptionalString(args, "mergeMethod"),
+                    GetOptionalString(args, "commitHeadline"),
+                    GetOptionalString(args, "commitBody"),
+                    ct),
+
+            ["github_update_branch"] = (client, args, ct) =>
+                new UpdateBranchSkill(client, _loggerFactory).ExecuteAsync(
+                    GetString(args, "owner"),
+                    GetString(args, "repo"),
+                    GetInt(args, "number"),
+                    GetOptionalString(args, "expectedHeadSha"),
+                    ct),
+
+            ["github_request_pull_request_review"] = (client, args, ct) =>
+                new RequestPullRequestReviewSkill(client, _loggerFactory).ExecuteAsync(
+                    GetString(args, "owner"),
+                    GetString(args, "repo"),
+                    GetInt(args, "number"),
+                    GetStringArray(args, "reviewers"),
+                    GetStringArray(args, "teamReviewers"),
+                    ct),
+
+            ["github_ensure_issue_linked_to_pull_request"] = (client, args, ct) =>
+                new EnsureIssueLinkedToPullRequestSkill(client, _loggerFactory).ExecuteAsync(
+                    GetString(args, "owner"),
+                    GetString(args, "repo"),
+                    GetInt(args, "number"),
+                    GetIntArray(args, "issueNumbers"),
+                    ct),
         };
     }
 
@@ -252,6 +385,41 @@ public class GitHubSkillRegistry : ISkillRegistry
         return prop.EnumerateArray()
             .Where(e => e.ValueKind == JsonValueKind.String)
             .Select(e => e.GetString()!)
+            .ToArray();
+    }
+
+    private static long GetLong(JsonElement args, string name)
+    {
+        if (!args.TryGetProperty(name, out var prop) || prop.ValueKind != JsonValueKind.Number)
+        {
+            throw new ArgumentException($"Missing or non-integer argument '{name}'.");
+        }
+        return prop.GetInt64();
+    }
+
+    private static bool? GetOptionalBool(JsonElement args, string name)
+    {
+        if (!args.TryGetProperty(name, out var prop))
+        {
+            return null;
+        }
+        return prop.ValueKind switch
+        {
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            _ => null,
+        };
+    }
+
+    private static int[] GetIntArray(JsonElement args, string name)
+    {
+        if (!args.TryGetProperty(name, out var prop) || prop.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+        return prop.EnumerateArray()
+            .Where(e => e.ValueKind == JsonValueKind.Number)
+            .Select(e => e.GetInt32())
             .ToArray();
     }
 
@@ -521,6 +689,257 @@ public class GitHubSkillRegistry : ISkillRegistry
                         number = new { type = "integer", description = "The issue number" }
                     },
                     required = new[] { "owner", "repo", "number" }
+                }),
+
+            CreateToolDefinition(
+                "github_update_comment",
+                "Updates the body of an existing issue or pull request conversation comment.",
+                new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        owner = new { type = "string", description = "The repository owner" },
+                        repo = new { type = "string", description = "The repository name" },
+                        commentId = new { type = "integer", description = "The numeric id of the comment to update" },
+                        body = new { type = "string", description = "The replacement comment body text" }
+                    },
+                    required = new[] { "owner", "repo", "commentId", "body" }
+                }),
+
+            CreateToolDefinition(
+                "github_list_comments",
+                "Lists conversation comments on an issue or pull request.",
+                new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        owner = new { type = "string", description = "The repository owner" },
+                        repo = new { type = "string", description = "The repository name" },
+                        number = new { type = "integer", description = "The issue or pull request number" },
+                        maxResults = new { type = "integer", description = "Maximum comments to return (capped at 100)" }
+                    },
+                    required = new[] { "owner", "repo", "number" }
+                }),
+
+            CreateToolDefinition(
+                "github_get_pull_request",
+                "Gets detailed information about a GitHub pull request.",
+                new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        owner = new { type = "string", description = "The repository owner" },
+                        repo = new { type = "string", description = "The repository name" },
+                        number = new { type = "integer", description = "The pull request number" }
+                    },
+                    required = new[] { "owner", "repo", "number" }
+                }),
+
+            CreateToolDefinition(
+                "github_list_pull_requests",
+                "Lists pull requests in a repository filtered by state, head branch, base branch, with optional sort.",
+                new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        owner = new { type = "string", description = "The repository owner" },
+                        repo = new { type = "string", description = "The repository name" },
+                        state = new { type = "string", description = "State filter: open (default), closed, or all" },
+                        head = new { type = "string", description = "Optional head filter in user:branch form" },
+                        @base = new { type = "string", description = "Optional base branch filter" },
+                        sort = new { type = "string", description = "Sort key: created (default), updated, popularity, long-running" },
+                        direction = new { type = "string", description = "Sort direction: asc or desc (default)" },
+                        maxResults = new { type = "integer", description = "Maximum pull requests to return (capped at 100)" }
+                    },
+                    required = new[] { "owner", "repo" }
+                }),
+
+            CreateToolDefinition(
+                "github_find_pull_request_for_branch",
+                "Finds the pull request associated with a given branch, if one exists.",
+                new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        owner = new { type = "string", description = "The repository owner" },
+                        repo = new { type = "string", description = "The repository name" },
+                        branch = new { type = "string", description = "The head branch name (without user: prefix)" },
+                        headOwner = new { type = "string", description = "Optional owner of the branch head; defaults to owner" },
+                        includeClosed = new { type = "boolean", description = "Whether to include closed pull requests" }
+                    },
+                    required = new[] { "owner", "repo", "branch" }
+                }),
+
+            CreateToolDefinition(
+                "github_list_pull_requests_by_author",
+                "Lists pull requests opened by the specified GitHub user in a repository, via the Search API.",
+                new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        owner = new { type = "string", description = "The repository owner" },
+                        repo = new { type = "string", description = "The repository name" },
+                        login = new { type = "string", description = "The GitHub login of the author" },
+                        state = new { type = "string", description = "State filter: open (default), closed, or all" },
+                        maxResults = new { type = "integer", description = "Maximum pull requests to return (capped at 100)" }
+                    },
+                    required = new[] { "owner", "repo", "login" }
+                }),
+
+            CreateToolDefinition(
+                "github_list_pull_requests_by_assignee",
+                "Lists pull requests assigned to the specified GitHub user in a repository, via the Search API.",
+                new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        owner = new { type = "string", description = "The repository owner" },
+                        repo = new { type = "string", description = "The repository name" },
+                        login = new { type = "string", description = "The GitHub login of the assignee" },
+                        state = new { type = "string", description = "State filter: open (default), closed, or all" },
+                        maxResults = new { type = "integer", description = "Maximum pull requests to return (capped at 100)" }
+                    },
+                    required = new[] { "owner", "repo", "login" }
+                }),
+
+            CreateToolDefinition(
+                "github_list_pull_request_reviews",
+                "Lists the reviews submitted on a pull request.",
+                new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        owner = new { type = "string", description = "The repository owner" },
+                        repo = new { type = "string", description = "The repository name" },
+                        number = new { type = "integer", description = "The pull request number" }
+                    },
+                    required = new[] { "owner", "repo", "number" }
+                }),
+
+            CreateToolDefinition(
+                "github_list_pull_request_review_comments",
+                "Lists the line-level review comments on a pull request's diff.",
+                new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        owner = new { type = "string", description = "The repository owner" },
+                        repo = new { type = "string", description = "The repository name" },
+                        number = new { type = "integer", description = "The pull request number" },
+                        maxResults = new { type = "integer", description = "Maximum comments to return (capped at 100)" }
+                    },
+                    required = new[] { "owner", "repo", "number" }
+                }),
+
+            CreateToolDefinition(
+                "github_has_approved_review",
+                "Returns whether a pull request has at least one approving review (most recent state per reviewer).",
+                new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        owner = new { type = "string", description = "The repository owner" },
+                        repo = new { type = "string", description = "The repository name" },
+                        number = new { type = "integer", description = "The pull request number" },
+                        requiredReviewer = new { type = "string", description = "Optional GitHub login whose latest review must be an approval" }
+                    },
+                    required = new[] { "owner", "repo", "number" }
+                }),
+
+            CreateToolDefinition(
+                "github_merge_pull_request",
+                "Merges a pull request using the specified strategy (merge, squash, or rebase).",
+                new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        owner = new { type = "string", description = "The repository owner" },
+                        repo = new { type = "string", description = "The repository name" },
+                        number = new { type = "integer", description = "The pull request number" },
+                        mergeMethod = new { type = "string", description = "Merge strategy: merge (default), squash, or rebase" },
+                        commitTitle = new { type = "string", description = "Optional merge commit title" },
+                        commitMessage = new { type = "string", description = "Optional merge commit message" },
+                        sha = new { type = "string", description = "Optional SHA the PR head must match" }
+                    },
+                    required = new[] { "owner", "repo", "number" }
+                }),
+
+            CreateToolDefinition(
+                "github_enable_auto_merge",
+                "Enables auto-merge on a pull request (via the GraphQL enablePullRequestAutoMerge mutation).",
+                new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        owner = new { type = "string", description = "The repository owner" },
+                        repo = new { type = "string", description = "The repository name" },
+                        number = new { type = "integer", description = "The pull request number" },
+                        mergeMethod = new { type = "string", description = "Merge strategy when auto-merging: merge, squash (default), or rebase" },
+                        commitHeadline = new { type = "string", description = "Optional commit headline" },
+                        commitBody = new { type = "string", description = "Optional commit body" }
+                    },
+                    required = new[] { "owner", "repo", "number" }
+                }),
+
+            CreateToolDefinition(
+                "github_update_branch",
+                "Updates a pull request branch by merging the base branch into it (PUT /pulls/:n/update-branch).",
+                new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        owner = new { type = "string", description = "The repository owner" },
+                        repo = new { type = "string", description = "The repository name" },
+                        number = new { type = "integer", description = "The pull request number" },
+                        expectedHeadSha = new { type = "string", description = "Optional expected head SHA the PR must still be at" }
+                    },
+                    required = new[] { "owner", "repo", "number" }
+                }),
+
+            CreateToolDefinition(
+                "github_request_pull_request_review",
+                "Requests reviews from users and/or teams on an open pull request.",
+                new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        owner = new { type = "string", description = "The repository owner" },
+                        repo = new { type = "string", description = "The repository name" },
+                        number = new { type = "integer", description = "The pull request number" },
+                        reviewers = new { type = "array", items = new { type = "string" }, description = "GitHub logins to request reviews from" },
+                        teamReviewers = new { type = "array", items = new { type = "string" }, description = "Team slugs to request reviews from" }
+                    },
+                    required = new[] { "owner", "repo", "number" }
+                }),
+
+            CreateToolDefinition(
+                "github_ensure_issue_linked_to_pull_request",
+                "Ensures a pull request body contains closing-keyword references for each of the given issue numbers, appending Closes #N lines when missing.",
+                new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        owner = new { type = "string", description = "The repository owner" },
+                        repo = new { type = "string", description = "The repository name" },
+                        number = new { type = "integer", description = "The pull request number" },
+                        issueNumbers = new { type = "array", items = new { type = "integer" }, description = "Issue numbers that should be auto-closed by this PR" }
+                    },
+                    required = new[] { "owner", "repo", "number", "issueNumbers" }
                 })
         ];
     }

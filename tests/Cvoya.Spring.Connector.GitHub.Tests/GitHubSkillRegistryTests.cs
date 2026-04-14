@@ -41,7 +41,7 @@ public class GitHubSkillRegistryTests
     {
         var tools = _registry.GetToolDefinitions();
 
-        tools.Count().ShouldBe(16);
+        tools.Count().ShouldBe(31);
         tools.Select(t => t.Name).ShouldBe(new[]
         {
             "github_create_branch",
@@ -60,6 +60,21 @@ public class GitHubSkillRegistryTests
             "github_list_issues",
             "github_assign_issue",
             "github_get_issue_author",
+            "github_update_comment",
+            "github_list_comments",
+            "github_get_pull_request",
+            "github_list_pull_requests",
+            "github_find_pull_request_for_branch",
+            "github_list_pull_requests_by_author",
+            "github_list_pull_requests_by_assignee",
+            "github_list_pull_request_reviews",
+            "github_list_pull_request_review_comments",
+            "github_has_approved_review",
+            "github_merge_pull_request",
+            "github_enable_auto_merge",
+            "github_update_branch",
+            "github_request_pull_request_review",
+            "github_ensure_issue_linked_to_pull_request",
         }, ignoreOrder: true);
     }
 
