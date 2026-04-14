@@ -13,6 +13,7 @@ using Cvoya.Spring.Core.Skills;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 
 /// <summary>
 /// Extension methods for registering GitHub connector services with the dependency injection container.
@@ -72,6 +73,18 @@ public static class ServiceCollectionExtensions
             });
         services.TryAddSingleton<LabelStateMachine>(sp =>
             new LabelStateMachine(sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<LabelStateMachineOptions>>().Value));
+
+        // Installation-token cache. Options are bound from GitHub:TokenCache
+        // (ProactiveRefreshWindow, CeilingTtl). The default implementation is
+        // in-memory and per-host; multi-host coordination (e.g. Redis-backed)
+        // is left to the private cloud repo.
+        services.AddOptions<InstallationTokenCacheOptions>()
+            .Bind(section.GetSection("TokenCache"));
+        services.TryAddSingleton(sp =>
+            sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<InstallationTokenCacheOptions>>().Value);
+        services.TryAddSingleton<IInstallationTokenCache>(sp => new InstallationTokenCache(
+            sp.GetRequiredService<InstallationTokenCacheOptions>(),
+            sp.GetRequiredService<ILoggerFactory>()));
 
         services.TryAddSingleton<GitHubAppAuth>();
         services.TryAddSingleton<IWebhookSignatureValidator, WebhookSignatureValidator>();

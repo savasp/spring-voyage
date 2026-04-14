@@ -4,10 +4,11 @@
 namespace Cvoya.Spring.Connector.GitHub.Auth;
 
 /// <summary>
-/// Lists GitHub App installations visible to the currently-configured App.
-/// Extracted as an abstraction so the private (cloud) repo can substitute a
-/// tenant-scoped implementation — e.g. one that filters installations by the
-/// caller's OAuth identity — without touching endpoint code.
+/// Lists GitHub App installations visible to the currently-configured App and
+/// resolves repo ↔ installation mappings. Extracted as an abstraction so the
+/// private (cloud) repo can substitute a tenant-scoped implementation — e.g.
+/// one that filters installations by the caller's OAuth identity — without
+/// touching endpoint code.
 /// </summary>
 public interface IGitHubInstallationsClient
 {
@@ -21,6 +22,33 @@ public interface IGitHubInstallationsClient
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>The visible installations.</returns>
     Task<IReadOnlyList<GitHubInstallation>> ListInstallationsAsync(
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lists the repositories accessible to the given installation. Uses an
+    /// installation-token authenticated client to call
+    /// <c>GET /installation/repositories</c>.
+    /// </summary>
+    /// <param name="installationId">The numeric installation id.</param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>The repositories the installation covers.</returns>
+    Task<IReadOnlyList<GitHubInstallationRepository>> ListInstallationRepositoriesAsync(
+        long installationId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Resolves which installation, if any, covers the given repository.
+    /// Calls <c>GET /repos/{owner}/{repo}/installation</c>. Returns
+    /// <c>null</c> when the App is not installed for the repo (GitHub returns
+    /// 404 in that case).
+    /// </summary>
+    /// <param name="owner">The repository owner.</param>
+    /// <param name="repo">The repository name.</param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>The installation id / metadata, or <c>null</c> when not installed.</returns>
+    Task<GitHubInstallation?> FindInstallationForRepoAsync(
+        string owner,
+        string repo,
         CancellationToken cancellationToken = default);
 }
 
@@ -39,3 +67,20 @@ public record GitHubInstallation(
     string Account,
     string AccountType,
     string RepoSelection);
+
+/// <summary>
+/// A repository accessible to a given GitHub App installation — the minimal
+/// projection needed by the topology skills (full / short name and whether
+/// the repo is private).
+/// </summary>
+/// <param name="RepositoryId">The numeric repository id.</param>
+/// <param name="Owner">The repository owner login.</param>
+/// <param name="Name">The repository short name.</param>
+/// <param name="FullName">The <c>owner/name</c> combined form.</param>
+/// <param name="Private">Whether the repo is private.</param>
+public record GitHubInstallationRepository(
+    long RepositoryId,
+    string Owner,
+    string Name,
+    string FullName,
+    bool Private);
