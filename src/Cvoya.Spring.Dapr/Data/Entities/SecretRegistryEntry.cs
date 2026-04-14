@@ -43,6 +43,26 @@ public class SecretRegistryEntry
     /// </summary>
     public SecretOrigin Origin { get; set; }
 
+    /// <summary>
+    /// Monotonically-increasing version number, bumped by
+    /// <see cref="ISecretRegistry.RotateAsync"/>. <c>null</c> for legacy
+    /// rows that predate the version column; they transition to version
+    /// <c>1</c> on their first rotation. Rows created after the
+    /// migration start at version <c>1</c> (<see cref="RegisterAsync"/>
+    /// leaves <c>null</c> for an unmodified legacy row but initialises
+    /// new inserts).
+    /// </summary>
+    public int? Version { get; set; }
+
     /// <summary>Creation timestamp (UTC).</summary>
     public DateTimeOffset CreatedAt { get; set; }
+
+    /// <summary>
+    /// Last-update timestamp (UTC). Set on creation and refreshed by
+    /// every <see cref="ISecretRegistry.RotateAsync"/>. Audit decorators
+    /// observe the transition via <see cref="SecretRotation"/>'s version
+    /// fields; <see cref="UpdatedAt"/> is the persistent record for
+    /// operators browsing the registry directly.
+    /// </summary>
+    public DateTimeOffset UpdatedAt { get; set; }
 }

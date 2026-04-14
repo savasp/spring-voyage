@@ -13,6 +13,58 @@ namespace Cvoya.Spring.Core.Secrets;
 /// structural lookup) with <see cref="ISecretStore"/> (for the value
 /// fetch). The private cloud repo layers audit-log decoration and RBAC
 /// checks onto this interface via DI without touching call sites.
+///
+/// <para>
+/// <b>DI decoration pattern.</b> <see cref="ISecretResolver"/> is the
+/// primary extension point for audit logging, RBAC checks, metrics, and
+/// redaction. The OSS default (<c>ComposedSecretResolver</c>) is
+/// registered with <c>TryAddScoped</c>, so consumers can wrap it at the
+/// DI layer AFTER calling <c>AddCvoyaSpringDapr</c>. There is no
+/// Scrutor dependency in the core — the pattern is manual but stable.
+/// </para>
+///
+/// <example>
+/// <code>
+/// services.AddCvoyaSpringDapr(configuration);
+///
+/// // Wrap the concrete resolver. The 'inner' lookup uses the concrete
+/// // type so the decorator forwards to the built-in ComposedSecretResolver
+/// // (or whatever was registered for ISecretResolver before this call).
+/// services.AddScoped&lt;ComposedSecretResolver&gt;();
+/// services.Replace(ServiceDescriptor.Scoped&lt;ISecretResolver&gt;(sp =&gt;
+///     new AuditingSecretResolver(
+///         inner: sp.GetRequiredService&lt;ComposedSecretResolver&gt;(),
+///         auditLog: sp.GetRequiredService&lt;IAuditLog&gt;())));
+///
+/// // Or the idempotent shape — this ONLY wraps if the current
+/// // ISecretResolver registration is not already the decorator, so a
+/// // second AddCvoyaSpringDapr() call from a test harness does not
+/// // double-wrap. See docs/developer/secret-audit.md for the pattern.
+/// </code>
+/// </example>
+///
+/// <para>
+/// Re-registering the OSS default is idempotent. <c>AddCvoyaSpringDapr</c>
+/// uses <c>TryAddScoped</c> for <see cref="ISecretResolver"/>, so a
+/// consumer that has already layered a decorator will NOT be overwritten
+/// by a subsequent call to <c>AddCvoyaSpringDapr</c> — the decorator is
+/// preserved, and the second call becomes a no-op at this registration.
+/// </para>
+///
+/// <para>
+/// <b>Invariants an audit decorator can rely on.</b> On every call the
+/// decorator sees:
+/// <list type="bullet">
+///   <item><description>The requested <see cref="SecretRef"/> (scope, owner, name).</description></item>
+///   <item><description>The <see cref="Cvoya.Spring.Core.Tenancy.ITenantContext"/> in effect — the decorator can resolve this from DI, OSS filters every registry query by the current tenant regardless.</description></item>
+///   <item><description>The <see cref="SecretResolution"/> returned by the inner resolver, including <see cref="SecretResolution.Path"/> (direct / inherited / not-found), <see cref="SecretResolution.EffectiveRef"/>, and <see cref="SecretResolution.Version"/>.</description></item>
+/// </list>
+/// Decorators MUST NOT mutate the inner resolver's return value and
+/// MUST NOT log plaintext — the <see cref="SecretResolution.Value"/>
+/// is the one field that never belongs in an audit record. See
+/// <c>docs/developer/secret-audit.md</c> for the full best-practice
+/// list.
+/// </para>
 /// </summary>
 public interface ISecretResolver
 {

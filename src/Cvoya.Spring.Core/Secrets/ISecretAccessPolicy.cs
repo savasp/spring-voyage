@@ -69,4 +69,15 @@ public enum SecretAccessAction
     /// separate tenant-level grant.
     /// </summary>
     Read = 3,
+
+    /// <summary>
+    /// Rotate an existing secret in (scope, owner) — replaces the
+    /// underlying value (or external pointer) and bumps the
+    /// <see cref="Cvoya.Spring.Core.Secrets.SecretResolution.Version"/>.
+    /// A distinct action because callers may legitimately have
+    /// <see cref="Create"/> but not <see cref="Rotate"/> grants (or vice
+    /// versa): creation and rotation are different operational events
+    /// and deserve independent authorization.
+    /// </summary>
+    Rotate = 4,
 }

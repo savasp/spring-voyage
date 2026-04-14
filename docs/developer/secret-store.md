@@ -65,13 +65,25 @@ openssl rand -base64 32 > /secrets/spring-aes.key
 
 ### Rotation
 
-Spring Voyage v2 does **not** yet ship an in-place rotation tool. Until it does, rotation is operator-driven:
+**Per-secret rotation** is supported via `PUT /api/v1/units/{id}/secrets/{name}` (and the tenant / platform mirrors). The endpoint atomically:
+
+1. Writes the replacement value via `ISecretStore.WriteAsync` (pass-through) or records the new pointer (external reference).
+2. Updates the registry row's `StoreKey`, `Origin`, `Version` (incremented), and `UpdatedAt`.
+3. Immediately deletes the old backing slot — **only** for platform-owned entries. External-reference rotations never touch the customer-owned slot.
+
+The registry-level primitive is `ISecretRegistry.RotateAsync`, which returns a `SecretRotation` summary (from/to versions, pointer transition, whether the old slot was reclaimed). Audit-log decorators wrapping the registry consume this to emit rotation events without any private state — see [`secret-audit.md`](secret-audit.md).
+
+**Delete policy.** The OSS core applies an immediate-delete policy: once the registry points at the new key, no in-flight reader can reach the old slot, so any retention window would only leak plaintext. Callers that already hold the old plaintext in memory are unaffected.
+
+**Multi-version coexistence** (caller pinning to `v1` while the server is on `v2`) is tracked as a follow-up to #201 — the current wave intentionally supports only a single live version per `(tenant, scope, owner, name)` triple.
+
+**Key-material rotation** (the AES-GCM envelope key itself) is still operator-driven:
 
 1. Stand up a new environment with the new key.
 2. Export secrets from the old environment (via the API, which emits plaintext once the caller passes authorization), re-import into the new one.
 3. Retire the old key.
 
-Tracked in the secrets-rotation issue (`#201`). Production deployments that need transparent rotation should externalize key material via the private cloud `ISecretStore` implementation (Azure Key Vault / AWS KMS), which supports native rotation policies.
+Production deployments that need transparent key rotation should externalize key material via the private cloud `ISecretStore` implementation (Azure Key Vault / AWS KMS), which supports native rotation policies.
 
 ---
 

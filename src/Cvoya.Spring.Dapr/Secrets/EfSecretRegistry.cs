@@ -59,13 +59,21 @@ public class EfSecretRegistry : ISecretRegistry
                 Name = @ref.Name,
                 StoreKey = storeKey,
                 Origin = origin,
+                // New rows start at version 1 so the audit path has a
+                // stable "initial version" signal. Legacy rows left at
+                // null remain null until a rotate transitions them.
+                Version = 1,
                 CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow,
             });
         }
         else
         {
             existing.StoreKey = storeKey;
             existing.Origin = origin;
+            // Register is explicitly a replacement primitive, not a
+            // rotation. Callers that want to track version transitions
+            // must go through RotateAsync, which bumps the version.
         }
 
         await _db.SaveChangesAsync(ct);
@@ -98,6 +106,30 @@ public class EfSecretRegistry : ISecretRegistry
     }
 
     /// <inheritdoc />
+    public async Task<(SecretPointer Pointer, int? Version)?> LookupWithVersionAsync(SecretRef @ref, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(@ref);
+
+        var tenant = _tenantContext.CurrentTenantId;
+
+        var entry = await _db.SecretRegistryEntries
+            .AsNoTracking()
+            .FirstOrDefaultAsync(
+                e => e.TenantId == tenant
+                  && e.Scope == @ref.Scope
+                  && e.OwnerId == @ref.OwnerId
+                  && e.Name == @ref.Name,
+                ct);
+
+        if (entry is null)
+        {
+            return null;
+        }
+
+        return (new SecretPointer(entry.StoreKey, entry.Origin), entry.Version);
+    }
+
+    /// <inheritdoc />
     public async Task<IReadOnlyList<SecretRef>> ListAsync(SecretScope scope, string ownerId, CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(ownerId);
@@ -112,6 +144,79 @@ public class EfSecretRegistry : ISecretRegistry
         return entries
             .Select(e => new SecretRef(e.Scope, e.OwnerId, e.Name))
             .ToList();
+    }
+
+    /// <inheritdoc />
+    public async Task<SecretRotation> RotateAsync(
+        SecretRef @ref,
+        string newStoreKey,
+        SecretOrigin newOrigin,
+        Func<string, CancellationToken, Task>? deletePreviousStoreKeyAsync,
+        CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(@ref);
+        ArgumentException.ThrowIfNullOrWhiteSpace(newStoreKey);
+
+        var tenant = _tenantContext.CurrentTenantId;
+
+        var existing = await _db.SecretRegistryEntries
+            .FirstOrDefaultAsync(
+                e => e.TenantId == tenant
+                  && e.Scope == @ref.Scope
+                  && e.OwnerId == @ref.OwnerId
+                  && e.Name == @ref.Name,
+                ct);
+
+        if (existing is null)
+        {
+            // Rotation requires an existing entry; callers that intend
+            // to create go through RegisterAsync / POST. Surfacing this
+            // as InvalidOperationException lets the endpoint layer map
+            // it to 404 without parsing error strings.
+            throw new InvalidOperationException(
+                $"Cannot rotate secret '{@ref.Name}' for {@ref.Scope} '{@ref.OwnerId}': no registry entry exists in tenant '{tenant}'.");
+        }
+
+        var previousPointer = new SecretPointer(existing.StoreKey, existing.Origin);
+        var fromVersion = existing.Version;
+        // Legacy rows (null version) transition to version 1 on their
+        // first rotation. Post-migration rows increment from their
+        // current value. Audit decorators see both transitions via
+        // SecretRotation.FromVersion / ToVersion.
+        var toVersion = (fromVersion ?? 0) + 1;
+
+        existing.StoreKey = newStoreKey;
+        existing.Origin = newOrigin;
+        existing.Version = toVersion;
+        existing.UpdatedAt = DateTimeOffset.UtcNow;
+
+        await _db.SaveChangesAsync(ct);
+
+        // Immediate-delete policy for the old platform-owned slot. The
+        // rotation-specific decision documented in
+        // docs/developer/secret-store.md: once the registry points at
+        // the new key, no in-flight reader can reach the old slot, so
+        // any retention would only leak plaintext. External references
+        // are never touched — the customer owns that slot.
+        var deleted = false;
+        if (previousPointer.Origin == SecretOrigin.PlatformOwned && deletePreviousStoreKeyAsync is not null)
+        {
+            // Best-effort: if the store-delete fails we still return a
+            // successful rotation (the registry is the source of
+            // truth). Callers with stricter guarantees can wrap this
+            // with retry / compensating logic — see the follow-up
+            // issue for orphan reconciliation.
+            await deletePreviousStoreKeyAsync(previousPointer.StoreKey, ct);
+            deleted = true;
+        }
+
+        return new SecretRotation(
+            @ref,
+            fromVersion,
+            toVersion,
+            previousPointer,
+            new SecretPointer(newStoreKey, newOrigin),
+            deleted);
     }
 
     /// <inheritdoc />

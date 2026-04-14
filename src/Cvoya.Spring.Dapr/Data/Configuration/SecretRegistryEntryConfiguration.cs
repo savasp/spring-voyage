@@ -28,7 +28,12 @@ internal class SecretRegistryEntryConfiguration : IEntityTypeConfiguration<Secre
         builder.Property(e => e.Name).HasColumnName("name").IsRequired().HasMaxLength(256);
         builder.Property(e => e.StoreKey).HasColumnName("store_key").IsRequired().HasMaxLength(512);
         builder.Property(e => e.Origin).HasColumnName("origin").IsRequired().HasConversion<int>();
+        // Nullable: legacy rows created before the #201 migration have no
+        // version; they transition to version 1 on their first rotation.
+        // Rotations on post-migration rows increment monotonically.
+        builder.Property(e => e.Version).HasColumnName("version").IsRequired(false);
         builder.Property(e => e.CreatedAt).HasColumnName("created_at").IsRequired();
+        builder.Property(e => e.UpdatedAt).HasColumnName("updated_at").IsRequired();
 
         builder.HasIndex(e => new { e.TenantId, e.Scope, e.OwnerId, e.Name })
             .IsUnique()

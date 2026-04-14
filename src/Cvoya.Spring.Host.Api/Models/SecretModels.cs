@@ -68,3 +68,23 @@ public record CreateSecretResponse(
     string Name,
     SecretScope Scope,
     DateTimeOffset CreatedAt);
+
+/// <summary>
+/// Request body for PUT <c>/api/v1/units/{id}/secrets/{name}</c>
+/// (and the tenant / platform mirrors). Carries the replacement value or
+/// external pointer; the registry bumps the version atomically. Exactly
+/// one of <paramref name="Value"/> or <paramref name="ExternalStoreKey"/>
+/// must be provided — the same discriminated shape as
+/// <see cref="CreateSecretRequest"/>.
+///
+/// <para>
+/// The secret <c>Name</c> is taken from the route — rotation never
+/// renames an entry, so the body intentionally omits the name field
+/// (unlike <see cref="CreateSecretRequest"/>).
+/// </para>
+/// </summary>
+/// <param name="Value">Replacement plaintext for pass-through rotation. Mutually exclusive with <paramref name="ExternalStoreKey"/>.</param>
+/// <param name="ExternalStoreKey">Replacement external-reference pointer. Mutually exclusive with <paramref name="Value"/>.</param>
+public record RotateSecretRequest(
+    string? Value = null,
+    string? ExternalStoreKey = null);
