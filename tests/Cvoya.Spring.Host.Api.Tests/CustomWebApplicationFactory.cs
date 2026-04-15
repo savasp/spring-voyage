@@ -164,13 +164,30 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
         // Use --local mode to enable LocalDevAuthHandler (bypasses auth).
         builder.UseSetting("LocalDev", "true");
 
+        // Satisfy the AddCvoyaSpringDapr fail-fast connection-string check
+        // (#261). AddCvoyaSpringDapr runs inside Program.cs BEFORE
+        // ConfigureServices below replaces the DbContext with an in-memory
+        // provider, so a missing ConnectionStrings:SpringDb would throw.
+        // The value is never opened — the in-memory registration below
+        // supersedes it — it just has to be a non-empty string.
+        builder.UseSetting("ConnectionStrings:SpringDb",
+            "Host=test;Database=test;Username=test;Password=test");
+
         builder.ConfigureServices(services =>
         {
             // Replace the real SpringDbContext with an in-memory database.
+            // With #261's fail-fast Npgsql registration we also have to
+            // strip the Npgsql-provider descriptors EF Core injected via
+            // UseNpgsql — leaving them in place alongside UseInMemoryDatabase
+            // triggers EF's "multiple providers registered" guard.
             var dbDescriptors = services
                 .Where(d => d.ServiceType == typeof(DbContextOptions<SpringDbContext>)
                          || d.ServiceType == typeof(DbContextOptions)
-                         || d.ServiceType == typeof(SpringDbContext))
+                         || d.ServiceType == typeof(SpringDbContext)
+                         || (d.ServiceType.FullName?.StartsWith(
+                                "Microsoft.EntityFrameworkCore.", StringComparison.Ordinal) ?? false)
+                         || (d.ServiceType.FullName?.StartsWith(
+                                "Npgsql.", StringComparison.Ordinal) ?? false))
                 .ToList();
 
             foreach (var descriptor in dbDescriptors)

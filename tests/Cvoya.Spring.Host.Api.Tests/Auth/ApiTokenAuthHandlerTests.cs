@@ -49,13 +49,26 @@ public class ApiTokenAuthHandlerTests : IDisposable
             .WithWebHostBuilder(builder =>
             {
                 // Do NOT set LocalDev so ApiTokenScheme is used.
+                // Satisfy the #261 fail-fast connection-string check —
+                // AddCvoyaSpringDapr runs in Program.cs before the
+                // ConfigureServices callback replaces the DbContext with
+                // an in-memory provider. The value is never opened.
+                builder.UseSetting("ConnectionStrings:SpringDb",
+                    "Host=test;Database=test;Username=test;Password=test");
+
                 builder.ConfigureServices(services =>
                 {
-                    // Replace DbContext with in-memory.
+                    // Replace DbContext with in-memory. Strip EF / Npgsql
+                    // internal-service registrations too so the swap does
+                    // not hit "multiple providers registered".
                     var dbDescriptors = services
                         .Where(d => d.ServiceType == typeof(DbContextOptions<SpringDbContext>)
                                  || d.ServiceType == typeof(DbContextOptions)
-                                 || d.ServiceType == typeof(SpringDbContext))
+                                 || d.ServiceType == typeof(SpringDbContext)
+                                 || (d.ServiceType.FullName?.StartsWith(
+                                        "Microsoft.EntityFrameworkCore.", StringComparison.Ordinal) ?? false)
+                                 || (d.ServiceType.FullName?.StartsWith(
+                                        "Npgsql.", StringComparison.Ordinal) ?? false))
                         .ToList();
 
                     foreach (var descriptor in dbDescriptors)

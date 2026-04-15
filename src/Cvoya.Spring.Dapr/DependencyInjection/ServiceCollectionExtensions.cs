@@ -70,15 +70,54 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton<IActorProxyFactory>(_ => new ActorProxyFactory());
         services.AddDaprWorkflow(options => { });
 
-        // EF Core / PostgreSQL
-        var connectionString = configuration.GetConnectionString("SpringDb");
-        services.AddDbContext<SpringDbContext>(options =>
+        // EF Core / PostgreSQL.
+        //
+        // Fail fast when no provider is configured. A test harness (e.g. the
+        // Host.Api integration tests' CustomWebApplicationFactory) registers
+        // its own DbContextOptions<SpringDbContext> — typically backed by
+        // UseInMemoryDatabase — BEFORE calling AddCvoyaSpringDapr; in that
+        // case we respect the pre-registration and skip our default Npgsql
+        // wiring. Otherwise the ConnectionStrings:SpringDb entry is
+        // mandatory: a missing value used to register a DbContext without a
+        // provider and silently explode on the first EF query deep inside a
+        // request (see #261). Throwing here surfaces the misconfiguration at
+        // host startup with a clear, actionable message.
+        //
+        // Design-time tooling (dotnet-ef, dotnet-getdocument for the
+        // build-time OpenAPI document) loads the host without a database
+        // connection and never actually opens the context. Detect those
+        // callers and skip provider wiring so the build-time OpenAPI emitter
+        // keeps working with no local database configured.
+        var alreadyRegistered = services.Any(d =>
+            d.ServiceType == typeof(DbContextOptions<SpringDbContext>));
+        if (!alreadyRegistered)
         {
-            if (!string.IsNullOrEmpty(connectionString))
+            var connectionString = configuration.GetConnectionString("SpringDb");
+            if (string.IsNullOrEmpty(connectionString))
             {
-                options.UseNpgsql(connectionString);
+                if (IsDesignTimeTooling())
+                {
+                    // Leave the context unconfigured; design-time tooling never resolves it.
+                    services.AddDbContext<SpringDbContext>(_ => { });
+                }
+                else
+                {
+                    throw new InvalidOperationException(
+                        "No connection string found for SpringDbContext. Set the " +
+                        "ConnectionStrings:SpringDb configuration value (environment variable " +
+                        "ConnectionStrings__SpringDb=...) to a valid PostgreSQL connection " +
+                        "string, or pre-register DbContextOptions<SpringDbContext> before " +
+                        "calling AddCvoyaSpringDapr (for example via " +
+                        "AddDbContext<SpringDbContext>(options => options.UseInMemoryDatabase(...)) " +
+                        "in a test harness).");
+                }
             }
-        });
+            else
+            {
+                services.AddDbContext<SpringDbContext>(options =>
+                    options.UseNpgsql(connectionString));
+            }
+        }
 
         // Database startup: apply pending migrations on host start by
         // default. Operators running migrations out-of-band can set
@@ -228,5 +267,26 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IActivityQueryService, ActivityQueryService>();
 
         return services;
+    }
+
+    /// <summary>
+    /// Detects whether the current process was launched by a design-time
+    /// tool that loads the host assembly but never opens the database —
+    /// for example <c>dotnet-ef</c> running migrations and
+    /// <c>GetDocument.Insider</c> emitting the build-time OpenAPI document.
+    /// These tools rely on the DI container building successfully without a
+    /// real connection string; production paths must not.
+    /// </summary>
+    private static bool IsDesignTimeTooling()
+    {
+        var entryName = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name;
+        if (entryName is null)
+        {
+            return false;
+        }
+        return entryName is "GetDocument.Insider"
+            or "dotnet-getdocument"
+            or "ef"
+            or "dotnet-ef";
     }
 }

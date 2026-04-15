@@ -27,14 +27,25 @@ public class ServiceRegistrationTests : IDisposable
             .WithWebHostBuilder(builder =>
             {
                 builder.UseSetting("LocalDev", "true");
+                // Satisfy the #261 fail-fast ConnectionStrings:SpringDb check.
+                // AddCvoyaSpringDapr runs before ConfigureServices below
+                // replaces the DbContext with an in-memory provider.
+                builder.UseSetting("ConnectionStrings:SpringDb",
+                    "Host=test;Database=test;Username=test;Password=test");
 
                 builder.ConfigureServices(services =>
                 {
                     // Replace only the DB with in-memory — keep all other DI registrations intact.
+                    // Also strip EF / Npgsql internal-service registrations so the swap does
+                    // not trip EF's "multiple providers registered" guard.
                     var dbDescriptors = services
                         .Where(d => d.ServiceType == typeof(DbContextOptions<SpringDbContext>)
                                  || d.ServiceType == typeof(DbContextOptions)
-                                 || d.ServiceType == typeof(SpringDbContext))
+                                 || d.ServiceType == typeof(SpringDbContext)
+                                 || (d.ServiceType.FullName?.StartsWith(
+                                        "Microsoft.EntityFrameworkCore.", StringComparison.Ordinal) ?? false)
+                                 || (d.ServiceType.FullName?.StartsWith(
+                                        "Npgsql.", StringComparison.Ordinal) ?? false))
                         .ToList();
 
                     foreach (var descriptor in dbDescriptors)
