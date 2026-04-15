@@ -2,6 +2,14 @@
 # Create a unit from the engineering-team template — exercises skill-bundle
 # resolver + validator + connector binding preview.
 #
+# NOT-CONCURRENT-SAFE (@serial): the from-template endpoint derives the unit's
+# `name` field from `manifest.Name` (see Host.Api/Services/UnitCreationService.cs
+# `CreateFromManifestAsync`), which is the literal template basename
+# ("engineering-team"). Two concurrent runs of this scenario collide on that
+# name. `displayName` below carries the run id for traceability, but the
+# underlying unit name is fixed until the endpoint grows a `name` override —
+# tracked by #325. Drop the @serial note once that lands.
+#
 # TODO(#316): Port to `spring unit create --from-template ...` once that
 # subcommand exists. `spring apply -f packages/.../engineering-team.yaml`
 # parses the manifest client-side and POSTs CreateUnit + AddMember calls
@@ -21,7 +29,7 @@ body="${response%$'\n'*}"
 e2e::expect_status 200 "${status}" "templates endpoint returns 200"
 e2e::expect_contains 'engineering-team' "${body}" "engineering-team template is listed"
 
-display_name="e2e-from-template-$(date +%s%N | tail -c 6)"
+display_name="$(e2e::unit_name from-template)"
 # CreateUnitFromTemplateRequest: {Package, Name (= template basename), DisplayName?, ...}
 payload="{\"package\":\"software-engineering\",\"name\":\"engineering-team\",\"displayName\":\"${display_name}\"}"
 e2e::log "POST /api/v1/units/from-template ${payload}"
