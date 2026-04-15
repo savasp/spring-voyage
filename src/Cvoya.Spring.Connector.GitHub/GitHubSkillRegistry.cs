@@ -531,6 +531,31 @@ public class GitHubSkillRegistry : ISkillRegistry
                     GetString(args, "repo"),
                     GetLong(args, "hookId"),
                     ct),
+
+            ["github_list_projects_v2"] = (client, args, ct) =>
+                new ListProjectsV2Skill(CreateGraphQLClient(client), _loggerFactory).ExecuteAsync(
+                    GetString(args, "owner"),
+                    GetOptionalInt(args, "first") ?? 30,
+                    ct),
+
+            ["github_get_project_v2"] = (client, args, ct) =>
+                new GetProjectV2Skill(CreateGraphQLClient(client), _loggerFactory).ExecuteAsync(
+                    GetString(args, "owner"),
+                    GetInt(args, "number"),
+                    ct),
+
+            ["github_list_project_v2_items"] = (client, args, ct) =>
+                new ListProjectV2ItemsSkill(CreateGraphQLClient(client), _loggerFactory).ExecuteAsync(
+                    GetString(args, "owner"),
+                    GetInt(args, "number"),
+                    GetOptionalString(args, "cursor"),
+                    GetOptionalInt(args, "limit") ?? 50,
+                    ct),
+
+            ["github_get_project_v2_item"] = (client, args, ct) =>
+                new GetProjectV2ItemSkill(CreateGraphQLClient(client), _loggerFactory).ExecuteAsync(
+                    GetString(args, "itemId"),
+                    ct),
         };
     }
 
@@ -1363,6 +1388,63 @@ public class GitHubSkillRegistry : ISkillRegistry
                         repo = new { type = "string", description = "The repository name" }
                     },
                     required = new[] { "owner", "repo" }
+                }),
+
+            CreateToolDefinition(
+                "github_list_projects_v2",
+                "Lists Projects v2 boards owned by a user or organization via GraphQL. Projects v2 has no REST surface — this is the canonical read entry point.",
+                new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        owner = new { type = "string", description = "The user or organization login" },
+                        first = new { type = "integer", description = "Maximum projects to return (1..100, default 30)" }
+                    },
+                    required = new[] { "owner" }
+                }),
+
+            CreateToolDefinition(
+                "github_get_project_v2",
+                "Fetches a single Projects v2 board by owner + number, including its field definitions (id, name, dataType, options / iteration configuration).",
+                new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        owner = new { type = "string", description = "The user or organization login" },
+                        number = new { type = "integer", description = "The project number (the human-visible board id)" }
+                    },
+                    required = new[] { "owner", "number" }
+                }),
+
+            CreateToolDefinition(
+                "github_list_project_v2_items",
+                "Lists items on a Projects v2 board with their content (Issue / PullRequest / DraftIssue) and field values. Paginated — pass the previous response's end_cursor as cursor to advance.",
+                new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        owner = new { type = "string", description = "The user or organization login" },
+                        number = new { type = "integer", description = "The project number" },
+                        cursor = new { type = "string", description = "Opaque cursor from a previous response's end_cursor" },
+                        limit = new { type = "integer", description = "Page size (1..100, default 50)" }
+                    },
+                    required = new[] { "owner", "number" }
+                }),
+
+            CreateToolDefinition(
+                "github_get_project_v2_item",
+                "Fetches a single Projects v2 item by GraphQL node id, returning the same content + field-values projection as the list query.",
+                new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        itemId = new { type = "string", description = "The GraphQL node id of the project item (returned by github_list_project_v2_items)" }
+                    },
+                    required = new[] { "itemId" }
                 })
         ];
     }
