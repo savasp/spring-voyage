@@ -9,7 +9,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 source "${HERE}/../_lib.sh"
 
-name="e2e-scratch-$(date +%s%N | tail -c 6)"
+name="$(e2e::unit_name scratch)"
 
 e2e::log "spring unit create ${name} --output json"
 response="$(e2e::cli --output json unit create "${name}")"

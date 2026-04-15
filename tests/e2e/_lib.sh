@@ -9,6 +9,32 @@ set -o pipefail
 # Repo root (two levels up from tests/e2e). Scenarios may override.
 : "${E2E_REPO_ROOT:=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 
+# Run-identity envelope. `run.sh` generates a single E2E_RUN_ID at its top and
+# exports it so every scenario in the batch derives unit/agent names from the
+# same id. When a scenario is invoked standalone (no run.sh wrapper), the
+# default below produces a fresh id so names are still unique per invocation.
+#
+# E2E_PREFIX is the static leading segment so orphan sweeps can find every
+# artefact a previous run left behind. CI deployments typically override it
+# (e.g. E2E_PREFIX=e2e-ci) to carve their namespace out of the default.
+: "${E2E_PREFIX:=e2e}"
+: "${E2E_RUN_ID:=$(date +%s)-$$}"
+export E2E_PREFIX E2E_RUN_ID
+
+# e2e::unit_name SUFFIX — deterministic unit name for the current run.
+# Format: "${E2E_PREFIX}-${E2E_RUN_ID}-<suffix>". Two concurrent runs get
+# different run ids, so names never collide.
+e2e::unit_name() {
+    printf '%s-%s-%s' "${E2E_PREFIX}" "${E2E_RUN_ID}" "$1"
+}
+
+# e2e::agent_name SUFFIX — same convention as e2e::unit_name, but for agents.
+# Kept as a separate helper so scenarios that create both don't accidentally
+# share the same identifier.
+e2e::agent_name() {
+    printf '%s-%s-%s' "${E2E_PREFIX}" "${E2E_RUN_ID}" "$1"
+}
+
 # CLI invocation. Override SPRING_CLI to point at a prebuilt binary, e.g.
 #   SPRING_CLI=/usr/local/bin/spring ./run.sh
 # Default uses `dotnet run` against the in-repo CLI project so users don't need

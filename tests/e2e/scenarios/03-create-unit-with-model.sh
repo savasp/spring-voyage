@@ -13,7 +13,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 source "${HERE}/../_lib.sh"
 
-name="e2e-with-model-$(date +%s%N | tail -c 6)"
+name="$(e2e::unit_name with-model)"
 body="{\"name\":\"${name}\",\"model\":\"claude-sonnet-4-20250514\",\"color\":\"#6366f1\"}"
 e2e::log "POST /api/v1/units ${body}"
 response="$(e2e::http POST /api/v1/units "${body}")"
