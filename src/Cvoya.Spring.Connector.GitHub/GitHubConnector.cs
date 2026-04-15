@@ -95,7 +95,11 @@ public class GitHubConnector : IGitHubConnector
     {
         if (!_signatureValidator.Validate(payload, signature, _options.WebhookSecret))
         {
-            _logger.LogWarning("Invalid webhook signature received for event {EventType}", eventType);
+            // `eventType` flows in from the X-GitHub-Event header (attacker-
+            // controlled); sanitize before logging to prevent log forging.
+            _logger.LogWarning(
+                "Invalid webhook signature received for event {EventType}",
+                SanitizeForLog(eventType));
             return WebhookHandleResult.InvalidSignature;
         }
 
