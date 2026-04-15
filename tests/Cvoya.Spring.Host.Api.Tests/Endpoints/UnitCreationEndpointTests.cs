@@ -214,6 +214,132 @@ public class UnitCreationEndpointTests : IClassFixture<UnitCreationEndpointTests
             Arg.Any<CancellationToken>());
     }
 
+    // --- #325: from-template with a caller-supplied unit-name override ----
+
+    [Fact]
+    public async Task FromTemplate_WithUnitNameOverride_UsesOverrideAsUnitName()
+    {
+        // Two callers instantiating the same template with different UnitName
+        // overrides must land on distinct unit addresses. Without the
+        // override the endpoint would derive the unit name from
+        // manifest.Name ("sample-unit") and the second call would collide.
+        var ct = TestContext.Current.CancellationToken;
+
+        ResetMocks();
+        var proxy = Substitute.For<IUnitActor>();
+        proxy.GetStatusAsync(Arg.Any<CancellationToken>()).Returns(UnitStatus.Draft);
+        _factory.ActorProxyFactory
+            .CreateActorProxy<IUnitActor>(Arg.Any<ActorId>(), Arg.Any<string>())
+            .Returns(proxy);
+        _factory.DirectoryService
+            .RegisterAsync(Arg.Any<DirectoryEntry>(), Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
+        // Duplicate-check reads ResolveAsync for the new address — return
+        // null to indicate the name is free.
+        _factory.DirectoryService
+            .ResolveAsync(Arg.Any<Address>(), Arg.Any<CancellationToken>())
+            .Returns((DirectoryEntry?)null);
+
+        var response = await _client.PostAsJsonAsync(
+            "/api/v1/units/from-template",
+            new CreateUnitFromTemplateRequest(
+                "sample-pkg",
+                "sample-unit",
+                UnitName: "run42-sample-unit"),
+            ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Created);
+
+        var body = await response.Content.ReadAsStringAsync(ct);
+        using var doc = JsonDocument.Parse(body);
+        doc.RootElement.GetProperty("unit").GetProperty("name").GetString()
+            .ShouldBe("run42-sample-unit");
+
+        await _factory.DirectoryService.Received(1).RegisterAsync(
+            Arg.Is<DirectoryEntry>(e => e.Address.Path == "run42-sample-unit"),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task FromTemplate_WithoutUnitNameOverride_FallsBackToManifestName()
+    {
+        // Omitting the override must be fully backwards compatible: the
+        // created unit still takes its name from the template manifest
+        // ("sample-unit") and no duplicate-check fires against the
+        // directory service.
+        var ct = TestContext.Current.CancellationToken;
+
+        ResetMocks();
+        var proxy = Substitute.For<IUnitActor>();
+        proxy.GetStatusAsync(Arg.Any<CancellationToken>()).Returns(UnitStatus.Draft);
+        _factory.ActorProxyFactory
+            .CreateActorProxy<IUnitActor>(Arg.Any<ActorId>(), Arg.Any<string>())
+            .Returns(proxy);
+        _factory.DirectoryService
+            .RegisterAsync(Arg.Any<DirectoryEntry>(), Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
+
+        var response = await _client.PostAsJsonAsync(
+            "/api/v1/units/from-template",
+            new CreateUnitFromTemplateRequest("sample-pkg", "sample-unit"),
+            ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Created);
+
+        var body = await response.Content.ReadAsStringAsync(ct);
+        using var doc = JsonDocument.Parse(body);
+        doc.RootElement.GetProperty("unit").GetProperty("name").GetString()
+            .ShouldBe("sample-unit");
+
+        // Manifest-name fallback must NOT trigger the new duplicate check
+        // so legacy callers do not observe a new 400 on the same payloads
+        // they used to submit.
+        await _factory.DirectoryService.DidNotReceive().ResolveAsync(
+            Arg.Any<Address>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task FromTemplate_WithUnitNameOverride_DuplicateName_Returns400()
+    {
+        // When the override collides with an already-registered unit, the
+        // endpoint surfaces a 400 ProblemDetails — matching the acceptance
+        // criteria on #325.
+        var ct = TestContext.Current.CancellationToken;
+
+        ResetMocks();
+        var proxy = Substitute.For<IUnitActor>();
+        proxy.GetStatusAsync(Arg.Any<CancellationToken>()).Returns(UnitStatus.Draft);
+        _factory.ActorProxyFactory
+            .CreateActorProxy<IUnitActor>(Arg.Any<ActorId>(), Arg.Any<string>())
+            .Returns(proxy);
+        // Simulate an existing unit at the override's address.
+        _factory.DirectoryService
+            .ResolveAsync(
+                Arg.Is<Address>(a => a.Scheme == "unit" && a.Path == "existing-unit"),
+                Arg.Any<CancellationToken>())
+            .Returns(ci => new DirectoryEntry(
+                new Address("unit", "existing-unit"),
+                "actor-existing",
+                "Existing Unit",
+                string.Empty,
+                null,
+                DateTimeOffset.UtcNow));
+
+        var response = await _client.PostAsJsonAsync(
+            "/api/v1/units/from-template",
+            new CreateUnitFromTemplateRequest(
+                "sample-pkg",
+                "sample-unit",
+                UnitName: "existing-unit"),
+            ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+
+        // The collision is detected before any state is written.
+        await _factory.DirectoryService.DidNotReceive().RegisterAsync(
+            Arg.Any<DirectoryEntry>(), Arg.Any<CancellationToken>());
+    }
+
     [Fact]
     public async Task FromTemplate_GrantsCreatorOwnerOnNewUnit()
     {

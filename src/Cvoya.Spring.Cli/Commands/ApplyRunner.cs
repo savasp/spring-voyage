@@ -56,7 +56,7 @@ public static class ApplyRunner
         {
             // Forward description from the manifest; display name defaults to the unit name
             // when no separate display name is declared in the manifest today.
-            await client.CreateUnitAsync(unitName, unitName, manifest.Description, ct);
+            await client.CreateUnitAsync(unitName, unitName, manifest.Description, ct: ct);
         }
         catch (System.Exception ex)
         {

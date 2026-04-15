@@ -1,32 +1,21 @@
 #!/usr/bin/env bash
-# Create a unit from the engineering-team template — exercises skill-bundle
-# resolver + validator + connector binding preview.
+# Create a unit from the engineering-team template — exercises the skill-
+# bundle resolver + validator + connector binding preview path.
 #
-# NOT-CONCURRENT-SAFE (@serial): the from-template endpoint derives the unit's
-# `name` field from `manifest.Name` (see Host.Api/Services/UnitCreationService.cs
-# `CreateFromManifestAsync`), which is the literal template basename
-# ("engineering-team"). Two concurrent runs of this scenario collide on that
-# name. `displayName` below carries the run id for traceability, but the
-# underlying unit name is fixed until the endpoint grows a `name` override —
-# tracked by #325. Drop the @serial note once that lands.
-#
-# TODO(#316): Port to `spring unit create --from-template ...` once that
-# subcommand exists. `spring apply -f packages/.../engineering-team.yaml`
-# parses the manifest client-side and POSTs CreateUnit + AddMember calls
-# directly — it does NOT invoke /api/v1/units/from-template, so it would
-# skip the resolver/validator/binding-preview path that this scenario is
-# specifically meant to cover. Stay on raw curl until the CLI grows a
-# dedicated from-template subcommand.
+# #325 added an optional UnitName override to CreateUnitFromTemplateRequest,
+# and #316 exposed the endpoint through the CLI. We pass a run-scoped id as
+# --name so two concurrent runs no longer collide on the template manifest's
+# fixed `name` ("engineering-team"). That makes this scenario safe to run in
+# parallel — restore a @serial note here only if UnitName is ever removed.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 source "${HERE}/../../_lib.sh"
 
-# Template-derived unit name is fixed — not parameterised by run id (see the
-# @serial note above and #325). Any member agents the template provisions
-# cascade through `spring unit purge`, so the unit name is the only handle
-# the trap needs to clean the whole graph.
-template_unit="engineering-team"
+# Run-scoped unit name so repeated / concurrent invocations don't clash on
+# the template's fixed manifest name. The cascading purge trap uses this
+# value, so the teardown path matches whatever we created here.
+template_unit="$(e2e::unit_name from-template)"
 trap 'e2e::cleanup_unit "${template_unit}"' EXIT
 
 e2e::log "GET /api/v1/packages/templates (discover templates)"
@@ -36,19 +25,13 @@ body="${response%$'\n'*}"
 e2e::expect_status 200 "${status}" "templates endpoint returns 200"
 e2e::expect_contains 'engineering-team' "${body}" "engineering-team template is listed"
 
-display_name="$(e2e::unit_name from-template)"
-# CreateUnitFromTemplateRequest: {Package, Name (= template basename), DisplayName?, ...}
-payload="{\"package\":\"software-engineering\",\"name\":\"engineering-team\",\"displayName\":\"${display_name}\"}"
-e2e::log "POST /api/v1/units/from-template ${payload}"
-response="$(e2e::http POST /api/v1/units/from-template "${payload}")"
-status="${response##*$'\n'}"
-resp_body="${response%$'\n'*}"
-
-if [[ "${status}" == "200" || "${status}" == "201" ]]; then
-    e2e::ok "from-template creation succeeds (status ${status})"
-else
-    e2e::fail "from-template creation — expected 200/201, got ${status}: ${resp_body:0:500}"
-fi
-e2e::expect_contains '"warnings"' "${resp_body}" "response includes warnings array (may list unresolved bundle tools)"
+# Exercise the CLI path (#316). The command maps to
+# POST /api/v1/units/from-template with UnitName=${template_unit} (#325).
+e2e::log "spring unit create --from-template software-engineering/engineering-team --name ${template_unit}"
+response="$(e2e::cli --output json unit create --from-template software-engineering/engineering-team --name "${template_unit}")"
+code="${response##*$'\n'}"
+body="${response%$'\n'*}"
+e2e::expect_status "0" "${code}" "from-template CLI create succeeds"
+e2e::expect_contains "\"name\": \"${template_unit}\"" "${body}" "created unit carries the run-scoped UnitName override (#325)"
 
 e2e::summary

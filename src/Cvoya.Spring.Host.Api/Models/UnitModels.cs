@@ -99,13 +99,24 @@ public record CreateUnitFromYamlRequest(
 /// <param name="DisplayName">Optional override for the unit's display name.</param>
 /// <param name="Color">Optional override for the unit's UI colour.</param>
 /// <param name="Model">Optional override for the default model hint.</param>
+/// <param name="Connector">Optional connector binding to apply atomically with creation.</param>
+/// <param name="UnitName">
+/// Optional override for the created unit's <c>name</c> (address path). Without
+/// this override the created unit takes its name verbatim from the template's
+/// manifest <c>name</c> field, which means two clients instantiating the same
+/// template collide on the unique-name constraint. Supply a caller-owned value
+/// (e.g. a run-scoped id) to avoid the collision. When supplied, validated
+/// the same way <see cref="CreateUnitRequest.Name"/> is validated on the
+/// direct-create path, and surfaced as the unit's address path. See #325.
+/// </param>
 public record CreateUnitFromTemplateRequest(
     string Package,
     string Name,
     string? DisplayName = null,
     string? Color = null,
     string? Model = null,
-    UnitConnectorBindingRequest? Connector = null);
+    UnitConnectorBindingRequest? Connector = null,
+    string? UnitName = null);
 
 /// <summary>
 /// Response body for a unit created through the manifest-backed flows

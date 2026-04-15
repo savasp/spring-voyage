@@ -151,8 +151,14 @@ public class CommandParsingTests
     }
 
     [Fact]
-    public void UnitMembersAdd_RequiresAgentOption()
+    public void UnitMembersAdd_ParsesWithoutAgentOrUnit_LeavesErrorsEmpty()
     {
+        // #331 relaxed the parser-level `Required = true` on --agent because
+        // `members add` now accepts `--unit` as an alternative. The
+        // mutual-exclusion rule ("exactly one of --agent / --unit") is
+        // enforced at action time with a readable error message; the parse
+        // step itself stays successful so the action can take over and
+        // surface the right diagnostic to the user.
         var outputOption = CreateOutputOption();
         var unitCommand = UnitCommand.Create(outputOption);
         var rootCommand = new RootCommand { Options = { outputOption } };
@@ -160,8 +166,9 @@ public class CommandParsingTests
 
         var parseResult = rootCommand.Parse("unit members add eng-team");
 
-        // System.CommandLine surfaces the missing required option as a parse error.
-        parseResult.Errors.ShouldNotBeEmpty();
+        parseResult.Errors.ShouldBeEmpty();
+        parseResult.GetValue<string>("--agent").ShouldBeNull();
+        parseResult.GetValue<string>("--unit").ShouldBeNull();
     }
 
     [Fact]
@@ -257,5 +264,120 @@ public class CommandParsingTests
         parseResult.Errors.ShouldBeEmpty();
         parseResult.GetValue<string>("id").ShouldBe("ada");
         parseResult.GetValue<bool>("--confirm").ShouldBeTrue();
+    }
+
+    // --- #315: --model and --color on `spring unit create` ---------------
+
+    [Fact]
+    public void UnitCreate_ParsesModelAndColorOptions()
+    {
+        var outputOption = CreateOutputOption();
+        var unitCommand = UnitCommand.Create(outputOption);
+        var rootCommand = new RootCommand { Options = { outputOption } };
+        rootCommand.Subcommands.Add(unitCommand);
+
+        var parseResult = rootCommand.Parse(
+            "unit create eng-team --model claude-sonnet-4-20250514 --color #6366f1");
+
+        parseResult.Errors.ShouldBeEmpty();
+        parseResult.GetValue<string>("name").ShouldBe("eng-team");
+        parseResult.GetValue<string>("--model").ShouldBe("claude-sonnet-4-20250514");
+        parseResult.GetValue<string>("--color").ShouldBe("#6366f1");
+    }
+
+    // --- #316: `spring unit create --from-template <pkg>/<name>` -----------
+
+    [Fact]
+    public void UnitCreate_ParsesFromTemplateWithName()
+    {
+        var outputOption = CreateOutputOption();
+        var unitCommand = UnitCommand.Create(outputOption);
+        var rootCommand = new RootCommand { Options = { outputOption } };
+        rootCommand.Subcommands.Add(unitCommand);
+
+        var parseResult = rootCommand.Parse(
+            "unit create --from-template software-engineering/engineering-team --name run42-eng --display-name \"Engineering (run 42)\" --model claude-sonnet-4 --color #336699");
+
+        parseResult.Errors.ShouldBeEmpty();
+        parseResult.GetValue<string>("--from-template")
+            .ShouldBe("software-engineering/engineering-team");
+        parseResult.GetValue<string>("--name").ShouldBe("run42-eng");
+        parseResult.GetValue<string>("--display-name").ShouldBe("Engineering (run 42)");
+        parseResult.GetValue<string>("--model").ShouldBe("claude-sonnet-4");
+        parseResult.GetValue<string>("--color").ShouldBe("#336699");
+    }
+
+    [Fact]
+    public void UnitCreate_PositionalNameAloneStillParses_ForDirectCreatePath()
+    {
+        // Positional 'name' stayed mandatory pre-#316 so every old invocation
+        // must keep parsing without errors on the new Argument.Arity setting.
+        var outputOption = CreateOutputOption();
+        var unitCommand = UnitCommand.Create(outputOption);
+        var rootCommand = new RootCommand { Options = { outputOption } };
+        rootCommand.Subcommands.Add(unitCommand);
+
+        var parseResult = rootCommand.Parse("unit create my-unit");
+
+        parseResult.Errors.ShouldBeEmpty();
+        parseResult.GetValue<string>("name").ShouldBe("my-unit");
+        parseResult.GetValue<string>("--from-template").ShouldBeNull();
+    }
+
+    [Fact]
+    public void UnitCreate_FromTemplateWithoutPositionalName_LeavesArgumentEmpty()
+    {
+        // When --from-template is present the positional 'name' becomes
+        // optional — the parser should leave it null rather than erroring.
+        var outputOption = CreateOutputOption();
+        var unitCommand = UnitCommand.Create(outputOption);
+        var rootCommand = new RootCommand { Options = { outputOption } };
+        rootCommand.Subcommands.Add(unitCommand);
+
+        var parseResult = rootCommand.Parse(
+            "unit create --from-template software-engineering/engineering-team --name run42-eng");
+
+        parseResult.Errors.ShouldBeEmpty();
+        parseResult.GetValue<string>("name").ShouldBeNull();
+        parseResult.GetValue<string>("--name").ShouldBe("run42-eng");
+    }
+
+    // --- #331: `spring unit members add --unit <child>` -------------------
+
+    [Fact]
+    public void UnitMembersAdd_ParsesUnitOption()
+    {
+        var outputOption = CreateOutputOption();
+        var unitCommand = UnitCommand.Create(outputOption);
+        var rootCommand = new RootCommand { Options = { outputOption } };
+        rootCommand.Subcommands.Add(unitCommand);
+
+        var parseResult = rootCommand.Parse(
+            "unit members add parent-unit --unit child-unit");
+
+        parseResult.Errors.ShouldBeEmpty();
+        parseResult.GetValue<string>("unit").ShouldBe("parent-unit");
+        parseResult.GetValue<string>("--unit").ShouldBe("child-unit");
+        parseResult.GetValue<string>("--agent").ShouldBeNull();
+    }
+
+    [Fact]
+    public void UnitMembersAdd_ParsesAgentAndUnitTogether_ForActionToReject()
+    {
+        // Parser is intentionally permissive; the action layer enforces the
+        // "exactly one of --agent / --unit" rule with a readable error
+        // message. See UnitCommand.CreateMembersAddCommand for the runtime
+        // check introduced by #331.
+        var outputOption = CreateOutputOption();
+        var unitCommand = UnitCommand.Create(outputOption);
+        var rootCommand = new RootCommand { Options = { outputOption } };
+        rootCommand.Subcommands.Add(unitCommand);
+
+        var parseResult = rootCommand.Parse(
+            "unit members add parent-unit --agent ada --unit child-unit");
+
+        parseResult.Errors.ShouldBeEmpty();
+        parseResult.GetValue<string>("--agent").ShouldBe("ada");
+        parseResult.GetValue<string>("--unit").ShouldBe("child-unit");
     }
 }

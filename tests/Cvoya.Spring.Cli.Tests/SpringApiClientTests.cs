@@ -241,6 +241,107 @@ public class SpringApiClientTests
 
         handler.WasCalled.ShouldBeTrue();
     }
+
+    // --- #315: CreateUnitAsync forwards model + color ---------------------
+
+    [Fact]
+    public async Task CreateUnitAsync_WithModelAndColor_SendsBothOnRequestBody()
+    {
+        var handler = new MockHttpMessageHandler(
+            expectedPath: "/api/v1/units",
+            expectedMethod: HttpMethod.Post,
+            responseBody: """{"id":"actor-eng","name":"eng-team","displayName":"eng-team","description":"","registeredAt":"2026-04-01T00:00:00Z","status":"Draft","model":"claude-sonnet-4","color":"#6366f1"}""",
+            validateRequestBody: body =>
+            {
+                var json = JsonSerializer.Deserialize<JsonElement>(body);
+                json.GetProperty("name").GetString().ShouldBe("eng-team");
+                json.GetProperty("model").GetString().ShouldBe("claude-sonnet-4");
+                json.GetProperty("color").GetString().ShouldBe("#6366f1");
+            });
+
+        var httpClient = new HttpClient(handler);
+        var client = new SpringApiClient(httpClient, BaseUrl);
+
+        await client.CreateUnitAsync(
+            "eng-team",
+            displayName: null,
+            description: null,
+            model: "claude-sonnet-4",
+            color: "#6366f1",
+            ct: TestContext.Current.CancellationToken);
+
+        handler.WasCalled.ShouldBeTrue();
+    }
+
+    // --- #316 + #325: CreateUnitFromTemplateAsync -------------------------
+
+    [Fact]
+    public async Task CreateUnitFromTemplateAsync_SendsUnitNameOverrideAndMetadata()
+    {
+        var handler = new MockHttpMessageHandler(
+            expectedPath: "/api/v1/units/from-template",
+            expectedMethod: HttpMethod.Post,
+            responseBody: """{"unit":{"id":"actor-eng","name":"run42-eng","displayName":"Engineering (run 42)","description":"","registeredAt":"2026-04-01T00:00:00Z","status":"Draft","model":"claude-sonnet-4","color":"#336699"},"warnings":["skill 'demo' declares tool 'missing'"],"membersAdded":0}""",
+            returnStatusCode: HttpStatusCode.Created,
+            validateRequestBody: body =>
+            {
+                // Kiota serialises optional nullable-string properties even
+                // when set. The wire contract for #325 carries `unitName`
+                // alongside the existing `name` (template basename). #315
+                // rides `model` / `color` on the same body.
+                var json = JsonSerializer.Deserialize<JsonElement>(body);
+                json.GetProperty("package").GetString().ShouldBe("software-engineering");
+                json.GetProperty("name").GetString().ShouldBe("engineering-team");
+                json.GetProperty("unitName").GetString().ShouldBe("run42-eng");
+                json.GetProperty("displayName").GetString().ShouldBe("Engineering (run 42)");
+                json.GetProperty("model").GetString().ShouldBe("claude-sonnet-4");
+                json.GetProperty("color").GetString().ShouldBe("#336699");
+            });
+
+        var httpClient = new HttpClient(handler);
+        var client = new SpringApiClient(httpClient, BaseUrl);
+
+        var response = await client.CreateUnitFromTemplateAsync(
+            "software-engineering",
+            "engineering-team",
+            unitName: "run42-eng",
+            displayName: "Engineering (run 42)",
+            model: "claude-sonnet-4",
+            color: "#336699",
+            ct: TestContext.Current.CancellationToken);
+
+        response.ShouldNotBeNull();
+        response.Unit!.Name.ShouldBe("run42-eng");
+        response.Warnings!.Count.ShouldBe(1);
+        handler.WasCalled.ShouldBeTrue();
+    }
+
+    // --- #331: AddUnitMemberAsync ------------------------------------------
+
+    [Fact]
+    public async Task AddUnitMemberAsync_PostsUnitSchemeAddress()
+    {
+        var handler = new MockHttpMessageHandler(
+            expectedPath: "/api/v1/units/parent-unit/members",
+            expectedMethod: HttpMethod.Post,
+            responseBody: "",
+            returnStatusCode: HttpStatusCode.NoContent,
+            validateRequestBody: body =>
+            {
+                var json = JsonSerializer.Deserialize<JsonElement>(body);
+                var address = json.GetProperty("memberAddress");
+                address.GetProperty("scheme").GetString().ShouldBe("unit");
+                address.GetProperty("path").GetString().ShouldBe("child-unit");
+            });
+
+        var httpClient = new HttpClient(handler);
+        var client = new SpringApiClient(httpClient, BaseUrl);
+
+        await client.AddUnitMemberAsync(
+            "parent-unit", "child-unit", TestContext.Current.CancellationToken);
+
+        handler.WasCalled.ShouldBeTrue();
+    }
 }
 
 /// <summary>

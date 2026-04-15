@@ -94,6 +94,11 @@ public class UnitCreationService : IUnitCreationService
             warnings: new List<string>(),
             connector: request.Connector,
             skillReferences: Array.Empty<SkillBundleReference>(),
+            // The direct-create path has always been last-writer-wins on
+            // duplicate names; keep that behaviour so existing callers do
+            // not observe a new 400. #325 introduces the duplicate check
+            // specifically for the from-template override path.
+            rejectDuplicates: false,
             cancellationToken);
 
     /// <inheritdoc />
@@ -103,7 +108,13 @@ public class UnitCreationService : IUnitCreationService
         CancellationToken cancellationToken,
         UnitConnectorBindingRequest? connector = null)
     {
-        var name = manifest.Name!;
+        // #325: the caller can override the manifest's name so repeated
+        // template instantiations do not collide on the unique-name
+        // constraint. An empty/whitespace override falls back to the manifest
+        // name so existing callers remain unaffected.
+        var name = !string.IsNullOrWhiteSpace(overrides.Name)
+            ? overrides.Name!.Trim()
+            : manifest.Name!;
         var displayName = !string.IsNullOrWhiteSpace(overrides.DisplayName)
             ? overrides.DisplayName!
             : name;
@@ -119,6 +130,12 @@ public class UnitCreationService : IUnitCreationService
                 $"section '{section}' is parsed but not yet applied");
         }
 
+        // #325: when the caller explicitly supplies a unit-name override we
+        // reject duplicates up front with a 400. Manifest-name-only paths
+        // keep the historical last-writer-wins behaviour to avoid changing
+        // the /from-yaml and /from-template defaults unannounced.
+        var rejectDuplicates = !string.IsNullOrWhiteSpace(overrides.Name);
+
         return CreateCoreAsync(
             name,
             displayName,
@@ -129,6 +146,7 @@ public class UnitCreationService : IUnitCreationService
             warnings,
             connector,
             ExtractSkillReferences(manifest),
+            rejectDuplicates,
             cancellationToken);
     }
 
@@ -162,6 +180,7 @@ public class UnitCreationService : IUnitCreationService
         List<string> warnings,
         UnitConnectorBindingRequest? connector,
         IReadOnlyList<SkillBundleReference> skillReferences,
+        bool rejectDuplicates,
         CancellationToken cancellationToken)
     {
         // Validate the connector binding request up-front — before we touch
@@ -195,6 +214,22 @@ public class UnitCreationService : IUnitCreationService
 
         var actorId = Guid.NewGuid().ToString();
         var address = new Address("unit", name);
+
+        // #325: when the caller supplies a canonical name override through
+        // the request body we reject duplicates up front with a typed
+        // exception the endpoint layer maps to 400. Paths that keep using
+        // the manifest-derived name stay on the historical last-writer-wins
+        // behaviour so #325 does not silently turn into a breaking change
+        // for existing /from-yaml and /from-template callers.
+        if (rejectDuplicates)
+        {
+            var existing = await _directoryService.ResolveAsync(address, cancellationToken);
+            if (existing is not null)
+            {
+                throw new DuplicateUnitNameException(name);
+            }
+        }
+
         var entry = new DirectoryEntry(
             address,
             actorId,
