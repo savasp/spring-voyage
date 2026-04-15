@@ -44,6 +44,7 @@ SERVICES=(
     spring-api
     spring-web
     spring-caddy
+    spring-ollama
 )
 
 log()  { printf '[deploy] %s\n' "$*" >&2; }
@@ -260,6 +261,78 @@ start_web() {
         node /app/web/src/Cvoya.Spring.Web/server.js
 }
 
+# ---- Ollama (local LLM backend) -----------------------------------------
+#
+# OLLAMA_MODE selects between the container path (default: "container") and
+# the host-installed path ("host"). The host path exists primarily for macOS:
+# Metal GPU acceleration does not pass through into Podman containers, so
+# operators who want GPU-accelerated local inference install Ollama via
+# `brew install ollama` and run `ollama serve` on the host. In that mode the
+# platform talks to Ollama over `host.containers.internal:11434` and this
+# script does NOT start a container.
+#
+# OLLAMA_GPU optionally enables GPU passthrough for the container path. Set
+# to "nvidia" on Linux/WSL2 with the NVIDIA Container Toolkit installed —
+# the script adds `--device nvidia.com/gpu=all`. Default is CPU-only which
+# works everywhere.
+#
+# OLLAMA_DEFAULT_MODEL is pulled into the container on first run (best-
+# effort; failures are logged but don't abort the deploy).
+start_ollama() {
+    local mode="${OLLAMA_MODE:-container}"
+    if [[ "${mode}" == "host" ]]; then
+        log "OLLAMA_MODE=host — skipping container. Ensure 'ollama serve' is running on the host (port 11434)."
+        log "  macOS: brew install ollama && ollama serve"
+        log "  Linux: https://ollama.com/download"
+        log "Platform talks to it via LanguageModel__Ollama__BaseUrl (default http://host.containers.internal:11434)."
+        return
+    fi
+
+    local gpu_args=()
+    case "${OLLAMA_GPU:-}" in
+        nvidia)
+            gpu_args+=(--device "nvidia.com/gpu=all")
+            log "ollama: enabling NVIDIA GPU passthrough (requires nvidia-container-toolkit on the host)"
+            ;;
+        "")
+            : # CPU-only default
+            ;;
+        *)
+            log "warning: unsupported OLLAMA_GPU='${OLLAMA_GPU}', falling back to CPU"
+            ;;
+    esac
+
+    run_container spring-ollama \
+        -p "${OLLAMA_PORT:-11434}:11434" \
+        -v spring-ollama-data:/root/.ollama \
+        "${gpu_args[@]}" \
+        "${OLLAMA_IMAGE:-docker.io/ollama/ollama:latest}"
+}
+
+pull_ollama_default_model() {
+    [[ "${OLLAMA_MODE:-container}" == "host" ]] && return 0
+
+    local model="${OLLAMA_DEFAULT_MODEL:-llama3.2:3b}"
+    log "pulling Ollama default model '${model}' (best-effort, may take a few minutes)"
+
+    # Poll briefly for the Ollama HTTP API to come up before pulling. Ollama
+    # reports ready once it binds :11434.
+    local waited=0
+    while (( waited < 30 )); do
+        if podman exec spring-ollama ollama list >/dev/null 2>&1; then
+            break
+        fi
+        sleep 1
+        waited=$(( waited + 1 ))
+    done
+
+    if ! podman exec spring-ollama ollama pull "${model}" >/dev/null 2>&1; then
+        log "warning: failed to pull Ollama model '${model}'. Pull manually with: podman exec spring-ollama ollama pull ${model}"
+        return 0
+    fi
+    log "pulled Ollama model '${model}'"
+}
+
 start_caddy() {
     # SPRING_CADDYFILE selects which Caddyfile variant to mount. Default is
     # the single-host path-routed "Caddyfile"; set to "Caddyfile.multi-host"
@@ -335,6 +408,13 @@ cmd_up() {
     wait_healthy spring-postgres 60
     start_redis
     wait_healthy spring-redis 30
+
+    # Ollama starts before the app containers so the platform's startup
+    # health check (OllamaHealthCheck) has a reachable target. No --health-cmd
+    # is attached because the Ollama image ships without curl/wget — we poll
+    # via `ollama list` when pulling the default model instead.
+    start_ollama
+    pull_ollama_default_model
 
     # Dapr control plane on spring-net. These must be up before any per-app
     # sidecar tries to register with placement / schedule actor reminders.
