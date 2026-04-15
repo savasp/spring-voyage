@@ -129,4 +129,123 @@ public class WebhookInvalidationTagTests
 
         tags.ShouldBeEmpty();
     }
+
+    [Fact]
+    public void DeriveInvalidationTags_ProjectsV2Edited_EmitsProjectAndListTags()
+    {
+        // projects_v2 webhooks live at org scope — "organization.login" and a
+        // top-level "projects_v2" object carry the owner/number the cache
+        // keys the tag under. Both the per-project tag and the owner-wide
+        // list tag must be emitted so listing and single-board reads refresh
+        // in lockstep when a project is renamed / closed / deleted.
+        var handler = CreateHandler();
+        var payload = Parse("""
+        {
+          "action": "edited",
+          "organization": { "login": "acme" },
+          "projects_v2": { "id": 42, "node_id": "PVT_1", "number": 7, "title": "Delivery", "closed": false }
+        }
+        """);
+
+        var tags = handler.DeriveInvalidationTags("projects_v2", payload);
+
+        tags.ShouldBe(["project-v2:acme/7", "projects-v2-list:acme"]);
+    }
+
+    [Fact]
+    public void DeriveInvalidationTags_ProjectsV2ItemEdited_EmitsItemTag()
+    {
+        // Item events carry the item's GraphQL node id as projects_v2_item.node_id.
+        // The per-item tag is what the github_get_project_v2_item skill caches
+        // under, so emitting that tag is necessary AND sufficient for item reads.
+        var handler = CreateHandler();
+        var payload = Parse("""
+        {
+          "action": "edited",
+          "organization": { "login": "acme" },
+          "projects_v2_item": {
+            "id": 100, "node_id": "PVTI_1", "project_node_id": "PVT_1", "content_type": "Issue"
+          }
+        }
+        """);
+
+        var tags = handler.DeriveInvalidationTags("projects_v2_item", payload);
+
+        tags.ShouldBe(["project-v2-item:PVTI_1"]);
+    }
+
+    [Fact]
+    public void DeriveInvalidationTags_ProjectsV2ItemArchived_EmitsItemTag()
+    {
+        // Same derivation path as "edited" — the action only changes the
+        // translated message's intent, not the cache-tag set.
+        var handler = CreateHandler();
+        var payload = Parse("""
+        {
+          "action": "archived",
+          "organization": { "login": "acme" },
+          "projects_v2_item": {
+            "id": 100, "node_id": "PVTI_ARCHIVED", "project_node_id": "PVT_1",
+            "content_type": "Issue", "archived_at": "2026-04-13T12:00:00Z"
+          }
+        }
+        """);
+
+        var tags = handler.DeriveInvalidationTags("projects_v2_item", payload);
+
+        tags.ShouldBe(["project-v2-item:PVTI_ARCHIVED"]);
+    }
+
+    [Fact]
+    public void DeriveInvalidationTags_ProjectsV2_MissingNumber_FallsBackToListTag()
+    {
+        // Degraded projects_v2 payload (no "number" field). Still safe to
+        // flush the owner-wide list so a new / renamed board surfaces; the
+        // per-project tag is simply omitted.
+        var handler = CreateHandler();
+        var payload = Parse("""
+        {
+          "action": "created",
+          "organization": { "login": "acme" },
+          "projects_v2": { "title": "Untitled" }
+        }
+        """);
+
+        var tags = handler.DeriveInvalidationTags("projects_v2", payload);
+
+        tags.ShouldBe(["projects-v2-list:acme"]);
+    }
+
+    [Fact]
+    public void DeriveInvalidationTags_ProjectsV2_MissingOrganization_ReturnsEmpty()
+    {
+        var handler = CreateHandler();
+        var payload = Parse("""
+        {
+          "action": "edited",
+          "projects_v2": { "number": 7 }
+        }
+        """);
+
+        var tags = handler.DeriveInvalidationTags("projects_v2", payload);
+
+        tags.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void DeriveInvalidationTags_ProjectsV2Item_MissingNodeId_ReturnsEmpty()
+    {
+        var handler = CreateHandler();
+        var payload = Parse("""
+        {
+          "action": "edited",
+          "organization": { "login": "acme" },
+          "projects_v2_item": { "id": 100 }
+        }
+        """);
+
+        var tags = handler.DeriveInvalidationTags("projects_v2_item", payload);
+
+        tags.ShouldBeEmpty();
+    }
 }
