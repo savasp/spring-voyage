@@ -54,8 +54,8 @@ public class GitHubSkillRegistry : ISkillRegistry
         LabelStateMachine labelStateMachine,
         IGitHubInstallationsClient installations,
         ILoggerFactory loggerFactory,
-        IGitHubOAuthClientFactory? oauthClientFactory = null,
-        CachedSkillInvoker? cachedInvoker = null)
+        CachedSkillInvoker? cachedInvoker = null,
+        IGitHubOAuthClientFactory? oauthClientFactory = null)
     {
         _connector = connector;
         _labelStateMachine = labelStateMachine;

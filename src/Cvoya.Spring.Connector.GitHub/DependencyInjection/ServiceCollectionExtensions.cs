@@ -189,6 +189,7 @@ public static class ServiceCollectionExtensions
                 sp.GetRequiredService<Labels.LabelStateMachine>(),
                 sp.GetRequiredService<IGitHubInstallationsClient>(),
                 sp.GetRequiredService<ILoggerFactory>(),
+                sp.GetRequiredService<CachedSkillInvoker>(),
                 oauthFactory);
         });
         services.TryAddSingleton<IGitHubWebhookRegistrar, GitHubWebhookRegistrar>();
