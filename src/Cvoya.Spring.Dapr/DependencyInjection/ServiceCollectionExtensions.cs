@@ -40,6 +40,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 /// <summary>
 /// Extension methods for registering Spring Voyage services with the dependency injection container.
@@ -310,6 +312,78 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddCvoyaSpringDatabaseMigrator(this IServiceCollection services)
     {
         services.AddHostedService<DatabaseMigrator>();
+        return services;
+    }
+
+    /// <summary>
+    /// Registers <see cref="OllamaProvider"/> as the primary <c>IAiProvider</c> when
+    /// <c>LanguageModel:Ollama:Enabled=true</c> (or when the caller forces registration
+    /// via <paramref name="force"/>).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Hosts call this after <see cref="AddCvoyaSpringDapr"/>. It uses <c>TryAdd</c>
+    /// patterns so the private cloud host can pre-register a tenant-scoped
+    /// <c>IOptions&lt;OllamaOptions&gt;</c> (for per-tenant base URLs) or an alternative
+    /// <c>IAiProvider</c> wrapper, and those overrides are preserved.
+    /// </para>
+    /// <para>
+    /// Ollama exposes an OpenAI-compatible <c>/v1/chat/completions</c> endpoint and
+    /// requires no API key, so a configurable base URL is the only knob. The OSS
+    /// deployment defaults to the in-cluster <c>spring-ollama</c> container; macOS
+    /// GPU deployments override <c>BaseUrl</c> to the host-installed Ollama.
+    /// </para>
+    /// </remarks>
+    /// <param name="services">The service collection to configure.</param>
+    /// <param name="configuration">Configuration root used to bind <see cref="OllamaOptions"/>.</param>
+    /// <param name="force">When <c>true</c>, registers the provider regardless of the
+    /// <c>Enabled</c> flag — useful for test harnesses that always want the Ollama path.</param>
+    /// <returns>The same service collection for chaining.</returns>
+    public static IServiceCollection AddCvoyaSpringOllamaLlm(
+        this IServiceCollection services,
+        IConfiguration configuration,
+        bool force = false)
+    {
+        services.AddOptions<OllamaOptions>().BindConfiguration(OllamaOptions.SectionName);
+
+        var enabled = force || configuration.GetValue<bool>($"{OllamaOptions.SectionName}:Enabled");
+        if (!enabled)
+        {
+            return services;
+        }
+
+        // Clear any prior IAiProvider registration. The base AddCvoyaSpringDapr call
+        // registers AnthropicProvider via AddHttpClient<IAiProvider, AnthropicProvider>();
+        // when Ollama is explicitly enabled we want it to win. The cloud host can
+        // pre-register its own IAiProvider BEFORE this call and it will survive because
+        // we only remove AnthropicProvider-shaped registrations.
+        var existing = services
+            .Where(d => d.ServiceType == typeof(IAiProvider) ||
+                        (d.ImplementationType == typeof(AnthropicProvider)))
+            .ToList();
+        foreach (var descriptor in existing)
+        {
+            services.Remove(descriptor);
+        }
+
+        services.AddHttpClient<IAiProvider, OllamaProvider>();
+
+        // Health-check: hosted service that probes /api/tags on startup. The
+        // HttpClient is resolved from IHttpClientFactory (registered via
+        // AddHttpClient above) rather than typed-client injection so we can keep
+        // the health check a singleton without coupling it to DefaultHttpClientFactory
+        // lifetime quirks.
+        services.AddHttpClient(nameof(OllamaHealthCheck));
+        services.AddHostedService(sp =>
+        {
+            var factory = sp.GetRequiredService<IHttpClientFactory>();
+            var httpClient = factory.CreateClient(nameof(OllamaHealthCheck));
+            return new OllamaHealthCheck(
+                httpClient,
+                sp.GetRequiredService<IOptions<OllamaOptions>>(),
+                sp.GetRequiredService<ILogger<OllamaHealthCheck>>());
+        });
+
         return services;
     }
 

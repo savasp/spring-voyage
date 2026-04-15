@@ -45,6 +45,11 @@ All platform containers attach to a shared Podman network called `spring-net`:
 | `spring-api`         | `spring-voyage:<tag>`     | ASP.NET Core REST API.                     |
 | `spring-web`         | `spring-voyage:<tag>`     | Next.js dashboard.                         |
 | `spring-caddy`       | `caddy:2`                 | Reverse proxy + automatic TLS.             |
+| `spring-ollama` *    | `ollama/ollama:latest`    | Local LLM backend (optional; see below).   |
+
+\* Optional. Only started when `OLLAMA_MODE=container` (the default). Set
+`OLLAMA_MODE=host` on macOS to run Ollama on the host for Metal GPU access —
+the container is skipped in that mode.
 
 ### Dapr sidecar topology
 
@@ -242,6 +247,56 @@ Key Vault, HashiCorp Vault, or Kubernetes secrets; the other production
 components reference the store by name (`secretstore`) so they require no
 changes. See [Infrastructure](../docs/architecture/infrastructure.md#data-persistence--configuration)
 and [`dapr/README.md`](../dapr/README.md) for profile details.
+
+## Local AI (Ollama)
+
+Spring Voyage supports [Ollama](https://ollama.com) as a first-class LLM backend
+for local and self-hosted deployments. Enable it by setting
+`LanguageModel__Ollama__Enabled=true` in `spring.env` — the platform then uses
+Ollama's OpenAI-compatible `/v1/chat/completions` endpoint and no API key is
+required.
+
+Two modes are supported and selected by the deploy-time `OLLAMA_MODE` variable:
+
+| Mode          | Deploy flag           | When to use                                                       |
+| ------------- | --------------------- | ----------------------------------------------------------------- |
+| Container     | `OLLAMA_MODE=container` (default) | Linux/Windows; CPU-only or NVIDIA GPU via `OLLAMA_GPU=nvidia`.    |
+| Host-install  | `OLLAMA_MODE=host`    | macOS with Metal GPU — Metal does not pass through into Podman.   |
+
+### Container mode
+
+```bash
+# spring.env
+LanguageModel__Ollama__Enabled=true
+OLLAMA_MODE=container
+OLLAMA_DEFAULT_MODEL=llama3.2:3b
+# OLLAMA_GPU=nvidia   # Linux/WSL2 + nvidia-container-toolkit
+```
+
+`deploy.sh up` launches `docker.io/ollama/ollama:latest` as `spring-ollama`,
+attaches volume `spring-ollama-data` at `/root/.ollama`, publishes port
+`11434`, and best-effort `ollama pull`s the default model once the server
+is up.
+
+### Host mode (macOS GPU)
+
+```bash
+# on the host
+brew install ollama
+ollama serve &
+
+# spring.env
+LanguageModel__Ollama__Enabled=true
+OLLAMA_MODE=host
+LanguageModel__Ollama__BaseUrl=http://host.containers.internal:11434
+```
+
+`deploy.sh up` skips `spring-ollama` and the platform talks to the host
+server through Podman's `host.containers.internal` DNS name.
+
+See [`docs/developer/local-ai-ollama.md`](../docs/developer/local-ai-ollama.md)
+for full details (troubleshooting, cloud-deployment patterns, and the GPU
+feasibility matrix across Mac/Windows/Linux).
 
 ## Per-user bridge networks
 

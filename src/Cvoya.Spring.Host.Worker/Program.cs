@@ -48,6 +48,7 @@ using var sigTerm = PosixSignalRegistration.Create(PosixSignal.SIGTERM, _ => For
 builder.Services
     .AddCvoyaSpringCore()
     .AddCvoyaSpringDapr(builder.Configuration)
+    .AddCvoyaSpringOllamaLlm(builder.Configuration)
     .AddCvoyaSpringConnectorGitHub(builder.Configuration);
 
 // Worker owns EF Core migrations. The API host intentionally does NOT

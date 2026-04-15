@@ -26,6 +26,7 @@ if (isLocalDev)
 builder.Services
     .AddCvoyaSpringCore()
     .AddCvoyaSpringDapr(builder.Configuration)
+    .AddCvoyaSpringOllamaLlm(builder.Configuration)
     .AddCvoyaSpringConnectorGitHub(builder.Configuration)
     .AddCvoyaSpringApiServices(builder.Configuration);
 

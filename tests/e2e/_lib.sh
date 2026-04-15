@@ -135,6 +135,25 @@ e2e::cleanup_agent() {
     return 0
 }
 
+# e2e::require_ollama — pings the configured local LLM endpoint. Returns 0 when
+# Ollama is reachable, 1 otherwise. Scenarios that need an LLM call this first
+# and skip (not fail) when it's down, so the base scenario set stays green on
+# hosts without Ollama configured.
+#
+# Reads LLM_BASE_URL (takes precedence), then LanguageModel__Ollama__BaseUrl,
+# then falls back to http://localhost:11434.
+e2e::require_ollama() {
+    local url="${LLM_BASE_URL:-${LanguageModel__Ollama__BaseUrl:-http://localhost:11434}}"
+    url="${url%/}"
+    # shellcheck disable=SC2086
+    if curl ${E2E_CURL_OPTS} --output /dev/null --fail "${url}/api/tags" 2>/dev/null; then
+        return 0
+    fi
+    e2e::log "Ollama not reachable at ${url}/api/tags — skipping LLM scenario."
+    e2e::log "  See docs/developer/local-ai-ollama.md to enable the local LLM backend."
+    return 1
+}
+
 e2e::summary() {
     printf '\n[e2e] %d passed, %d failed\n' "${_e2e_pass}" "${_e2e_fail}"
     if (( _e2e_fail > 0 )); then

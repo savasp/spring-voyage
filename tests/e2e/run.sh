@@ -103,19 +103,24 @@ fi
 # Pool selection. Default = fast only. --llm and --all are explicit opt-ins;
 # a bare glob ("12-*") searches both pools so callers don't need to remember
 # which directory a scenario lives in.
+#
+# --llm additionally fail-fasts if the local LLM backend (Ollama) isn't
+# reachable — see e2e::require_ollama in _lib.sh and
+# docs/developer/local-ai-ollama.md.
 pools=("fast")
 glob="*.sh"
 
 case "${1:-}" in
     --llm)
-        pools=("llm")
-        glob="${2:-*.sh}"
-        if [[ -z "${LLM_BASE_URL:-}" ]]; then
-            printf '[e2e] --llm requires LLM_BASE_URL to be set (see #330).\n' >&2
-            printf '[e2e] The local LLM backend (ollama or fake server) is tracked by #330;\n' >&2
-            printf '[e2e] until it lands, scenarios/llm/ is empty and this mode cannot run.\n' >&2
+        # shellcheck disable=SC1091
+        source "${HERE}/_lib.sh"
+        if ! e2e::require_ollama; then
+            printf '\n[e2e] --llm requires a reachable Ollama server.\n' >&2
+            printf '[e2e] See docs/developer/local-ai-ollama.md to enable it.\n' >&2
             exit 2
         fi
+        pools=("llm")
+        glob="${2:-*.sh}"
         ;;
     --all)
         pools=("fast" "llm")
