@@ -367,9 +367,16 @@ export default function CreateUnitPage() {
           setSubmitError("Selected template is no longer available.");
           return;
         }
+        // #325: when the user has filled in a name on step 1, pass it
+        // through as `unitName` so the created unit uses the caller-supplied
+        // address path instead of the manifest's fixed `name`. Without
+        // this, two invocations of the same template would collide on the
+        // server's unique-name constraint.
+        const unitNameOverride = form.name.trim() || undefined;
         const resp = await api.createUnitFromTemplate({
           package: template.package,
           name: template.name,
+          unitName: unitNameOverride,
           displayName: form.displayName.trim() || undefined,
           color: form.color.trim() || undefined,
           model: form.model.trim() || undefined,
@@ -484,8 +491,10 @@ export default function CreateUnitPage() {
               />
               <span className="block text-xs text-muted-foreground">
                 URL-safe: lowercase letters, digits, and hyphens only. Used as
-                the unit&apos;s address. Ignored when importing a YAML manifest
-                or starting from a template — the manifest&apos;s name wins.
+                the unit&apos;s address. Optional on the template path — leave
+                blank to inherit the template manifest&apos;s name, or supply a
+                value to override it (see #325). Ignored when importing a
+                YAML manifest — the manifest&apos;s name wins.
               </span>
             </label>
 

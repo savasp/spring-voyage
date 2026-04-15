@@ -4670,6 +4670,12 @@
                 "$ref": "#/components/schemas/UnitConnectorBindingRequest"
               }
             ]
+          },
+          "unitName": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },

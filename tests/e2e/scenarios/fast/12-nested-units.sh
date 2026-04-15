@@ -1,14 +1,11 @@
 #!/usr/bin/env bash
-# Nested units: create parent + child via CLI, add the child as a member of the
-# parent, verify the parent's member list exposes the child. Cascading purge
-# on EXIT cleans both up, even if the scenario aborts mid-way.
+# Nested units: create parent + child via CLI, add the child as a member of
+# the parent, verify the parent's member list exposes the child. Cascading
+# purge on EXIT cleans both up, even if the scenario aborts mid-way.
 #
-# TODO(#331): `spring unit members add <parent> --unit <child>` does not exist
-# yet. The CLI's `members add` only accepts `--agent`, and the PUT /memberships
-# endpoint it drives resolves exclusively through Address("agent", ...). The
-# scheme-agnostic path is POST /api/v1/units/{id}/members, so we fall back to
-# `e2e::http` for the one step the CLI cannot express. Flip to the CLI once
-# #331 lands and drop this TODO.
+# #331 landed: `spring unit members add <parent> --unit <child>` targets the
+# scheme-agnostic POST /api/v1/units/{id}/members endpoint, so the step that
+# previously fell back to `e2e::http` is now fully CLI-driven.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
@@ -37,17 +34,15 @@ body="${response%$'\n'*}"
 e2e::expect_status "0" "${code}" "child unit create succeeds"
 e2e::expect_contains "\"name\": \"${child}\"" "${body}" "child create response carries the unit name"
 
-# --- Add child as member of parent (HTTP fallback, TODO #331) -----------------
-# POST /api/v1/units/{id}/members takes { memberAddress: { scheme, path } }.
-# The server resolves the parent by path (Address("unit", id)) and the member
-# by the full { scheme, path } pair, so we can pass scheme="unit" here.
-add_body="{\"memberAddress\":{\"scheme\":\"unit\",\"path\":\"${child}\"}}"
-e2e::log "POST /api/v1/units/${parent}/members ${add_body}"
-response="$(e2e::http POST "/api/v1/units/${parent}/members" "${add_body}")"
-status="${response##*$'\n'}"
-resp_body="${response%$'\n'*}"
-# The endpoint returns 204 No Content on success (see UnitEndpoints.AddMemberAsync).
-e2e::expect_status "204" "${status}" "add child as member of parent returns 204"
+# --- Add child as member of parent (CLI, #331) --------------------------------
+# `spring unit members add <parent> --unit <child>` POSTs to the scheme-
+# agnostic /api/v1/units/{id}/members endpoint with memberAddress={
+# scheme: "unit", path: <child> }. Exit code 0 on success; the CLI prints a
+# confirmation line we don't inspect here.
+e2e::log "spring unit members add ${parent} --unit ${child}"
+response="$(e2e::cli unit members add "${parent}" --unit "${child}")"
+code="${response##*$'\n'}"
+e2e::expect_status "0" "${code}" "add child as member of parent via CLI succeeds"
 
 # --- Verify via GET /api/v1/units/{id} ----------------------------------------
 # GetUnitAsync returns UnitDetailResponse { unit, details } where `details` is

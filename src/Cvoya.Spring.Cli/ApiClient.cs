@@ -93,14 +93,18 @@ public class SpringApiClient
     }
 
     /// <summary>
-    /// Creates a new unit. Server requires non-null Name/DisplayName/Description on
-    /// <c>CreateUnitRequest</c>; optional inputs are normalised here so the server
-    /// validator accepts them.
+    /// Creates a new unit. Server requires non-null Name/DisplayName/Description
+    /// on <c>CreateUnitRequest</c>; optional inputs are normalised here so the
+    /// server validator accepts them. <paramref name="model"/> and
+    /// <paramref name="color"/> ride the same request body (#315) so the CLI
+    /// and wizard share one create surface.
     /// </summary>
     public async Task<UnitResponse> CreateUnitAsync(
         string name,
         string? displayName,
         string? description,
+        string? model = null,
+        string? color = null,
         CancellationToken ct = default)
     {
         var request = new CreateUnitRequest
@@ -108,14 +112,58 @@ public class SpringApiClient
             Name = name,
             DisplayName = string.IsNullOrWhiteSpace(displayName) ? name : displayName,
             Description = description ?? string.Empty,
+            Model = string.IsNullOrWhiteSpace(model) ? null : model,
+            Color = string.IsNullOrWhiteSpace(color) ? null : color,
         };
         var result = await _client.Api.V1.Units.PostAsync(request, cancellationToken: ct);
         return result ?? throw new InvalidOperationException("Server returned an empty CreateUnit response.");
     }
 
+    /// <summary>
+    /// Creates a unit from a packaged template (#316). The server runs the
+    /// skill-bundle resolver + validator + connector-binding preview and
+    /// returns the created unit plus any non-fatal warnings. Optional
+    /// <paramref name="unitName"/> maps to
+    /// <c>CreateUnitFromTemplateRequest.UnitName</c> (#325), overriding the
+    /// manifest-derived unit name so repeated instantiations of the same
+    /// template do not collide.
+    /// </summary>
+    public async Task<UnitCreationResponse> CreateUnitFromTemplateAsync(
+        string package,
+        string templateName,
+        string? unitName = null,
+        string? displayName = null,
+        string? model = null,
+        string? color = null,
+        CancellationToken ct = default)
+    {
+        var request = new CreateUnitFromTemplateRequest
+        {
+            Package = package,
+            Name = templateName,
+            UnitName = string.IsNullOrWhiteSpace(unitName) ? null : unitName,
+            DisplayName = string.IsNullOrWhiteSpace(displayName) ? null : displayName,
+            Model = string.IsNullOrWhiteSpace(model) ? null : model,
+            Color = string.IsNullOrWhiteSpace(color) ? null : color,
+        };
+        var result = await _client.Api.V1.Units.FromTemplate.PostAsync(request, cancellationToken: ct);
+        return result ?? throw new InvalidOperationException(
+            "Server returned an empty CreateUnitFromTemplate response.");
+    }
+
     /// <summary>Deletes a unit.</summary>
     public Task DeleteUnitAsync(string id, CancellationToken ct = default)
         => _client.Api.V1.Units[id].DeleteAsync(cancellationToken: ct);
+
+    /// <summary>
+    /// Adds a unit as a member of a parent unit (#331). The backend endpoint
+    /// <c>POST /api/v1/units/{parentId}/members</c> accepts a scheme-tagged
+    /// address, so this wrapper always sends <c>{ scheme: "unit", path: &lt;childId&gt; }</c>.
+    /// Cycle-detection conflicts come back as 409 and bubble up as a
+    /// <see cref="HttpRequestException"/> through Kiota's error handling.
+    /// </summary>
+    public Task AddUnitMemberAsync(string parentUnitId, string childUnitId, CancellationToken ct = default)
+        => AddMemberAsync(parentUnitId, "unit", childUnitId, ct);
 
     /// <summary>Adds a member to a unit.</summary>
     public Task AddMemberAsync(

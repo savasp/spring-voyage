@@ -273,6 +273,10 @@ public static class UnitEndpoints
         {
             return ProblemFromBindingFailure(ex);
         }
+        catch (DuplicateUnitNameException ex)
+        {
+            return Results.Problem(title: "Duplicate unit name", detail: ex.Message, statusCode: StatusCodes.Status400BadRequest);
+        }
     }
 
     private static async Task<IResult> CreateUnitFromYamlAsync(
@@ -308,6 +312,10 @@ public static class UnitEndpoints
         catch (UnitCreationBindingException ex)
         {
             return ProblemFromBindingFailure(ex);
+        }
+        catch (DuplicateUnitNameException ex)
+        {
+            return Results.Problem(title: "Duplicate unit name", detail: ex.Message, statusCode: StatusCodes.Status400BadRequest);
         }
         catch (SkillBundlePackageNotFoundException ex)
         {
@@ -356,7 +364,14 @@ public static class UnitEndpoints
                 statusCode: StatusCodes.Status500InternalServerError);
         }
 
-        var overrides = new UnitCreationOverrides(request.DisplayName, request.Color, request.Model);
+        // #325: forward the optional unit-name override so the caller can
+        // instantiate the same template more than once without colliding
+        // on the unique-name constraint.
+        var overrides = new UnitCreationOverrides(
+            request.DisplayName,
+            request.Color,
+            request.Model,
+            request.UnitName);
         try
         {
             var result = await creationService.CreateFromManifestAsync(
@@ -369,6 +384,10 @@ public static class UnitEndpoints
         catch (UnitCreationBindingException ex)
         {
             return ProblemFromBindingFailure(ex);
+        }
+        catch (DuplicateUnitNameException ex)
+        {
+            return Results.Problem(title: "Duplicate unit name", detail: ex.Message, statusCode: StatusCodes.Status400BadRequest);
         }
         catch (SkillBundlePackageNotFoundException ex)
         {

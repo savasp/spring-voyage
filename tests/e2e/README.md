@@ -58,16 +58,15 @@ Scenarios source `_lib.sh` and call `e2e::unit_name <suffix>` or
 `e2e::agent_name <suffix>` to derive names, rather than embedding the prefix
 inline.
 
-### Scenario 04 caveat (serial only)
+### Scenario 04 (now concurrent-safe)
 
-Scenario `fast/04-create-unit-from-template.sh` creates a unit via
-`POST /api/v1/units/from-template`, which derives the unit's `name` from the
-template manifest verbatim (`engineering-team`). That name is **not**
-parameterised by the run id, so two concurrent runs of scenario 04 collide
-on the server's unique-name constraint. Run scenario 04 serially for now
-(all other scenarios are concurrent-safe). #325 tracks adding a `name`
-override to the from-template endpoint; drop the `@serial` caveat once it
-lands.
+Scenario `fast/04-create-unit-from-template.sh` used to be `@serial` because
+the from-template endpoint derived the unit's `name` from the template's
+manifest verbatim (`engineering-team`), and two concurrent runs collided on
+the server's unique-name constraint. #325 added an optional `UnitName`
+override to `CreateUnitFromTemplateRequest`, and the scenario now passes a
+run-scoped id through the CLI's `--name` flag (#316). It is therefore
+concurrent-safe alongside the rest of the suite.
 
 ## Cascading cleanup
 
@@ -107,11 +106,11 @@ counterpart stay on `e2e::http` with a TODO referencing the gap.
 |---|----------|------|--------|-----|
 | 01 | api-health | fast | curl | Raw contract check; the point is to bypass the CLI/Kiota layer. |
 | 02 | create-unit-scratch | fast | CLI (`spring unit create`) | Covered by the CLI today. |
-| 03 | create-unit-with-model | fast | curl (TODO #315) | CLI lacks `--model`/`--color` flags. |
-| 04 | create-unit-from-template | fast | curl (TODO #316) | CLI has no `--from-template` (and `spring apply` skips the resolver/validator/binding-preview path that this scenario covers). **@serial** — not concurrent-safe (template `name` is fixed). |
+| 03 | create-unit-with-model | fast | CLI (`spring unit create --model/--color`) | #315 exposed the flags. |
+| 04 | create-unit-from-template | fast | CLI (`spring unit create --from-template`) | #316 exposed the CLI path; #325 added the `UnitName` override that makes this scenario concurrent-safe. |
 | 05 | cli-version-and-help | fast | CLI (`spring --help`) | Sanity-check the CLI starts up before heavier scenarios spend API time. |
 | 06 | unit-membership-roundtrip | fast | CLI (`spring unit members …`) | Full CLI coverage of #320. |
-| 12 | nested-units | fast | CLI + curl (TODO #331) | CLI `members add` only accepts `--agent`; unit-as-member falls back to `POST /api/v1/units/{id}/members` until the CLI grows a `--unit` flag. |
+| 12 | nested-units | fast | CLI (`spring unit members add --unit`) | #331 added the `--unit` flag so the scenario drops its HTTP fallback. |
 
 ## Authentication
 

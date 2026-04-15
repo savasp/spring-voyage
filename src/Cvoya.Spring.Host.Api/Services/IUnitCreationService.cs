@@ -51,10 +51,17 @@ public interface IUnitCreationService
 /// <param name="DisplayName">Override for the unit's display name.</param>
 /// <param name="Color">Override for the unit's UI colour.</param>
 /// <param name="Model">Override for the unit's default model hint.</param>
+/// <param name="Name">
+/// Override for the unit's canonical <c>name</c> (address path). When
+/// non-empty the created unit uses this value instead of the manifest's
+/// <c>name</c> field — lets callers instantiate the same template more than
+/// once without colliding on the unique-name constraint. See #325.
+/// </param>
 public record UnitCreationOverrides(
     string? DisplayName = null,
     string? Color = null,
-    string? Model = null);
+    string? Model = null,
+    string? Name = null);
 
 /// <summary>
 /// Outcome of a unit-creation call.
@@ -108,6 +115,30 @@ public class UnitCreationBindingException : System.Exception
     /// Why the binding failed.
     /// </summary>
     public UnitCreationBindingFailureReason Reason { get; }
+}
+
+/// <summary>
+/// Thrown when the requested unit name is already registered in the directory.
+/// Surfaces as a ProblemDetails 400 from the creation endpoints. Introduced by
+/// #325 so the <c>/from-template</c> endpoint can reject override-driven
+/// collisions with a clear 400 response rather than silently overwriting the
+/// existing directory entry (the in-memory directory service is a
+/// last-writer-wins map; this check makes the collision an explicit error).
+/// </summary>
+public class DuplicateUnitNameException : System.Exception
+{
+    /// <summary>
+    /// Initialises a new <see cref="DuplicateUnitNameException"/>.
+    /// </summary>
+    /// <param name="name">The unit name that collided with an existing entry.</param>
+    public DuplicateUnitNameException(string name)
+        : base($"A unit named '{name}' already exists.")
+    {
+        Name = name;
+    }
+
+    /// <summary>The unit name that collided with an existing entry.</summary>
+    public string Name { get; }
 }
 
 /// <summary>
