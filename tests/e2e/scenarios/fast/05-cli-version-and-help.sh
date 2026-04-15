@@ -6,7 +6,7 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
-source "${HERE}/../_lib.sh"
+source "${HERE}/../../_lib.sh"
 
 e2e::log "spring --help"
 response="$(e2e::cli --help)"

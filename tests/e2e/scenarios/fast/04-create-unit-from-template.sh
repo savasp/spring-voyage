@@ -20,7 +20,14 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
-source "${HERE}/../_lib.sh"
+source "${HERE}/../../_lib.sh"
+
+# Template-derived unit name is fixed — not parameterised by run id (see the
+# @serial note above and #325). Any member agents the template provisions
+# cascade through `spring unit purge`, so the unit name is the only handle
+# the trap needs to clean the whole graph.
+template_unit="engineering-team"
+trap 'e2e::cleanup_unit "${template_unit}"' EXIT
 
 e2e::log "GET /api/v1/packages/templates (discover templates)"
 response="$(e2e::http GET /api/v1/packages/templates)"
@@ -43,11 +50,5 @@ else
     e2e::fail "from-template creation — expected 200/201, got ${status}: ${resp_body:0:500}"
 fi
 e2e::expect_contains '"warnings"' "${resp_body}" "response includes warnings array (may list unresolved bundle tools)"
-
-id="$(printf '%s' "${resp_body}" | grep -oE '"id":"[^"]*"' | head -1 | cut -d'"' -f4 || true)"
-if [[ -n "${id}" ]]; then
-    e2e::log "DELETE /api/v1/units/${id} (cleanup)"
-    e2e::http DELETE "/api/v1/units/${id}" > /dev/null || true
-fi
 
 e2e::summary

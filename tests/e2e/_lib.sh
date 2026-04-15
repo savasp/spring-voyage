@@ -96,6 +96,45 @@ e2e::expect_contains() {
     if [[ "${haystack}" == *"${needle}"* ]]; then e2e::ok "${desc}"; else e2e::fail "${desc} — did not find '${needle}' in: ${haystack:0:500}"; fi
 }
 
+# e2e::cleanup_unit NAME [NAME...] — cascading teardown for one or more units.
+# Runs `spring unit purge --confirm <name>` per unit, swallows failures, and
+# logs the outcome. Intended for use in scenario EXIT traps:
+#
+#   trap 'e2e::cleanup_unit "${name}"' EXIT
+#
+# Cleanup never masks a scenario's real exit code: every purge is best-effort,
+# errors are reported via e2e::log (not e2e::fail), and the helper always
+# returns 0. --confirm gates the destructive op as the CLI requires.
+e2e::cleanup_unit() {
+    local unit
+    for unit in "$@"; do
+        [[ -z "${unit}" ]] && continue
+        if e2e::cli unit purge "${unit}" --confirm >/dev/null 2>&1; then
+            e2e::log "cleanup: purged unit ${unit}"
+        else
+            e2e::log "cleanup: purge failed for ${unit} (ignored)"
+        fi
+    done
+    return 0
+}
+
+# e2e::cleanup_agent NAME [NAME...] — companion to cleanup_unit for agents
+# created outside any unit (e.g. the nested-units scenario doesn't need this,
+# but 06-unit-membership-roundtrip creates an agent that is removed after the
+# unit purge cascades). Same swallow-and-log contract.
+e2e::cleanup_agent() {
+    local agent
+    for agent in "$@"; do
+        [[ -z "${agent}" ]] && continue
+        if e2e::cli agent purge "${agent}" --confirm >/dev/null 2>&1; then
+            e2e::log "cleanup: purged agent ${agent}"
+        else
+            e2e::log "cleanup: purge failed for ${agent} (ignored)"
+        fi
+    done
+    return 0
+}
+
 e2e::summary() {
     printf '\n[e2e] %d passed, %d failed\n' "${_e2e_pass}" "${_e2e_fail}"
     if (( _e2e_fail > 0 )); then

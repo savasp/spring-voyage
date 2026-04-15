@@ -7,9 +7,14 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
-source "${HERE}/../_lib.sh"
+source "${HERE}/../../_lib.sh"
 
 name="$(e2e::unit_name scratch)"
+
+# Cascading teardown — purges any membership rows then the unit itself. Runs
+# on every exit path (success, assertion failure, ctrl-c); swallows errors so
+# the scenario's real exit code is preserved.
+trap 'e2e::cleanup_unit "${name}"' EXIT
 
 e2e::log "spring unit create ${name} --output json"
 response="$(e2e::cli --output json unit create "${name}")"
@@ -34,12 +39,5 @@ else
     e2e::fail "unit list — expected exit 0, got ${list_code}: ${list_body:0:500}"
 fi
 e2e::expect_contains "\"name\": \"${name}\"" "${list_body}" "list contains the new unit"
-
-# Best-effort cleanup: extract id from the create response JSON and delete.
-id="$(printf '%s' "${body}" | grep -oE '"id":[[:space:]]*"[^"]*"' | head -1 | sed -E 's/.*"id":[[:space:]]*"([^"]*)".*/\1/' || true)"
-if [[ -n "${id}" ]]; then
-    e2e::log "spring unit delete ${id} (cleanup)"
-    e2e::cli unit delete "${id}" > /dev/null || true
-fi
 
 e2e::summary

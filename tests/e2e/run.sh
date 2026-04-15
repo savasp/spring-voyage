@@ -1,18 +1,26 @@
 #!/usr/bin/env bash
-# Master runner: executes every scenario under ./scenarios and aggregates the
-# pass/fail count.
+# Master runner for tests/e2e/scenarios.
+#
+# Scenarios are split into two pools:
+#   scenarios/fast/ — no LLM required. Runs in <30s; default for every invocation.
+#   scenarios/llm/  — needs a running LLM backend (LLM_BASE_URL). Empty until
+#                     #330 wires up a local ollama or fake-server; `--llm`
+#                     still errors out clearly in the meantime.
 #
 # Usage:
-#   ./run.sh [scenario-glob]   run scenarios (default glob: *.sh)
-#   ./run.sh --sweep           delete every unit/agent whose name starts with
-#                              "${E2E_PREFIX}-" (default prefix: "e2e"). Use to
-#                              clean up orphans left behind by aborted runs.
+#   ./run.sh                     run every scenarios/fast/*.sh (default)
+#   ./run.sh --llm               run every scenarios/llm/*.sh (requires LLM_BASE_URL)
+#   ./run.sh --all               run both pools, fast first
+#   ./run.sh '12-*'              glob across both pools (no pool filter)
+#   ./run.sh --sweep             delete every unit/agent whose name starts with
+#                                "${E2E_PREFIX}-" (default prefix: "e2e")
 #
 # Environment:
-#   E2E_PREFIX   Static leading segment of every generated name. CI overrides
-#                to carve out its own namespace (e.g. E2E_PREFIX=e2e-ci).
-#   E2E_RUN_ID   Unique-per-run suffix appended to E2E_PREFIX. Generated here
-#                once and exported so every scenario sees the same id.
+#   E2E_PREFIX     Static leading segment of every generated name. CI overrides
+#                  to carve out its own namespace (e.g. E2E_PREFIX=e2e-ci).
+#   E2E_RUN_ID     Unique-per-run suffix appended to E2E_PREFIX. Generated here
+#                  once and exported so every scenario sees the same id.
+#   LLM_BASE_URL   Required for --llm mode (see #330).
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -92,27 +100,75 @@ if [[ "${1:-}" == "--sweep" ]]; then
     exit 0
 fi
 
-glob="${1:-*.sh}"
+# Pool selection. Default = fast only. --llm and --all are explicit opt-ins;
+# a bare glob ("12-*") searches both pools so callers don't need to remember
+# which directory a scenario lives in.
+pools=("fast")
+glob="*.sh"
+
+case "${1:-}" in
+    --llm)
+        pools=("llm")
+        glob="${2:-*.sh}"
+        if [[ -z "${LLM_BASE_URL:-}" ]]; then
+            printf '[e2e] --llm requires LLM_BASE_URL to be set (see #330).\n' >&2
+            printf '[e2e] The local LLM backend (ollama or fake server) is tracked by #330;\n' >&2
+            printf '[e2e] until it lands, scenarios/llm/ is empty and this mode cannot run.\n' >&2
+            exit 2
+        fi
+        ;;
+    --all)
+        pools=("fast" "llm")
+        glob="${2:-*.sh}"
+        ;;
+    "")
+        ;;
+    -*)
+        printf '[e2e] Unknown option: %s\n' "$1" >&2
+        printf '[e2e] Usage: ./run.sh [--llm|--all|--sweep] [scenario-glob]\n' >&2
+        exit 2
+        ;;
+    *)
+        # Positional glob: search across both pools so a name like "12-*"
+        # works regardless of which directory the scenario lives in.
+        pools=("fast" "llm")
+        glob="$1"
+        ;;
+esac
 
 total_pass=0
 total_fail=0
 failures=()
+ran=0
 
-e2e_log_prefix="[e2e] run_id=${E2E_RUN_ID} prefix=${E2E_PREFIX}"
+e2e_log_prefix="[e2e] run_id=${E2E_RUN_ID} prefix=${E2E_PREFIX} pools=${pools[*]} glob=${glob}"
 printf '%s\n' "${e2e_log_prefix}"
 
 shopt -s nullglob
-for script in "${HERE}/scenarios/"${glob}; do
-    [[ -f "${script}" ]] || continue
-    name="$(basename "${script}" .sh)"
-    printf '\n===== %s =====\n' "${name}"
-    if bash "${script}"; then
-        total_pass=$((total_pass+1))
-    else
-        total_fail=$((total_fail+1))
-        failures+=("${name}")
-    fi
+for pool in "${pools[@]}"; do
+    pool_dir="${HERE}/scenarios/${pool}"
+    [[ -d "${pool_dir}" ]] || continue
+    for script in "${pool_dir}/"${glob}; do
+        [[ -f "${script}" ]] || continue
+        # Skip the llm/README.md placeholder and any other non-.sh files that
+        # a loose glob might drag in.
+        [[ "${script}" == *.sh ]] || continue
+        name="${pool}/$(basename "${script}" .sh)"
+        printf '\n===== %s =====\n' "${name}"
+        if bash "${script}"; then
+            total_pass=$((total_pass+1))
+        else
+            total_fail=$((total_fail+1))
+            failures+=("${name}")
+        fi
+        ran=$((ran+1))
+    done
 done
+
+if (( ran == 0 )); then
+    printf '\n[e2e] No scenarios matched pools=%s glob=%s\n' "${pools[*]}" "${glob}" >&2
+    exit 1
+fi
 
 printf '\n===== SUMMARY =====\n'
 printf '%d scenarios passed, %d failed\n' "${total_pass}" "${total_fail}"
