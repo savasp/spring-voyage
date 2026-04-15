@@ -11,11 +11,25 @@ regressions the mocked harness misses (see #311 for rationale).
 - `dotnet` (.NET 10 SDK) on PATH for the CLI-driven scenarios. To skip the
   build wait, override `SPRING_CLI` with a path to a prebuilt binary.
 
+## Layout
+
+```
+tests/e2e/scenarios/
+├── fast/         no-LLM scenarios (CRUD, membership, templates, help)
+└── llm/          LLM-backed scenarios (empty until #330 lands a local backend)
+```
+
+Scenarios are classified by whether they need a running LLM. The fast pool is
+the default every invocation runs; the llm pool is an explicit opt-in with
+`--llm` (or `--all`) and requires `LLM_BASE_URL`.
+
 ## Usage
 
 ```
-./run.sh                              # all scenarios
-./run.sh '03-*'                       # one
+./run.sh                              # all fast scenarios (default)
+./run.sh --llm                        # all llm scenarios (needs LLM_BASE_URL)
+./run.sh --all                        # both pools, fast first
+./run.sh '12-*'                       # glob across both pools
 ./run.sh --sweep                      # orphan cleanup (see below)
 E2E_BASE_URL=http://sv:80 ./run.sh    # custom host
 SPRING_CLI=/usr/local/bin/spring ./run.sh   # prebuilt CLI
@@ -23,7 +37,8 @@ SPRING_API_URL=http://sv:80 ./run.sh        # forwarded to `spring apply`
 ```
 
 Each scenario exits 0 on pass, non-zero on any failure. The runner aggregates
-results and exits non-zero if any scenario failed.
+results and exits non-zero if any scenario failed. `--llm` without
+`LLM_BASE_URL` exits 2 with a pointer to #330.
 
 ## Run identity and concurrent invocations
 
@@ -45,7 +60,7 @@ inline.
 
 ### Scenario 04 caveat (serial only)
 
-Scenario `04-create-unit-from-template.sh` creates a unit via
+Scenario `fast/04-create-unit-from-template.sh` creates a unit via
 `POST /api/v1/units/from-template`, which derives the unit's `name` from the
 template manifest verbatim (`engineering-team`). That name is **not**
 parameterised by the run id, so two concurrent runs of scenario 04 collide
@@ -53,6 +68,16 @@ on the server's unique-name constraint. Run scenario 04 serially for now
 (all other scenarios are concurrent-safe). #325 tracks adding a `name`
 override to the from-template endpoint; drop the `@serial` caveat once it
 lands.
+
+## Cascading cleanup
+
+Scenarios set a single `EXIT` trap that calls `e2e::cleanup_unit` (and
+optionally `e2e::cleanup_agent`) with every artefact they created. The helper
+invokes `spring unit purge --confirm <name>` per unit, which cascades through
+every membership row before deleting the unit itself. Failures during cleanup
+are logged but swallowed so they can never mask the scenario's real exit
+code. Because every artefact carries the run-id prefix, `--sweep` remains
+the backstop if a scenario aborts before the trap can fire (e.g. killed -9).
 
 ## Orphan cleanup (`--sweep`)
 
@@ -78,13 +103,15 @@ breaks if `openapi.json` drifts), CLI argument parsing + output formatting, and
 the `ApiTokenAuthHandler` Bearer-token path. Scenarios that have no CLI
 counterpart stay on `e2e::http` with a TODO referencing the gap.
 
-| # | Scenario | Driver | Why |
-|---|----------|--------|-----|
-| 01 | api-health | curl | Raw contract check; the point is to bypass the CLI/Kiota layer. |
-| 02 | create-unit-scratch | CLI (`spring unit create`) | Covered by the CLI today. |
-| 03 | create-unit-with-model | curl (TODO #315) | CLI lacks `--model`/`--color` flags. |
-| 04 | create-unit-from-template | curl (TODO #316) | CLI has no `--from-template` (and `spring apply` skips the resolver/validator/binding-preview path that this scenario covers). **@serial** — not concurrent-safe (template `name` is fixed). |
-| 05 | cli-version-and-help | CLI (`spring --help`) | Sanity-check the CLI starts up before heavier scenarios spend API time. |
+| # | Scenario | Pool | Driver | Why |
+|---|----------|------|--------|-----|
+| 01 | api-health | fast | curl | Raw contract check; the point is to bypass the CLI/Kiota layer. |
+| 02 | create-unit-scratch | fast | CLI (`spring unit create`) | Covered by the CLI today. |
+| 03 | create-unit-with-model | fast | curl (TODO #315) | CLI lacks `--model`/`--color` flags. |
+| 04 | create-unit-from-template | fast | curl (TODO #316) | CLI has no `--from-template` (and `spring apply` skips the resolver/validator/binding-preview path that this scenario covers). **@serial** — not concurrent-safe (template `name` is fixed). |
+| 05 | cli-version-and-help | fast | CLI (`spring --help`) | Sanity-check the CLI starts up before heavier scenarios spend API time. |
+| 06 | unit-membership-roundtrip | fast | CLI (`spring unit members …`) | Full CLI coverage of #320. |
+| 12 | nested-units | fast | CLI + curl (TODO #331) | CLI `members add` only accepts `--agent`; unit-as-member falls back to `POST /api/v1/units/{id}/members` until the CLI grows a `--unit` flag. |
 
 ## Authentication
 
@@ -96,14 +123,16 @@ configuring one.
 
 ## Adding a scenario
 
-Create `scenarios/NN-short-name.sh`, source `_lib.sh`, use `e2e::cli` (or
-`e2e::http` for raw checks), `e2e::expect_status`, `e2e::expect_contains`.
-Derive every unit/agent name from `e2e::unit_name <suffix>` or
-`e2e::agent_name <suffix>` so `--sweep` can identify orphans, and two
-concurrent invocations of `./run.sh` never collide. End with `e2e::summary`.
-Keep scenarios idempotent and cleaning up after themselves where possible.
+Create `scenarios/{fast,llm}/NN-short-name.sh`, source `../../_lib.sh`, use
+`e2e::cli` (or `e2e::http` for raw checks), `e2e::expect_status`,
+`e2e::expect_contains`. Derive every unit/agent name from `e2e::unit_name
+<suffix>` or `e2e::agent_name <suffix>` so `--sweep` can identify orphans and
+two concurrent invocations of `./run.sh` never collide. Wire cleanup through
+an EXIT trap that calls `e2e::cleanup_unit` with every unit you created. End
+with `e2e::summary`.
 
 ## Tracking
 
 See issue #311 for the full roadmap and future scenario list. CLI gaps
-discovered while porting scenarios live under #315 and #316.
+discovered while porting scenarios live under #315, #316, and #331. The
+LLM-backed scenario pool is tracked by #330.

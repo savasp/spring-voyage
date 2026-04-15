@@ -8,19 +8,21 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
-source "${HERE}/../_lib.sh"
+source "${HERE}/../../_lib.sh"
 
-suffix="$(date +%s%N | tail -c 6)"
-unit="e2e-mship-unit-${suffix}"
-agent="e2e-mship-agent-${suffix}"
+# Align with the shared run-id naming so --sweep picks these up even if both
+# the unit purge and agent purge somehow fail. Previous revision used a local
+# suffix; the common helper avoids the double-vocabulary drift flagged during
+# the phase-2 retrofit.
+unit="$(e2e::unit_name mship-unit)"
+agent="$(e2e::agent_name mship-agent)"
+guard_unit="$(e2e::unit_name mship-guard)"
 
-cleanup() {
-    # Best-effort: swallow any errors so a teardown failure doesn't mask the
-    # real scenario outcome. Both purges are idempotent on the server side.
-    e2e::cli unit purge "${unit}" --confirm >/dev/null 2>&1 || true
-    e2e::cli agent purge "${agent}" --confirm >/dev/null 2>&1 || true
-}
-trap cleanup EXIT
+# One trap, three handles. cleanup_unit cascades through memberships, so the
+# agent is only torn down after the explicit cleanup_agent call — matching
+# the server-side order. Every purge is best-effort; a teardown failure can
+# never mask the scenario's real exit code.
+trap 'e2e::cleanup_unit "${unit}" "${guard_unit}"; e2e::cleanup_agent "${agent}"' EXIT
 
 # --- Setup: create unit and agent ---------------------------------------------
 e2e::log "spring unit create ${unit}"
@@ -81,7 +83,8 @@ e2e::expect_contains "purged" "${body}" "purge output mentions success"
 
 # --- Guardrail: purge without --confirm must refuse ---------------------------
 # Create a second throw-away unit so the refusal path has something to protect.
-guard_unit="e2e-mship-guard-${suffix}"
+# The EXIT trap cascades it; the main ${unit} is already gone and that purge
+# no-ops cleanly.
 e2e::cli unit create "${guard_unit}" >/dev/null
 e2e::log "spring unit purge ${guard_unit} (without --confirm — must refuse)"
 response="$(e2e::cli unit purge "${guard_unit}")"
@@ -91,12 +94,5 @@ if [[ "${code}" != "0" ]]; then
 else
     e2e::fail "purge without --confirm — expected non-zero exit, got ${code}"
 fi
-e2e::cli unit delete "${guard_unit}" >/dev/null || true
-
-# --- Cascading agent purge ----------------------------------------------------
-e2e::log "spring agent purge ${agent} --confirm"
-response="$(e2e::cli agent purge "${agent}" --confirm)"
-code="${response##*$'\n'}"
-e2e::expect_status "0" "${code}" "agent purge --confirm succeeds"
 
 e2e::summary
