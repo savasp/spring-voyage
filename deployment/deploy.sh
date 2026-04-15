@@ -21,6 +21,11 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 ENV_FILE="${SPRING_ENV_FILE:-${SCRIPT_DIR}/spring.env}"
+# Resolved env file passed to podman --env-file. Podman treats --env-file
+# values literally (no shell expansion), so we pre-process the source
+# spring.env with envsubst to expand ${VAR} references between keys — e.g.
+# a ConnectionStrings__SpringDb value that interpolates ${POSTGRES_DB}.
+RESOLVED_ENV_FILE=""
 
 NETWORK_NAME="spring-net"
 USER_NETWORK_PREFIX="spring-user-"
@@ -38,12 +43,23 @@ load_env() {
     if [[ ! -f "${ENV_FILE}" ]]; then
         die "env file not found: ${ENV_FILE} (copy spring.env.example to spring.env and edit)"
     fi
+    require envsubst
     # Source the env file for this script's use (e.g., image tags, DEPLOY_HOSTNAME).
     # Values are passed into containers via --env-file, not via the shell environment.
     set -a
     # shellcheck disable=SC1090
     source "${ENV_FILE}"
     set +a
+
+    # Expand ${VAR} references inside the env file itself and write the
+    # result to a short-lived file that we pass to podman --env-file.
+    # Podman's --env-file reader is literal-only, so a value like
+    # `Host=...;Database=${POSTGRES_DB};...` would otherwise be forwarded
+    # un-expanded to the container (see #261).
+    RESOLVED_ENV_FILE="$(mktemp "${TMPDIR:-/tmp}/spring.env.resolved.XXXXXX")"
+    chmod 600 "${RESOLVED_ENV_FILE}"
+    envsubst < "${ENV_FILE}" > "${RESOLVED_ENV_FILE}"
+    trap 'rm -f "${RESOLVED_ENV_FILE}"' EXIT
 }
 
 ensure_network() {
@@ -91,7 +107,7 @@ run_container() {
 
 start_postgres() {
     run_container spring-postgres \
-        --env-file "${ENV_FILE}" \
+        --env-file "${RESOLVED_ENV_FILE}" \
         -v spring-postgres-data:/var/lib/postgresql/data \
         --health-cmd 'pg_isready -U "${POSTGRES_USER}" -d "${POSTGRES_DB}"' \
         --health-interval 10s \
@@ -117,7 +133,7 @@ start_redis() {
 
 start_worker() {
     run_container spring-worker \
-        --env-file "${ENV_FILE}" \
+        --env-file "${RESOLVED_ENV_FILE}" \
         -e "DAPR_APP_ID=spring-worker" \
         "${SPRING_PLATFORM_IMAGE:-localhost/spring-voyage:latest}" \
         dotnet /app/Cvoya.Spring.Host.Worker.dll
@@ -125,7 +141,7 @@ start_worker() {
 
 start_api() {
     run_container spring-api \
-        --env-file "${ENV_FILE}" \
+        --env-file "${RESOLVED_ENV_FILE}" \
         -e "DAPR_APP_ID=spring-api" \
         "${SPRING_PLATFORM_IMAGE:-localhost/spring-voyage:latest}" \
         dotnet /app/Cvoya.Spring.Host.Api.dll
@@ -133,7 +149,7 @@ start_api() {
 
 start_web() {
     run_container spring-web \
-        --env-file "${ENV_FILE}" \
+        --env-file "${RESOLVED_ENV_FILE}" \
         -e "NEXT_PUBLIC_API_URL=http://spring-api:8080" \
         "${SPRING_PLATFORM_IMAGE:-localhost/spring-voyage:latest}" \
         node /app/web/src/Cvoya.Spring.Web/server.js
@@ -155,7 +171,7 @@ start_caddy() {
     fi
     log "using Caddyfile: ${caddyfile}"
     run_container spring-caddy \
-        --env-file "${ENV_FILE}" \
+        --env-file "${RESOLVED_ENV_FILE}" \
         -p 80:80 -p 443:443 \
         -v "${caddyfile}:/etc/caddy/Caddyfile:ro,Z" \
         -v spring-caddy-data:/data \

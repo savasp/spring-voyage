@@ -6,12 +6,14 @@ namespace Cvoya.Spring.Dapr.Tests.DependencyInjection;
 using Cvoya.Spring.Core.Directory;
 using Cvoya.Spring.Core.Execution;
 using Cvoya.Spring.Core.Orchestration;
+using Cvoya.Spring.Dapr.Data;
 using Cvoya.Spring.Dapr.DependencyInjection;
 using Cvoya.Spring.Dapr.Orchestration;
 using Cvoya.Spring.Dapr.Routing;
 
 using global::Dapr.Actors.Client;
 
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -34,6 +36,11 @@ public class ServiceCollectionExtensionsTests
         services.AddLogging();
         services.AddSingleton<IConfiguration>(config);
         services.AddSingleton(Substitute.For<IActorProxyFactory>());
+        // Pre-register an in-memory SpringDbContext so AddCvoyaSpringDapr
+        // respects the test-harness override and skips its mandatory
+        // ConnectionStrings:SpringDb check (see #261).
+        services.AddDbContext<SpringDbContext>(options =>
+            options.UseInMemoryDatabase($"DiTest_{Guid.NewGuid():N}"));
         services.AddCvoyaSpringDapr(config);
 
         return services.BuildServiceProvider();
@@ -82,5 +89,43 @@ public class ServiceCollectionExtensionsTests
 
         dispatcher.ShouldNotBeNull();
         dispatcher.ShouldBeOfType<Cvoya.Spring.Dapr.Execution.DelegatedExecutionDispatcher>();
+    }
+
+    /// <summary>
+    /// Regression test for #261. Configuration without
+    /// <c>ConnectionStrings:SpringDb</c> and without a pre-registered
+    /// <see cref="DbContextOptions{SpringDbContext}"/> must throw an
+    /// <see cref="InvalidOperationException"/> with a clear message at
+    /// <c>AddCvoyaSpringDapr</c> time — NOT defer the failure to the
+    /// first EF query (the original bug: unit creation returning 500
+    /// with "No database provider has been configured for this DbContext").
+    /// </summary>
+    [Fact]
+    public void AddCvoyaSpringDapr_NoConnectionStringAndNoPreRegisteredDbContext_Throws()
+    {
+        var services = new ServiceCollection();
+        var config = new ConfigurationBuilder().Build();
+
+        var ex = Should.Throw<InvalidOperationException>(() =>
+            services.AddCvoyaSpringDapr(config));
+
+        ex.Message.ShouldContain("ConnectionStrings:SpringDb");
+    }
+
+    /// <summary>
+    /// Complements the regression test above: when the test harness
+    /// pre-registers its own <see cref="SpringDbContext"/> (e.g. with
+    /// <c>UseInMemoryDatabase</c>), <c>AddCvoyaSpringDapr</c> must respect
+    /// that override and NOT throw, even when no connection string is set.
+    /// </summary>
+    [Fact]
+    public void AddCvoyaSpringDapr_NoConnectionStringButPreRegisteredDbContext_Succeeds()
+    {
+        var services = new ServiceCollection();
+        var config = new ConfigurationBuilder().Build();
+        services.AddDbContext<SpringDbContext>(options =>
+            options.UseInMemoryDatabase($"DiTest_{Guid.NewGuid():N}"));
+
+        Should.NotThrow(() => services.AddCvoyaSpringDapr(config));
     }
 }
