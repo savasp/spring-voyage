@@ -582,29 +582,75 @@ public class GitHubSkillRegistry : ISkillRegistry
                     ct),
 
             ["github_list_projects_v2"] = (client, args, ct) =>
-                new ListProjectsV2Skill(CreateGraphQLClient(client), _loggerFactory).ExecuteAsync(
-                    GetString(args, "owner"),
-                    GetOptionalInt(args, "first") ?? 30,
-                    ct),
+            {
+                var owner = GetString(args, "owner");
+                var first = GetOptionalInt(args, "first") ?? 30;
+                // Page size is part of the discriminator — only callers asking
+                // for the same slice share an entry. The list tag is owner-wide
+                // so any projects_v2.* event flushes every cached page size.
+                var discriminator = string.Create(
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    $"{owner}?first={first}");
+                return _cachedInvoker.InvokeAsync(
+                    GitHubResponseCacheOptions.Resources.ProjectV2List,
+                    discriminator,
+                    [CacheTags.ProjectV2List(owner)],
+                    innerCt => new ListProjectsV2Skill(CreateGraphQLClient(client), _loggerFactory).ExecuteAsync(
+                        owner, first, innerCt),
+                    ct);
+            },
 
             ["github_get_project_v2"] = (client, args, ct) =>
-                new GetProjectV2Skill(CreateGraphQLClient(client), _loggerFactory).ExecuteAsync(
-                    GetString(args, "owner"),
-                    GetInt(args, "number"),
-                    ct),
+            {
+                var owner = GetString(args, "owner");
+                var number = GetInt(args, "number");
+                return _cachedInvoker.InvokeAsync(
+                    GitHubResponseCacheOptions.Resources.ProjectV2,
+                    $"{owner}/#{number}",
+                    [
+                        CacheTags.ProjectV2(owner, number),
+                        // Also register under the owner-wide list tag so a
+                        // projects_v2.deleted at the org level flushes both
+                        // the project read and the list that contained it.
+                        CacheTags.ProjectV2List(owner),
+                    ],
+                    innerCt => new GetProjectV2Skill(CreateGraphQLClient(client), _loggerFactory).ExecuteAsync(
+                        owner, number, innerCt),
+                    ct);
+            },
 
             ["github_list_project_v2_items"] = (client, args, ct) =>
-                new ListProjectV2ItemsSkill(CreateGraphQLClient(client), _loggerFactory).ExecuteAsync(
-                    GetString(args, "owner"),
-                    GetInt(args, "number"),
-                    GetOptionalString(args, "cursor"),
-                    GetOptionalInt(args, "limit") ?? 50,
-                    ct),
+            {
+                var owner = GetString(args, "owner");
+                var number = GetInt(args, "number");
+                var cursor = GetOptionalString(args, "cursor");
+                var limit = GetOptionalInt(args, "limit") ?? 50;
+                // Cursor + limit are in the discriminator so a deeper page is
+                // a separate cache entry. The per-project tag means a
+                // projects_v2.* webhook on the same board flushes every page.
+                var discriminator = string.Create(
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    $"{owner}/#{number}?cursor={cursor}&limit={limit}");
+                return _cachedInvoker.InvokeAsync(
+                    GitHubResponseCacheOptions.Resources.ProjectV2List,
+                    discriminator,
+                    [CacheTags.ProjectV2(owner, number)],
+                    innerCt => new ListProjectV2ItemsSkill(CreateGraphQLClient(client), _loggerFactory).ExecuteAsync(
+                        owner, number, cursor, limit, innerCt),
+                    ct);
+            },
 
             ["github_get_project_v2_item"] = (client, args, ct) =>
-                new GetProjectV2ItemSkill(CreateGraphQLClient(client), _loggerFactory).ExecuteAsync(
-                    GetString(args, "itemId"),
-                    ct),
+            {
+                var itemId = GetString(args, "itemId");
+                return _cachedInvoker.InvokeAsync(
+                    GitHubResponseCacheOptions.Resources.ProjectV2Item,
+                    itemId,
+                    [CacheTags.ProjectV2Item(itemId)],
+                    innerCt => new GetProjectV2ItemSkill(CreateGraphQLClient(client), _loggerFactory).ExecuteAsync(
+                        itemId, innerCt),
+                    ct);
+            },
 
             ["github_add_project_v2_item"] = (client, args, ct) =>
                 new AddProjectV2ItemSkill(CreateGraphQLClient(client), _responseCache, _loggerFactory).ExecuteAsync(

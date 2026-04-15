@@ -44,22 +44,33 @@ public class CacheTagsTests
     }
 
     [Fact]
-    public void ProjectV2_LowercasesOwnerAndIncludesNumber()
+    public void ProjectV2_IncludesOwnerAndNumber()
     {
-        CacheTags.ProjectV2("Cvoya", 7).ShouldBe("project-v2:cvoya/7");
+        CacheTags.ProjectV2("Acme", 7).ShouldBe("project-v2:acme/7");
     }
 
     [Fact]
-    public void ProjectV2Item_UsesRawNodeId()
+    public void ProjectV2List_IsOwnerScoped()
     {
-        // Node ids are already globally unique; no normalization applies.
-        CacheTags.ProjectV2Item("PVTI_AbC").ShouldBe("project-v2-item:PVTI_AbC");
+        CacheTags.ProjectV2List("Acme").ShouldBe("projects-v2-list:acme");
     }
 
     [Fact]
-    public void ProjectV2_AndItemTags_HaveDistinctPrefixes()
+    public void ProjectV2Item_UsesNodeIdVerbatim()
     {
-        CacheTags.ProjectV2("o", 1).ShouldNotStartWith("project-v2-item:");
-        CacheTags.ProjectV2Item("PVTI_1").ShouldNotStartWith("project-v2:");
+        // Item GraphQL node ids are already case-sensitive opaque strings
+        // (e.g. "PVTI_lAD...") — normalizing would collide separate items.
+        CacheTags.ProjectV2Item("PVTI_lADOA").ShouldBe("project-v2-item:PVTI_lADOA");
+    }
+
+    [Fact]
+    public void ProjectV2_ListAndGet_AreDistinct()
+    {
+        // List vs get tag disjointness: invalidating a specific item tag
+        // must not invalidate the list tag (and vice versa), which the
+        // webhook handler relies on to avoid over-flushing.
+        CacheTags.ProjectV2("o", 1).ShouldNotBe(CacheTags.ProjectV2List("o"));
+        CacheTags.ProjectV2Item("PVTI_1").ShouldNotBe(CacheTags.ProjectV2("o", 1));
+        CacheTags.ProjectV2Item("PVTI_1").ShouldNotBe(CacheTags.ProjectV2List("o"));
     }
 }
