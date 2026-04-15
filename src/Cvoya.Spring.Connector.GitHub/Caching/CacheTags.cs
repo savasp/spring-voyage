@@ -48,7 +48,14 @@ public static class CacheTags
     /// <summary>
     /// Project-scope tag: invalidates cached reads of a single Projects v2
     /// board and its item page slices. Webhook derivation uses the owner +
-    /// project number carried by <c>projects_v2</c> events.
+    /// project number carried by <c>projects_v2</c> events. Mutation skills
+    /// that alter the set of items on a board (add / archive / delete) also
+    /// flush this tag; the board identifier is the human-visible
+    /// <c>owner/number</c> pair, not the opaque GraphQL node id, so webhook-
+    /// side producers (which see <c>projects_v2_item</c> payloads carrying
+    /// <c>owner</c> and <c>project_number</c>) and skill-side producers
+    /// (which receive them as optional arguments from the caller) agree on
+    /// the same string.
     /// </summary>
     public static string ProjectV2(string owner, int number) =>
         $"project-v2:{Normalize(owner)}/{number}";
@@ -57,7 +64,9 @@ public static class CacheTags
     /// Item-scope tag: invalidates a single cached Projects v2 item read.
     /// Keyed on the item's GraphQL node id (the <c>itemId</c> argument of
     /// <c>github_get_project_v2_item</c>), which is exactly what
-    /// <c>projects_v2_item</c> webhooks carry as <c>node_id</c>.
+    /// <c>projects_v2_item</c> webhooks carry as <c>node_id</c>. Emitted by
+    /// field-value, archive, and delete mutations. Node ids are already
+    /// globally unique, so no owner qualifier is required.
     /// </summary>
     public static string ProjectV2Item(string itemId) =>
         $"project-v2-item:{itemId}";
