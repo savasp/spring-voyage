@@ -76,6 +76,15 @@ public class GitHubWebhookHandler : IGitHubWebhookHandler
     /// <inheritdoc />
     public IReadOnlyList<string> DeriveInvalidationTags(string eventType, JsonElement payload)
     {
+        // Projects v2 events live at the organization (or user) level, not
+        // inside a repository — they carry "organization.login" instead of
+        // "repository". Branch early so the repository-gated path below
+        // stays straightforward for the repo-scoped events.
+        if (eventType is "projects_v2" or "projects_v2_item")
+        {
+            return TagsForProjectsV2(eventType, payload);
+        }
+
         // Every event that carries a repository + (issue | pull_request)
         // yields at least the per-resource tag; events on PRs also feed the
         // PR tag. The repo-wide tag is left out here because PR-specific
@@ -117,6 +126,64 @@ public class GitHubWebhookHandler : IGitHubWebhookHandler
             "pull_request_review_thread" => TagsForPullRequest(ownerLogin, repoName, payload),
             _ => [],
         };
+    }
+
+    private static IReadOnlyList<string> TagsForProjectsV2(string eventType, JsonElement payload)
+    {
+        // Both projects_v2.* and projects_v2_item.* include "organization"
+        // at the top level — user-owned boards would carry "user" instead,
+        // but that surface is not yet wired through TranslateEvent either.
+        string? ownerLogin = null;
+        if (payload.TryGetProperty("organization", out var org) && org.ValueKind == JsonValueKind.Object
+            && org.TryGetProperty("login", out var orgLogin) && orgLogin.ValueKind == JsonValueKind.String)
+        {
+            ownerLogin = orgLogin.GetString();
+        }
+
+        if (eventType == "projects_v2")
+        {
+            // project number is carried on the "projects_v2" object. Without
+            // it we can still flush the owner-wide list tag (a new board was
+            // created / renamed) but not the per-project entry.
+            if (string.IsNullOrEmpty(ownerLogin))
+            {
+                return [];
+            }
+
+            if (!payload.TryGetProperty("projects_v2", out var project) || project.ValueKind != JsonValueKind.Object
+                || !project.TryGetProperty("number", out var numEl) || numEl.ValueKind != JsonValueKind.Number)
+            {
+                return [CacheTags.ProjectV2List(ownerLogin)];
+            }
+
+            var number = numEl.GetInt32();
+            return
+            [
+                CacheTags.ProjectV2(ownerLogin, number),
+                // Owner-wide list also becomes stale — the board's title,
+                // lifecycle state, or existence may have changed.
+                CacheTags.ProjectV2List(ownerLogin),
+            ];
+        }
+
+        // projects_v2_item: item node id is what the skill caches under.
+        // We deliberately do NOT emit the parent project tag here — the
+        // webhook payload does not carry the board number, only the
+        // project_node_id, and the tag scheme is keyed on owner/number. A
+        // follow-up can bridge node-id → number via the GraphQL surface if
+        // list pages need per-item invalidation.
+        if (!payload.TryGetProperty("projects_v2_item", out var item) || item.ValueKind != JsonValueKind.Object
+            || !item.TryGetProperty("node_id", out var nodeIdEl) || nodeIdEl.ValueKind != JsonValueKind.String)
+        {
+            return [];
+        }
+
+        var itemId = nodeIdEl.GetString();
+        if (string.IsNullOrEmpty(itemId))
+        {
+            return [];
+        }
+        return [CacheTags.ProjectV2Item(itemId)];
     }
 
     private static IReadOnlyList<string> TagsForIssue(string owner, string repo, JsonElement payload)

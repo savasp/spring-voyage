@@ -35,6 +35,33 @@ public static class CacheTags
     public static string Issue(string owner, string repo, int number) =>
         $"issue:{Normalize(owner)}/{Normalize(repo)}#{number}";
 
+    /// <summary>
+    /// Owner-scope tag for the org-wide Projects v2 board list. Projects v2
+    /// lives at the organization (or user) level rather than in a repository,
+    /// so lists share a tag keyed only on the owner login. Invalidated by any
+    /// <c>projects_v2</c> event (create / edit / close / reopen / delete) so
+    /// a new or renamed board becomes visible immediately.
+    /// </summary>
+    public static string ProjectV2List(string owner) =>
+        $"projects-v2-list:{Normalize(owner)}";
+
+    /// <summary>
+    /// Project-scope tag: invalidates cached reads of a single Projects v2
+    /// board and its item page slices. Webhook derivation uses the owner +
+    /// project number carried by <c>projects_v2</c> events.
+    /// </summary>
+    public static string ProjectV2(string owner, int number) =>
+        $"project-v2:{Normalize(owner)}/{number}";
+
+    /// <summary>
+    /// Item-scope tag: invalidates a single cached Projects v2 item read.
+    /// Keyed on the item's GraphQL node id (the <c>itemId</c> argument of
+    /// <c>github_get_project_v2_item</c>), which is exactly what
+    /// <c>projects_v2_item</c> webhooks carry as <c>node_id</c>.
+    /// </summary>
+    public static string ProjectV2Item(string itemId) =>
+        $"project-v2-item:{itemId}";
+
     // Casing normalization: GitHub repo slugs are case-insensitive for
     // lookup (the API redirects), so normalizing avoids two caches for
     // "Acme/repo" and "acme/repo".
