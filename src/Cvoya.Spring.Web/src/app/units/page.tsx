@@ -4,6 +4,7 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
@@ -26,8 +27,15 @@ import {
 import Link from "next/link";
 
 function UnitListContent() {
+  const { toast } = useToast();
   const [units, setUnits] = useState<UnitDashboardSummary[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Delete confirmation state.
+  const [deleteTarget, setDeleteTarget] = useState<UnitDashboardSummary | null>(
+    null,
+  );
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -46,6 +54,29 @@ function UnitListContent() {
       cancelled = true;
     };
   }, []);
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await api.deleteUnit(deleteTarget.name);
+      setUnits((prev) => prev.filter((u) => u.name !== deleteTarget.name));
+      toast({
+        title: "Unit deleted",
+        description: deleteTarget.displayName,
+      });
+      setDeleteTarget(null);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      toast({
+        title: "Delete failed",
+        description: message,
+        variant: "destructive",
+      });
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -83,27 +114,55 @@ function UnitListContent() {
           ) : (
             <ul className="divide-y divide-border">
               {units.map((u) => (
-                <li key={u.name}>
+                <li
+                  key={u.name}
+                  className="flex items-center justify-between py-3 hover:bg-accent/50 -mx-2 px-2 rounded"
+                >
                   <Link
                     href={`/units/${encodeURIComponent(u.name)}`}
-                    className="flex items-center justify-between py-3 hover:bg-accent/50 -mx-2 px-2 rounded"
+                    className="flex-1 min-w-0"
                   >
-                    <div>
-                      <div className="font-medium">{u.displayName}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {u.name}
-                      </div>
-                    </div>
+                    <div className="font-medium">{u.displayName}</div>
                     <div className="text-xs text-muted-foreground">
-                      Registered {timeAgo(u.registeredAt)}
+                      {u.name}
                     </div>
                   </Link>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-xs text-muted-foreground">
+                      Registered {timeAgo(u.registeredAt)}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setDeleteTarget(u)}
+                      aria-label={`Delete ${u.displayName}`}
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </div>
                 </li>
               ))}
             </ul>
           )}
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="Delete unit"
+        description={
+          deleteTarget
+            ? `Are you sure you want to delete ${deleteTarget.displayName}? This will remove the unit, its memberships, and its configuration. This action cannot be undone.`
+            : ""
+        }
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        onConfirm={handleDeleteConfirm}
+        onCancel={() => {
+          if (!deleting) setDeleteTarget(null);
+        }}
+        pending={deleting}
+      />
     </div>
   );
 }
