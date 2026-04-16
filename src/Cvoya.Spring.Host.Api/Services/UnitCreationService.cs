@@ -53,6 +53,7 @@ public class UnitCreationService : IUnitCreationService
     private readonly ISkillBundleResolver _bundleResolver;
     private readonly ISkillBundleValidator _bundleValidator;
     private readonly IUnitSkillBundleStore _bundleStore;
+    private readonly IUnitMembershipRepository _membershipRepository;
     private readonly ILogger<UnitCreationService> _logger;
 
     /// <summary>
@@ -67,6 +68,7 @@ public class UnitCreationService : IUnitCreationService
         ISkillBundleResolver bundleResolver,
         ISkillBundleValidator bundleValidator,
         IUnitSkillBundleStore bundleStore,
+        IUnitMembershipRepository membershipRepository,
         ILoggerFactory loggerFactory)
     {
         _directoryService = directoryService;
@@ -77,6 +79,7 @@ public class UnitCreationService : IUnitCreationService
         _bundleResolver = bundleResolver;
         _bundleValidator = bundleValidator;
         _bundleStore = bundleStore;
+        _membershipRepository = membershipRepository;
         _logger = loggerFactory.CreateLogger<UnitCreationService>();
     }
 
@@ -319,6 +322,42 @@ public class UnitCreationService : IUnitCreationService
                 {
                     warnings.Add(
                         $"failed to add member {resolved.Value.Scheme}:{resolved.Value.Path}: {ex.Message}");
+                    continue;
+                }
+
+                // Fix #340: the actor-state member list is no longer the
+                // source of truth for the Agents tab, memberships endpoint,
+                // and per-membership config — the unit_memberships table is
+                // (see #245 / C2b-1). Mirror the add into the DB so template-
+                // created units show up in those surfaces. Unit-typed members
+                // remain 1:N and are not stored here (per #217 scope); only
+                // agent-scheme members get a row. Template creation passes no
+                // per-membership overrides so Model/Specialty/ExecutionMode
+                // default to null and Enabled defaults to true.
+                if (string.Equals(resolved.Value.Scheme, "agent", StringComparison.OrdinalIgnoreCase))
+                {
+                    try
+                    {
+                        await _membershipRepository.UpsertAsync(
+                            new UnitMembership(
+                                UnitId: name,
+                                AgentAddress: resolved.Value.Path,
+                                Enabled: true),
+                            cancellationToken);
+                    }
+                    catch (Exception ex)
+                    {
+                        // The actor-state add succeeded; surface the DB-write
+                        // failure as a warning and log it so operators can
+                        // reconcile. Actor state remains the authoritative
+                        // fast-path; a separate reconciler can repair any
+                        // divergence.
+                        _logger.LogWarning(ex,
+                            "Unit '{UnitName}' member {Member}: actor-state add succeeded but membership DB write failed.",
+                            name, $"{resolved.Value.Scheme}:{resolved.Value.Path}");
+                        warnings.Add(
+                            $"member {resolved.Value.Scheme}:{resolved.Value.Path} added to actor state but membership table write failed: {ex.Message}");
+                    }
                 }
             }
 
