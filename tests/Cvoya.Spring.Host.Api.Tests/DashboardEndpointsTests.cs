@@ -96,6 +96,18 @@ public class DashboardEndpointsTests : IClassFixture<CustomWebApplicationFactory
         summary.UnitsByStatus.ShouldContainKeyAndValue(UnitStatus.Draft, 1);
         summary.RecentActivity.Count.ShouldBe(1);
         summary.RecentActivity[0].Summary.ShouldBe("Agent received message");
+
+        // Verify inline unit and agent lists.
+        summary.Units.Count.ShouldBe(2);
+        summary.Units[0].Name.ShouldBe("unit-1");
+        summary.Units[0].Status.ShouldBe(UnitStatus.Running);
+        summary.Units[1].Name.ShouldBe("unit-2");
+        summary.Units[1].Status.ShouldBe(UnitStatus.Draft);
+
+        summary.Agents.Count.ShouldBe(1);
+        summary.Agents[0].Name.ShouldBe("agent-1");
+        summary.Agents[0].DisplayName.ShouldBe("Agent One");
+        summary.Agents[0].Role.ShouldBe("backend");
     }
 
     [Fact]
