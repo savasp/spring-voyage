@@ -14,6 +14,7 @@ using Cvoya.Spring.Dapr.Actors;
 using Cvoya.Spring.Dapr.Auth;
 using Cvoya.Spring.Host.Api.Models;
 using Cvoya.Spring.Host.Api.Services;
+using Cvoya.Spring.Manifest;
 
 using global::Dapr.Actors;
 using global::Dapr.Actors.Client;
@@ -124,6 +125,7 @@ public class UnitCreationServiceTests
         public ISkillBundleResolver BundleResolver { get; } = Substitute.For<ISkillBundleResolver>();
         public ISkillBundleValidator BundleValidator { get; } = Substitute.For<ISkillBundleValidator>();
         public IUnitSkillBundleStore BundleStore { get; } = Substitute.For<IUnitSkillBundleStore>();
+        public IUnitMembershipRepository MembershipRepository { get; } = Substitute.For<IUnitMembershipRepository>();
         public IUnitActor Proxy { get; } = Substitute.For<IUnitActor>();
         public UnitCreationService Service { get; }
 
@@ -154,6 +156,7 @@ public class UnitCreationServiceTests
                 BundleResolver,
                 BundleValidator,
                 BundleStore,
+                MembershipRepository,
                 NullLoggerFactory.Instance);
         }
 
@@ -167,5 +170,112 @@ public class UnitCreationServiceTests
                     Color: null,
                     Connector: null),
                 CancellationToken.None);
+
+        public Task<UnitCreationResult> CreateFromManifestAsync(
+            string name,
+            IEnumerable<MemberManifest> members)
+            => Service.CreateFromManifestAsync(
+                new UnitManifest
+                {
+                    Name = name,
+                    Description = $"{name} description",
+                    Members = members.ToList(),
+                },
+                new UnitCreationOverrides(),
+                CancellationToken.None);
+    }
+
+    // --- #340: template creation writes agent memberships through to the DB ---
+
+    [Fact]
+    public async Task CreateFromManifestAsync_AgentMembers_WritesMembershipRow()
+    {
+        // Regression test for #340. Actor-state add via proxy.AddMemberAsync
+        // was already happening; this verifies the parallel DB write-through
+        // now lands on the membership repository for every agent member.
+        var fixture = new Fixture();
+        fixture.HttpContextAccessor.HttpContext.Returns((HttpContext?)null);
+
+        var members = new[]
+        {
+            new MemberManifest { Agent = "tech-lead" },
+            new MemberManifest { Agent = "backend-engineer" },
+            new MemberManifest { Agent = "qa-engineer" },
+        };
+
+        var result = await fixture.CreateFromManifestAsync("eng-team", members);
+
+        result.MembersAdded.ShouldBe(3);
+
+        foreach (var m in members)
+        {
+            await fixture.MembershipRepository.Received(1).UpsertAsync(
+                Arg.Is<UnitMembership>(u =>
+                    u.UnitId == "eng-team"
+                    && u.AgentAddress == m.Agent
+                    && u.Enabled
+                    && u.Model == null
+                    && u.Specialty == null
+                    && u.ExecutionMode == null),
+                Arg.Any<CancellationToken>());
+        }
+    }
+
+    [Fact]
+    public async Task CreateFromManifestAsync_UnitTypedMember_DoesNotWriteMembershipRow()
+    {
+        // Per #217 scope: unit-typed members stay in actor state only — the
+        // membership table is agent-addressed and polymorphic rows are a
+        // future issue. The template fix must not leak unit rows into the
+        // table through the same code path.
+        var fixture = new Fixture();
+        fixture.HttpContextAccessor.HttpContext.Returns((HttpContext?)null);
+
+        var members = new[]
+        {
+            new MemberManifest { Unit = "sub-team" },
+        };
+
+        var result = await fixture.CreateFromManifestAsync("parent-unit", members);
+
+        result.MembersAdded.ShouldBe(1);
+        await fixture.MembershipRepository.DidNotReceive().UpsertAsync(
+            Arg.Any<UnitMembership>(),
+            Arg.Any<CancellationToken>());
+
+        // The actor-state add still happened — unit-typed membership is the
+        // fast-path read until #217 lands polymorphic rows.
+        await fixture.Proxy.Received(1).AddMemberAsync(
+            Arg.Is<Address>(a => a.Scheme == "unit" && a.Path == "sub-team"),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task CreateFromManifestAsync_MembershipRepositoryThrows_ActorStateUpdatedWithWarning()
+    {
+        // Preferred failure mode per the fix plan: if the DB write fails
+        // after the actor-state write, we log + surface a warning rather
+        // than trying to roll back the actor state. Actor state is the
+        // authoritative fast-path; a reconciler repairs divergence.
+        var fixture = new Fixture();
+        fixture.HttpContextAccessor.HttpContext.Returns((HttpContext?)null);
+        fixture.MembershipRepository
+            .UpsertAsync(Arg.Any<UnitMembership>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromException(new InvalidOperationException("db down")));
+
+        var result = await fixture.CreateFromManifestAsync(
+            "flaky-unit",
+            new[] { new MemberManifest { Agent = "lonely-agent" } });
+
+        // The actor-state add succeeded — tally reflects it.
+        result.MembersAdded.ShouldBe(1);
+        await fixture.Proxy.Received(1).AddMemberAsync(
+            Arg.Is<Address>(a => a.Scheme == "agent" && a.Path == "lonely-agent"),
+            Arg.Any<CancellationToken>());
+
+        // The DB-write failure surfaces as a warning on the creation result.
+        result.Warnings.ShouldContain(w =>
+            w.Contains("lonely-agent", StringComparison.Ordinal)
+            && w.Contains("db down", StringComparison.Ordinal));
     }
 }

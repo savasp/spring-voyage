@@ -214,6 +214,153 @@ public class UnitCreationEndpointTests : IClassFixture<UnitCreationEndpointTests
             Arg.Any<CancellationToken>());
     }
 
+    // --- #340: template creation must populate the unit_memberships table ---
+
+    [Fact]
+    public async Task FromTemplate_PersistsMembershipRowsInDatabase()
+    {
+        // #340: before this fix, template creation called proxy.AddMemberAsync
+        // (actor state) but never wrote through to UnitMembershipEntity — the
+        // source of truth since #245. GET /units/{id}/memberships, the Agents
+        // tab, and per-membership config all read the DB, so template-created
+        // units looked empty. Verify the DB write now happens for every
+        // agent-scheme member at template-creation time.
+        var ct = TestContext.Current.CancellationToken;
+
+        ResetMocks();
+        var proxy = Substitute.For<IUnitActor>();
+        proxy.GetStatusAsync(Arg.Any<CancellationToken>()).Returns(UnitStatus.Draft);
+        _factory.ActorProxyFactory
+            .CreateActorProxy<IUnitActor>(Arg.Any<ActorId>(), Arg.Any<string>())
+            .Returns(proxy);
+        _factory.DirectoryService
+            .RegisterAsync(Arg.Any<DirectoryEntry>(), Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
+        // /units/{id}/memberships resolves the unit address through the
+        // directory before reading the membership table. Surface a directory
+        // entry so the GET is not short-circuited with a 404.
+        _factory.DirectoryService
+            .ResolveAsync(
+                Arg.Is<Address>(a => a.Scheme == "unit"),
+                Arg.Any<CancellationToken>())
+            .Returns(ci => new DirectoryEntry(
+                ci.Arg<Address>(),
+                "actor-memberships",
+                "memberships-template-unit",
+                string.Empty,
+                null,
+                DateTimeOffset.UtcNow));
+
+        const string Yaml = """
+            unit:
+              name: memberships-template-unit
+              description: Exercises the template membership-row fix (#340).
+              members:
+                - agent: tech-lead
+                - agent: backend-engineer
+                - agent: qa-engineer
+            """;
+
+        var createResponse = await _client.PostAsJsonAsync(
+            "/api/v1/units/from-yaml",
+            new CreateUnitFromYamlRequest(Yaml),
+            ct);
+
+        createResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
+
+        var createBody = await createResponse.Content.ReadAsStringAsync(ct);
+        using (var createDoc = JsonDocument.Parse(createBody))
+        {
+            createDoc.RootElement.GetProperty("membersAdded").GetInt32().ShouldBe(3);
+        }
+
+        // Read the memberships endpoint — the surface that was broken pre-fix.
+        var listResponse = await _client.GetAsync(
+            "/api/v1/units/memberships-template-unit/memberships", ct);
+        listResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        var listBody = await listResponse.Content.ReadAsStringAsync(ct);
+        using var listDoc = JsonDocument.Parse(listBody);
+        var rows = listDoc.RootElement.EnumerateArray().ToList();
+        rows.Count.ShouldBe(3);
+
+        var agentAddresses = rows
+            .Select(r => r.GetProperty("agentAddress").GetString())
+            .ToList();
+        agentAddresses.ShouldContain("tech-lead");
+        agentAddresses.ShouldContain("backend-engineer");
+        agentAddresses.ShouldContain("qa-engineer");
+
+        foreach (var row in rows)
+        {
+            row.GetProperty("unitId").GetString().ShouldBe("memberships-template-unit");
+            row.GetProperty("enabled").GetBoolean().ShouldBeTrue();
+            // Template creation passes no per-membership overrides, so these
+            // fields are null. JsonSerializer emits them as Null tokens.
+            row.GetProperty("model").ValueKind.ShouldBe(JsonValueKind.Null);
+            row.GetProperty("specialty").ValueKind.ShouldBe(JsonValueKind.Null);
+            row.GetProperty("executionMode").ValueKind.ShouldBe(JsonValueKind.Null);
+        }
+    }
+
+    [Fact]
+    public async Task FromYaml_UnitTypedMember_NotWrittenToMembershipsTable()
+    {
+        // #217 scope guardrail: only agent-scheme members get a membership
+        // row. Unit-typed members stay in actor state until the follow-up
+        // polymorphic-membership work lands. The template fix must honour
+        // that split — writing a unit-scheme row through the same path would
+        // violate the table's implicit "rows are agent-addressed" contract.
+        var ct = TestContext.Current.CancellationToken;
+
+        ResetMocks();
+        var proxy = Substitute.For<IUnitActor>();
+        proxy.GetStatusAsync(Arg.Any<CancellationToken>()).Returns(UnitStatus.Draft);
+        _factory.ActorProxyFactory
+            .CreateActorProxy<IUnitActor>(Arg.Any<ActorId>(), Arg.Any<string>())
+            .Returns(proxy);
+        _factory.DirectoryService
+            .RegisterAsync(Arg.Any<DirectoryEntry>(), Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
+        _factory.DirectoryService
+            .ResolveAsync(
+                Arg.Is<Address>(a => a.Scheme == "unit"),
+                Arg.Any<CancellationToken>())
+            .Returns(ci => new DirectoryEntry(
+                ci.Arg<Address>(),
+                "actor-mixed",
+                "mixed-membership-unit",
+                string.Empty,
+                null,
+                DateTimeOffset.UtcNow));
+
+        const string Yaml = """
+            unit:
+              name: mixed-membership-unit
+              description: Agent + sub-unit member to verify only the agent row lands.
+              members:
+                - agent: solo-agent
+                - unit: sub-team
+            """;
+
+        var createResponse = await _client.PostAsJsonAsync(
+            "/api/v1/units/from-yaml",
+            new CreateUnitFromYamlRequest(Yaml),
+            ct);
+
+        createResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
+
+        var listResponse = await _client.GetAsync(
+            "/api/v1/units/mixed-membership-unit/memberships", ct);
+        listResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        var listBody = await listResponse.Content.ReadAsStringAsync(ct);
+        using var listDoc = JsonDocument.Parse(listBody);
+        var rows = listDoc.RootElement.EnumerateArray().ToList();
+        rows.Count.ShouldBe(1);
+        rows[0].GetProperty("agentAddress").GetString().ShouldBe("solo-agent");
+    }
+
     // --- #325: from-template with a caller-supplied unit-name override ----
 
     [Fact]
