@@ -16,6 +16,7 @@ import { AgentsTab } from "./agents-tab";
 import { ConnectorTab } from "./connector-tab";
 import { SecretsTab } from "./secrets-tab";
 import { SkillsTab } from "./skills-tab";
+import { SubUnitsTab } from "./sub-units-tab";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -315,10 +316,11 @@ export default function UnitConfigClient({ id }: ClientProps) {
         <TabsList>
           <TabsTrigger value="general">General</TabsTrigger>
           <TabsTrigger value="agents">Agents</TabsTrigger>
-          <TabsTrigger value="costs">Costs</TabsTrigger>
+          <TabsTrigger value="sub-units">Sub-units</TabsTrigger>
+          <TabsTrigger value="skills">Skills</TabsTrigger>
           <TabsTrigger value="connector">Connector</TabsTrigger>
           <TabsTrigger value="secrets">Secrets</TabsTrigger>
-          <TabsTrigger value="skills">Skills</TabsTrigger>
+          <TabsTrigger value="costs">Costs</TabsTrigger>
         </TabsList>
 
         <TabsContent value="general" className="space-y-4">
@@ -390,6 +392,10 @@ export default function UnitConfigClient({ id }: ClientProps) {
 
         <TabsContent value="agents">
           <AgentsTab unitId={id} />
+        </TabsContent>
+
+        <TabsContent value="sub-units">
+          <SubUnitsTab unitId={id} />
         </TabsContent>
 
         <TabsContent value="costs">

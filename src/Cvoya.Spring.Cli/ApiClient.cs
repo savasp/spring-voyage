@@ -4,7 +4,6 @@
 namespace Cvoya.Spring.Cli;
 
 using System.Collections.Generic;
-using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -154,6 +153,18 @@ public class SpringApiClient
     /// <summary>Deletes a unit.</summary>
     public Task DeleteUnitAsync(string id, CancellationToken ct = default)
         => _client.Api.V1.Units[id].DeleteAsync(cancellationToken: ct);
+
+    /// <summary>
+    /// Lists all members of a unit (agents and sub-units) via the typed
+    /// <c>GET /api/v1/units/{id}/members</c> endpoint.
+    /// </summary>
+    public async Task<IReadOnlyList<AddressDto>> ListUnitMembersAsync(
+        string unitId,
+        CancellationToken ct = default)
+    {
+        var result = await _client.Api.V1.Units[unitId].Members.GetAsync(cancellationToken: ct);
+        return result ?? new List<AddressDto>();
+    }
 
     /// <summary>
     /// Adds a unit as a member of a parent unit (#331). The backend endpoint

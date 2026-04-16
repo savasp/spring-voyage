@@ -30,6 +30,34 @@ public static class UnitCommand
     };
 
     /// <summary>
+    /// Unified member-list row emitted by <c>unit members list</c> (#352). Agent-
+    /// scheme rows carry per-membership config overrides; unit-scheme rows leave
+    /// those fields null because sub-unit memberships have no per-child config
+    /// today (deferred to #217). The explicit <c>Scheme</c> column lets scripts
+    /// filter with <c>jq '.[] | select(.scheme == "unit")'</c> without having to
+    /// reason about address-prefix conventions.
+    /// </summary>
+    private sealed record MemberListRow(
+        string Scheme,
+        string Member,
+        string Unit,
+        string? Model,
+        string? Specialty,
+        bool? Enabled,
+        string? ExecutionMode);
+
+    private static readonly OutputFormatter.Column<MemberListRow>[] MemberListColumns =
+    {
+        new("scheme", r => r.Scheme),
+        new("member", r => r.Member),
+        new("unit", r => r.Unit),
+        new("model", r => r.Model),
+        new("specialty", r => r.Specialty),
+        new("enabled", r => r.Enabled?.ToString().ToLowerInvariant()),
+        new("executionMode", r => r.ExecutionMode),
+    };
+
+    /// <summary>
     /// Creates the "unit" command with subcommands for CRUD, member operations,
     /// and the cascading purge helper.
     /// </summary>
@@ -302,7 +330,7 @@ public static class UnitCommand
         var unitArg = new Argument<string>("unit") { Description = "The unit identifier" };
         var command = new Command(
             "list",
-            "List every agent that belongs to this unit, with per-membership config overrides.");
+            "List every member of this unit (agents AND sub-units), with per-membership config overrides for agent-scheme rows.");
         command.Arguments.Add(unitArg);
 
         command.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
@@ -311,15 +339,97 @@ public static class UnitCommand
             var output = parseResult.GetValue(outputOption) ?? "table";
             var client = ClientFactory.Create();
 
-            var memberships = await client.ListUnitMembershipsAsync(unitId, ct);
+            // Two sources — unified here because neither alone gives the full
+            // picture today:
+            //  - `GET /units/{id}/members` returns every member (agents AND
+            //    sub-units) from the unit actor's member list.
+            //  - `GET /units/{id}/memberships` holds only agent-scheme rows
+            //    with per-membership config overrides.
+            //
+            // We join them so callers see both kinds in one command. The
+            // `scheme` column lets scripts filter (`jq '.[] | select(.scheme
+            // == "unit")'`) and the table output clearly distinguishes the
+            // two kinds even at a glance.
+            var membersTask = client.ListUnitMembersAsync(unitId, ct);
+            var membershipsTask = client.ListUnitMembershipsAsync(unitId, ct);
+            await Task.WhenAll(membersTask, membershipsTask);
+
+            var members = membersTask.Result;
+            var memberships = membershipsTask.Result;
+
+            // Index agent-scheme overrides by address so we can enrich the
+            // authoritative member list with per-membership config that lives
+            // in `unit_memberships`.
+            var overrides = memberships
+                .Where(m => !string.IsNullOrEmpty(m.AgentAddress))
+                .ToDictionary(m => m.AgentAddress!, StringComparer.Ordinal);
+
+            var rows = new List<MemberListRow>();
+            var seenAgents = new HashSet<string>(StringComparer.Ordinal);
+
+            foreach (var addr in members)
+            {
+                var scheme = addr.Scheme ?? "agent";
+                var path = addr.Path ?? string.Empty;
+
+                if (string.Equals(scheme, "agent", StringComparison.Ordinal)
+                    && overrides.TryGetValue(path, out var m))
+                {
+                    rows.Add(new MemberListRow(
+                        Scheme: "agent",
+                        Member: path,
+                        Unit: m.UnitId ?? unitId,
+                        Model: m.Model,
+                        Specialty: m.Specialty,
+                        Enabled: m.Enabled,
+                        ExecutionMode: m.ExecutionMode?.AgentExecutionMode?.ToString()));
+                    seenAgents.Add(path);
+                }
+                else
+                {
+                    rows.Add(new MemberListRow(
+                        Scheme: scheme,
+                        Member: path,
+                        Unit: unitId,
+                        Model: null,
+                        Specialty: null,
+                        Enabled: null,
+                        ExecutionMode: null));
+                    if (string.Equals(scheme, "agent", StringComparison.Ordinal))
+                    {
+                        seenAgents.Add(path);
+                    }
+                }
+            }
+
+            // Defensive fall-back: if the /members call returned an empty
+            // list (actor unreachable), surface the agent-scheme rows from
+            // the repository anyway so the command doesn't appear broken.
+            foreach (var m in memberships)
+            {
+                var address = m.AgentAddress;
+                if (string.IsNullOrEmpty(address) || seenAgents.Contains(address))
+                {
+                    continue;
+                }
+                rows.Add(new MemberListRow(
+                    Scheme: "agent",
+                    Member: address,
+                    Unit: m.UnitId ?? unitId,
+                    Model: m.Model,
+                    Specialty: m.Specialty,
+                    Enabled: m.Enabled,
+                    ExecutionMode: m.ExecutionMode?.AgentExecutionMode?.ToString()));
+            }
 
             Console.WriteLine(output == "json"
-                ? OutputFormatter.FormatJson(memberships)
-                : OutputFormatter.FormatTable(memberships, MembershipColumns));
+                ? OutputFormatter.FormatJsonPlain(rows)
+                : OutputFormatter.FormatTable(rows, MemberListColumns));
         });
 
         return command;
     }
+
 
     private static Command CreateMembersAddCommand(Option<string> outputOption)
     {

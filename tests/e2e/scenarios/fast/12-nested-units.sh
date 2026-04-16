@@ -57,4 +57,17 @@ e2e::expect_status "200" "${status}" "get parent unit returns 200"
 e2e::expect_contains "${child}" "${resp_body}" "parent detail response mentions the child address"
 e2e::expect_contains "\"unit\"" "${resp_body}" "parent detail response carries the unit scheme marker"
 
+# --- Verify via `spring unit members list <parent> --output json` (#352) ------
+# Post-#352 the CLI's members-list command joins the `unit_memberships` table
+# (agent-scheme rows) with the actor's status-query payload (every scheme) so
+# sub-units are no longer invisible on the CLI. Each row in the JSON output
+# carries an explicit `scheme` field so callers can filter with jq.
+e2e::log "spring unit members list ${parent} --output json"
+response="$(e2e::cli --output json unit members list "${parent}")"
+code="${response##*$'\n'}"
+body="${response%$'\n'*}"
+e2e::expect_status "0" "${code}" "members list succeeds"
+e2e::expect_contains "\"scheme\": \"unit\"" "${body}" "members list emits scheme=unit for the sub-unit row"
+e2e::expect_contains "\"member\": \"${child}\"" "${body}" "members list emits the child's address on the unit row"
+
 e2e::summary
