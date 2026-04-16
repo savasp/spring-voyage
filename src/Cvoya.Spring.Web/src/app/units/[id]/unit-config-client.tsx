@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   DollarSign,
@@ -10,6 +11,7 @@ import {
   Play,
   Settings,
   Square,
+  Trash2,
 } from "lucide-react";
 
 import { AgentsTab } from "./agents-tab";
@@ -20,6 +22,7 @@ import { SubUnitsTab } from "./sub-units-tab";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   Card,
   CardContent,
@@ -67,6 +70,7 @@ interface ClientProps {
 
 export default function UnitConfigClient({ id }: ClientProps) {
   const { toast } = useToast();
+  const router = useRouter();
 
   const [unit, setUnit] = useState<UnitResponse | null>(null);
   const [status, setStatus] = useState<UnitStatus>("Draft");
@@ -84,6 +88,10 @@ export default function UnitConfigClient({ id }: ClientProps) {
   // Lifecycle action state.
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionPending, setActionPending] = useState(false);
+
+  // Delete dialog state.
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -233,6 +241,24 @@ export default function UnitConfigClient({ id }: ClientProps) {
     }
   };
 
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      await api.deleteUnit(id);
+      toast({ title: "Unit deleted", description: unit?.displayName ?? id });
+      router.push("/units");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      toast({
+        title: "Delete failed",
+        description: message,
+        variant: "destructive",
+      });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const colorSwatch = useMemo(() => {
     const c = (unit?.color ?? formColor) || "#6366f1";
     return c;
@@ -302,6 +328,13 @@ export default function UnitConfigClient({ id }: ClientProps) {
             disabled={stopDisabled}
           >
             <Square className="h-4 w-4 mr-1" /> Stop
+          </Button>
+          <Button
+            size="sm"
+            variant="destructive"
+            onClick={() => setDeleteOpen(true)}
+          >
+            <Trash2 className="h-4 w-4 mr-1" /> Delete
           </Button>
         </div>
       </div>
@@ -457,6 +490,19 @@ export default function UnitConfigClient({ id }: ClientProps) {
           <SkillsTab unitId={id} />
         </TabsContent>
       </Tabs>
+
+      <ConfirmDialog
+        open={deleteOpen}
+        title="Delete unit"
+        description={`Are you sure you want to delete ${unit.displayName || unit.name}? This will remove the unit, its memberships, and its configuration. This action cannot be undone.`}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        onConfirm={handleDelete}
+        onCancel={() => {
+          if (!deleting) setDeleteOpen(false);
+        }}
+        pending={deleting}
+      />
     </div>
   );
 }
