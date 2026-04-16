@@ -182,6 +182,7 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton<IAgentDefinitionProvider, DbAgentDefinitionProvider>();
         services.AddSingleton<IAgentToolLauncher, ClaudeCodeLauncher>();
         services.TryAddSingleton<PersistentAgentRegistry>();
+        services.AddHostedService(sp => sp.GetRequiredService<PersistentAgentRegistry>());
 
         // In-process MCP server (hosted service — started automatically by the host).
         services.AddOptions<McpServerOptions>().BindConfiguration(McpServerOptions.SectionName);
