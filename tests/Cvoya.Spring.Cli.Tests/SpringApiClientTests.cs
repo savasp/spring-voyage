@@ -242,6 +242,58 @@ public class SpringApiClientTests
         handler.WasCalled.ShouldBeTrue();
     }
 
+    // --- #376: QueryActivityAsync -------------------------------------------
+
+    [Fact]
+    public async Task QueryActivityAsync_CallsCorrectEndpointAndParsesResponse()
+    {
+        var handler = new MockHttpMessageHandler(
+            expectedPath: "/api/v1/activity",
+            expectedMethod: HttpMethod.Get,
+            responseBody: """{"items":[{"id":"00000000-0000-0000-0000-000000000001","source":"unit://eng-team","eventType":"StateChanged","severity":"Info","summary":"Unit started","correlationId":null,"cost":0.0042,"timestamp":"2026-04-01T00:00:00Z"}],"totalCount":1,"page":1,"pageSize":50}""");
+
+        var httpClient = new HttpClient(handler);
+        var client = new SpringApiClient(httpClient, BaseUrl);
+
+        var result = await client.QueryActivityAsync(ct: TestContext.Current.CancellationToken);
+
+        result.Items.ShouldNotBeNull();
+        result.Items.Count.ShouldBe(1);
+        result.Items[0].Source.ShouldBe("unit://eng-team");
+        result.Items[0].EventType.ShouldBe("StateChanged");
+        result.Items[0].Severity.ShouldBe("Info");
+        result.Items[0].Summary.ShouldBe("Unit started");
+        handler.WasCalled.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task QueryActivityAsync_WithFilters_PassesQueryParameters()
+    {
+        var handler = new MockHttpMessageHandler(
+            expectedPath: "/api/v1/activity",
+            expectedMethod: HttpMethod.Get,
+            responseBody: """{"items":[],"totalCount":0,"page":1,"pageSize":10}""",
+            validateQuery: query =>
+            {
+                query.ShouldContain("Source=unit%3Aeng-team");
+                query.ShouldContain("Severity=Warning");
+                query.ShouldContain("PageSize=10");
+            });
+
+        var httpClient = new HttpClient(handler);
+        var client = new SpringApiClient(httpClient, BaseUrl);
+
+        var result = await client.QueryActivityAsync(
+            source: "unit:eng-team",
+            severity: "Warning",
+            pageSize: 10,
+            ct: TestContext.Current.CancellationToken);
+
+        result.Items.ShouldNotBeNull();
+        result.Items.Count.ShouldBe(0);
+        handler.WasCalled.ShouldBeTrue();
+    }
+
     // --- #315: CreateUnitAsync forwards model + color ---------------------
 
     [Fact]
@@ -352,7 +404,8 @@ internal class MockHttpMessageHandler(
     HttpMethod expectedMethod,
     string responseBody,
     HttpStatusCode returnStatusCode = HttpStatusCode.OK,
-    Action<string>? validateRequestBody = null) : HttpMessageHandler
+    Action<string>? validateRequestBody = null,
+    Action<string>? validateQuery = null) : HttpMessageHandler
 {
     public bool WasCalled { get; private set; }
 
@@ -362,6 +415,11 @@ internal class MockHttpMessageHandler(
 
         request.RequestUri!.AbsolutePath.ShouldBe(expectedPath);
         request.Method.ShouldBe(expectedMethod);
+
+        if (validateQuery is not null)
+        {
+            validateQuery(request.RequestUri.Query);
+        }
 
         if (validateRequestBody is not null && request.Content is not null)
         {
