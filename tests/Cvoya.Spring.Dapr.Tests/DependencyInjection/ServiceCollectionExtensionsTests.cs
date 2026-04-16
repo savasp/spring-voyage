@@ -8,6 +8,7 @@ using Cvoya.Spring.Core.Execution;
 using Cvoya.Spring.Core.Orchestration;
 using Cvoya.Spring.Dapr.Data;
 using Cvoya.Spring.Dapr.DependencyInjection;
+using Cvoya.Spring.Dapr.Execution;
 using Cvoya.Spring.Dapr.Orchestration;
 using Cvoya.Spring.Dapr.Routing;
 
@@ -136,6 +137,24 @@ public class ServiceCollectionExtensionsTests
             services.AddCvoyaSpringDapr(config));
 
         ex.Message.ShouldContain("ConnectionStrings:SpringDb");
+    }
+
+    [Fact]
+    public void AddCvoyaSpringDapr_RegistersAllAgentToolLaunchers()
+    {
+        using var provider = BuildProvider();
+
+        var launchers = provider.GetServices<IAgentToolLauncher>().ToList();
+        var launchersByTool = launchers.ToDictionary(l => l.Tool, StringComparer.OrdinalIgnoreCase);
+
+        launchersByTool.ShouldContainKey("claude-code");
+        launchersByTool["claude-code"].ShouldBeOfType<ClaudeCodeLauncher>();
+
+        launchersByTool.ShouldContainKey("codex");
+        launchersByTool["codex"].ShouldBeOfType<CodexLauncher>();
+
+        launchersByTool.ShouldContainKey("gemini");
+        launchersByTool["gemini"].ShouldBeOfType<GeminiLauncher>();
     }
 
     /// <summary>
