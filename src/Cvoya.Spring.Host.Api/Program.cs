@@ -26,10 +26,18 @@ if (isLocalDev)
 builder.Services
     .AddCvoyaSpringCore()
     .AddCvoyaSpringDapr(builder.Configuration)
-    .AddCvoyaSpringDataProtection(builder.Configuration)
     .AddCvoyaSpringOllamaLlm(builder.Configuration)
     .AddCvoyaSpringConnectorGitHub(builder.Configuration)
     .AddCvoyaSpringApiServices(builder.Configuration);
+
+// DataProtection tries to persist/load keys from disk and logs a warning when
+// no stable key directory is configured. During build-time OpenAPI generation
+// (GetDocument.Insider) this is pure noise. Skip registration when running
+// under design-time tooling. See #370.
+if (!BuildEnvironment.IsDesignTimeTooling)
+{
+    builder.Services.AddCvoyaSpringDataProtection(builder.Configuration);
+}
 
 if (isLocalDev)
 {
