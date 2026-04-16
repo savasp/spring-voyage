@@ -138,6 +138,10 @@ export const api = {
 
   // Units
   //
+  // Lightweight list of every unit the caller can see. Used by the
+  // sub-units picker (#352) to offer candidates when adding a child
+  // unit to a parent.
+  listUnits: async () => unwrap(await fetchClient.GET("/api/v1/units")),
   // Detailed unit read — includes Members and raw status payload. Used by
   // the legacy query-string detail view under /units?id=... and still
   // useful for anything that needs the members/details blob.

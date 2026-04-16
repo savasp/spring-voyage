@@ -126,6 +126,26 @@ public static class OutputFormatter
         return ReadIndented(stream);
     }
 
+    // System.Text.Json options shared by the plain-object overloads below. camelCase
+    // keeps CLI JSON indistinguishable from the OpenAPI wire shape for consumers
+    // that pipe `--output json` into jq or a scripting layer. Null values are
+    // preserved so callers can tell "field is absent" from "field is null".
+    private static readonly System.Text.Json.JsonSerializerOptions PlainJsonOptions =
+        new()
+        {
+            WriteIndented = true,
+            PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase,
+        };
+
+    /// <summary>
+    /// Serialises an arbitrary POCO (or POCO sequence) as camelCase JSON. Used by
+    /// commands that emit a CLI-local shape (e.g. <c>unit members list</c>'s merged
+    /// view of agent-scheme and unit-scheme members — the latter has no Kiota model
+    /// because it doesn't come from a single typed endpoint).
+    /// </summary>
+    public static string FormatJsonPlain(object? value)
+        => System.Text.Json.JsonSerializer.Serialize(value, PlainJsonOptions);
+
     private static string ReadIndented(Stream stream)
     {
         using var reader = new StreamReader(stream);
