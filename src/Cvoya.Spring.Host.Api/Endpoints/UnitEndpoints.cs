@@ -737,7 +737,6 @@ public static class UnitEndpoints
         string id,
         [FromServices] IDirectoryService directoryService,
         [FromServices] IActorProxyFactory actorProxyFactory,
-        [FromServices] IUnitContainerLifecycle containerLifecycle,
         [FromServices] IEnumerable<IConnectorType> connectorTypes,
         [FromServices] ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
@@ -764,29 +763,6 @@ public static class UnitEndpoints
             });
         }
 
-        try
-        {
-            await containerLifecycle.StartUnitAsync(entry.ActorId, cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex,
-                "Container start failed for unit {UnitId} (actor {ActorId}). Transitioning to Error.",
-                id, entry.ActorId);
-
-            var errorTransition = await proxy.TransitionAsync(UnitStatus.Error, cancellationToken);
-
-            return Results.Problem(
-                title: "Unit start failed",
-                detail: ex.Message,
-                statusCode: StatusCodes.Status500InternalServerError,
-                extensions: new Dictionary<string, object?>
-                {
-                    ["unitId"] = id,
-                    ["currentStatus"] = errorTransition.CurrentStatus
-                });
-        }
-
         // Dispatch connector start-hooks so each connector can provision
         // any external-system resources its binding needs (e.g. GitHub
         // webhooks). Each connector is responsible for catching its own
@@ -794,6 +770,8 @@ public static class UnitEndpoints
         await DispatchConnectorStartAsync(
             id, proxy, connectorTypes, logger, cancellationToken);
 
+        // Transition straight to Running. Agent-container lifecycle is
+        // managed by the A2A dispatcher (#346/#349), not by this endpoint.
         var runningTransition = await proxy.TransitionAsync(UnitStatus.Running, cancellationToken);
         if (!runningTransition.Success)
         {
@@ -816,7 +794,6 @@ public static class UnitEndpoints
         string id,
         [FromServices] IDirectoryService directoryService,
         [FromServices] IActorProxyFactory actorProxyFactory,
-        [FromServices] IUnitContainerLifecycle containerLifecycle,
         [FromServices] IEnumerable<IConnectorType> connectorTypes,
         [FromServices] ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
@@ -850,29 +827,8 @@ public static class UnitEndpoints
         await DispatchConnectorStopAsync(
             id, proxy, connectorTypes, logger, cancellationToken);
 
-        try
-        {
-            await containerLifecycle.StopUnitAsync(entry.ActorId, cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex,
-                "Container stop failed for unit {UnitId} (actor {ActorId}). Transitioning to Error.",
-                id, entry.ActorId);
-
-            var errorTransition = await proxy.TransitionAsync(UnitStatus.Error, cancellationToken);
-
-            return Results.Problem(
-                title: "Unit stop failed",
-                detail: ex.Message,
-                statusCode: StatusCodes.Status500InternalServerError,
-                extensions: new Dictionary<string, object?>
-                {
-                    ["unitId"] = id,
-                    ["currentStatus"] = errorTransition.CurrentStatus
-                });
-        }
-
+        // Transition straight to Stopped. Agent-container lifecycle is
+        // managed by the A2A dispatcher (#346/#349), not by this endpoint.
         var stoppedTransition = await proxy.TransitionAsync(UnitStatus.Stopped, cancellationToken);
         if (!stoppedTransition.Success)
         {

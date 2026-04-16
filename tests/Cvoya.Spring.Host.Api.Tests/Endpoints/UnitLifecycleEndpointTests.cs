@@ -26,6 +26,10 @@ using Xunit;
 /// <summary>
 /// Integration tests for <see cref="UnitEndpoints"/> lifecycle routes
 /// (<c>POST /api/v1/units/{id}/start</c> and <c>POST /api/v1/units/{id}/stop</c>).
+///
+/// Since #371 the start/stop endpoints no longer shell out to a container
+/// runtime — they simply transition the unit actor through its state machine.
+/// Agent-container lifecycle is managed by the A2A dispatcher (#346/#349).
 /// </summary>
 public class UnitLifecycleEndpointTests : IClassFixture<CustomWebApplicationFactory>
 {
@@ -48,17 +52,16 @@ public class UnitLifecycleEndpointTests : IClassFixture<CustomWebApplicationFact
         var proxy = ArrangeUnit(startingResult: new TransitionResult(true, UnitStatus.Starting, null),
             finalResult: new TransitionResult(true, UnitStatus.Running, null));
 
-        _factory.UnitContainerLifecycle.StartUnitAsync(ActorId, Arg.Any<CancellationToken>())
-            .Returns(Task.CompletedTask);
-
         var response = await _client.PostAsync($"/api/v1/units/{UnitName}/start", content: null, ct);
 
         response.StatusCode.ShouldBe(HttpStatusCode.Accepted);
 
         await proxy.Received(1).TransitionAsync(UnitStatus.Starting, Arg.Any<CancellationToken>());
         await proxy.Received(1).TransitionAsync(UnitStatus.Running, Arg.Any<CancellationToken>());
-        await _factory.UnitContainerLifecycle.Received(1)
-            .StartUnitAsync(ActorId, Arg.Any<CancellationToken>());
+
+        // Container lifecycle must NOT be invoked — #371.
+        await _factory.UnitContainerLifecycle.DidNotReceive()
+            .StartUnitAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -80,30 +83,6 @@ public class UnitLifecycleEndpointTests : IClassFixture<CustomWebApplicationFact
     }
 
     [Fact]
-    public async Task StartUnit_ContainerFails_Returns500AndTransitionsToError()
-    {
-        var ct = TestContext.Current.CancellationToken;
-
-        var proxy = Substitute.For<IUnitActor>();
-        proxy.TransitionAsync(UnitStatus.Starting, Arg.Any<CancellationToken>())
-            .Returns(new TransitionResult(true, UnitStatus.Starting, null));
-        proxy.TransitionAsync(UnitStatus.Error, Arg.Any<CancellationToken>())
-            .Returns(new TransitionResult(true, UnitStatus.Error, null));
-
-        ArrangeResolved(proxy);
-
-        _factory.UnitContainerLifecycle.StartUnitAsync(ActorId, Arg.Any<CancellationToken>())
-            .ThrowsAsync(new InvalidOperationException("podman unreachable"));
-
-        var response = await _client.PostAsync($"/api/v1/units/{UnitName}/start", content: null, ct);
-
-        response.StatusCode.ShouldBe(HttpStatusCode.InternalServerError);
-
-        await proxy.Received(1).TransitionAsync(UnitStatus.Error, Arg.Any<CancellationToken>());
-        await proxy.DidNotReceive().TransitionAsync(UnitStatus.Running, Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
     public async Task StopUnit_HappyPath_Returns202AndTransitionsToStopped()
     {
         var ct = TestContext.Current.CancellationToken;
@@ -116,17 +95,16 @@ public class UnitLifecycleEndpointTests : IClassFixture<CustomWebApplicationFact
 
         ArrangeResolved(proxy);
 
-        _factory.UnitContainerLifecycle.StopUnitAsync(ActorId, Arg.Any<CancellationToken>())
-            .Returns(Task.CompletedTask);
-
         var response = await _client.PostAsync($"/api/v1/units/{UnitName}/stop", content: null, ct);
 
         response.StatusCode.ShouldBe(HttpStatusCode.Accepted);
 
         await proxy.Received(1).TransitionAsync(UnitStatus.Stopping, Arg.Any<CancellationToken>());
         await proxy.Received(1).TransitionAsync(UnitStatus.Stopped, Arg.Any<CancellationToken>());
-        await _factory.UnitContainerLifecycle.Received(1)
-            .StopUnitAsync(ActorId, Arg.Any<CancellationToken>());
+
+        // Container lifecycle must NOT be invoked — #371.
+        await _factory.UnitContainerLifecycle.DidNotReceive()
+            .StopUnitAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -140,9 +118,6 @@ public class UnitLifecycleEndpointTests : IClassFixture<CustomWebApplicationFact
         var boundConfig = JsonSerializer.SerializeToElement(new { owner = "acme", repo = "platform" });
         proxy.GetConnectorBindingAsync(Arg.Any<CancellationToken>())
             .Returns(new UnitConnectorBinding(boundTypeId, boundConfig));
-
-        _factory.UnitContainerLifecycle.StartUnitAsync(ActorId, Arg.Any<CancellationToken>())
-            .Returns(Task.CompletedTask);
 
         var response = await _client.PostAsync($"/api/v1/units/{UnitName}/start", content: null, ct);
 
@@ -163,8 +138,6 @@ public class UnitLifecycleEndpointTests : IClassFixture<CustomWebApplicationFact
         proxy.GetConnectorBindingAsync(Arg.Any<CancellationToken>())
             .Returns(new UnitConnectorBinding(boundTypeId, boundConfig));
 
-        _factory.UnitContainerLifecycle.StartUnitAsync(ActorId, Arg.Any<CancellationToken>())
-            .Returns(Task.CompletedTask);
         _factory.StubConnectorType.OnUnitStartingAsync(UnitName, Arg.Any<CancellationToken>())
             .ThrowsAsync(new InvalidOperationException("external 502"));
 
@@ -191,9 +164,6 @@ public class UnitLifecycleEndpointTests : IClassFixture<CustomWebApplicationFact
 
         ArrangeResolved(proxy);
 
-        _factory.UnitContainerLifecycle.StopUnitAsync(ActorId, Arg.Any<CancellationToken>())
-            .Returns(Task.CompletedTask);
-
         var response = await _client.PostAsync($"/api/v1/units/{UnitName}/stop", content: null, ct);
 
         response.StatusCode.ShouldBe(HttpStatusCode.Accepted);
@@ -215,9 +185,6 @@ public class UnitLifecycleEndpointTests : IClassFixture<CustomWebApplicationFact
             .Returns((UnitConnectorBinding?)null);
 
         ArrangeResolved(proxy);
-
-        _factory.UnitContainerLifecycle.StopUnitAsync(ActorId, Arg.Any<CancellationToken>())
-            .Returns(Task.CompletedTask);
 
         var response = await _client.PostAsync($"/api/v1/units/{UnitName}/stop", content: null, ct);
 
