@@ -26,7 +26,9 @@ public class SpringDbContextDesignTimeFactory : IDesignTimeDbContextFactory<Spri
     public SpringDbContext CreateDbContext(string[] args)
     {
         var builder = new DbContextOptionsBuilder<SpringDbContext>();
-        builder.UseNpgsql("Host=localhost;Database=springvoyage;Username=postgres;Password=postgres");
+        builder.UseNpgsql(
+            "Host=localhost;Database=springvoyage;Username=postgres;Password=postgres",
+            npgsql => npgsql.MigrationsHistoryTable("__EFMigrationsHistory", "spring"));
         return new SpringDbContext(builder.Options);
     }
 }

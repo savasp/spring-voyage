@@ -117,7 +117,8 @@ public static class ServiceCollectionExtensions
             else
             {
                 services.AddDbContext<SpringDbContext>(options =>
-                    options.UseNpgsql(connectionString));
+                    options.UseNpgsql(connectionString, npgsql =>
+                        npgsql.MigrationsHistoryTable("__EFMigrationsHistory", "spring")));
             }
         }
 

@@ -100,8 +100,96 @@ public class DatabaseMigrator(
             return;
         }
 
+        // One-time: if spring.__EFMigrationsHistory is empty but
+        // public.__EFMigrationsHistory has rows, copy them over. This handles
+        // the transition from the old default-schema history location to the
+        // pinned location (issue #363).
+        var conn = context.Database.GetDbConnection();
+        await SeedMigrationHistoryFromPublicSchemaAsync(conn, logger, cancellationToken).ConfigureAwait(false);
+
         logger.LogInformation("Applying pending EF Core migrations to SpringDbContext.");
         await context.Database.MigrateAsync(cancellationToken).ConfigureAwait(false);
         logger.LogInformation("EF Core migrations applied successfully.");
+    }
+
+    /// <summary>
+    /// Copies migration-history rows from <c>public.__EFMigrationsHistory</c>
+    /// to <c>spring.__EFMigrationsHistory</c> when the latter is empty and the
+    /// former has data. This handles existing databases created before the
+    /// history table was pinned to the <c>spring</c> schema (issue #363).
+    /// </summary>
+    /// <remarks>
+    /// Idempotent: once <c>spring.__EFMigrationsHistory</c> has rows the
+    /// method is a no-op. Safe on fresh databases where neither table exists
+    /// yet — both existence checks return <see langword="false"/> and the
+    /// method exits immediately.
+    /// </remarks>
+    internal static async Task SeedMigrationHistoryFromPublicSchemaAsync(
+        System.Data.Common.DbConnection conn,
+        ILogger logger,
+        CancellationToken cancellationToken)
+    {
+
+        // Ensure the connection is open so we can issue raw commands.
+        await conn.OpenAsync(cancellationToken).ConfigureAwait(false);
+
+        // Check whether spring.__EFMigrationsHistory exists.
+        await using var springExistsCmd = conn.CreateCommand();
+        springExistsCmd.CommandText =
+            "SELECT EXISTS (SELECT 1 FROM information_schema.tables " +
+            "WHERE table_schema = 'spring' AND table_name = '__EFMigrationsHistory')";
+        var springExists = (bool)(await springExistsCmd.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false))!;
+
+        if (!springExists)
+        {
+            // Table doesn't exist yet — MigrateAsync will create it.
+            return;
+        }
+
+        // Check whether spring.__EFMigrationsHistory already has rows.
+        await using var springCountCmd = conn.CreateCommand();
+        springCountCmd.CommandText =
+            "SELECT COUNT(*) FROM spring.\"__EFMigrationsHistory\"";
+        var springCount = (long)(await springCountCmd.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false))!;
+
+        if (springCount > 0)
+        {
+            // Already seeded — nothing to do.
+            return;
+        }
+
+        // Check whether public.__EFMigrationsHistory exists and has rows.
+        await using var publicExistsCmd = conn.CreateCommand();
+        publicExistsCmd.CommandText =
+            "SELECT EXISTS (SELECT 1 FROM information_schema.tables " +
+            "WHERE table_schema = 'public' AND table_name = '__EFMigrationsHistory')";
+        var publicExists = (bool)(await publicExistsCmd.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false))!;
+
+        if (!publicExists)
+        {
+            return;
+        }
+
+        await using var publicCountCmd = conn.CreateCommand();
+        publicCountCmd.CommandText =
+            "SELECT COUNT(*) FROM public.\"__EFMigrationsHistory\"";
+        var publicCount = (long)(await publicCountCmd.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false))!;
+
+        if (publicCount == 0)
+        {
+            return;
+        }
+
+        // Copy rows from public to spring.
+        await using var copyCmd = conn.CreateCommand();
+        copyCmd.CommandText =
+            "INSERT INTO spring.\"__EFMigrationsHistory\" " +
+            "SELECT * FROM public.\"__EFMigrationsHistory\"";
+        var copied = await copyCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+
+        logger.LogInformation(
+            "Copied {Count} migration-history rows from public.__EFMigrationsHistory " +
+            "to spring.__EFMigrationsHistory (one-time schema transition, issue #363).",
+            copied);
     }
 }

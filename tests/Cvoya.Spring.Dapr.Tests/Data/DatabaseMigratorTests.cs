@@ -3,6 +3,9 @@
 
 namespace Cvoya.Spring.Dapr.Tests.Data;
 
+using System.Data;
+using System.Data.Common;
+
 using Cvoya.Spring.Dapr.Data;
 using Cvoya.Spring.Dapr.DependencyInjection;
 
@@ -125,6 +128,116 @@ public class DatabaseMigratorTests
         services.ShouldContain(d =>
             d.ServiceType == typeof(IHostedService)
             && d.ImplementationType == typeof(DatabaseMigrator));
+    }
+
+    [Fact]
+    public async Task SeedMigrationHistory_SpringTableDoesNotExist_IsNoOp()
+    {
+        // Arrange: spring.__EFMigrationsHistory does not exist.
+        var conn = CreateMockConnection([false]); // first query returns false
+        var logger = NullLogger<DatabaseMigrator>.Instance;
+
+        // Act — should return without error.
+        await DatabaseMigrator.SeedMigrationHistoryFromPublicSchemaAsync(
+            conn, logger, TestContext.Current.CancellationToken);
+
+        // Assert: only the existence check was executed (1 command created).
+        conn.Received(1).CreateCommand();
+    }
+
+    [Fact]
+    public async Task SeedMigrationHistory_SpringTableHasRows_IsNoOp()
+    {
+        // Arrange: spring.__EFMigrationsHistory exists and has 3 rows.
+        var conn = CreateMockConnection([true, 3L]);
+        var logger = NullLogger<DatabaseMigrator>.Instance;
+
+        await DatabaseMigrator.SeedMigrationHistoryFromPublicSchemaAsync(
+            conn, logger, TestContext.Current.CancellationToken);
+
+        // Assert: existence check + count check = 2 commands.
+        conn.Received(2).CreateCommand();
+    }
+
+    [Fact]
+    public async Task SeedMigrationHistory_PublicTableDoesNotExist_IsNoOp()
+    {
+        // Arrange: spring table exists and is empty; public table does not exist.
+        var conn = CreateMockConnection([true, 0L, false]);
+        var logger = NullLogger<DatabaseMigrator>.Instance;
+
+        await DatabaseMigrator.SeedMigrationHistoryFromPublicSchemaAsync(
+            conn, logger, TestContext.Current.CancellationToken);
+
+        // spring exists + spring count + public exists = 3 commands, no copy.
+        conn.Received(3).CreateCommand();
+    }
+
+    [Fact]
+    public async Task SeedMigrationHistory_PublicTableEmpty_IsNoOp()
+    {
+        // Arrange: spring table exists/empty, public table exists/empty.
+        var conn = CreateMockConnection([true, 0L, true, 0L]);
+        var logger = NullLogger<DatabaseMigrator>.Instance;
+
+        await DatabaseMigrator.SeedMigrationHistoryFromPublicSchemaAsync(
+            conn, logger, TestContext.Current.CancellationToken);
+
+        // spring exists + spring count + public exists + public count = 4 commands.
+        conn.Received(4).CreateCommand();
+    }
+
+    [Fact]
+    public async Task SeedMigrationHistory_CopiesRowsWhenConditionsMet()
+    {
+        // Arrange: spring table exists/empty, public table exists with 5 rows.
+        var conn = CreateMockConnection([true, 0L, true, 5L, 5]);
+        var logger = NullLogger<DatabaseMigrator>.Instance;
+
+        await DatabaseMigrator.SeedMigrationHistoryFromPublicSchemaAsync(
+            conn, logger, TestContext.Current.CancellationToken);
+
+        // All 5 commands created: spring exists, spring count, public exists,
+        // public count, copy INSERT.
+        conn.Received(5).CreateCommand();
+    }
+
+    /// <summary>
+    /// Creates a mocked <see cref="DbConnection"/> that returns a sequence of
+    /// scalar results from successive <c>CreateCommand()</c> calls. The last
+    /// value in the sequence is used for <c>ExecuteNonQueryAsync</c> if it is
+    /// an <see cref="int"/>; otherwise all values feed
+    /// <c>ExecuteScalarAsync</c>.
+    /// </summary>
+    private static DbConnection CreateMockConnection(object[] scalarResults)
+    {
+        var conn = Substitute.For<DbConnection>();
+        var callIndex = 0;
+
+        conn.CreateCommand().Returns(_ =>
+        {
+            var cmd = Substitute.For<DbCommand>();
+            var idx = callIndex++;
+            if (idx < scalarResults.Length)
+            {
+                var val = scalarResults[idx];
+                if (idx == scalarResults.Length - 1 && val is int intVal)
+                {
+                    // Last value and it's an int — it's for ExecuteNonQueryAsync.
+                    cmd.ExecuteNonQueryAsync(Arg.Any<CancellationToken>())
+                        .Returns(Task.FromResult(intVal));
+                }
+                else
+                {
+                    cmd.ExecuteScalarAsync(Arg.Any<CancellationToken>())
+                        .Returns(Task.FromResult<object?>(val));
+                }
+            }
+
+            return cmd;
+        });
+
+        return conn;
     }
 
     private static ServiceProvider BuildProvider()
