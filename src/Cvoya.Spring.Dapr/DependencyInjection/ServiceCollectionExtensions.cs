@@ -181,6 +181,8 @@ public static class ServiceCollectionExtensions
         // Agent definition + tool launchers used by A2AExecutionDispatcher.
         services.TryAddSingleton<IAgentDefinitionProvider, DbAgentDefinitionProvider>();
         services.AddSingleton<IAgentToolLauncher, ClaudeCodeLauncher>();
+        services.AddSingleton<IAgentToolLauncher, CodexLauncher>();
+        services.AddSingleton<IAgentToolLauncher, GeminiLauncher>();
         services.TryAddSingleton<PersistentAgentRegistry>();
 
         // In-process MCP server (hosted service — started automatically by the host).
