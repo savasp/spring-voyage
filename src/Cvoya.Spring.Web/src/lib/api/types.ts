@@ -165,22 +165,43 @@ export type UnitReadinessResponse = Schemas["UnitReadinessResponse"];
 // Dashboard summary (hand-written until next OpenAPI regeneration)
 // ---------------------------------------------------------------------------
 
+/** Inline unit detail returned inside the dashboard summary. */
+export interface DashboardUnit {
+  name: string;
+  displayName: string;
+  registeredAt: string;
+  status: string;
+}
+
+/** Inline agent detail returned inside the dashboard summary. */
+export interface DashboardAgent {
+  name: string;
+  displayName: string;
+  role: string | null;
+  registeredAt: string;
+}
+
+/** A single recent-activity item inside the dashboard summary. */
+export interface DashboardActivityItem {
+  id: string;
+  source: string;
+  eventType: string;
+  severity: string;
+  summary: string;
+  correlationId?: string;
+  cost?: number;
+  timestamp: string;
+}
+
 /** GET /api/v1/dashboard/summary response. */
 export interface DashboardSummary {
   unitCount: number;
   unitsByStatus: Record<string, number>;
   agentCount: number;
-  recentActivity: {
-    id: string;
-    source: string;
-    eventType: string;
-    severity: string;
-    summary: string;
-    correlationId?: string;
-    cost?: number;
-    timestamp: string;
-  }[];
+  recentActivity: DashboardActivityItem[];
   totalCost: number;
+  units: DashboardUnit[];
+  agents: DashboardAgent[];
 }
 
 // ---------------------------------------------------------------------------

@@ -46,4 +46,6 @@ public record DashboardSummary(
     IReadOnlyDictionary<UnitStatus, int> UnitsByStatus,
     int AgentCount,
     IReadOnlyList<ActivityQueryResult.Item> RecentActivity,
-    decimal TotalCost);
+    decimal TotalCost,
+    IReadOnlyList<UnitDashboardSummary> Units,
+    IReadOnlyList<AgentDashboardSummary> Agents);

@@ -4959,7 +4959,9 @@
           "unitsByStatus",
           "agentCount",
           "recentActivity",
-          "totalCost"
+          "totalCost",
+          "units",
+          "agents"
         ],
         "type": "object",
         "properties": {
@@ -4999,6 +5001,18 @@
           "totalCost": {
             "type": "number",
             "format": "double"
+          },
+          "units": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UnitDashboardSummary"
+            }
+          },
+          "agents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentDashboardSummary"
+            }
           }
         }
       },

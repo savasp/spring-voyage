@@ -72,6 +72,7 @@ public static class DashboardEndpoints
             .ToList();
 
         var statusCounts = new Dictionary<UnitStatus, int>();
+        var unitSummaries = new List<UnitDashboardSummary>(unitEntries.Count);
         foreach (var e in unitEntries)
         {
             var status = UnitStatus.Draft;
@@ -89,7 +90,14 @@ public static class DashboardEndpoints
             }
 
             statusCounts[status] = statusCounts.TryGetValue(status, out var count) ? count + 1 : 1;
+            unitSummaries.Add(new UnitDashboardSummary(e.Address.Path, e.DisplayName, e.RegisteredAt, status));
         }
+
+        // Agent summaries.
+        var agentSummaries = entries
+            .Where(e => string.Equals(e.Address.Scheme, "agent", StringComparison.OrdinalIgnoreCase))
+            .Select(e => new AgentDashboardSummary(e.Address.Path, e.DisplayName, e.Role, e.RegisteredAt))
+            .ToList();
 
         // Recent activity (last 10).
         var activityResult = await activityQueryService.QueryAsync(
@@ -104,7 +112,9 @@ public static class DashboardEndpoints
             statusCounts,
             agentCount,
             activityResult.Items,
-            totalCost);
+            totalCost,
+            unitSummaries,
+            agentSummaries);
 
         return Results.Ok(summary);
     }
