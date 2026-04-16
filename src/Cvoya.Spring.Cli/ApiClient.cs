@@ -301,6 +301,28 @@ public class SpringApiClient
     public Task DeleteMembershipAsync(string unitId, string agentId, CancellationToken ct = default)
         => _client.Api.V1.Units[unitId].Memberships[agentId].DeleteAsync(cancellationToken: ct);
 
+    // Activity
+
+    /// <summary>Queries activity events with optional filters and pagination.</summary>
+    public async Task<ActivityQueryResult> QueryActivityAsync(
+        string? source = null,
+        string? eventType = null,
+        string? severity = null,
+        int? pageSize = null,
+        CancellationToken ct = default)
+    {
+        var result = await _client.Api.V1.Activity.GetAsync(
+            config =>
+            {
+                config.QueryParameters.Source = source;
+                config.QueryParameters.EventType = eventType;
+                config.QueryParameters.Severity = severity;
+                config.QueryParameters.PageSize = pageSize?.ToString();
+            },
+            cancellationToken: ct);
+        return result ?? throw new InvalidOperationException("Server returned an empty activity query response.");
+    }
+
     // Messages
 
     /// <summary>

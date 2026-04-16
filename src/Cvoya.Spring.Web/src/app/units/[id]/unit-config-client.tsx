@@ -14,6 +14,7 @@ import {
   Trash2,
 } from "lucide-react";
 
+import { ActivityTab } from "./activity-tab";
 import { AgentsTab } from "./agents-tab";
 import { ConnectorTab } from "./connector-tab";
 import { SecretsTab } from "./secrets-tab";
@@ -374,6 +375,7 @@ export default function UnitConfigClient({ id }: ClientProps) {
           <TabsTrigger value="skills">Skills</TabsTrigger>
           <TabsTrigger value="connector">Connector</TabsTrigger>
           <TabsTrigger value="secrets">Secrets</TabsTrigger>
+          <TabsTrigger value="activity">Activity</TabsTrigger>
           <TabsTrigger value="costs">Costs</TabsTrigger>
         </TabsList>
 
@@ -450,6 +452,10 @@ export default function UnitConfigClient({ id }: ClientProps) {
 
         <TabsContent value="sub-units">
           <SubUnitsTab unitId={id} />
+        </TabsContent>
+
+        <TabsContent value="activity">
+          <ActivityTab unitId={id} />
         </TabsContent>
 
         <TabsContent value="costs">

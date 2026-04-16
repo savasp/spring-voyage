@@ -33,6 +33,7 @@ public class Program
                 AgentCommand.Create(outputOption),
                 UnitCommand.Create(outputOption),
                 MessageCommand.Create(outputOption),
+                ActivityCommand.Create(outputOption),
                 ApplyCommand.Create()
             }
         };
