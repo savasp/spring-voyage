@@ -67,10 +67,30 @@ public static class ServiceCollectionExtensions
     /// <returns>The same service collection for chaining.</returns>
     public static IServiceCollection AddCvoyaSpringDapr(this IServiceCollection services, IConfiguration configuration)
     {
+        var isDocGen = BuildEnvironment.IsDesignTimeTooling;
+
         // Dapr client, actor proxy factory, and workflow client
         services.AddDaprClient();
         services.TryAddSingleton<IActorProxyFactory>(_ => new ActorProxyFactory());
+
         services.AddDaprWorkflow(options => { });
+
+        // During build-time OpenAPI generation (GetDocument.Insider) the Dapr
+        // Workflow hosted service starts a gRPC bidirectional stream with the
+        // sidecar. There is no sidecar at build time, so it spams "Connection
+        // refused" errors. Remove the hosted-service registration added by
+        // AddDaprWorkflow while keeping the DI registrations (DaprWorkflowClient
+        // etc.) that endpoints depend on. See #370.
+        if (isDocGen)
+        {
+            var workflowWorkerDescriptor = services
+                .FirstOrDefault(d => d.ServiceType == typeof(Microsoft.Extensions.Hosting.IHostedService)
+                    && d.ImplementationType?.FullName?.Contains("Dapr.Workflow", StringComparison.Ordinal) == true);
+            if (workflowWorkerDescriptor is not null)
+            {
+                services.Remove(workflowWorkerDescriptor);
+            }
+        }
 
         // EF Core / PostgreSQL.
         //
@@ -97,7 +117,7 @@ public static class ServiceCollectionExtensions
             var connectionString = configuration.GetConnectionString("SpringDb");
             if (string.IsNullOrEmpty(connectionString))
             {
-                if (IsDesignTimeTooling())
+                if (isDocGen)
                 {
                     // Leave the context unconfigured; design-time tooling never resolves it.
                     services.AddDbContext<SpringDbContext>(_ => { });
@@ -154,7 +174,13 @@ public static class ServiceCollectionExtensions
 
         // Unit-membership backfill hosted service (#160 / C2b-1).
         // Gated by Database:BackfillMemberships; idempotent; short-lived.
-        services.AddHostedService<UnitMembershipBackfillService>();
+        // Also gated by doc-gen mode — the service depends on SpringDbContext
+        // which may not have a configured provider during build-time OpenAPI
+        // generation. See #370.
+        if (!isDocGen)
+        {
+            services.AddHostedService<UnitMembershipBackfillService>();
+        }
 
         // Options
         services.AddOptions<AiProviderOptions>().BindConfiguration(AiProviderOptions.SectionName);
@@ -186,13 +212,20 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IAgentToolLauncher, GeminiLauncher>();
         services.AddSingleton<IAgentToolLauncher, DaprAgentLauncher>();
         services.TryAddSingleton<PersistentAgentRegistry>();
-        services.AddHostedService(sp => sp.GetRequiredService<PersistentAgentRegistry>());
 
-        // In-process MCP server (hosted service — started automatically by the host).
+        // In-process MCP server — options and singleton always registered so
+        // endpoints that depend on IMcpServer resolve correctly during OpenAPI
+        // generation. The hosted-service registration (which binds a port and
+        // starts the health monitor) is gated by doc-gen mode. See #370.
         services.AddOptions<McpServerOptions>().BindConfiguration(McpServerOptions.SectionName);
         services.TryAddSingleton<McpServer>();
         services.TryAddSingleton<IMcpServer>(sp => sp.GetRequiredService<McpServer>());
-        services.AddHostedService(sp => sp.GetRequiredService<McpServer>());
+
+        if (!isDocGen)
+        {
+            services.AddHostedService(sp => sp.GetRequiredService<PersistentAgentRegistry>());
+            services.AddHostedService(sp => sp.GetRequiredService<McpServer>());
+        }
 
         // Initiative — use TryAdd so the private repo can override any implementation.
         // The Dapr state-store-backed variants are registered as defaults so policies and
@@ -267,7 +300,6 @@ public static class ServiceCollectionExtensions
         // Observability
         services.AddSingleton<ActivityEventBus>();
         services.AddSingleton<IActivityEventBus>(sp => sp.GetRequiredService<ActivityEventBus>());
-        services.AddHostedService<ActivityEventPersister>();
         services.AddOptions<StreamEventPublisherOptions>().BindConfiguration(StreamEventPublisherOptions.SectionName);
         services.AddSingleton<StreamEventPublisher>();
         services.AddSingleton<StreamEventSubscriber>();
@@ -275,14 +307,22 @@ public static class ServiceCollectionExtensions
         // Auth
         services.AddSingleton<IPermissionService, PermissionService>();
 
-        // Costs
-        services.AddHostedService<CostTracker>();
+        // Costs — scoped query/tracking services always registered for endpoint DI.
         services.AddScoped<ICostQueryService, CostAggregation>();
-        services.AddHostedService<BudgetEnforcer>();
         services.AddScoped<ICostTracker, CloneCostTracker>();
 
         // Observability — query service
         services.AddScoped<IActivityQueryService, ActivityQueryService>();
+
+        // Hosted services that depend on runtime infrastructure (Dapr state store,
+        // database). During build-time OpenAPI generation none of this is
+        // available, so skip registration to avoid noisy startup errors. See #370.
+        if (!isDocGen)
+        {
+            services.AddHostedService<ActivityEventPersister>();
+            services.AddHostedService<CostTracker>();
+            services.AddHostedService<BudgetEnforcer>();
+        }
 
         return services;
     }
@@ -393,24 +433,4 @@ public static class ServiceCollectionExtensions
         return services;
     }
 
-    /// <summary>
-    /// Detects whether the current process was launched by a design-time
-    /// tool that loads the host assembly but never opens the database —
-    /// for example <c>dotnet-ef</c> running migrations and
-    /// <c>GetDocument.Insider</c> emitting the build-time OpenAPI document.
-    /// These tools rely on the DI container building successfully without a
-    /// real connection string; production paths must not.
-    /// </summary>
-    private static bool IsDesignTimeTooling()
-    {
-        var entryName = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name;
-        if (entryName is null)
-        {
-            return false;
-        }
-        return entryName is "GetDocument.Insider"
-            or "dotnet-getdocument"
-            or "ef"
-            or "dotnet-ef";
-    }
 }

@@ -48,9 +48,17 @@ using var sigTerm = PosixSignalRegistration.Create(PosixSignal.SIGTERM, _ => For
 builder.Services
     .AddCvoyaSpringCore()
     .AddCvoyaSpringDapr(builder.Configuration)
-    .AddCvoyaSpringDataProtection(builder.Configuration)
     .AddCvoyaSpringOllamaLlm(builder.Configuration)
     .AddCvoyaSpringConnectorGitHub(builder.Configuration);
+
+// DataProtection registration is gated by design-time tooling to avoid
+// noisy ephemeral-key warnings during build-time OpenAPI generation. The
+// Worker does not generate OpenAPI docs itself, but shares the same DI
+// setup path via AddCvoyaSpringDapr — gate defensively. See #370.
+if (!BuildEnvironment.IsDesignTimeTooling)
+{
+    builder.Services.AddCvoyaSpringDataProtection(builder.Configuration);
+}
 
 // Worker owns EF Core migrations. The API host intentionally does NOT
 // register DatabaseMigrator: when both hosts ran it concurrently they
