@@ -5,7 +5,9 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ReactNode } from "react";
 
 import type { UnitDashboardSummary } from "@/lib/api/types";
 
@@ -54,6 +56,21 @@ vi.mock("next/link", () => ({
 
 import UnitDetailPage from "./page";
 
+// Fresh QueryClient per render keeps TanStack caches scoped to a single
+// test so mocks reset between cases.
+function renderPage() {
+  const client = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, gcTime: 0, staleTime: 0 },
+      mutations: { retry: false },
+    },
+  });
+  const Wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  );
+  return render(<UnitDetailPage />, { wrapper: Wrapper });
+}
+
 function makeUnit(
   overrides: Partial<UnitDashboardSummary> = {},
 ): UnitDashboardSummary {
@@ -83,7 +100,7 @@ describe("Units list — delete unit", () => {
       makeUnit({ name: "mkt", displayName: "Marketing" }),
     ]);
 
-    render(<UnitDetailPage />);
+    renderPage();
 
     await waitFor(() => {
       expect(screen.getByText("Engineering")).toBeInTheDocument();
@@ -102,7 +119,7 @@ describe("Units list — delete unit", () => {
       makeUnit({ name: "eng", displayName: "Engineering" }),
     ]);
 
-    render(<UnitDetailPage />);
+    renderPage();
 
     await waitFor(() => {
       expect(screen.getByText("Engineering")).toBeInTheDocument();
@@ -132,7 +149,7 @@ describe("Units list — delete unit", () => {
     ]);
     deleteUnit.mockResolvedValue(undefined);
 
-    render(<UnitDetailPage />);
+    renderPage();
 
     await waitFor(() => {
       expect(screen.getByText("Engineering")).toBeInTheDocument();
@@ -170,7 +187,7 @@ describe("Units list — delete unit", () => {
       new Error("API error 500: Internal Server Error"),
     );
 
-    render(<UnitDetailPage />);
+    renderPage();
 
     await waitFor(() => {
       expect(screen.getByText("Engineering")).toBeInTheDocument();

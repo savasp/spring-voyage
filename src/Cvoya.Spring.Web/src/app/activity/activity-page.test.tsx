@@ -1,5 +1,8 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import type { ReactNode } from "react";
+
 import ActivityPage from "./page";
 
 const mockQueryActivity = vi.fn();
@@ -14,6 +17,20 @@ vi.mock("next/navigation", () => ({
   usePathname: () => "/activity",
   useRouter: () => ({ push: vi.fn() }),
 }));
+
+// Wrap the page in a fresh QueryClient per test so TanStack Query
+// doesn't replay cached responses between cases (#438 migration).
+function renderPage() {
+  const client = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, gcTime: 0, staleTime: 0 },
+    },
+  });
+  const Wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  );
+  return render(<ActivityPage />, { wrapper: Wrapper });
+}
 
 const mockResult = {
   items: [
@@ -50,7 +67,7 @@ describe("ActivityPage", () => {
   });
 
   it("renders activity events from the API", async () => {
-    render(<ActivityPage />);
+    renderPage();
     await waitFor(() => {
       expect(screen.getByText("Unit started successfully")).toBeInTheDocument();
       expect(
@@ -60,7 +77,7 @@ describe("ActivityPage", () => {
   });
 
   it("passes filter parameters to the API", async () => {
-    render(<ActivityPage />);
+    renderPage();
     await waitFor(() => {
       expect(mockQueryActivity).toHaveBeenCalled();
     });
@@ -76,7 +93,7 @@ describe("ActivityPage", () => {
   });
 
   it("expands event details on click", async () => {
-    render(<ActivityPage />);
+    renderPage();
     await waitFor(() => {
       expect(screen.getByText("Unit started successfully")).toBeInTheDocument();
     });
@@ -94,7 +111,7 @@ describe("ActivityPage", () => {
   });
 
   it("shows total count", async () => {
-    render(<ActivityPage />);
+    renderPage();
     await waitFor(() => {
       expect(screen.getByText("2 total")).toBeInTheDocument();
     });
@@ -107,7 +124,7 @@ describe("ActivityPage", () => {
       page: 1,
       pageSize: 20,
     });
-    render(<ActivityPage />);
+    renderPage();
     await waitFor(() => {
       expect(
         screen.getByText("No activity events found."),
