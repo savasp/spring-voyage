@@ -20,7 +20,7 @@ Authentication uses the same token flow as the CLI: when the API Host is running
 
 ## Navigation and shell
 
-The left sidebar ([src/Cvoya.Spring.Web/src/components/sidebar.tsx](../../src/Cvoya.Spring.Web/src/components/sidebar.tsx)) is the top-level navigator. It currently exposes six entries:
+The left sidebar ([src/Cvoya.Spring.Web/src/components/sidebar.tsx](../../src/Cvoya.Spring.Web/src/components/sidebar.tsx)) is the top-level navigator. It exposes:
 
 | Portal route | What it shows | Primary CLI equivalent |
 |--------------|---------------|------------------------|
@@ -30,6 +30,9 @@ The left sidebar ([src/Cvoya.Spring.Web/src/components/sidebar.tsx](../../src/Cv
 | `/conversations` — **Conversations** | Filtered conversation list, "Awaiting you" inbox, deep links to threads | `spring conversation list` / `spring inbox list` |
 | `/initiative` — **Initiative** | Per-agent initiative policy editor + recent initiative events | (no CLI equivalent today — parity gap) |
 | `/budgets` — **Budgets** | Tenant daily budget + per-agent budget rows | (no CLI equivalent today — parity gap) |
+| `/packages` — **Packages** | Browse installed packages and their templates | `spring package list` / `spring package show` |
+
+Detail pages (`/units/{id}`, `/agents/{id}`, `/conversations/{id}`) are reached by clicking entity cards on the dashboard, list pages, or by following deep-links from activity rows. Every detail page renders a breadcrumb trail (`Dashboard › Units › {id}` and so on) so navigation depth is always visible.
 
 A theme toggle (light/dark) sits at the bottom of the sidebar. On mobile the sidebar collapses behind a hamburger button.
 
@@ -228,6 +231,20 @@ spring activity list --source agent:<id>
 ```
 
 There is no portal flow for creating a brand-new agent today — use `spring agent create`. **This is a CLI/UI parity gap.**
+
+## Conversations (`/conversations`, `/conversations/{id}`)
+
+The Conversations index ([src/Cvoya.Spring.Web/src/app/conversations/page.tsx](../../src/Cvoya.Spring.Web/src/app/conversations/page.tsx)) lists every conversation thread the platform has correlated from the activity stream. Each entry uses the shared `ConversationCard` primitive and shows the participants, status, last activity, and a short summary.
+
+Clicking a card opens the conversation detail page ([src/Cvoya.Spring.Web/src/app/conversations/[id]/conversation-detail-client.tsx](../../src/Cvoya.Spring.Web/src/app/conversations/%5Bid%5D/conversation-detail-client.tsx)). The detail page is read-only in this pass (PR-R2 / #392) and renders:
+
+- A `ConversationCard` summary at the top.
+- A participants strip with deep-link pills into the matching `/agents/{id}` or `/units/{id}` page.
+- An ordered timeline of every event correlated to the conversation, plus an "Open in activity feed" shortcut.
+
+Activity rows on the dashboard timeline and on `/activity` deep-link straight into a conversation when an event carries a `correlationId`; otherwise they fall back to the source agent or unit detail page. The chat-style send-message UI is tracked separately under #410.
+
+**CLI equivalent:** none today — conversations are portal-only. **This is a CLI/UI parity gap.**
 
 ## Activity (`/activity`)
 

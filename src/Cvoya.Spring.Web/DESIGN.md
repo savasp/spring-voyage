@@ -260,10 +260,11 @@ The portal's primitive library lives in `src/components/ui/`. Shared composites 
 - Nav item: `flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors`. Active: `bg-primary/10 text-primary font-medium`. Inactive: `text-muted-foreground hover:bg-accent hover:text-accent-foreground`.
 - Brand wordmark is `text-lg font-bold` ("Spring Voyage"). Version chip is `text-xs text-muted-foreground` in the footer, paired with the theme toggle (`Sun` / `Moon` at `h-3.5 w-3.5`).
 
-### 7.11 Cards for domain entities — `stat-card.tsx`, `unit-card.tsx`, `agent-card.tsx`, `activity-feed.tsx`, `conversation-card.tsx`
+### 7.11 Cards for domain entities — `stat-card.tsx`, `unit-card.tsx`, `agent-card.tsx`, `conversation-card.tsx`, `activity-feed.tsx`
 
 - Stat card: label (`text-xs text-muted-foreground`) + value (`text-2xl font-bold`) + trailing icon (`text-muted-foreground`).
-- Unit / agent cards compose the base `Card` with a status dot + name + registered-at row.
+- Unit / agent / conversation cards compose the base `Card` with a status dot + name + registered-at row. They are the **only** card layouts allowed for these entity types — pages must not invent bespoke unit/agent/conversation layouts. Every detail page (`/units/[id]`, `/agents/[id]`, `/conversations/[id]`) must reuse the matching primitive at the top of its summary block (PR-R2 / #392).
+- `<AgentCard>` accepts an `actions` prop — a React node rendered next to the card's "Open" link. Use it to surface row-scoped quick actions (edit, remove, mute) without duplicating the card chrome. Membership editor in `app/units/[id]/agents-tab.tsx` is the canonical example (#472).
 - Activity feed row: `flex items-start gap-2 text-sm` with a 2×2 severity dot at `mt-1.5`, message on top, meta (`text-xs text-muted-foreground`) below.
 - Conversation card (`components/cards/conversation-card.tsx`): MessagesSquare icon + title + status badge on the top row; truncated participants (max 3, `+N more` overflow) and `timeAgo(lastActivityAt)` on the meta row; trailing "Open" link to `/conversations/[id]`.
 
@@ -278,7 +279,19 @@ The conversation surface (#410) renders a chat-style thread with role-attributed
 - **Thread shell** (`app/conversations/[id]/conversation-detail-client.tsx`): scrollable thread (`max-h-[60vh] overflow-y-auto`) with `aria-live="polite"` so screen readers announce new events as the SSE stream lands them. Auto-scrolls to the bottom on new event.
 - **Cross-links**: the conversation header's `Origin` is a link to `/activity?source=…`, and the activity row's correlation id renders an "Open thread" pill that deep-links to `/conversations/[id]`.
 
-### 7.13 Icons
+### 7.13 Breadcrumbs — `src/components/breadcrumbs.tsx`
+
+- Mandatory on any page that is two or more levels deep (`/units/[id]`, `/agents/[id]`, `/conversations/[id]`, `/packages/[name]/templates/[name]`). The crumb trail starts at `Dashboard` (`/`) and ends with the current entity (no `href`, rendered as `aria-current="page"`).
+- Use the singular section name as the intermediate label (`Units`, `Agents`, `Conversations`, `Packages`). Intermediate crumbs link to the matching list page.
+- Any new top-level destination needs an entry in `src/lib/extensions/defaults.ts` so the sidebar and command palette mirror the breadcrumb hierarchy (PR-R2 / #392).
+
+### 7.14 Cross-link rules
+
+- Activity rows (dashboard timeline + activity feed) deep-link to the most specific destination available, in priority order: conversation (when `correlationId` is set), then `agent://`/`unit://` source detail page, otherwise plain text.
+- Conversation participant pills are clickable and resolve to the matching `/agents/{id}` or `/units/{id}` page. Schemes without a portal page (`human://`) render as plain badges.
+- See `docs/design/portal-exploration.md` § 3.3 for the full cross-link contract.
+
+### 7.15 Icons
 
 - [`lucide-react`](https://lucide.dev). Sizes: `h-3 w-3` (inline meta), `h-3.5 w-3.5` (theme toggle), `h-4 w-4` (button icon, card section icon, severity dot wrapper), `h-5 w-5` (sidebar mobile menu, page H1 icon), `h-10 w-10` (empty-state icon).
 - Icons in CTAs never carry colour — they inherit `currentColor` from the surrounding text.

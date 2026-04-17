@@ -326,7 +326,21 @@ export function useConversation(
 ): UseQueryResult<ConversationDetail | null, Error> {
   return useQuery({
     queryKey: queryKeys.conversations.detail(id),
-    queryFn: () => api.getConversation(id),
+    // Surface 404 as `null` so the detail page can render a clean "not
+    // found" state instead of bubbling an ApiError up to the boundary.
+    queryFn: async () => {
+      try {
+        return await api.getConversation(id);
+      } catch (err) {
+        if (
+          err instanceof Error &&
+          /API error 404/.test(err.message)
+        ) {
+          return null;
+        }
+        throw err;
+      }
+    },
     enabled: opts?.enabled ?? Boolean(id),
     refetchInterval: opts?.refetchInterval,
     staleTime: opts?.staleTime,
@@ -342,6 +356,7 @@ export function useInbox(
     ...opts,
   });
 }
+
 
 // ---------------------------------------------------------------------------
 // Tenant

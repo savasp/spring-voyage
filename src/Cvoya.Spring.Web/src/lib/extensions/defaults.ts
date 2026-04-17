@@ -59,6 +59,15 @@ export const defaultRoutes: readonly RouteEntry[] = [
     description: "Composite agents, policies, and connector bindings.",
   },
   {
+    path: "/conversations",
+    label: "Conversations",
+    icon: MessagesSquare,
+    navSection: "primary",
+    orderHint: 25,
+    keywords: ["chat", "threads", "messages"],
+    description: "Active conversation threads, derived from the event stream.",
+  },
+  {
     path: "/activity",
     label: "Activity",
     icon: Activity,

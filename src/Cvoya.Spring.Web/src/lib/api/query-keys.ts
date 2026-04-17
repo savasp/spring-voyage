@@ -119,6 +119,7 @@ export function queryKeysAffectedBySource(source: {
     return [
       queryKeys.activity.all,
       queryKeys.dashboard.all,
+      queryKeys.conversations.all,
       queryKeys.units.detail(source.path),
       queryKeys.units.cost(source.path),
       queryKeys.conversations.all,
@@ -128,6 +129,7 @@ export function queryKeysAffectedBySource(source: {
     return [
       queryKeys.activity.all,
       queryKeys.dashboard.all,
+      queryKeys.conversations.all,
       queryKeys.agents.detail(source.path),
       queryKeys.agents.cost(source.path),
       queryKeys.conversations.all,

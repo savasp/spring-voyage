@@ -275,6 +275,25 @@ function AgentCards({ summary }: { summary: DashboardSummary }) {
 /* Activity feed                                                       */
 /* ------------------------------------------------------------------ */
 
+// Map a `scheme://path` source string onto the matching detail route.
+// Returns null when the scheme doesn't have a portal page yet (so the
+// caller can render the source as plain text rather than an unreachable
+// link). Mirrors the cross-link rules in
+// `docs/design/portal-exploration.md` § 3.3.
+function sourceHref(source: string): string | null {
+  const m = source.match(/^([a-z]+):\/\/(.+)$/i);
+  if (!m) return null;
+  const [, scheme, path] = m;
+  switch (scheme.toLowerCase()) {
+    case "agent":
+      return `/agents/${encodeURIComponent(path)}`;
+    case "unit":
+      return `/units/${encodeURIComponent(path)}`;
+    default:
+      return null;
+  }
+}
+
 function ActivityTimeline({
   summary,
 }: {
@@ -303,13 +322,19 @@ function ActivityTimeline({
               /^(agent|unit):\/\//,
               "",
             );
-            return (
-              <div
-                key={item.id}
-                className="flex items-start gap-3 px-4 py-3"
-                data-testid={`activity-item-${item.id}`}
-              >
-                {/* Severity indicator */}
+            const sourceLink = sourceHref(item.source);
+            const conversationHref = item.correlationId
+              ? `/conversations/${encodeURIComponent(item.correlationId)}`
+              : null;
+            // Each row deep-links to the most specific destination available:
+            //   1. The conversation thread when we have a correlationId
+            //      (every Message* / Conversation* event).
+            //   2. The source agent or unit otherwise.
+            //   3. Plain text when neither is reachable.
+            // Per portal-exploration.md § 3.3 — no orphan rows.
+            const rowHref = conversationHref ?? sourceLink;
+            const rowContent = (
+              <>
                 <span className="mt-1.5 shrink-0">
                   <span
                     className={`inline-block h-2 w-2 rounded-full ${severityDot[item.severity] ?? "bg-muted-foreground"}`}
@@ -335,8 +360,35 @@ function ActivityTimeline({
                       {item.eventType}
                     </span>
                     <span>{timeAgo(item.timestamp)}</span>
+                    {conversationHref && (
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] px-1.5 py-0"
+                      >
+                        conversation
+                      </Badge>
+                    )}
                   </div>
                 </div>
+              </>
+            );
+
+            return rowHref ? (
+              <Link
+                key={item.id}
+                href={rowHref}
+                className="flex items-start gap-3 px-4 py-3 hover:bg-accent/50 transition-colors"
+                data-testid={`activity-item-${item.id}`}
+              >
+                {rowContent}
+              </Link>
+            ) : (
+              <div
+                key={item.id}
+                className="flex items-start gap-3 px-4 py-3"
+                data-testid={`activity-item-${item.id}`}
+              >
+                {rowContent}
               </div>
             );
           })}
