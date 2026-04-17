@@ -2,34 +2,12 @@
 
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/lib/theme";
-import {
-  Activity,
-  LayoutDashboard,
-  Menu,
-  Moon,
-  Network,
-  Sun,
-  Wallet,
-  X,
-  Zap,
-} from "lucide-react";
+import { NAV_SECTION_ORDER, useExtensions } from "@/lib/extensions";
+import type { NavSection, RouteEntry } from "@/lib/extensions";
+import { Menu, Moon, Sun, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
-
-interface NavItem {
-  href: string;
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-}
-
-const navItems: NavItem[] = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/units", label: "Units", icon: Network },
-  { href: "/activity", label: "Activity", icon: Activity },
-  { href: "/initiative", label: "Initiative", icon: Zap },
-  { href: "/budgets", label: "Budgets", icon: Wallet },
-];
+import { useMemo, useState, type ReactNode } from "react";
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -46,6 +24,16 @@ export function Sidebar() {
     setMobileOpen(false);
   }
 
+  const { routes, slots, auth } = useExtensions();
+
+  // Route manifest → grouped sections. The sidebar never hard-codes
+  // a route list — it reads whatever the (OSS + hosted) extension
+  // registry supplies. See `src/lib/extensions/README.md`.
+  const sections = useMemo(
+    () => groupVisibleRoutes(routes, (perm) => auth.hasPermission(perm)),
+    [routes, auth],
+  );
+
   const sidebarContent = (
     <>
       <div className="flex items-center justify-between px-4 py-4">
@@ -59,13 +47,23 @@ export function Sidebar() {
         </button>
       </div>
 
-      <nav className="flex-1 space-y-1 px-2 py-2 overflow-y-auto">
-        {navItems.map((item) => (
-          <NavLink key={item.href} item={item} pathname={pathname} />
+      <nav className="flex-1 space-y-4 px-2 py-2 overflow-y-auto">
+        {sections.map((section) => (
+          <SidebarSection
+            key={section.id}
+            section={section.id}
+            entries={section.entries}
+            pathname={pathname}
+          />
         ))}
       </nav>
 
-      <div className="border-t border-border px-4 py-3">
+      <div className="border-t border-border px-4 py-3 space-y-2">
+        {slots.sidebarFooter ? (
+          <div data-testid="sidebar-footer-slot">
+            {slots.sidebarFooter as ReactNode}
+          </div>
+        ) : null}
         <div className="flex items-center justify-between">
           <span className="text-xs text-muted-foreground">Spring Voyage v2</span>
           <button
@@ -117,15 +115,67 @@ export function Sidebar() {
   );
 }
 
-function NavLink({ item, pathname }: { item: NavItem; pathname: string }) {
+interface GroupedSection {
+  id: NavSection;
+  entries: readonly RouteEntry[];
+}
+
+function groupVisibleRoutes(
+  routes: readonly RouteEntry[],
+  hasPermission: (key: string) => boolean,
+): readonly GroupedSection[] {
+  const bySection = new Map<NavSection, RouteEntry[]>();
+  for (const route of routes) {
+    if (route.permission && !hasPermission(route.permission)) continue;
+    const bucket = bySection.get(route.navSection) ?? [];
+    bucket.push(route);
+    bySection.set(route.navSection, bucket);
+  }
+
+  const ordered: GroupedSection[] = [];
+  for (const id of NAV_SECTION_ORDER) {
+    const entries = bySection.get(id);
+    if (entries && entries.length > 0) {
+      ordered.push({ id, entries });
+    }
+  }
+  return ordered;
+}
+
+function SidebarSection({
+  section,
+  entries,
+  pathname,
+}: {
+  section: NavSection;
+  entries: readonly RouteEntry[];
+  pathname: string;
+}) {
+  return (
+    <div className="space-y-1" data-testid={`sidebar-section-${section}`}>
+      {section !== "primary" && (
+        <div className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          {section}
+        </div>
+      )}
+      {entries.map((item) => (
+        <NavLink key={item.path} item={item} pathname={pathname} />
+      ))}
+    </div>
+  );
+}
+
+function NavLink({ item, pathname }: { item: RouteEntry; pathname: string }) {
   const active =
-    item.href === "/"
+    item.path === "/"
       ? pathname === "/"
-      : pathname === item.href || pathname.startsWith(item.href + "/");
+      : pathname === item.path || pathname.startsWith(item.path + "/");
+
+  const Icon = item.icon;
 
   return (
     <Link
-      href={item.href}
+      href={item.path}
       className={cn(
         "flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors",
         active
@@ -133,7 +183,7 @@ function NavLink({ item, pathname }: { item: NavItem; pathname: string }) {
           : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
       )}
     >
-      <item.icon className="h-4 w-4" />
+      <Icon className="h-4 w-4" />
       {item.label}
     </Link>
   );
