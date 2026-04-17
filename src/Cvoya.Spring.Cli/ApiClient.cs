@@ -348,6 +348,80 @@ public class SpringApiClient
         return result ?? throw new InvalidOperationException("Server returned an empty SendMessage response.");
     }
 
+    // Conversations (#452)
+
+    /// <summary>
+    /// Lists conversation summaries, optionally filtered by unit, agent,
+    /// status, or participant. Backs <c>spring conversation list</c>.
+    /// </summary>
+    public async Task<IReadOnlyList<ConversationSummary>> ListConversationsAsync(
+        string? unit = null,
+        string? agent = null,
+        string? status = null,
+        string? participant = null,
+        int? limit = null,
+        CancellationToken ct = default)
+    {
+        var result = await _client.Api.V1.Conversations.GetAsync(
+            config =>
+            {
+                config.QueryParameters.Unit = unit;
+                config.QueryParameters.Agent = agent;
+                config.QueryParameters.Status = status;
+                config.QueryParameters.Participant = participant;
+                // Kiota treats int32 query params as strings when the
+                // OpenAPI `format: int32` hint is ignored (warning surfaced
+                // at generation time); convert on the way out.
+                config.QueryParameters.Limit = limit?.ToString();
+            },
+            cancellationToken: ct);
+        return result ?? new List<ConversationSummary>();
+    }
+
+    /// <summary>
+    /// Fetches the detail view (summary + ordered events) for a single
+    /// conversation. Backs <c>spring conversation show</c>.
+    /// </summary>
+    public async Task<ConversationDetail> GetConversationAsync(string id, CancellationToken ct = default)
+    {
+        var result = await _client.Api.V1.Conversations[id].GetAsync(cancellationToken: ct);
+        return result ?? throw new InvalidOperationException($"Server returned an empty response for conversation '{id}'.");
+    }
+
+    /// <summary>
+    /// Threads a new message into an existing conversation. The CLI's
+    /// <c>spring conversation send --conversation &lt;id&gt;</c> (and its
+    /// <c>spring inbox respond</c> alias) both ride this single endpoint.
+    /// </summary>
+    public async Task<ConversationMessageResponse> SendConversationMessageAsync(
+        string conversationId,
+        string toScheme,
+        string toPath,
+        string text,
+        CancellationToken ct = default)
+    {
+        var request = new ConversationMessageRequest
+        {
+            To = new AddressDto { Scheme = toScheme, Path = toPath },
+            Text = text,
+        };
+        var result = await _client.Api.V1.Conversations[conversationId].Messages.PostAsync(request, cancellationToken: ct);
+        return result ?? throw new InvalidOperationException(
+            $"Server returned an empty message response for conversation '{conversationId}'.");
+    }
+
+    // Inbox (#456)
+
+    /// <summary>
+    /// Lists inbox rows for the authenticated caller — conversations awaiting
+    /// a reply from the current <c>human://</c> address.
+    /// </summary>
+    public async Task<IReadOnlyList<InboxItem>> ListInboxAsync(CancellationToken ct = default)
+    {
+        var result = await _client.Api.V1.Inbox.GetAsync(cancellationToken: ct);
+        return result ?? new List<InboxItem>();
+    }
+
     // Directory
 
     /// <summary>Lists all directory entries.</summary>

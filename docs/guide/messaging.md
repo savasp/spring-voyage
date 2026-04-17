@@ -64,7 +64,12 @@ See [Messaging architecture — Partitioned Mailbox with Priority Processing](..
 
 ### Replies, threading, and multi-turn responses
 
-There is no separate `reply` verb. Replies, clarifications, and follow-ups all flow through `spring message send` with the same conversation id. The agent's own responses travel back on the same conversation channel: for hosted (in-process LLM) agents, each LLM turn produces one or more tokens and eventually a completion event; for delegated (container-based) agents, responses stream as activity events while the container runs.
+There is no separate `reply` verb, and two equivalent threading paths exist for follow-ups:
+
+- **`spring message send <address> "<text>" --conversation <id>`** — reuses the generic send verb. Prefer this when the call site already has the address.
+- **`spring conversation send --conversation <id> <address> "<text>"`** — the same effect, but reads as "post into conversation X". Prefer this for scripts that iterate over conversations and want the surface to match `spring conversation list` / `show`.
+
+Both call the same `POST /api/v1/conversations/{id}/messages` endpoint under the hood, which in turn routes through the `IMessageRouter` with the conversation id stamped on the outbound message. The agent's own responses travel back on the same conversation channel: for hosted (in-process LLM) agents, each LLM turn produces one or more tokens and eventually a completion event; for delegated (container-based) agents, responses stream as activity events while the container runs.
 
 To watch the reply traffic in real time, use the activity viewer:
 
@@ -73,6 +78,34 @@ spring activity list --source "agent:ada" --limit 20
 ```
 
 This surfaces the activity events — message received, token deltas, checkpoints, completion — emitted on the shared activity stream. The web portal shows the same events in the unit and agent detail pages.
+
+### Reading a conversation thread
+
+Scripted review — or "what happened on conversation X?" in a terminal — uses the `spring conversation` verb family:
+
+```bash
+spring conversation list                        # most recent 50 conversations
+spring conversation list --status active        # only open threads
+spring conversation list --unit engineering-team
+spring conversation list --agent ada
+spring conversation show <conversation-id>      # full thread: summary + ordered events
+```
+
+`list` renders one row per conversation with id, status, origin, participants, event count, last activity, and the originating summary. `show` prints the conversation header (participants, origin, created / last activity) followed by the full event timeline. Both commands accept `--output json` for downstream tooling.
+
+### Inbox: things awaiting a human
+
+When agents hand work back to a human — approvals, clarifications, go / no-go decisions — the inbox is the corresponding surface. It lists conversations whose most recent event was a `MessageReceived` addressed to the current human and where the human has not yet replied:
+
+```bash
+spring inbox list                          # awaiting-me queue
+spring inbox show <conversation-id>        # open the thread in context
+spring inbox respond <conversation-id> "Approved — ship it."
+```
+
+`respond` is a thin wrapper over `spring conversation send --conversation <id>`: it resolves the pending ask's sender automatically, so the common case (reply to whoever asked) needs no address. Pass `--to <address>` when you want to redirect the reply to a different participant.
+
+See [Observing Activity](observing.md#conversations-and-inbox) for more examples.
 
 ## Addressing scheme — when to use each
 

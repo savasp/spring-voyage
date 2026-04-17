@@ -122,6 +122,8 @@ app.MapCostEndpoints().RequireAuthorization();
 app.MapBudgetEndpoints().RequireAuthorization();
 app.MapInitiativeEndpoints().RequireAuthorization();
 app.MapActivityEndpoints().RequireAuthorization();
+app.MapConversationEndpoints().RequireAuthorization();
+app.MapInboxEndpoints().RequireAuthorization();
 app.MapDashboardEndpoints().RequireAuthorization();
 app.MapSkillsEndpoints().RequireAuthorization();
 app.MapConnectorEndpoints();

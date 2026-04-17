@@ -1,0 +1,98 @@
+// Copyright CVOYA LLC. Licensed under the Business Source License 1.1.
+// See LICENSE.md in the project root for full license terms.
+
+namespace Cvoya.Spring.Core.Observability;
+
+/// <summary>
+/// Summary row for the conversation list surface (<c>GET /api/v1/conversations</c>).
+/// Derived from the activity-event stream — no separate conversation table exists:
+/// a conversation is materialised from every event that carries the same
+/// <see cref="ActivityQueryResult.Item.CorrelationId"/> (the platform persists the
+/// <c>ConversationId</c> of each message as the correlation id on observability
+/// events, per the messaging architecture).
+/// </summary>
+/// <param name="Id">The conversation identifier (the correlation id on the activity events).</param>
+/// <param name="Participants">Distinct source addresses (<c>scheme://path</c>) that emitted events on this conversation.</param>
+/// <param name="Status">Lifecycle state — <c>active</c> until a terminal <c>ConversationCompleted</c> event arrives, otherwise <c>completed</c>.</param>
+/// <param name="LastActivity">Timestamp of the most recent event on this conversation.</param>
+/// <param name="CreatedAt">Timestamp of the first event on this conversation.</param>
+/// <param name="EventCount">Number of activity events observed for this conversation.</param>
+/// <param name="Origin">The address (<c>scheme://path</c>) that emitted the first event on this conversation — where the thread started.</param>
+/// <param name="Summary">Human-readable summary — the first message's summary text, truncated.</param>
+public record ConversationSummary(
+    string Id,
+    IReadOnlyList<string> Participants,
+    string Status,
+    DateTimeOffset LastActivity,
+    DateTimeOffset CreatedAt,
+    int EventCount,
+    string Origin,
+    string Summary);
+
+/// <summary>
+/// Detailed conversation payload for <c>GET /api/v1/conversations/{id}</c>.
+/// Carries the summary row plus the ordered event timeline so the CLI (and later
+/// the portal) can render the thread with role attribution.
+/// </summary>
+/// <param name="Summary">The list-level summary row for this conversation.</param>
+/// <param name="Events">The ordered activity events that form the thread.</param>
+public record ConversationDetail(
+    ConversationSummary Summary,
+    IReadOnlyList<ConversationEvent> Events);
+
+/// <summary>
+/// One activity event as rendered on a conversation thread. This is a
+/// flattened projection of <see cref="Capabilities.ActivityEvent"/>, scoped to
+/// the columns the conversation UI / CLI needs so we do not have to leak the
+/// activity domain shape into the conversation wire contract.
+/// </summary>
+/// <param name="Id">The activity event identifier.</param>
+/// <param name="Timestamp">When the event occurred.</param>
+/// <param name="Source">The <c>scheme://path</c> address that emitted the event.</param>
+/// <param name="EventType">The event type name.</param>
+/// <param name="Severity">The severity level.</param>
+/// <param name="Summary">Human-readable summary of the event.</param>
+public record ConversationEvent(
+    Guid Id,
+    DateTimeOffset Timestamp,
+    string Source,
+    string EventType,
+    string Severity,
+    string Summary);
+
+/// <summary>
+/// One row in a human's inbox (<c>GET /api/v1/inbox</c>). A conversation shows
+/// up here when the last event on the thread is a <c>MessageReceived</c> on a
+/// <c>human://</c> source matching the caller — i.e. "an agent said something
+/// to me and I haven't replied yet". Responding via
+/// <c>POST /api/v1/conversations/{id}/messages</c> (or the CLI's
+/// <c>spring inbox respond</c>) removes the row.
+/// </summary>
+/// <param name="ConversationId">The conversation the ask belongs to.</param>
+/// <param name="From">The <c>scheme://path</c> of the actor that last spoke on the thread (the requester).</param>
+/// <param name="Human">The <c>human://</c> address this row belongs to.</param>
+/// <param name="PendingSince">Timestamp of the ask event.</param>
+/// <param name="Summary">Human-readable summary of the ask — the last event's summary text.</param>
+public record InboxItem(
+    string ConversationId,
+    string From,
+    string Human,
+    DateTimeOffset PendingSince,
+    string Summary);
+
+/// <summary>
+/// Filters for <see cref="IConversationQueryService.ListAsync"/>. Each filter is
+/// optional; omitted values match all conversations. <see cref="Limit"/> caps the
+/// returned row count — the default matches the activity page size (50).
+/// </summary>
+/// <param name="Unit">Restrict to conversations whose origin source is the named unit (matches unit-scheme events).</param>
+/// <param name="Agent">Restrict to conversations whose origin source is the named agent.</param>
+/// <param name="Status"><c>active</c> or <c>completed</c>.</param>
+/// <param name="Participant">Restrict to conversations where <c>scheme://path</c> appears as a participant.</param>
+/// <param name="Limit">Maximum number of rows to return (default 50).</param>
+public record ConversationQueryFilters(
+    string? Unit = null,
+    string? Agent = null,
+    string? Status = null,
+    string? Participant = null,
+    int? Limit = null);

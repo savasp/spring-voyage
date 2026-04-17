@@ -5,6 +5,7 @@ namespace Cvoya.Spring.Dapr.Tests.Actors;
 
 using System.Text.Json;
 
+using Cvoya.Spring.Core.Capabilities;
 using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Dapr.Actors;
 
@@ -27,16 +28,19 @@ public class HumanActorTests
 {
     private readonly IActorStateManager _stateManager = Substitute.For<IActorStateManager>();
     private readonly ILoggerFactory _loggerFactory = Substitute.For<ILoggerFactory>();
+    private readonly IActivityEventBus _activityEventBus = Substitute.For<IActivityEventBus>();
     private readonly HumanActor _actor;
 
     public HumanActorTests()
     {
         _loggerFactory.CreateLogger(Arg.Any<string>()).Returns(Substitute.For<ILogger>());
+        _activityEventBus.PublishAsync(Arg.Any<ActivityEvent>(), Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
         var host = ActorHost.CreateForTest<HumanActor>(new ActorTestOptions
         {
             ActorId = new ActorId("test-human")
         });
-        _actor = new HumanActor(host, _loggerFactory);
+        _actor = new HumanActor(host, _activityEventBus, _loggerFactory);
         SetStateManager(_actor, _stateManager);
 
         // Default: no state stored (defaults to Viewer permission).

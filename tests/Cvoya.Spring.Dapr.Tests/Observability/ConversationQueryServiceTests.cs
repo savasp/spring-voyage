@@ -1,0 +1,206 @@
+// Copyright CVOYA LLC. Licensed under the Business Source License 1.1.
+// See LICENSE.md in the project root for full license terms.
+
+namespace Cvoya.Spring.Dapr.Tests.Observability;
+
+using Cvoya.Spring.Core.Observability;
+using Cvoya.Spring.Dapr.Data;
+using Cvoya.Spring.Dapr.Data.Entities;
+using Cvoya.Spring.Dapr.Observability;
+
+using Microsoft.EntityFrameworkCore;
+
+using Shouldly;
+
+using Xunit;
+
+/// <summary>
+/// Unit tests for <see cref="ConversationQueryService"/> — the projection that
+/// turns activity events into conversation summaries / detail / inbox rows
+/// for #452 and #456. Tests use an in-memory EF context so they exercise the
+/// real LINQ grouping without standing up Postgres.
+/// </summary>
+public class ConversationQueryServiceTests : IDisposable
+{
+    private readonly SpringDbContext _db;
+
+    public ConversationQueryServiceTests()
+    {
+        var dbOptions = new DbContextOptionsBuilder<SpringDbContext>()
+            .UseInMemoryDatabase($"ConversationQueryTest-{Guid.NewGuid()}")
+            .Options;
+        _db = new SpringDbContext(dbOptions);
+    }
+
+    public void Dispose()
+    {
+        _db.Dispose();
+        GC.SuppressFinalize(this);
+    }
+
+    [Fact]
+    public async Task ListAsync_NoActivity_ReturnsEmpty()
+    {
+        var svc = new ConversationQueryService(_db);
+
+        var result = await svc.ListAsync(new ConversationQueryFilters(), TestContext.Current.CancellationToken);
+
+        result.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ListAsync_GroupsEventsByCorrelationIdAndDerivesParticipants()
+    {
+        await SeedConversationAsync("c-1", new[]
+        {
+            ("agent:ada", "ConversationStarted", "Started c-1", DateTimeOffset.UtcNow.AddMinutes(-10)),
+            ("agent:ada", "MessageReceived", "Received msg", DateTimeOffset.UtcNow.AddMinutes(-9)),
+            ("human:savasp", "MessageReceived", "Received msg", DateTimeOffset.UtcNow.AddMinutes(-8)),
+        });
+        await SeedConversationAsync("c-2", new[]
+        {
+            ("agent:grace", "ConversationStarted", "Started c-2", DateTimeOffset.UtcNow.AddMinutes(-20)),
+            ("agent:grace", "ConversationCompleted", "Done", DateTimeOffset.UtcNow.AddMinutes(-1)),
+        });
+
+        var svc = new ConversationQueryService(_db);
+
+        var result = await svc.ListAsync(new ConversationQueryFilters(), TestContext.Current.CancellationToken);
+
+        result.Count.ShouldBe(2);
+        var c1 = result.Single(r => r.Id == "c-1");
+        c1.Status.ShouldBe("active");
+        c1.Participants.ShouldContain("agent://ada");
+        c1.Participants.ShouldContain("human://savasp");
+        c1.EventCount.ShouldBe(3);
+
+        var c2 = result.Single(r => r.Id == "c-2");
+        c2.Status.ShouldBe("completed");
+    }
+
+    [Fact]
+    public async Task ListAsync_StatusFilter_SelectsOnlyMatchingConversations()
+    {
+        await SeedConversationAsync("c-active", new[]
+        {
+            ("agent:ada", "ConversationStarted", "", DateTimeOffset.UtcNow),
+        });
+        await SeedConversationAsync("c-done", new[]
+        {
+            ("agent:ada", "ConversationStarted", "", DateTimeOffset.UtcNow.AddMinutes(-5)),
+            ("agent:ada", "ConversationCompleted", "", DateTimeOffset.UtcNow.AddMinutes(-1)),
+        });
+
+        var svc = new ConversationQueryService(_db);
+
+        var completed = await svc.ListAsync(
+            new ConversationQueryFilters(Status: "completed"),
+            TestContext.Current.CancellationToken);
+
+        completed.Count.ShouldBe(1);
+        completed[0].Id.ShouldBe("c-done");
+    }
+
+    [Fact]
+    public async Task GetAsync_ReturnsOrderedEventsForConversation()
+    {
+        var earlier = DateTimeOffset.UtcNow.AddMinutes(-10);
+        var later = DateTimeOffset.UtcNow.AddMinutes(-1);
+        await SeedConversationAsync("c-1", new[]
+        {
+            ("agent:ada", "MessageReceived", "later", later),
+            ("agent:ada", "ConversationStarted", "first", earlier),
+        });
+
+        var svc = new ConversationQueryService(_db);
+        var detail = await svc.GetAsync("c-1", TestContext.Current.CancellationToken);
+
+        detail.ShouldNotBeNull();
+        detail!.Events.Count.ShouldBe(2);
+        // Events ordered oldest first.
+        detail.Events[0].EventType.ShouldBe("ConversationStarted");
+        detail.Events[1].EventType.ShouldBe("MessageReceived");
+        detail.Summary.Id.ShouldBe("c-1");
+    }
+
+    [Fact]
+    public async Task GetAsync_UnknownId_ReturnsNull()
+    {
+        var svc = new ConversationQueryService(_db);
+
+        var detail = await svc.GetAsync("nope", TestContext.Current.CancellationToken);
+
+        detail.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task ListInboxAsync_HumanAwaitingAsk_AppearsOnce()
+    {
+        await SeedConversationAsync("c-1", new[]
+        {
+            ("agent:ada", "ConversationStarted", "Started", DateTimeOffset.UtcNow.AddMinutes(-10)),
+            ("agent:ada", "MessageReceived", "Replied", DateTimeOffset.UtcNow.AddMinutes(-5)),
+            ("human:savasp", "MessageReceived", "Approve merge?", DateTimeOffset.UtcNow.AddMinutes(-1)),
+        });
+
+        var svc = new ConversationQueryService(_db);
+        var inbox = await svc.ListInboxAsync("human://savasp", TestContext.Current.CancellationToken);
+
+        inbox.Count.ShouldBe(1);
+        inbox[0].ConversationId.ShouldBe("c-1");
+        inbox[0].Human.ShouldBe("human://savasp");
+        inbox[0].From.ShouldBe("agent://ada");
+    }
+
+    [Fact]
+    public async Task ListInboxAsync_HumanAlreadyReplied_DropsRow()
+    {
+        // Last event on the thread is a MessageReceived NOT on the human →
+        // inbox is empty because the human already said something after the ask.
+        await SeedConversationAsync("c-1", new[]
+        {
+            ("human:savasp", "MessageReceived", "Question from agent", DateTimeOffset.UtcNow.AddMinutes(-10)),
+            ("agent:ada", "MessageReceived", "Ack from human", DateTimeOffset.UtcNow.AddMinutes(-5)),
+        });
+
+        var svc = new ConversationQueryService(_db);
+        var inbox = await svc.ListInboxAsync("human://savasp", TestContext.Current.CancellationToken);
+
+        inbox.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ListInboxAsync_DifferentHuman_DoesNotLeak()
+    {
+        await SeedConversationAsync("c-1", new[]
+        {
+            ("agent:ada", "ConversationStarted", "Started", DateTimeOffset.UtcNow.AddMinutes(-5)),
+            ("human:alice", "MessageReceived", "For alice", DateTimeOffset.UtcNow.AddMinutes(-1)),
+        });
+
+        var svc = new ConversationQueryService(_db);
+        var inbox = await svc.ListInboxAsync("human://savasp", TestContext.Current.CancellationToken);
+
+        inbox.ShouldBeEmpty();
+    }
+
+    private async Task SeedConversationAsync(
+        string conversationId,
+        (string source, string eventType, string summary, DateTimeOffset ts)[] events)
+    {
+        foreach (var (source, type, summary, ts) in events)
+        {
+            _db.ActivityEvents.Add(new ActivityEventRecord
+            {
+                Id = Guid.NewGuid(),
+                Source = source,
+                EventType = type,
+                Severity = "Info",
+                Summary = summary,
+                Timestamp = ts,
+                CorrelationId = conversationId,
+            });
+        }
+        await _db.SaveChangesAsync();
+    }
+}
