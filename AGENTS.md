@@ -16,19 +16,31 @@ When a PR touches `src/Cvoya.Spring.Web/`, it must also keep [`src/Cvoya.Spring.
 
 Spring Voyage registers project-scoped MCP servers in [`.mcp.json`](.mcp.json) at the repo root — Claude Code's standard location for per-project MCP configuration. Tool choices that bind to a specific Spring Voyage design source, API, or dataset live here so every contributor and every coding agent points at the same thing, and so changes go through PR review.
 
-**Stitch MCP** is the first repo-level server. It gives coding agents direct access to the portal's Stitch design context (screens, components, tokens), complementing [`src/Cvoya.Spring.Web/DESIGN.md`](src/Cvoya.Spring.Web/DESIGN.md). Use Stitch MCP when the relevant screen, design token, or visual pattern isn't fully captured by `DESIGN.md` alone.
+**Stitch MCP** is the first repo-level server. It gives coding agents direct access to the portal's Stitch design context (screens, components, tokens), complementing [`src/Cvoya.Spring.Web/DESIGN.md`](src/Cvoya.Spring.Web/DESIGN.md). Use Stitch MCP when the relevant screen, design token, or visual pattern isn't fully captured by `DESIGN.md` alone. Google's official setup guide: [stitch.withgoogle.com/docs/mcp/setup](https://stitch.withgoogle.com/docs/mcp/setup/).
 
 Setup (one-time, per contributor):
 
 1. Install / have `npx` available (the server runs via `npx -y @_davideast/stitch-mcp proxy`).
-2. Obtain a Stitch API key and export it in your shell:
+2. Set your GCP project ID in your shell so the MCP server knows where to authenticate:
 
    ```bash
-   export STITCH_API_KEY=...
+   export GOOGLE_CLOUD_PROJECT=your-project-id
    ```
 
-   Without `STITCH_API_KEY` the Stitch MCP server fails to start cleanly — that is the intended failure mode, not a bug.
-3. The first time Claude Code encounters the server in a session, it prompts for approval. Approve once per session and the server is available for subsequent tool calls.
+3. Authenticate to Google Cloud — the Stitch MCP proxy uses OAuth via `gcloud` by default. The easiest path is the built-in wizard:
+
+   ```bash
+   npx -y @_davideast/stitch-mcp init
+   ```
+
+   This installs `gcloud` if needed, walks through OAuth, and stores application-default credentials. Alternatives: `gcloud auth application-default login` if you already have the CLI, or `export STITCH_USE_SYSTEM_GCLOUD=1` to reuse an existing system gcloud config.
+
+4. The first time Claude Code encounters the server in a session, it prompts for approval. Approve once per session.
+
+**Alternative auth paths** (skip gcloud / OAuth):
+
+- `STITCH_API_KEY=...` — direct API-key authentication.
+- `STITCH_ACCESS_TOKEN=...` — pre-existing Google OAuth access token.
 
 Credentials are **always** referenced via `${ENV_VAR}` in `.mcp.json`. Never commit a literal token.
 
