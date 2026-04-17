@@ -3,6 +3,7 @@
 
 namespace Cvoya.Spring.Connector.GitHub.Labels;
 
+using System.Collections.Concurrent;
 using System.Net;
 using System.Reactive.Linq;
 using System.Text.Json;
@@ -43,7 +44,17 @@ public sealed class LabelRoutingRoundtripSubscriber : IHostedService, IDisposabl
     private readonly IActivityEventBus _bus;
     private readonly IGitHubConnector _connector;
     private readonly ILogger<LabelRoutingRoundtripSubscriber> _logger;
+    private readonly CancellationTokenSource _shutdownCts = new();
+    // Used as a concurrent set; the byte value is ignored. Tracks in-flight
+    // handler tasks so StopAsync can drain them before the host tears down
+    // the Dapr sidecar; otherwise the handlers' auth calls observe the
+    // sidecar disappearing mid-flight and surface as class-cleanup gRPC
+    // failures on unrelated tests that happen to share the WebApplicationFactory.
+    private readonly ConcurrentDictionary<Task, byte> _inFlight = new();
     private IDisposable? _subscription;
+
+    /// <summary>How long StopAsync waits for in-flight handlers to drain.</summary>
+    internal static readonly TimeSpan DrainTimeout = TimeSpan.FromSeconds(2);
 
     /// <summary>
     /// Creates a new <see cref="LabelRoutingRoundtripSubscriber"/>.
@@ -64,7 +75,7 @@ public sealed class LabelRoutingRoundtripSubscriber : IHostedService, IDisposabl
         _subscription = _bus.ActivityStream
             .Where(IsLabelRoutedGitHubAssignment)
             .Subscribe(
-                evt => _ = HandleEventAsync(evt),
+                evt => TrackHandler(HandleEventAsync(evt, _shutdownCts.Token)),
                 ex => _logger.LogError(
                     ex, "LabelRoutingRoundtripSubscriber stream faulted"));
         _logger.LogInformation(
@@ -73,18 +84,79 @@ public sealed class LabelRoutingRoundtripSubscriber : IHostedService, IDisposabl
     }
 
     /// <inheritdoc />
-    public Task StopAsync(CancellationToken cancellationToken)
+    public async Task StopAsync(CancellationToken cancellationToken)
     {
         _subscription?.Dispose();
         _subscription = null;
+
+        // Cancel in-flight handlers so their auth / Octokit calls short-circuit
+        // rather than racing the Dapr sidecar shutdown.
+        try
+        {
+            _shutdownCts.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // Already disposed via Dispose(); nothing to drain.
+        }
+
+        var pending = _inFlight.Keys.ToArray();
+        if (pending.Length > 0)
+        {
+            try
+            {
+                await Task.WhenAll(pending)
+                    .WaitAsync(DrainTimeout, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (TimeoutException)
+            {
+                _logger.LogWarning(
+                    "Timed out draining {Count} in-flight label roundtrip(s) after {Timeout}",
+                    pending.Length, DrainTimeout);
+            }
+            catch (OperationCanceledException)
+            {
+                // Host shutdown deadline reached; best-effort.
+            }
+            catch (Exception ex)
+            {
+                // Aggregate faults from handlers already logged inside HandleEventAsync.
+                _logger.LogDebug(
+                    ex, "Handler(s) faulted while draining; individual errors already logged");
+            }
+        }
+
         _logger.LogInformation("LabelRoutingRoundtripSubscriber stopped");
-        return Task.CompletedTask;
     }
 
     /// <inheritdoc />
     public void Dispose()
     {
         _subscription?.Dispose();
+        try
+        {
+            _shutdownCts.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // No-op.
+        }
+        _shutdownCts.Dispose();
+    }
+
+    /// <summary>
+    /// Registers an in-flight handler task so <see cref="StopAsync"/> can drain
+    /// it, and removes it from the tracking set when it completes.
+    /// </summary>
+    private void TrackHandler(Task task)
+    {
+        _inFlight.TryAdd(task, 0);
+        task.ContinueWith(
+            t => _inFlight.TryRemove(t, out _),
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
     }
 
     /// <summary>
@@ -92,11 +164,15 @@ public sealed class LabelRoutingRoundtripSubscriber : IHostedService, IDisposabl
     /// subscription or block the synchronous <c>OnNext</c> callback. All
     /// exceptions are caught and logged inside the wrapper.
     /// </summary>
-    private async Task HandleEventAsync(ActivityEvent evt)
+    private async Task HandleEventAsync(ActivityEvent evt, CancellationToken cancellationToken)
     {
         try
         {
-            await ApplyRoundtripAsync(evt, CancellationToken.None).ConfigureAwait(false);
+            await ApplyRoundtripAsync(evt, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // Shutdown; not a warning.
         }
         catch (Exception ex)
         {

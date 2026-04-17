@@ -247,6 +247,55 @@ public class LabelRoutingRoundtripSubscriberTests
             .ShouldBeFalse();
     }
 
+    [Fact]
+    public async Task StopAsync_DrainsInFlightHandlers_BeforeReturn()
+    {
+        // Regression: fire-and-forget handlers must not leak past StopAsync,
+        // otherwise their late auth / Octokit calls fault the host teardown
+        // on unrelated tests sharing the WebApplicationFactory. This was the
+        // root cause of the class-cleanup gRPC failures seen on PR #507 CI
+        // runs in `UnitDeleteEndpointTests`.
+        var gate = new TaskCompletionSource();
+        var handlerFinished = new TaskCompletionSource();
+
+        _connector.CreateAuthenticatedClientAsync(Arg.Any<CancellationToken>())
+            .Returns(async callInfo =>
+            {
+                var ct = callInfo.Arg<CancellationToken>();
+                try { await gate.Task.WaitAsync(ct).ConfigureAwait(false); }
+                catch (OperationCanceledException) { /* expected on shutdown */ }
+                handlerFinished.TrySetResult();
+                return _client;
+            });
+
+        await _subscriber.StartAsync(TestContext.Current.CancellationToken);
+
+        _bus.Publish(BuildEvent(
+            owner: "acme",
+            repo: "widgets",
+            number: 42,
+            addOnAssign: new[] { "in-progress" },
+            removeOnAssign: Array.Empty<string>()));
+
+        // Wait for the handler to have entered the auth call — it's now in-flight.
+        await WaitForAsync(() =>
+            _connector.ReceivedCalls().Any(c => c.GetMethodInfo().Name == "CreateAuthenticatedClientAsync"));
+
+        // Kick off StopAsync. It must not return until the handler finishes.
+        var stopTask = _subscriber.StopAsync(TestContext.Current.CancellationToken);
+
+        // Cancellation should have propagated to the handler — release the gate
+        // by signalling completion directly (simulates the handler observing
+        // its token firing). In production this is what lets the handler
+        // exit quickly; the drain loop caps the wait at DrainTimeout anyway.
+        gate.TrySetResult();
+
+        await stopTask.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+        handlerFinished.Task.IsCompleted.ShouldBeTrue(
+            "StopAsync must not return before the in-flight handler completes");
+    }
+
     private static ActivityEvent BuildEvent(
         string owner,
         string repo,
