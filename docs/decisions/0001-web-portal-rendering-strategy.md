@@ -1,9 +1,13 @@
 # 0001 — Web portal rendering strategy (static export vs SSR)
 
-- **Status:** Accepted — keep `output: "export"` (pure static export).
+- **Status:** Superseded by [ADR 0005](0005-portal-standalone-mode.md) (2026-04-17).
 - **Date:** 2026-04-13
 - **Closes:** [#135](https://github.com/savasp/spring-voyage/issues/135)
 - **Related code:** `src/Cvoya.Spring.Web/next.config.ts`, `src/Cvoya.Spring.Web/src/app/units/[id]/page.tsx`, `src/Cvoya.Spring.Web/src/app/agents/[id]/page.tsx`
+
+## Why this was superseded
+
+The portal now runs with `output: "standalone"` (see [ADR 0005](0005-portal-standalone-mode.md)). The revisit criteria below were triggered by the portal redesign (#434): per-request personalisation and streaming responses are now first-class requirements, so the static-export trade-offs captured in this record no longer apply. The `generateStaticParams` placeholder pattern and the matching `__placeholder__` guards in the client components have been removed. This document is retained for historical context.
 
 ## Context
 

@@ -221,10 +221,6 @@ export default function AgentDetailClient({ id }: ClientProps) {
     }
   };
 
-  if (!id || id === "__placeholder__") {
-    return <p className="text-muted-foreground">No agent ID specified.</p>;
-  }
-
   if (loading) {
     return (
       <div className="space-y-4">
