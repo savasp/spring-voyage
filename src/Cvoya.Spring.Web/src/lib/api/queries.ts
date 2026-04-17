@@ -481,12 +481,10 @@ export function useConnectorConfigSchema(
  * page can list "units bound to this connector".
  *
  * The unit list endpoint doesn't carry connector pointers, so we have
- * to N+1 it; the catalog is small in practice and each call is cached
- * independently by `useUnit`-style consumers via the underlying
- * `getUnitConnector` cache layer (we don't dedupe further here because
- * the binding pointer key is per-unit and would collide with the
- * connector tab's own cache otherwise — keep the fan-out scoped to
- * this query's key).
+ * to N+1 it. The route parameter is `slugOrId`, so we accept either
+ * form and match each binding on whichever identifier the pointer
+ * carries. Follow-up #520 tracks adding a bulk "units bound to type X"
+ * endpoint so this walk can go away.
  */
 export interface UnitConnectorBindingRow {
   unitId: string;
@@ -497,36 +495,34 @@ export interface UnitConnectorBindingRow {
 }
 
 export function useConnectorBindings(
-  slug: string,
+  slugOrId: string,
   opts?: SliceOptions<UnitConnectorBindingRow[]>,
 ): UseQueryResult<UnitConnectorBindingRow[], Error> {
   return useQuery({
-    queryKey: [...queryKeys.connectors.detail(slug), "bindings"] as const,
+    queryKey: [...queryKeys.connectors.detail(slugOrId), "bindings"] as const,
     queryFn: async (): Promise<UnitConnectorBindingRow[]> => {
       const units = await api.listUnits();
+      const needle = slugOrId.toLowerCase();
       const rows: (UnitConnectorBindingRow | null)[] = await Promise.all(
         units.map(async (u): Promise<UnitConnectorBindingRow | null> => {
           const ptr = await api.getUnitConnector(u.id);
           if (!ptr) return null;
-          if (
-            ptr.typeSlug &&
-            slug &&
-            ptr.typeSlug.toLowerCase() === slug.toLowerCase()
-          ) {
-            return {
-              unitId: u.id,
-              unitName: u.name,
-              unitDisplayName: u.displayName,
-              typeId: ptr.typeId ?? null,
-              typeSlug: ptr.typeSlug,
-            };
-          }
-          return null;
+          const matches =
+            (ptr.typeSlug && ptr.typeSlug.toLowerCase() === needle) ||
+            (ptr.typeId && ptr.typeId.toLowerCase() === needle);
+          if (!matches) return null;
+          return {
+            unitId: u.id,
+            unitName: u.name,
+            unitDisplayName: u.displayName,
+            typeId: ptr.typeId ?? null,
+            typeSlug: ptr.typeSlug ?? null,
+          };
         }),
       );
       return rows.filter((r): r is UnitConnectorBindingRow => r !== null);
     },
-    enabled: opts?.enabled ?? Boolean(slug),
+    enabled: opts?.enabled ?? Boolean(slugOrId),
     refetchInterval: opts?.refetchInterval,
     staleTime: opts?.staleTime,
   });
