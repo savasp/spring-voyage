@@ -1,6 +1,6 @@
 # Releases and Versioning
 
-This document describes how Spring Voyage is versioned and how releases are cut. It covers both what currently exists in the repository and what is proposed as the project formalises its release process ahead of the OSS launch ([#794](https://github.com/savasp-agent/spring-voyage/issues/794)).
+This document describes how Spring Voyage is versioned and how releases are cut. It covers both what currently exists in the repository and what is proposed as the project formalises its release process ahead of the OSS launch ([#794](https://github.com/cvoya-com/spring-voyage/issues/794)).
 
 Sections are explicitly labelled **Observed** (what the codebase does today) or **Proposed** (the convention this document establishes going forward) so readers can tell which parts are descriptive and which are prescriptive.
 

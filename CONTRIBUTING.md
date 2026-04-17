@@ -29,7 +29,7 @@ See [docs/developer/setup.md](docs/developer/setup.md) for prerequisites and bui
 
 Every user-visible PR adds one line to [`CHANGELOG.md`](CHANGELOG.md) under the `## [Unreleased]` section, in the appropriate subsection (`Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, or `Security` — see [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)).
 
-- **One line per PR**, not per commit. Summarise the feature or fix in a single sentence and link the PR number: `- Brief description ([#NNN](https://github.com/savasp-agent/spring-voyage/pull/NNN)).`
+- **One line per PR**, not per commit. Summarise the feature or fix in a single sentence and link the PR number: `- Brief description ([#NNN](https://github.com/cvoya-com/spring-voyage/pull/NNN)).`
 - **Skip internal-only changes** that users and extenders would never notice (refactors with no behavioural effect, test-only changes, CI plumbing, typo fixes in internal docs).
 - **Skip doc-only PRs** unless they document a new public concept or surface. The docs themselves are the record.
 - **Breaking changes go under `Changed` or `Removed`** and must be prefixed with `**BREAKING:**`. Also apply the `breaking-change` label to the PR. See [`docs/developer/releases.md`](docs/developer/releases.md) for the full breaking-change policy.
