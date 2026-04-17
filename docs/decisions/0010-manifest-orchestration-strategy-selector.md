@@ -1,4 +1,4 @@
-# 0009 — Manifest-driven orchestration-strategy selection resolves per message
+# 0010 — Manifest-driven orchestration-strategy selection resolves per message
 
 - **Status:** Accepted — `orchestration.strategy` on the manifest persists to `UnitDefinitions.Definition`; `UnitActor` consults `IOrchestrationStrategyResolver` per domain message; `UnitPolicy.LabelRouting` infers `label-routed` when no manifest key is declared.
 - **Date:** 2026-04-17
