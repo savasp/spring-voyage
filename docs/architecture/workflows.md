@@ -151,15 +151,17 @@ Persistent agents are probed at `${endpoint}/.well-known/agent.json` during star
 
 ### Ephemeral dispatch sequence
 
+`Launcher` is one of the concrete `IAgentToolLauncher` implementations (e.g. `ClaudeCodeLauncher`), and `Container` runs both the agent CLI and the A2A sidecar.
+
 ```mermaid
 sequenceDiagram
     participant Actor as AgentActor
     participant Disp as A2AExecutionDispatcher
     participant Prov as IAgentDefinitionProvider
-    participant Launcher as IAgentToolLauncher<br/>(e.g. ClaudeCodeLauncher)
+    participant Launcher as IAgentToolLauncher
     participant MCP as IMcpServer
     participant Runtime as IContainerRuntime
-    participant Container as Agent Container<br/>(CLI + A2A sidecar)
+    participant Container as Agent Container
 
     Actor->>Disp: DispatchAsync(message, ctx)
     Disp->>Prov: GetByIdAsync(agentId)
@@ -168,7 +170,7 @@ sequenceDiagram
     MCP-->>Disp: SessionToken
     Disp->>Disp: IPromptAssembler.AssembleAsync(msg, ctx)
     Disp->>Launcher: PrepareAsync(AgentLaunchContext)
-    Launcher-->>Disp: AgentLaunchPrep<br/>(workdir, envVars, mounts)
+    Launcher-->>Disp: AgentLaunchPrep (workdir, envVars, mounts)
     Disp->>Runtime: RunAsync(ContainerConfig)
     Runtime->>Container: start (mount workdir, inject envVars)
     Container->>MCP: MCP calls (checkpoint, recallMemory, …)
@@ -181,7 +183,7 @@ sequenceDiagram
 
 ### Persistent dispatch sequence
 
-Persistent agents live longer than a single call. The dispatcher reuses a running container across invocations and only starts one when the registry has no healthy endpoint for the agent id. See [Deployment](deployment.md#persistent-agent-hosting-lifecycle) for the full lifecycle, restart semantics, and registry state diagram.
+Persistent agents live longer than a single call. The dispatcher reuses a running container across invocations and only starts one when the registry has no healthy endpoint for the agent id. `Container` here exposes A2A on port `8999`. See [Deployment](deployment.md#persistent-agent-hosting-lifecycle) for the full lifecycle, restart semantics, and registry state diagram.
 
 ```mermaid
 sequenceDiagram
@@ -190,7 +192,7 @@ sequenceDiagram
     participant Registry as PersistentAgentRegistry
     participant Launcher as IAgentToolLauncher
     participant Runtime as IContainerRuntime
-    participant Container as Persistent Agent<br/>(A2A on :8999)
+    participant Container as Persistent Agent
 
     Actor->>Disp: DispatchAsync(message, ctx)
     Disp->>Registry: TryGetEndpoint(agentId)
@@ -209,7 +211,7 @@ sequenceDiagram
         Registry-->>Disp: endpoint
     end
     Disp->>Container: A2A SendMessageAsync
-    Container-->>Disp: SendMessageResponse<br/>(Task or Message)
+    Container-->>Disp: SendMessageResponse (Task or Message)
     Disp->>Disp: MapA2AResponseToMessage(...)
     Disp-->>Actor: response Message
 ```
