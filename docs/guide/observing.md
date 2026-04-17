@@ -41,6 +41,47 @@ spring activity history --unit engineering-team --since "2 hours ago"
 spring activity history --agent ada --since "yesterday"
 ```
 
+## Conversations and Inbox
+
+Activity is the raw, chronological log; **conversations** are the narrative view of one specific thread. Both surfaces share the same underlying event store — a conversation is just the subset of activity events that carry the same correlation id (the conversation id assigned by the messaging layer).
+
+### List and Show Conversations
+
+```
+spring conversation list
+spring conversation list --unit engineering-team
+spring conversation list --agent ada
+spring conversation list --status active
+spring conversation list --participant human://savasp
+spring conversation show <conversation-id>
+```
+
+`list` prints one row per conversation — id, status, origin, participants, event count, last activity, opening summary. Filters narrow by unit, agent, participant address, or status (`active` / `completed`). `show` prints the conversation header followed by the ordered event timeline so you can read the back-and-forth in context. Both accept `--output json`.
+
+### Respond to an Existing Conversation
+
+To post a new message into a thread the agent is already working on — without starting a new conversation — use either of the equivalent forms:
+
+```
+spring conversation send --conversation <id> agent://engineering-team/ada "Looks good — ship it."
+spring message send agent://engineering-team/ada "Looks good — ship it." --conversation <id>
+```
+
+Both resolve to the same server endpoint; pick whichever reads better in the surrounding script.
+
+### Inbox: Things Awaiting You
+
+The inbox is the human-facing "things pointed at me that I have not responded to" surface. A conversation shows up here when the last event targets your `human://` address and you have not yet sent a follow-up; it drops off as soon as you respond or the agent retracts.
+
+```
+spring inbox list                              # conversations awaiting a reply from you
+spring inbox show <conversation-id>            # open the pending thread
+spring inbox respond <conversation-id> "Approved — proceed."
+spring inbox respond <conversation-id> --to agent://engineering-team/ada "Redirect the reply."
+```
+
+`respond` is a thin wrapper over `spring conversation send --conversation <id>` — it resolves the pending ask's sender automatically so the common case ("reply to whoever asked") needs no address.
+
 ## Agent Status
 
 ### Check All Agents in a Unit

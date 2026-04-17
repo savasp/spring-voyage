@@ -314,6 +314,12 @@ public static class ServiceCollectionExtensions
         // Observability — query service
         services.AddScoped<IActivityQueryService, ActivityQueryService>();
 
+        // Conversation projection (#452 / #456). Materialises conversations
+        // and inbox rows from the activity-event table — no separate message
+        // store yet. TryAdd so the private cloud host can swap in a tenant-
+        // scoped implementation without touching the endpoints.
+        services.TryAddScoped<IConversationQueryService, ConversationQueryService>();
+
         // Hosted services that depend on runtime infrastructure (Dapr state store,
         // database). During build-time OpenAPI generation none of this is
         // available, so skip registration to avoid noisy startup errors. See #370.

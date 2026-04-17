@@ -6,6 +6,7 @@ namespace Cvoya.Spring.Dapr.Actors;
 using System.Text.Json;
 
 using Cvoya.Spring.Core;
+using Cvoya.Spring.Core.Capabilities;
 using Cvoya.Spring.Core.Messaging;
 
 using global::Dapr.Actors.Runtime;
@@ -18,7 +19,10 @@ using Microsoft.Extensions.Logging;
 /// Domain messages are rejected for viewers; all other permission levels receive
 /// an acknowledgment (notification routing is future work).
 /// </summary>
-public class HumanActor(ActorHost host, ILoggerFactory loggerFactory) : Actor(host), IHumanActor
+public class HumanActor(
+    ActorHost host,
+    IActivityEventBus activityEventBus,
+    ILoggerFactory loggerFactory) : Actor(host), IHumanActor
 {
     private readonly ILogger _logger = loggerFactory.CreateLogger<HumanActor>();
 
@@ -32,6 +36,22 @@ public class HumanActor(ActorHost host, ILoggerFactory loggerFactory) : Actor(ho
     {
         try
         {
+            // #456: humans are first-class observers — every domain message
+            // addressed to them is published to the activity bus as a
+            // MessageReceived event, correlated to the conversation id. This
+            // is what the Inbox query service consumes to answer "what's
+            // waiting on me?". Keep the emission on the hot path (before the
+            // rejection branch below) so a denied message still leaves an
+            // audit trail.
+            if (message.Type == MessageType.Domain)
+            {
+                await EmitActivityEventAsync(
+                    ActivityEventType.MessageReceived,
+                    $"Received Domain message {message.Id} from {message.From}",
+                    cancellationToken,
+                    correlationId: message.ConversationId);
+            }
+
             return message.Type switch
             {
                 MessageType.StatusQuery => await HandleStatusQueryAsync(message, cancellationToken),
@@ -45,6 +65,47 @@ public class HumanActor(ActorHost host, ILoggerFactory loggerFactory) : Actor(ho
             _logger.LogError(ex, "Unhandled exception processing message {MessageId} of type {MessageType} in human actor {ActorId}",
                 message.Id, message.Type, Id.GetId());
             return CreateErrorResponse(message, ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Publishes a single activity event on behalf of this human actor. Errors
+    /// are swallowed (same pattern as <see cref="AgentActor"/> /
+    /// <see cref="UnitActor"/>) so a failing observability pipeline never
+    /// tears down message delivery.
+    /// </summary>
+    private async Task EmitActivityEventAsync(
+        ActivityEventType eventType,
+        string description,
+        CancellationToken cancellationToken,
+        string? correlationId = null)
+    {
+        try
+        {
+            var severity = eventType switch
+            {
+                ActivityEventType.ErrorOccurred => ActivitySeverity.Error,
+                _ => ActivitySeverity.Info,
+            };
+
+            var evt = new ActivityEvent(
+                Id: Guid.NewGuid(),
+                Timestamp: DateTimeOffset.UtcNow,
+                Source: Address,
+                EventType: eventType,
+                Severity: severity,
+                Summary: description,
+                Details: null,
+                CorrelationId: correlationId,
+                Cost: null);
+
+            await activityEventBus.PublishAsync(evt, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Failed to emit {EventType} activity event from human actor {ActorId}",
+                eventType, Id.GetId());
         }
     }
 

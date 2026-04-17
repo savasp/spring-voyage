@@ -46,6 +46,11 @@ The `Spring.Cli` project produces the `spring` command-line tool:
 spring unit list
 spring agent status ada
 spring message send agent://engineering-team/ada "Review PR #42"
+spring conversation list --unit engineering-team
+spring conversation show c-1834
+spring conversation send --conversation c-1834 agent://engineering-team/ada "Ship it."
+spring inbox list
+spring inbox respond c-1834 "Approved"
 spring activity stream --unit engineering-team
 spring build packages/software-engineering
 spring apply -f units/engineering-team.yaml

@@ -76,9 +76,13 @@ public class UnitActor : Actor, IUnitActor
     {
         try
         {
+            // correlationId carries the conversation id so
+            // IConversationQueryService (#452) can group every thread-related
+            // event under the same conversation row.
             await EmitActivityEventAsync(ActivityEventType.MessageReceived,
                 $"Received {message.Type} message {message.Id} from {message.From}",
-                ct);
+                ct,
+                correlationId: message.ConversationId);
 
             return message.Type switch
             {

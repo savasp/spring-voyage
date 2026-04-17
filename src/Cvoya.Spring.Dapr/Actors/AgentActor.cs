@@ -73,9 +73,15 @@ public class AgentActor(
     {
         try
         {
+            // correlationId carries the conversation id so the conversation
+            // projection (IConversationQueryService, #452) can group every
+            // thread-related event. Null when the caller didn't supply a
+            // conversation id — still acceptable on standalone messages like
+            // StatusQuery / HealthCheck.
             await EmitActivityEventAsync(ActivityEventType.MessageReceived,
                 $"Received {message.Type} message {message.Id} from {message.From}",
-                cancellationToken);
+                cancellationToken,
+                correlationId: message.ConversationId);
 
             return message.Type switch
             {
