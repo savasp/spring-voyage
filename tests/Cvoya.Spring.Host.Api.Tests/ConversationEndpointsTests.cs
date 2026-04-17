@@ -123,6 +123,7 @@ public class ConversationEndpointsTests : IClassFixture<ConversationEndpointsTes
     public async Task PostConversationMessage_RoutesThroughMessageRouter()
     {
         var ct = TestContext.Current.CancellationToken;
+        _factory.MessageRouter.ClearReceivedCalls();
         _factory.MessageRouter
             .RouteAsync(Arg.Any<Message>(), Arg.Any<CancellationToken>())
             .Returns(Result<Message?, RoutingError>.Success(null));
@@ -152,6 +153,7 @@ public class ConversationEndpointsTests : IClassFixture<ConversationEndpointsTes
     public async Task PostConversationMessage_PermissionDenied_Returns403()
     {
         var ct = TestContext.Current.CancellationToken;
+        _factory.MessageRouter.ClearReceivedCalls();
         _factory.MessageRouter
             .RouteAsync(Arg.Any<Message>(), Arg.Any<CancellationToken>())
             .Returns(Result<Message?, RoutingError>.Failure(

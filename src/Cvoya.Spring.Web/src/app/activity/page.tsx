@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useMemo, useState } from "react";
 import {
   Activity,
   ChevronDown,
   ChevronRight,
   ChevronLeft,
+  ExternalLink,
   MessagesSquare,
   RefreshCw,
 } from "lucide-react";
@@ -22,6 +23,23 @@ import type {
   ActivitySeverity,
 } from "@/lib/api/types";
 import { timeAgo } from "@/lib/utils";
+
+// Map a `scheme://path` source string onto the matching detail route.
+// Returns null when the scheme doesn't have a portal page yet. Mirrors
+// `docs/design/portal-exploration.md` § 3.3 cross-link rules.
+function sourceHref(source: string): string | null {
+  const m = source.match(/^([a-z]+):\/\/(.+)$/i);
+  if (!m) return null;
+  const [, scheme, path] = m;
+  switch (scheme.toLowerCase()) {
+    case "agent":
+      return `/agents/${encodeURIComponent(path)}`;
+    case "unit":
+      return `/units/${encodeURIComponent(path)}`;
+    default:
+      return null;
+  }
+}
 
 const severityVariant: Record<
   ActivitySeverity,
@@ -108,10 +126,6 @@ function EventRow({
             <div className="flex items-center gap-2">
               <span className="text-muted-foreground">Correlation ID:</span>
               <span className="font-mono text-xs">{event.correlationId}</span>
-              {/* Activity events that carry a correlation id are part
-                  of a conversation thread (#410). The conversations
-                  surface is keyed on that id so we surface a
-                  one-click jump straight into the thread view. */}
               <Link
                 href={`/conversations/${encodeURIComponent(event.correlationId)}`}
                 className="inline-flex items-center gap-1 rounded border border-input bg-background px-2 py-0.5 text-xs text-primary hover:bg-accent"
@@ -122,6 +136,22 @@ function EventRow({
               </Link>
             </div>
           )}
+          {(() => {
+            const href = sourceHref(event.source);
+            return href ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-muted-foreground">Source:</span>
+                <Link
+                  href={href}
+                  className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                  data-testid={`activity-event-source-link-${event.id}`}
+                >
+                  Open {event.source}
+                  <ExternalLink className="h-3 w-3" />
+                </Link>
+              </div>
+            ) : null;
+          })()}
           {event.cost != null && (
             <div className="flex gap-2">
               <span className="text-muted-foreground">Cost:</span>

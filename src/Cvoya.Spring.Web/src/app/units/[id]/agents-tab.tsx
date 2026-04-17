@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 
+import { AgentCard, type AgentCardAgent } from "@/components/cards/agent-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -34,24 +35,24 @@ type DialogState =
 
 /**
  * Agents tab for the unit configuration page. Lists the memberships that
- * belong to this unit (one row per `UnitMembershipResponse`, enriched with
- * each agent's display-name from `/api/v1/agents`) and offers:
+ * belong to this unit (one row per `UnitMembershipResponse`) and offers:
  *
  *  - An "Add agent" button at the top that opens a dialog with an agent
  *    picker + per-membership config form.
  *  - An edit icon per row that opens the same dialog pre-populated.
  *  - A remove icon per row that confirms, then deletes the membership.
  *
- * All mutating calls go through the membership endpoints introduced in
- * C2b-1 (#245):
+ * Layout note (#472, PR-R2): each membership renders inside the shared
+ * `<AgentCard>` primitive instead of a bespoke list row, so the visual
+ * vocabulary matches the dashboard / units list / agents list. The
+ * card's `actions` slot carries the edit / remove buttons. Membership-
+ * specific overrides (model, specialty, enabled) render as a thin meta
+ * strip beneath the card — the AgentCard schema is intentionally agent-
+ * centric, so these unit-scoped overrides stay out of the primitive.
  *
+ * Mutations go through:
  *   PUT    /api/v1/units/{unitId}/memberships/{agentAddress}
  *   DELETE /api/v1/units/{unitId}/memberships/{agentAddress}
- *
- * These endpoints already exist and are covered by the generated Kiota
- * client in `lib/api/client.ts` (`upsertUnitMembership`,
- * `deleteUnitMembership`), so this tab does not need to drop down to the
- * raw fetch wrapper.
  */
 export function AgentsTab({ unitId }: AgentsTabProps) {
   const { toast } = useToast();
@@ -188,55 +189,78 @@ export function AgentsTab({ unitId }: AgentsTabProps) {
             <span className="font-medium">Add agent</span> to assign one.
           </p>
         ) : (
-          <ul className="divide-y divide-border rounded-md border border-border">
+          <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {memberships.map((m) => {
-              const agent = agentByName[m.agentAddress];
+              const directoryAgent = agentByName[m.agentAddress];
               const displayName =
-                agent?.displayName || agent?.name || m.agentAddress;
+                directoryAgent?.displayName ||
+                directoryAgent?.name ||
+                m.agentAddress;
+              // Build the AgentCard payload from the directory agent when
+              // we have it; fall back to a minimal shape so the row still
+              // renders for memberships whose agent we couldn't look up.
+              const cardAgent: AgentCardAgent = directoryAgent
+                ? {
+                    name: directoryAgent.name,
+                    displayName,
+                    role: directoryAgent.role,
+                    registeredAt: directoryAgent.registeredAt,
+                    parentUnit: unitId,
+                    executionMode: m.executionMode,
+                  }
+                : {
+                    name: m.agentAddress,
+                    displayName,
+                    role: null,
+                    registeredAt: m.createdAt ?? new Date().toISOString(),
+                    parentUnit: unitId,
+                    executionMode: m.executionMode,
+                  };
+
               return (
                 <li
                   key={m.agentAddress}
-                  className="flex flex-col gap-2 px-3 py-3 sm:flex-row sm:items-center sm:gap-4"
+                  data-testid={`unit-membership-${m.agentAddress}`}
+                  className="space-y-2"
                 >
-                  <div className="flex min-w-0 flex-1 flex-col gap-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-medium">{displayName}</span>
-                      {!m.enabled && (
-                        <Badge variant="outline">Disabled</Badge>
-                      )}
-                      {m.specialty && (
-                        <Badge variant="outline">{m.specialty}</Badge>
-                      )}
-                    </div>
-                    <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                      <span>
-                        <span className="text-muted-foreground/70">Model:</span>{" "}
-                        {m.model ?? "(inherit)"}
-                      </span>
-                      <span>
-                        <span className="text-muted-foreground/70">Mode:</span>{" "}
-                        {m.executionMode ?? "(inherit)"}
-                      </span>
-                      <span className="font-mono">{m.agentAddress}</span>
-                    </div>
-                  </div>
-                  <div className="flex gap-1 self-end sm:self-center">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setDialog({ mode: "edit", membership: m })}
-                      aria-label={`Edit ${displayName}`}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setConfirmRemove(m)}
-                      aria-label={`Remove ${displayName}`}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                  <AgentCard
+                    agent={cardAgent}
+                    actions={
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() =>
+                            setDialog({ mode: "edit", membership: m })
+                          }
+                          aria-label={`Edit ${displayName}`}
+                          data-testid={`unit-membership-edit-${m.agentAddress}`}
+                          className="h-7 w-7"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setConfirmRemove(m)}
+                          aria-label={`Remove ${displayName}`}
+                          data-testid={`unit-membership-remove-${m.agentAddress}`}
+                          className="h-7 w-7"
+                        >
+                          <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                        </Button>
+                      </>
+                    }
+                  />
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-xs text-muted-foreground">
+                    {!m.enabled && <Badge variant="outline">Disabled</Badge>}
+                    {m.specialty && (
+                      <Badge variant="outline">{m.specialty}</Badge>
+                    )}
+                    <span>
+                      <span className="text-muted-foreground/70">Model:</span>{" "}
+                      {m.model ?? "(inherit)"}
+                    </span>
                   </div>
                 </li>
               );

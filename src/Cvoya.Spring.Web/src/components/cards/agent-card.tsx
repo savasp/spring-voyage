@@ -40,6 +40,13 @@ interface AgentCardProps {
   parentUnit?: string | null;
   /** Override for the most recent activity summary. */
   lastActivity?: string | null;
+  /**
+   * Optional contextual quick-actions rendered next to the "Open" affordance
+   * in the card footer. Used by the unit membership editor (#472) to expose
+   * Edit / Remove without breaking the shared `<AgentCard>` layout. Renders
+   * `null` when omitted, so dashboard / list usages stay unchanged.
+   */
+  actions?: React.ReactNode;
   className?: string;
 }
 
@@ -62,6 +69,7 @@ export function AgentCard({
   agent,
   parentUnit,
   lastActivity,
+  actions,
   className,
 }: AgentCardProps) {
   const href = `/agents/${encodeURIComponent(agent.name)}`;
@@ -157,14 +165,24 @@ export function AgentCard({
               testId={`agent-link-cost-${agent.name}`}
             />
           </div>
-          <Link
-            href={href}
-            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-primary hover:underline"
-            data-testid={`agent-open-${agent.name}`}
-          >
-            Open
-            <ExternalLink className="h-3 w-3" />
-          </Link>
+          <div className="flex items-center gap-1">
+            {actions && (
+              <div
+                className="flex items-center gap-1"
+                data-testid={`agent-actions-${agent.name}`}
+              >
+                {actions}
+              </div>
+            )}
+            <Link
+              href={href}
+              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-primary hover:underline"
+              data-testid={`agent-open-${agent.name}`}
+            >
+              Open
+              <ExternalLink className="h-3 w-3" />
+            </Link>
+          </div>
         </div>
       </CardContent>
     </Card>

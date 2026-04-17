@@ -87,6 +87,42 @@ describe("AgentCard", () => {
     expect(screen.queryByTestId("agent-last-activity")).toBeNull();
   });
 
+  it("renders an `actions` slot in the footer when provided (#472)", () => {
+    render(
+      <AgentCard
+        agent={{
+          name: "ada",
+          displayName: "Ada",
+          role: null,
+          registeredAt: "2026-04-01T00:00:00Z",
+        }}
+        actions={
+          <button data-testid="custom-action" type="button">
+            Edit
+          </button>
+        }
+      />,
+    );
+    expect(screen.getByTestId("agent-actions-ada")).toBeInTheDocument();
+    expect(screen.getByTestId("custom-action")).toBeInTheDocument();
+    // Open affordance must coexist alongside the quick actions.
+    expect(screen.getByTestId("agent-open-ada")).toBeInTheDocument();
+  });
+
+  it("does not render the actions wrapper when no actions are provided", () => {
+    render(
+      <AgentCard
+        agent={{
+          name: "ada",
+          displayName: "Ada",
+          role: null,
+          registeredAt: "2026-04-01T00:00:00Z",
+        }}
+      />,
+    );
+    expect(screen.queryByTestId("agent-actions-ada")).toBeNull();
+  });
+
   it("accepts explicit parentUnit and lastActivity props as overrides", () => {
     render(
       <AgentCard
