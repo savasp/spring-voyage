@@ -21,6 +21,7 @@ For the full mental model, see the [Concepts overview](docs/concepts/overview.md
 
 - [User Guide](docs/guide/overview.md) — using the `spring` CLI and web portal ([Getting Started](docs/guide/getting-started.md))
 - [Developer Guide](docs/developer/overview.md) — building, running, and contributing to the platform ([Setup](docs/developer/setup.md), [Operations](docs/developer/operations.md))
+- [Deployment Guide](docs/guide/deployment.md) — self-hosting on Docker Compose or Podman (zero-to-running, TLS, secrets, updates)
 - [Architecture](docs/architecture/README.md) — how the concepts are realized as a running system
 - [Documentation index](docs/README.md) — concepts, architecture, user guide, developer guide, and reference
 
@@ -100,20 +101,25 @@ For Dapr component layout (local vs. production profiles, secret stores, configs
 
 ## Self-Hosting
 
-If you want to run the full stack (Postgres, Redis, Dapr control plane, API, Worker, web dashboard, Caddy with automatic TLS) on a single workstation or VPS, use the Podman-based scripts under [`deployment/`](deployment/README.md) instead of `dapr run`:
+To run the full stack (Postgres, Redis, Dapr control plane, API, Worker, web dashboard, Caddy with automatic TLS) on a single workstation or VPS, use the container-based deployment under [`deployment/`](deployment/README.md) instead of `dapr run`. Both Docker Compose and a Podman-native script are supported:
 
 ```bash
 cd deployment/
 cp spring.env.example spring.env
-$EDITOR spring.env             # fill in secrets, hostname, image tags
+$EDITOR spring.env                                # fill in secrets, hostname, image tags
 
-./deploy.sh build              # build platform + agent images from source
-./deploy.sh up                 # create the network and start the full stack
+# Docker Compose
+docker compose --env-file spring.env build
+docker compose --env-file spring.env up -d
+
+# Or Podman (deploy.sh)
+./deploy.sh build
+./deploy.sh up
 ```
 
-You can skip the build step entirely if you point `SPRING_PLATFORM_IMAGE` / `SPRING_AGENT_IMAGE` in `spring.env` at pre-published images in a registry; Podman pulls them on first `up`. For remote VPS deployments, `deploy-remote.sh` wraps SSH + rsync and supports the same registry flow via `SPRING_SKIP_SOURCE_SYNC=1`.
+You can skip the build step entirely if you point `SPRING_PLATFORM_IMAGE` / `SPRING_AGENT_IMAGE` in `spring.env` at pre-published images in a registry; the runtime pulls them on first `up`. For remote VPS deployments, `deploy-remote.sh` wraps SSH + rsync and supports the same registry flow via `SPRING_SKIP_SOURCE_SYNC=1`.
 
-See [`deployment/README.md`](deployment/README.md) for the full container topology, reverse-proxy/TLS setup, secrets handling, optional Ollama backend, and per-user agent network isolation.
+The canonical operator guide is [docs/guide/deployment.md](docs/guide/deployment.md) — it covers the zero-to-running walkthrough, container topology, Dapr components, Postgres/Redis configuration, Caddy + Let's Encrypt, secrets bootstrap, health checks, updates, and troubleshooting. The script-level reference (commands, environment variables, webhook relay, per-user agent networks) lives in [`deployment/README.md`](deployment/README.md).
 
 ## CLI
 
