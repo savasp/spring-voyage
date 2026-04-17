@@ -41,6 +41,7 @@ export const queryKeys = {
     all: ["units"] as const,
     list: () => ["units", "list"] as const,
     detail: (id: string) => ["units", "detail", id] as const,
+    fullDetail: (id: string) => ["units", "fullDetail", id] as const,
     readiness: (id: string) => ["units", "readiness", id] as const,
     cost: (id: string) => ["units", "cost", id] as const,
     agents: (id: string) => ["units", "agents", id] as const,
@@ -79,6 +80,10 @@ export const queryKeys = {
 
   skills: {
     catalog: () => ["skills", "catalog"] as const,
+  },
+
+  ollama: {
+    models: () => ["ollama", "models"] as const,
   },
 } as const;
 

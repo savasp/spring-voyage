@@ -1,7 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import {
+  useMutation,
+  useQueries,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { DollarSign, Wallet } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -15,71 +20,92 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import { api } from "@/lib/api/client";
-import type {
-  AgentDashboardSummary,
-  BudgetResponse,
-  CostDashboardSummary,
-} from "@/lib/api/types";
+import {
+  useDashboardAgents,
+  useDashboardCosts,
+  useTenantBudget,
+} from "@/lib/api/queries";
+import { queryKeys } from "@/lib/api/query-keys";
+import type { BudgetResponse } from "@/lib/api/types";
 import { formatCost } from "@/lib/utils";
-
-interface AgentBudgetRow {
-  agent: AgentDashboardSummary;
-  budget: BudgetResponse | null;
-}
 
 export default function BudgetsPage() {
   const { toast } = useToast();
-  const [tenantBudget, setTenantBudget] = useState<BudgetResponse | null>(null);
+  const queryClient = useQueryClient();
+
+  const tenantQuery = useTenantBudget();
+  const costsQuery = useDashboardCosts();
+  const agentsQuery = useDashboardAgents();
+
+  const tenantBudget = tenantQuery.data ?? null;
+  const costs = costsQuery.data ?? null;
+  const agents = useMemo(
+    () => agentsQuery.data ?? [],
+    [agentsQuery.data],
+  );
+
+  // Fan out one `useQuery` per agent for budgets. Each slice has its own
+  // key so the per-agent edit page can invalidate without tearing down
+  // every other row.
+  const agentBudgetQueries = useQueries({
+    queries: agents.map((agent) => ({
+      queryKey: queryKeys.agents.budget(agent.name),
+      queryFn: async (): Promise<BudgetResponse | null> => {
+        try {
+          return await api.getAgentBudget(agent.name);
+        } catch {
+          return null;
+        }
+      },
+    })),
+  });
+
+  const agentRows = useMemo(
+    () =>
+      agents.map((agent, i) => ({
+        agent,
+        budget: agentBudgetQueries[i]?.data ?? null,
+      })),
+    [agents, agentBudgetQueries],
+  );
+
+  const loading =
+    tenantQuery.isPending ||
+    costsQuery.isPending ||
+    agentsQuery.isPending ||
+    agentBudgetQueries.some((q) => q.isPending);
+
   const [tenantInput, setTenantInput] = useState("");
-  const [savingTenant, setSavingTenant] = useState(false);
-  const [costs, setCosts] = useState<CostDashboardSummary | null>(null);
-  const [agentRows, setAgentRows] = useState<AgentBudgetRow[]>([]);
-  const [loading, setLoading] = useState(true);
 
+  // Seed the tenant input once the query resolves so the user sees the
+  // current ceiling on first paint. Subsequent refetches don't clobber
+  // in-progress edits.
   useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      const [tenantRes, costsRes, agentsRes] = await Promise.allSettled([
-        api.getTenantBudget(),
-        api.getDashboardCosts(),
-        api.getDashboardAgents(),
-      ]);
-      if (cancelled) return;
-
-      if (tenantRes.status === "fulfilled") {
-        setTenantBudget(tenantRes.value);
-        setTenantInput(tenantRes.value.dailyBudget.toString());
-      }
-      if (costsRes.status === "fulfilled") {
-        setCosts(costsRes.value);
-      }
-
-      if (agentsRes.status === "fulfilled") {
-        const agents = agentsRes.value;
-        const budgets = await Promise.all(
-          agents.map(async (a) => {
-            try {
-              const b = await api.getAgentBudget(a.name);
-              return { agent: a, budget: b };
-            } catch {
-              return { agent: a, budget: null };
-            }
-          }),
-        );
-        if (!cancelled) setAgentRows(budgets);
-      }
-
-      setLoading(false);
+    if (tenantBudget && tenantInput === "") {
+      setTenantInput(tenantBudget.dailyBudget.toString());
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenantBudget]);
 
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const saveTenantBudget = useMutation({
+    mutationFn: (dailyBudget: number) =>
+      api.setTenantBudget({ dailyBudget }),
+    onSuccess: (updated) => {
+      // Hand-seed the cache so the UI reflects the new value without a
+      // round trip; `invalidateQueries` would force a second fetch.
+      queryClient.setQueryData(queryKeys.tenant.budget(), updated);
+      toast({ title: "Tenant budget saved" });
+    },
+    onError: (err) => {
+      toast({
+        title: "Failed to save budget",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      });
+    },
+  });
 
-  const handleSaveTenant = async () => {
+  const handleSaveTenant = () => {
     const value = Number(tenantInput);
     if (!Number.isFinite(value) || value <= 0) {
       toast({
@@ -89,21 +115,10 @@ export default function BudgetsPage() {
       });
       return;
     }
-    setSavingTenant(true);
-    try {
-      const updated = await api.setTenantBudget({ dailyBudget: value });
-      setTenantBudget(updated);
-      toast({ title: "Tenant budget saved" });
-    } catch (err) {
-      toast({
-        title: "Failed to save budget",
-        description: err instanceof Error ? err.message : String(err),
-        variant: "destructive",
-      });
-    } finally {
-      setSavingTenant(false);
-    }
+    saveTenantBudget.mutate(value);
   };
+
+  const savingTenant = saveTenantBudget.isPending;
 
   if (loading) {
     return (

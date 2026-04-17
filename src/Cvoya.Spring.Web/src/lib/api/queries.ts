@@ -22,13 +22,21 @@ import { api } from "./client";
 import { queryKeys } from "./query-keys";
 import type {
   ActivityQueryResult,
+  AgentDashboardSummary,
   AgentDetailResponse,
   BudgetResponse,
   CloneResponse,
+  ConnectorTypeResponse,
+  CostDashboardSummary,
   CostSummaryResponse,
   DashboardSummary,
+  InitiativeLevelResponse,
+  InitiativePolicy,
+  UnitDashboardSummary,
+  UnitDetailResponse,
   UnitReadinessResponse,
   UnitResponse,
+  UnitTemplateSummary,
 } from "./types";
 
 /**
@@ -55,6 +63,36 @@ export function useDashboardSummary(
   });
 }
 
+export function useDashboardAgents(
+  opts?: SliceOptions<AgentDashboardSummary[]>,
+): UseQueryResult<AgentDashboardSummary[], Error> {
+  return useQuery({
+    queryKey: queryKeys.dashboard.agents(),
+    queryFn: () => api.getDashboardAgents(),
+    ...opts,
+  });
+}
+
+export function useDashboardUnits(
+  opts?: SliceOptions<UnitDashboardSummary[]>,
+): UseQueryResult<UnitDashboardSummary[], Error> {
+  return useQuery({
+    queryKey: queryKeys.dashboard.units(),
+    queryFn: () => api.getDashboardUnits(),
+    ...opts,
+  });
+}
+
+export function useDashboardCosts(
+  opts?: SliceOptions<CostDashboardSummary>,
+): UseQueryResult<CostDashboardSummary, Error> {
+  return useQuery({
+    queryKey: queryKeys.dashboard.costs(),
+    queryFn: () => api.getDashboardCosts(),
+    ...opts,
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Units
 // ---------------------------------------------------------------------------
@@ -66,6 +104,19 @@ export function useUnit(
   return useQuery({
     queryKey: queryKeys.units.detail(id),
     queryFn: () => api.getUnit(id),
+    enabled: opts?.enabled ?? Boolean(id),
+    refetchInterval: opts?.refetchInterval,
+    staleTime: opts?.staleTime,
+  });
+}
+
+export function useUnitDetail(
+  id: string,
+  opts?: SliceOptions<UnitDetailResponse>,
+): UseQueryResult<UnitDetailResponse, Error> {
+  return useQuery({
+    queryKey: queryKeys.units.fullDetail(id),
+    queryFn: () => api.getUnitDetail(id),
     enabled: opts?.enabled ?? Boolean(id),
     refetchInterval: opts?.refetchInterval,
     staleTime: opts?.staleTime,
@@ -182,6 +233,48 @@ export function useAgentBudget(
   });
 }
 
+export function useAgentInitiativeLevel(
+  id: string,
+  opts?: SliceOptions<InitiativeLevelResponse | null>,
+): UseQueryResult<InitiativeLevelResponse | null, Error> {
+  return useQuery({
+    queryKey: queryKeys.agents.initiativeLevel(id),
+    // Surface null for "level not yet known" so callers don't have to
+    // special-case the first-load failure.
+    queryFn: async () => {
+      try {
+        return await api.getAgentInitiativeLevel(id);
+      } catch {
+        return null;
+      }
+    },
+    enabled: opts?.enabled ?? Boolean(id),
+    refetchInterval: opts?.refetchInterval,
+    staleTime: opts?.staleTime,
+  });
+}
+
+export function useAgentInitiativePolicy(
+  id: string,
+  opts?: SliceOptions<InitiativePolicy | null>,
+): UseQueryResult<InitiativePolicy | null, Error> {
+  return useQuery({
+    queryKey: queryKeys.agents.initiativePolicy(id),
+    queryFn: async () => {
+      try {
+        return (await api.getAgentInitiativePolicy(id)) as InitiativePolicy;
+      } catch {
+        // No policy set yet — surface null rather than throwing so the
+        // UI can render the "use defaults" empty state.
+        return null;
+      }
+    },
+    enabled: opts?.enabled ?? Boolean(id),
+    refetchInterval: opts?.refetchInterval,
+    staleTime: opts?.staleTime,
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Activity
 // ---------------------------------------------------------------------------
@@ -194,6 +287,80 @@ export function useActivityQuery(
     queryKey: queryKeys.activity.query(params),
     queryFn: async () =>
       (await api.queryActivity(params)) as ActivityQueryResult,
+    ...opts,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Tenant
+// ---------------------------------------------------------------------------
+
+export function useTenantBudget(
+  opts?: SliceOptions<BudgetResponse | null>,
+): UseQueryResult<BudgetResponse | null, Error> {
+  return useQuery({
+    queryKey: queryKeys.tenant.budget(),
+    queryFn: async () => {
+      try {
+        return await api.getTenantBudget();
+      } catch {
+        // No tenant budget set yet — surface null instead of an error.
+        return null;
+      }
+    },
+    ...opts,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Templates & connectors (create-unit wizard)
+// ---------------------------------------------------------------------------
+
+export function useUnitTemplates(
+  opts?: SliceOptions<UnitTemplateSummary[]>,
+): UseQueryResult<UnitTemplateSummary[], Error> {
+  return useQuery({
+    queryKey: queryKeys.templates.list(),
+    queryFn: () => api.listUnitTemplates(),
+    ...opts,
+  });
+}
+
+export function useConnectorTypes(
+  opts?: SliceOptions<ConnectorTypeResponse[]>,
+): UseQueryResult<ConnectorTypeResponse[], Error> {
+  return useQuery({
+    queryKey: queryKeys.connectors.list(),
+    queryFn: () => api.listConnectors(),
+    ...opts,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Ollama (model discovery for dapr-agent + ollama hosting)
+// ---------------------------------------------------------------------------
+
+export interface OllamaModelEntry {
+  name: string;
+  size: number;
+  modifiedAt: string | null;
+}
+
+export function useOllamaModels(
+  opts?: SliceOptions<OllamaModelEntry[] | null>,
+): UseQueryResult<OllamaModelEntry[] | null, Error> {
+  return useQuery({
+    queryKey: queryKeys.ollama.models(),
+    // A missing Ollama server is expected during regular development —
+    // surface null so the wizard can fall back to the static catalog
+    // without blowing up the page.
+    queryFn: async () => {
+      try {
+        return await api.listOllamaModels();
+      } catch {
+        return null;
+      }
+    },
     ...opts,
   });
 }

@@ -1,7 +1,8 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { Suspense, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import { UnitCard } from "@/components/cards/unit-card";
 import { Button } from "@/components/ui/button";
@@ -11,65 +12,67 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import { api } from "@/lib/api/client";
-import type {
-  CostSummaryResponse,
-  UnitDashboardSummary,
-  UnitDetailResponse,
-} from "@/lib/api/types";
+import {
+  useDashboardUnits,
+  useUnitCost,
+  useUnitDetail,
+} from "@/lib/api/queries";
+import { queryKeys } from "@/lib/api/query-keys";
+import type { UnitDashboardSummary } from "@/lib/api/types";
 import { formatCost, timeAgo } from "@/lib/utils";
 import { DollarSign, Network, Plus, Users, X } from "lucide-react";
 import Link from "next/link";
 
 function UnitListContent() {
   const { toast } = useToast();
-  const [units, setUnits] = useState<UnitDashboardSummary[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+
+  const unitsQuery = useDashboardUnits();
+  const units = unitsQuery.data ?? [];
+  const loading = unitsQuery.isPending;
 
   // Delete confirmation state.
   const [deleteTarget, setDeleteTarget] = useState<UnitDashboardSummary | null>(
     null,
   );
-  const [deleting, setDeleting] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
-    api
-      .getDashboardUnits()
-      .then((u) => {
-        if (!cancelled) {
-          setUnits(u);
-          setLoading(false);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const handleDeleteConfirm = async () => {
-    if (!deleteTarget) return;
-    setDeleting(true);
-    try {
-      await api.deleteUnit(deleteTarget.name);
-      setUnits((prev) => prev.filter((u) => u.name !== deleteTarget.name));
+  const deleteUnit = useMutation({
+    mutationFn: (name: string) => api.deleteUnit(name),
+    onSuccess: (_data, name) => {
+      const displayName =
+        deleteTarget?.name === name
+          ? deleteTarget?.displayName
+          : undefined;
       toast({
         title: "Unit deleted",
-        description: deleteTarget.displayName,
+        description: displayName,
       });
+      // Drop the row from the dashboard cache so the list updates
+      // immediately. We deliberately don't invalidate the same key
+      // afterwards — the deleted unit would come back on the refetch
+      // since the delete is tombstoned lazily on the server.
+      queryClient.setQueryData<UnitDashboardSummary[] | undefined>(
+        queryKeys.dashboard.units(),
+        (prev) => prev?.filter((u) => u.name !== name),
+      );
+      // Other unit-derived slices can be re-fetched safely — they'll
+      // 404 for the deleted unit and the UI handles that case.
+      queryClient.invalidateQueries({ queryKey: queryKeys.units.all });
       setDeleteTarget(null);
-    } catch (err) {
+    },
+    onError: (err) => {
       const message = err instanceof Error ? err.message : String(err);
       toast({
         title: "Delete failed",
         description: message,
         variant: "destructive",
       });
-    } finally {
-      setDeleting(false);
-    }
+    },
+  });
+
+  const handleDeleteConfirm = () => {
+    if (!deleteTarget) return;
+    deleteUnit.mutate(deleteTarget.name);
   };
 
   return (
@@ -135,9 +138,9 @@ function UnitListContent() {
         cancelLabel="Cancel"
         onConfirm={handleDeleteConfirm}
         onCancel={() => {
-          if (!deleting) setDeleteTarget(null);
+          if (!deleteUnit.isPending) setDeleteTarget(null);
         }}
-        pending={deleting}
+        pending={deleteUnit.isPending}
       />
     </div>
   );
@@ -147,75 +150,79 @@ function UnitDetailContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const id = searchParams.get("id") ?? "";
-  const [data, setData] = useState<UnitDetailResponse | null>(null);
-  const [cost, setCost] = useState<CostSummaryResponse | null>(null);
-  const [loading, setLoading] = useState(true);
+
+  const detailQuery = useUnitDetail(id);
+  const costQuery = useUnitCost(id);
+  const data = detailQuery.data ?? null;
+  const cost = costQuery.data ?? null;
+  const loading = Boolean(id) && (detailQuery.isPending || costQuery.isPending);
+
   const [memberScheme, setMemberScheme] = useState("agent");
   const [memberPath, setMemberPath] = useState("");
 
-  const load = useCallback(async () => {
-    if (!id) return;
-    try {
-      const [unitData, costData] = await Promise.allSettled([
-        api.getUnitDetail(id),
-        api.getUnitCost(id),
-      ]);
-      if (unitData.status === "fulfilled") setData(unitData.value);
-      if (costData.status === "fulfilled") setCost(costData.value);
-    } catch {
-      // silently handled
-    } finally {
-      setLoading(false);
-    }
-  }, [id]);
+  const invalidateUnit = () => {
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.units.fullDetail(id),
+    });
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.units.detail(id),
+    });
+  };
 
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  const handleDelete = async () => {
-    try {
-      await api.deleteUnit(id);
+  const deleteUnit = useMutation({
+    mutationFn: () => api.deleteUnit(id),
+    onSuccess: () => {
       toast({ title: "Unit deleted" });
+      queryClient.invalidateQueries({ queryKey: queryKeys.units.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all });
       router.push("/");
-    } catch (err) {
+    },
+    onError: (err) => {
       toast({
         title: "Failed to delete unit",
         description: err instanceof Error ? err.message : String(err),
         variant: "destructive",
       });
-    }
-  };
+    },
+  });
 
-  const handleAddMember = async () => {
-    if (!memberPath.trim()) return;
-    try {
-      await api.addMember(id, memberScheme, memberPath.trim());
+  const addMember = useMutation({
+    mutationFn: ({ scheme, path }: { scheme: string; path: string }) =>
+      api.addMember(id, scheme, path),
+    onSuccess: () => {
       toast({ title: "Member added" });
       setMemberPath("");
-      load();
-    } catch (err) {
+      invalidateUnit();
+    },
+    onError: (err) => {
       toast({
         title: "Failed to add member",
         description: err instanceof Error ? err.message : String(err),
         variant: "destructive",
       });
-    }
-  };
+    },
+  });
 
-  const handleRemoveMember = async (memberId: string) => {
-    try {
-      await api.removeMember(id, memberId);
+  const removeMember = useMutation({
+    mutationFn: (memberId: string) => api.removeMember(id, memberId),
+    onSuccess: () => {
       toast({ title: "Member removed" });
-      load();
-    } catch (err) {
+      invalidateUnit();
+    },
+    onError: (err) => {
       toast({
         title: "Failed to remove member",
         description: err instanceof Error ? err.message : String(err),
         variant: "destructive",
       });
-    }
+    },
+  });
+
+  const handleAddMember = () => {
+    if (!memberPath.trim()) return;
+    addMember.mutate({ scheme: memberScheme, path: memberPath.trim() });
   };
 
   if (!id) {
@@ -266,7 +273,12 @@ function UnitDetailContent() {
           <h1 className="text-2xl font-bold">{unit.displayName}</h1>
           <p className="text-sm text-muted-foreground">{unit.name}</p>
         </div>
-        <Button variant="destructive" size="sm" onClick={handleDelete}>
+        <Button
+          variant="destructive"
+          size="sm"
+          onClick={() => deleteUnit.mutate()}
+          disabled={deleteUnit.isPending}
+        >
           <X className="h-4 w-4 mr-1" /> Delete
         </Button>
       </div>
@@ -333,7 +345,7 @@ function UnitDetailContent() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={() => handleRemoveMember(m.id!)}
+                  onClick={() => removeMember.mutate(m.id!)}
                   title="Remove member"
                 >
                   <X className="h-3.5 w-3.5" />

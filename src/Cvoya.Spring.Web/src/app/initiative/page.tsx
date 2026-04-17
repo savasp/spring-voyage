@@ -1,6 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import {
+  useMutation,
+  useQueries,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { Activity, Zap } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -24,6 +29,8 @@ import {
 import { useToast } from "@/components/ui/toast";
 import { useActivityStream } from "@/hooks/use-activity-stream";
 import { api } from "@/lib/api/client";
+import { useDashboardAgents } from "@/lib/api/queries";
+import { queryKeys } from "@/lib/api/query-keys";
 import type {
   ActivityEvent,
   AgentDashboardSummary,
@@ -86,9 +93,62 @@ function formatCsv(value: string[] | null | undefined): string {
 export default function InitiativePage() {
   const { toast } = useToast();
   const { events } = useActivityStream();
+  const queryClient = useQueryClient();
 
-  const [rows, setRows] = useState<AgentRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  const agentsQuery = useDashboardAgents();
+  const agents = useMemo(
+    () => agentsQuery.data ?? [],
+    [agentsQuery.data],
+  );
+
+  // Fan out per-agent level + policy lookups through TanStack. `useQueries`
+  // lets us request N parallel reads in a single hook and keeps each slice
+  // under its own key so targeted invalidation is easy.
+  const levelQueries = useQueries({
+    queries: agents.map((agent) => ({
+      queryKey: queryKeys.agents.initiativeLevel(agent.name),
+      queryFn: async () => {
+        try {
+          return await api.getAgentInitiativeLevel(agent.name);
+        } catch {
+          return null;
+        }
+      },
+    })),
+  });
+
+  const policyQueries = useQueries({
+    queries: agents.map((agent) => ({
+      queryKey: queryKeys.agents.initiativePolicy(agent.name),
+      queryFn: async () => {
+        try {
+          return (await api.getAgentInitiativePolicy(
+            agent.name,
+          )) as InitiativePolicy | null;
+        } catch {
+          return null;
+        }
+      },
+    })),
+  });
+
+  const rows: AgentRow[] = useMemo(() => {
+    return agents.map((agent, i) => {
+      const levelRes = levelQueries[i]?.data;
+      const policyRes = policyQueries[i]?.data;
+      return {
+        agent,
+        level: levelRes?.level ?? null,
+        maxLevel: policyRes?.maxLevel ?? null,
+      };
+    });
+  }, [agents, levelQueries, policyQueries]);
+
+  const loading =
+    agentsQuery.isPending ||
+    levelQueries.some((q) => q.isPending) ||
+    policyQueries.some((q) => q.isPending);
+
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [editorPolicy, setEditorPolicy] = useState<InitiativePolicy | null>(
     null,
@@ -96,45 +156,6 @@ export default function InitiativePage() {
   const [editorAllowed, setEditorAllowed] = useState("");
   const [editorBlocked, setEditorBlocked] = useState("");
   const [editorLoading, setEditorLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-
-  const loadAgents = useCallback(async () => {
-    const agents = await api.getDashboardAgents();
-    const results = await Promise.all(
-      agents.map(async (agent) => {
-        const [levelRes, policyRes] = await Promise.allSettled([
-          api.getAgentInitiativeLevel(agent.name),
-          api.getAgentInitiativePolicy(agent.name),
-        ]);
-        const level =
-          levelRes.status === "fulfilled" ? levelRes.value.level : null;
-        const maxLevel =
-          policyRes.status === "fulfilled" && policyRes.value
-            ? (policyRes.value.maxLevel ?? null)
-            : null;
-        return { agent, level, maxLevel } satisfies AgentRow;
-      }),
-    );
-    return results;
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    loadAgents()
-      .then((results) => {
-        if (!cancelled) {
-          setRows(results);
-          setLoading(false);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [loadAgents]);
 
   const openEditor = useCallback(
     async (agentId: string) => {
@@ -142,7 +163,9 @@ export default function InitiativePage() {
       setEditorLoading(true);
       setEditorPolicy(null);
       try {
-        const policy = await api.getAgentInitiativePolicy(agentId);
+        const policy = (await api.getAgentInitiativePolicy(
+          agentId,
+        )) as InitiativePolicy | null;
         const effective = policy ?? DEFAULT_POLICY;
         setEditorPolicy(effective);
         setEditorAllowed(formatCsv(effective.allowedActions));
@@ -170,7 +193,42 @@ export default function InitiativePage() {
     setEditorBlocked("");
   }, []);
 
-  const handleSave = useCallback(async () => {
+  const savePolicy = useMutation({
+    mutationFn: async ({
+      agentId,
+      policy,
+    }: {
+      agentId: string;
+      policy: InitiativePolicy;
+    }) => {
+      await api.setAgentInitiativePolicy(agentId, policy);
+    },
+    onSuccess: (_data, variables) => {
+      toast({ title: "Policy saved" });
+      // Refresh the two slices feeding the table (level + policy) for
+      // this agent, plus the dashboard agents list which may render
+      // per-agent initiative data elsewhere.
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.agents.initiativeLevel(variables.agentId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.agents.initiativePolicy(variables.agentId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.dashboard.agents(),
+      });
+      closeEditor();
+    },
+    onError: (err) => {
+      toast({
+        title: "Failed to save policy",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleSave = useCallback(() => {
     if (!selectedAgentId || !editorPolicy) return;
     const payload: InitiativePolicy = {
       ...editorPolicy,
@@ -181,31 +239,16 @@ export default function InitiativePage() {
         maxCostPerDay: 3.0,
       },
     };
-    setSaving(true);
-    try {
-      await api.setAgentInitiativePolicy(selectedAgentId, payload);
-      toast({ title: "Policy saved" });
-      const fresh = await loadAgents();
-      setRows(fresh);
-      closeEditor();
-    } catch (err) {
-      toast({
-        title: "Failed to save policy",
-        description: err instanceof Error ? err.message : String(err),
-        variant: "destructive",
-      });
-    } finally {
-      setSaving(false);
-    }
+    savePolicy.mutate({ agentId: selectedAgentId, policy: payload });
   }, [
     selectedAgentId,
     editorPolicy,
     editorAllowed,
     editorBlocked,
-    loadAgents,
-    toast,
-    closeEditor,
+    savePolicy,
   ]);
+
+  const saving = savePolicy.isPending;
 
   const recentInitiativeEvents = useMemo<ActivityEvent[]>(
     () =>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Activity,
   ChevronDown,
@@ -13,9 +13,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { api } from "@/lib/api/client";
+import { useActivityQuery } from "@/lib/api/queries";
 import type {
-  ActivityEvent,
   ActivityEventType,
   ActivityQueryResult,
   ActivitySeverity,
@@ -126,9 +125,6 @@ function EventRow({
 }
 
 export default function ActivityPage() {
-  const [result, setResult] = useState<ActivityQueryResult | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [filters, setFilters] = useState<Filters>({
     source: "",
@@ -137,30 +133,27 @@ export default function ActivityPage() {
   });
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
-  const fetchActivity = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const params: Record<string, string> = {
-        page: String(page),
-        pageSize: String(PAGE_SIZE),
-      };
-      if (filters.source) params.source = filters.source;
-      if (filters.eventType) params.eventType = filters.eventType;
-      if (filters.severity) params.severity = filters.severity;
-
-      const data = await api.queryActivity(params);
-      setResult(data as ActivityQueryResult);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setLoading(false);
-    }
+  // Build the query params object once per (page, filters) change so the
+  // memoised reference keeps the TanStack cache key stable across renders.
+  const params = useMemo<Record<string, string>>(() => {
+    const p: Record<string, string> = {
+      page: String(page),
+      pageSize: String(PAGE_SIZE),
+    };
+    if (filters.source) p.source = filters.source;
+    if (filters.eventType) p.eventType = filters.eventType;
+    if (filters.severity) p.severity = filters.severity;
+    return p;
   }, [page, filters]);
 
-  useEffect(() => {
-    fetchActivity();
-  }, [fetchActivity]);
+  const {
+    data: result,
+    isLoading,
+    isFetching,
+    isError,
+    error,
+    refetch,
+  } = useActivityQuery(params);
 
   const totalPages = result
     ? Math.max(1, Math.ceil(Number(result.totalCount) / Number(result.pageSize)))
@@ -183,6 +176,10 @@ export default function ActivityPage() {
     setPage(1);
   };
 
+  // The refresh button should reflect an in-flight fetch whether it's the
+  // initial load or a manual refresh — `isFetching` captures both.
+  const loading = isFetching;
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -190,7 +187,7 @@ export default function ActivityPage() {
         <Button
           variant="outline"
           size="sm"
-          onClick={fetchActivity}
+          onClick={() => refetch()}
           disabled={loading}
         >
           <RefreshCw
@@ -265,12 +262,12 @@ export default function ActivityPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {error && (
+          {isError && (
             <p className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive mb-3">
-              {error}
+              {error instanceof Error ? error.message : String(error)}
             </p>
           )}
-          {loading && !result ? (
+          {isLoading && !result ? (
             <p className="text-sm text-muted-foreground">Loading activity...</p>
           ) : result?.items.length === 0 ? (
             <p className="text-sm text-muted-foreground">

@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Check,
   FileCode,
@@ -24,11 +25,13 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
 import { api } from "@/lib/api/client";
 import { getConnectorWizardStep } from "@/connectors/registry";
-import type {
-  ConnectorTypeResponse,
-  UnitConnectorBindingRequest,
-  UnitTemplateSummary,
-} from "@/lib/api/types";
+import {
+  useConnectorTypes,
+  useOllamaModels,
+  useUnitTemplates,
+} from "@/lib/api/queries";
+import { queryKeys } from "@/lib/api/query-keys";
+import type { UnitConnectorBindingRequest } from "@/lib/api/types";
 import {
   AI_PROVIDERS,
   DEFAULT_EXECUTION_TOOL,
@@ -164,104 +167,42 @@ function StepIndicator({ current }: { current: Step }) {
 export default function CreateUnitPage() {
   const router = useRouter();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [step, setStep] = useState<Step>(1);
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
   const [stepError, setStepError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitWarnings, setSubmitWarnings] = useState<string[]>([]);
-  const [submitting, setSubmitting] = useState(false);
 
-  // Template catalog state (#119): fetched once when the wizard mounts so the
-  // Template card can render a picker without a per-click round-trip.
-  const [templates, setTemplates] = useState<UnitTemplateSummary[] | null>(null);
-  const [templatesError, setTemplatesError] = useState<string | null>(null);
-  const [templatesLoading, setTemplatesLoading] = useState(false);
+  // Template catalog (#119): cached once per session so revisiting the
+  // wizard doesn't round-trip. The key comes from `queryKeys.templates`.
+  const templatesQuery = useUnitTemplates();
+  const templates = templatesQuery.data ?? null;
+  const templatesLoading = templatesQuery.isPending;
+  const templatesError = templatesQuery.isError
+    ? templatesQuery.error instanceof Error
+      ? templatesQuery.error.message
+      : String(templatesQuery.error)
+    : null;
 
-  // Connector catalog state (#199): fetched once, lists every connector the
-  // server knows about so Step 3 can let the user pick one without a
-  // per-click round-trip. Connectors that don't ship a web component still
-  // show up, but their selector surfaces a fallback hint.
-  const [connectorTypes, setConnectorTypes] = useState<
-    ConnectorTypeResponse[] | null
-  >(null);
-  const [connectorTypesError, setConnectorTypesError] = useState<string | null>(
-    null,
-  );
+  // Connector catalog (#199): fetched once so Step 3 can render the
+  // picker without waiting on the server for each render.
+  const connectorTypesQuery = useConnectorTypes();
+  const connectorTypes = connectorTypesQuery.data ?? null;
+  const connectorTypesError = connectorTypesQuery.isError
+    ? connectorTypesQuery.error instanceof Error
+      ? connectorTypesQuery.error.message
+      : String(connectorTypesQuery.error)
+    : null;
 
-  // #350: Ollama model discovery — fetched when dapr-agent + ollama is selected.
-  const [ollamaModels, setOllamaModels] = useState<string[] | null>(null);
-  const [ollamaModelsLoading, setOllamaModelsLoading] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    setTemplatesLoading(true);
-    api
-      .listUnitTemplates()
-      .then((list) => {
-        if (cancelled) return;
-        setTemplates(list);
-        setTemplatesError(null);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        const message = err instanceof Error ? err.message : String(err);
-        setTemplatesError(message);
-        setTemplates([]);
-      })
-      .finally(() => {
-        if (!cancelled) setTemplatesLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    api
-      .listConnectors()
-      .then((list) => {
-        if (cancelled) return;
-        setConnectorTypes(list);
-        setConnectorTypesError(null);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        const message = err instanceof Error ? err.message : String(err);
-        setConnectorTypesError(message);
-        setConnectorTypes([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // #350: fetch Ollama models when dapr-agent + ollama is selected.
-  useEffect(() => {
-    if (form.tool !== "dapr-agent" || form.provider !== "ollama") {
-      setOllamaModels(null);
-      return;
-    }
-    let cancelled = false;
-    setOllamaModelsLoading(true);
-    api
-      .listOllamaModels()
-      .then((models) => {
-        if (cancelled) return;
-        setOllamaModels(models.map((m) => m.name));
-      })
-      .catch(() => {
-        if (cancelled) return;
-        // Fall back to static catalog on failure.
-        setOllamaModels(null);
-      })
-      .finally(() => {
-        if (!cancelled) setOllamaModelsLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [form.tool, form.provider]);
+  // #350: Ollama model discovery — enabled only when dapr-agent + ollama
+  // is selected. When disabled the query is idle, mirroring the previous
+  // `useEffect` early-return behaviour.
+  const ollamaEnabled =
+    form.tool === "dapr-agent" && form.provider === "ollama";
+  const ollamaQuery = useOllamaModels({ enabled: ollamaEnabled });
+  const ollamaModels = ollamaQuery.data?.map((m) => m.name) ?? null;
+  const ollamaModelsLoading = ollamaEnabled && ollamaQuery.isPending;
 
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -376,14 +317,14 @@ export default function CreateUnitPage() {
     };
   };
 
-  const handleCreate = async () => {
-    setSubmitError(null);
-    setSubmitWarnings([]);
-    setSubmitting(true);
-    try {
-      let createdName: string | null = null;
+  const createUnit = useMutation({
+    mutationFn: async (): Promise<{
+      createdName: string | null;
+      warnings: string[];
+    }> => {
       const warnings: string[] = [];
       const connector = buildConnectorBinding();
+      let createdName: string | null = null;
 
       // Route through the correct endpoint based on the chosen mode. All three
       // paths ultimately go through the server-side unit-creation service, so
@@ -415,8 +356,7 @@ export default function CreateUnitPage() {
           (t) => `${t.package}/${t.name}` === form.templateId,
         );
         if (!template) {
-          setSubmitError("Selected template is no longer available.");
-          return;
+          throw new Error("Selected template is no longer available.");
         }
         // #325: when the user has filled in a name on step 1, pass it
         // through as `unitName` so the created unit uses the caller-supplied
@@ -459,12 +399,24 @@ export default function CreateUnitPage() {
         warnings.push(...secretWarnings);
       }
 
+      return { createdName, warnings };
+    },
+    onMutate: () => {
+      setSubmitError(null);
+      setSubmitWarnings([]);
+    },
+    onSuccess: ({ createdName, warnings }) => {
       if (warnings.length > 0) setSubmitWarnings(warnings);
       if (createdName) {
+        // Invalidate the lists that render the new unit so the detail
+        // page and dashboards pick it up on navigation.
+        queryClient.invalidateQueries({ queryKey: queryKeys.units.all });
+        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all });
         toast({ title: "Unit created", description: createdName });
         router.push(`/units/${encodeURIComponent(createdName)}`);
       }
-    } catch (err) {
+    },
+    onError: (err) => {
       const message = err instanceof Error ? err.message : String(err);
       setSubmitError(message);
       toast({
@@ -472,9 +424,13 @@ export default function CreateUnitPage() {
         description: message,
         variant: "destructive",
       });
-    } finally {
-      setSubmitting(false);
-    }
+    },
+  });
+
+  const submitting = createUnit.isPending;
+
+  const handleCreate = () => {
+    createUnit.mutate();
   };
 
   // Stable handler passed to each connector wizard-step component. The
