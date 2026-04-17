@@ -133,30 +133,48 @@ spring agent set <agent> \
 
 ## Connector Management
 
-### Adding a Connector
+The `spring connector` verb family mirrors the web portal's connector chooser and unit Connector tab. Every verb reads from the same underlying service the portal uses, so the CLI and UI stay at parity.
+
+### Listing Available Connector Types
 
 ```
-spring connector add <type> --unit <unit> [--config key=value ...]
+spring connector catalog
+spring connector catalog --output json
+```
+
+Lists every connector type the server has registered (slug, display name, description). This matches what the portal renders when you open a unit's Connector tab with no active binding.
+
+### Showing a Unit's Current Binding
+
+```
+spring connector show --unit <unit>
+spring connector show --unit <unit> --output json
+```
+
+Prints the unit's active binding pointer (`typeSlug`, `typeId`, typed `configUrl`, actions base URL). When the connector is GitHub, the command also pulls the typed config and renders owner / repo / events / installation id in the same output. When the unit isn't bound to any connector, it prints `Unit '<unit>' has no active connector binding.` (or `{"unit":"<unit>","bound":false}` in JSON mode).
+
+### Binding a Unit to a Connector
+
+```
+spring connector bind --unit <unit> --type github \
+  --owner <owner> --repo <repo> \
+  [--installation-id <id>] \
+  [--events <event1> <event2> ...]
 ```
 
 Example:
+
 ```
-spring connector add github --unit engineering-team --repo savasp/spring
+spring connector bind --unit engineering-team --type github \
+  --owner my-org --repo platform \
+  --events issues pull_request issue_comment
 ```
+
+Bind writes the per-unit config and the connector binding atomically through the connector-owned PUT endpoint. GitHub is the only typed bind surface today; other connector types are surfaced in `catalog` but return a clear `not supported by 'spring connector bind' yet` message until their typed PUT lands. Removing a binding is still handled by the unit lifecycle (stop / delete); a dedicated `unbind` command will follow in a later PR.
 
 ### Authenticating a Connector
 
-```
-spring connector auth <type> --unit <unit>
-```
-
-Opens an OAuth flow or prompts for a token.
-
-### Listing Connectors
-
-```
-spring connector list --unit <unit>
-```
+Authentication is handled per-connector. For GitHub, operators install the GitHub App and supply the installation id on `bind`. Interactive auth flows will be added alongside the connectors that need them.
 
 ## Building Container Images
 

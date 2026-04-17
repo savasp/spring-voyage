@@ -54,10 +54,4 @@ For bidirectional, stateful, domain-aware integrations (GitHub, Slack, Figma), c
 
 ## Authentication
 
-Connectors that require authentication prompt during setup:
-
-```
-spring connector auth github --unit engineering-team
-```
-
-This opens an OAuth flow or accepts a token. Once authenticated, the connector begins listening for events. Credentials are stored securely via the platform's secret management.
+Connectors that require authentication expose installation / OAuth flows through their typed endpoints. The CLI surfaces binding through `spring connector bind` (for example, `spring connector bind --unit engineering-team --type github --owner my-org --repo platform --installation-id <id>`) which atomically writes the connector binding plus its per-unit config. Interactive OAuth prompts are handled by the connector package that owns the auth flow; credentials are stored securely via the platform's secret management.

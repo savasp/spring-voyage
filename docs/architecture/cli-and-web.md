@@ -47,6 +47,9 @@ spring unit list
 spring agent status ada
 spring message send agent://engineering-team/ada "Review PR #42"
 spring activity stream --unit engineering-team
+spring connector catalog
+spring connector bind --unit engineering-team --type github --owner my-org --repo platform
+spring connector show --unit engineering-team
 spring build packages/software-engineering
 spring apply -f units/engineering-team.yaml
 spring workflow status software-dev-cycle

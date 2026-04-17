@@ -34,6 +34,7 @@ public class Program
                 UnitCommand.Create(outputOption),
                 MessageCommand.Create(outputOption),
                 ActivityCommand.Create(outputOption),
+                ConnectorCommand.Create(outputOption),
                 ApplyCommand.Create()
             }
         };
