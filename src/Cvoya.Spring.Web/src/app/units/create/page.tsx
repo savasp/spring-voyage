@@ -2,9 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import {
-  ArrowLeft,
   Check,
   FileCode,
   FileText,
@@ -14,6 +12,7 @@ import {
   Sparkles,
 } from "lucide-react";
 
+import { Breadcrumbs } from "@/components/breadcrumbs";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -515,12 +514,12 @@ export default function CreateUnitPage() {
 
   return (
     <div className="space-y-6">
-      <Link
-        href="/units"
-        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="h-4 w-4" /> Units
-      </Link>
+      <Breadcrumbs
+        items={[
+          { label: "Units", href: "/units" },
+          { label: "Create" },
+        ]}
+      />
 
       <div>
         <h1 className="text-2xl font-bold">Create a unit</h1>

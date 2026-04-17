@@ -1,13 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  ArrowLeft,
   DollarSign,
-  Github,
-  KeyRound,
   Play,
   Settings,
   Square,
@@ -22,6 +18,7 @@ import { SkillsTab } from "./skills-tab";
 import { SubUnitsTab } from "./sub-units-tab";
 
 import { Badge } from "@/components/ui/badge";
+import { Breadcrumbs } from "@/components/breadcrumbs";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
@@ -297,12 +294,12 @@ export default function UnitConfigClient({ id }: ClientProps) {
   if (!unit) {
     return (
       <div className="space-y-4">
-        <Link
-          href="/units"
-          className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-        >
-          <ArrowLeft className="h-4 w-4" /> Units
-        </Link>
+        <Breadcrumbs
+          items={[
+            { label: "Units", href: "/units" },
+            { label: id },
+          ]}
+        />
         <p className="text-muted-foreground">Unit not found.</p>
         {loadError && (
           <p className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -315,12 +312,12 @@ export default function UnitConfigClient({ id }: ClientProps) {
 
   return (
     <div className="space-y-6">
-      <Link
-        href="/units"
-        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="h-4 w-4" /> Units
-      </Link>
+      <Breadcrumbs
+        items={[
+          { label: "Units", href: "/units" },
+          { label: unit.displayName || unit.name },
+        ]}
+      />
 
       <div className="flex items-center gap-3">
         <span
