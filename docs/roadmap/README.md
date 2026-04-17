@@ -2,7 +2,7 @@
 
 Spring Voyage V2 is developed in six phases plus a parallel Foundation track. Each phase delivers a complete, usable increment. Later phases build on earlier ones but don't invalidate them.
 
-For architectural details, see [`docs/architecture/`](../architecture/README.md). For the full tracking issue, see [#418](https://github.com/cvoya-com/spring-voyage/issues/418).
+For architectural details, see [`docs/architecture/`](../architecture/README.md). For the full tracking issue, see [#418](https://github.com/cvoya-com/spring-voyage/issues/418). For the PR-level execution plan driving day-to-day work — waves, bundling, prerequisites, coordinator briefs — see [`execution-plan.md`](execution-plan.md).
 
 | Phase | Name | Status | Details |
 | --- | --- | --- | --- |
