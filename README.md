@@ -94,7 +94,7 @@ The web dashboard is a React/Next.js + TypeScript application at `src/Cvoya.Spri
 cd src/Cvoya.Spring.Web
 npm install       # install dependencies
 npm run dev       # dev server at http://localhost:3000
-npm run build     # static export to out/
+npm run build     # standalone Next.js build in .next/standalone/
 npm test          # run component tests (Vitest)
 ```
 

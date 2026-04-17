@@ -14,10 +14,11 @@ For the high-level architectural "why" behind the platform as a whole, see [`../
 
 | # | Title | Status |
 |---|-------|--------|
-| [0001](0001-web-portal-rendering-strategy.md) | Web portal rendering strategy (static export vs SSR) | Accepted — keep static export |
+| [0001](0001-web-portal-rendering-strategy.md) | Web portal rendering strategy (static export vs SSR) | Superseded by [0005](0005-portal-standalone-mode.md) |
 | [0002](0002-openapi-links-keyword.md) | OpenAPI `links` keyword vs plain URL fields | Deferred — revisit criteria recorded |
 | [0003](0003-secret-inheritance-unit-to-tenant.md) | Secret inheritance semantics (Unit → Tenant) | Accepted — automatic fall-through with opt-out |
 | [0004](0004-per-agent-secrets.md) | Per-agent secrets: storage scope vs ACL vs status quo | Deferred — unit remains the trust boundary |
+| [0005](0005-portal-standalone-mode.md) | Web portal runs in Next.js `standalone` mode | Accepted — `output: "standalone"` |
 
 ## Format
 
