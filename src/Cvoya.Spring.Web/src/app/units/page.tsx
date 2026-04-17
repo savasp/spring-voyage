@@ -2,7 +2,8 @@
 
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Badge } from "@/components/ui/badge";
+import { Breadcrumbs } from "@/components/breadcrumbs";
+import { UnitCard } from "@/components/cards/unit-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -14,38 +15,10 @@ import type {
   CostSummaryResponse,
   UnitDashboardSummary,
   UnitDetailResponse,
-  UnitStatus,
 } from "@/lib/api/types";
 import { formatCost, timeAgo } from "@/lib/utils";
-import {
-  ArrowLeft,
-  DollarSign,
-  Network,
-  Plus,
-  Trash2,
-  Users,
-  X,
-} from "lucide-react";
+import { DollarSign, Network, Plus, Users, X } from "lucide-react";
 import Link from "next/link";
-
-function statusBadgeVariant(
-  status: UnitStatus | undefined,
-): "default" | "success" | "warning" | "destructive" | "outline" {
-  switch (status) {
-    case "Running":
-      return "success";
-    case "Starting":
-    case "Stopping":
-      return "warning";
-    case "Error":
-      return "destructive";
-    case "Stopped":
-      return "outline";
-    case "Draft":
-    default:
-      return "default";
-  }
-}
 
 function UnitListContent() {
   const { toast } = useToast();
@@ -133,40 +106,19 @@ function UnitListContent() {
               No units registered yet.
             </p>
           ) : (
-            <ul className="divide-y divide-border">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {units.map((u) => (
-                <li
+                <UnitCard
                   key={u.name}
-                  className="flex items-center justify-between py-3 hover:bg-accent/50 -mx-2 px-2 rounded"
-                >
-                  <Link
-                    href={`/units/${encodeURIComponent(u.name)}`}
-                    className="flex-1 min-w-0"
-                  >
-                    <div className="font-medium">{u.displayName}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {u.name}
-                    </div>
-                  </Link>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <Badge variant={statusBadgeVariant(u.status as UnitStatus | undefined)}>
-                      {u.status ?? "Draft"}
-                    </Badge>
-                    <span className="text-xs text-muted-foreground">
-                      Registered {timeAgo(u.registeredAt)}
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setDeleteTarget(u)}
-                      aria-label={`Delete ${u.displayName}`}
-                    >
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
-                  </div>
-                </li>
+                  unit={u}
+                  onDelete={(unit) =>
+                    setDeleteTarget(
+                      units.find((x) => x.name === unit.name) ?? null,
+                    )
+                  }
+                />
               ))}
-            </ul>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -282,9 +234,12 @@ function UnitDetailContent() {
   if (!data) {
     return (
       <div className="space-y-4">
-        <Link href="/" className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-          <ArrowLeft className="h-4 w-4" /> Back to Dashboard
-        </Link>
+        <Breadcrumbs
+          items={[
+            { label: "Units", href: "/units" },
+            { label: "Unknown unit" },
+          ]}
+        />
         <p className="text-muted-foreground">Unit not found.</p>
       </div>
     );
@@ -300,16 +255,19 @@ function UnitDetailContent() {
 
   return (
     <div className="space-y-6">
+      <Breadcrumbs
+        items={[
+          { label: "Units", href: "/units" },
+          { label: unit.displayName || unit.name },
+        ]}
+      />
       <div className="flex items-center justify-between">
         <div>
-          <Link href="/" className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-2">
-            <ArrowLeft className="h-4 w-4" /> Dashboard
-          </Link>
           <h1 className="text-2xl font-bold">{unit.displayName}</h1>
           <p className="text-sm text-muted-foreground">{unit.name}</p>
         </div>
         <Button variant="destructive" size="sm" onClick={handleDelete}>
-          <Trash2 className="h-4 w-4 mr-1" /> Delete
+          <X className="h-4 w-4 mr-1" /> Delete
         </Button>
       </div>
 

@@ -6,45 +6,23 @@ import {
   AlertCircle,
   Bot,
   CheckCircle2,
-  Clock,
   DollarSign,
-  Layers,
   Network,
   Plus,
-  Users,
 } from "lucide-react";
 import { useDashboardSummary } from "@/lib/api/queries";
 import { useActivityStream } from "@/lib/stream/use-activity-stream";
 import type { DashboardSummary } from "@/lib/api/types";
 import { formatCost, timeAgo } from "@/lib/utils";
+import { AgentCard } from "@/components/cards/agent-card";
+import { UnitCard } from "@/components/cards/unit-card";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
 /* ------------------------------------------------------------------ */
 /* Status helpers                                                      */
 /* ------------------------------------------------------------------ */
-
-const statusVariant: Record<
-  string,
-  "default" | "success" | "warning" | "destructive" | "secondary" | "outline"
-> = {
-  Draft: "outline",
-  Stopped: "secondary",
-  Starting: "default",
-  Running: "success",
-  Stopping: "warning",
-  Error: "destructive",
-};
-
-const statusDot: Record<string, string> = {
-  Draft: "bg-muted-foreground",
-  Stopped: "bg-muted-foreground",
-  Starting: "bg-yellow-500",
-  Running: "bg-green-500",
-  Stopping: "bg-yellow-500",
-  Error: "bg-red-500",
-};
 
 const severityColor: Record<string, string> = {
   Debug: "text-muted-foreground",
@@ -231,39 +209,7 @@ function UnitCards({ summary }: { summary: DashboardSummary }) {
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
       {summary.units.map((unit) => (
-        <Link
-          key={unit.name}
-          href={`/units/${encodeURIComponent(unit.name)}`}
-          data-testid={`unit-card-${unit.name}`}
-        >
-          <Card className="h-full transition-colors hover:border-primary/50 hover:bg-muted/30">
-            <CardContent className="p-4">
-              <div className="flex items-start justify-between">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${statusDot[unit.status] ?? "bg-muted-foreground"}`}
-                      data-testid={`unit-status-dot-${unit.name}`}
-                    />
-                    <h3 className="truncate font-semibold">{unit.displayName}</h3>
-                  </div>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {unit.name}
-                  </p>
-                </div>
-                <Badge variant={statusVariant[unit.status] ?? "outline"}>
-                  {unit.status}
-                </Badge>
-              </div>
-              <div className="mt-3 flex items-center gap-3 text-xs text-muted-foreground">
-                <span className="flex items-center gap-1">
-                  <Clock className="h-3 w-3" />
-                  {timeAgo(unit.registeredAt)}
-                </span>
-              </div>
-            </CardContent>
-          </Card>
-        </Link>
+        <UnitCard key={unit.name} unit={unit} />
       ))}
     </div>
   );
@@ -285,7 +231,7 @@ function AgentCards({ summary }: { summary: DashboardSummary }) {
     );
   }
 
-  // Build a quick lookup: agent name -> latest activity summary
+  // Build a quick lookup: agent name -> latest activity summary.
   const agentActivity: Record<string, string> = {};
   for (const item of summary.recentActivity) {
     // source is like "agent://agent-1" or "unit://unit-alpha"
@@ -297,8 +243,8 @@ function AgentCards({ summary }: { summary: DashboardSummary }) {
     }
   }
 
-  // Build agent -> parent unit mapping from unit name paths
-  // Agent names often match pattern "unitName/agentName" for nested agents
+  // Agent -> parent unit mapping based on the "unitName/agentName" naming
+  // convention used for nested agents.
   const agentUnit: Record<string, string> = {};
   const unitNames = new Set(summary.units.map((u) => u.name));
   for (const agent of summary.agents) {
@@ -313,61 +259,14 @@ function AgentCards({ summary }: { summary: DashboardSummary }) {
 
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-      {summary.agents.map((agent) => {
-        const parentUnit = agentUnit[agent.name];
-        const lastActivity = agentActivity[agent.name];
-
-        return (
-          <Card
-            key={agent.name}
-            className="transition-colors hover:border-primary/50 hover:bg-muted/30"
-            data-testid={`agent-card-${agent.name}`}
-          >
-            <CardContent className="p-4">
-              <div className="flex items-start justify-between">
-                <div className="min-w-0 flex-1">
-                  <h3 className="truncate font-semibold">
-                    {agent.displayName}
-                  </h3>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    {agent.name}
-                  </p>
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  {agent.role && (
-                    <Badge variant="secondary" data-testid="agent-role-badge">
-                      {agent.role}
-                    </Badge>
-                  )}
-                </div>
-              </div>
-              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                {parentUnit && (
-                  <span
-                    className="flex items-center gap-1"
-                    data-testid="agent-parent-unit"
-                  >
-                    <Layers className="h-3 w-3" />
-                    {parentUnit}
-                  </span>
-                )}
-                <span className="flex items-center gap-1">
-                  <Clock className="h-3 w-3" />
-                  {timeAgo(agent.registeredAt)}
-                </span>
-              </div>
-              {lastActivity && (
-                <p
-                  className="mt-2 truncate text-xs text-muted-foreground italic"
-                  data-testid="agent-last-activity"
-                >
-                  {lastActivity}
-                </p>
-              )}
-            </CardContent>
-          </Card>
-        );
-      })}
+      {summary.agents.map((agent) => (
+        <AgentCard
+          key={agent.name}
+          agent={agent}
+          parentUnit={agentUnit[agent.name] ?? null}
+          lastActivity={agentActivity[agent.name] ?? null}
+        />
+      ))}
     </div>
   );
 }

@@ -1,11 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  ArrowLeft,
   Copy,
   DollarSign,
   Plus,
@@ -15,6 +13,7 @@ import {
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { Breadcrumbs } from "@/components/breadcrumbs";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -222,12 +221,13 @@ export default function AgentDetailClient({ id }: ClientProps) {
   if (!data) {
     return (
       <div className="space-y-4">
-        <Link
-          href="/"
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-        >
-          <ArrowLeft className="h-4 w-4" /> Dashboard
-        </Link>
+        <Breadcrumbs
+          items={[
+            { label: "Dashboard", href: "/" },
+            { label: "Agents", href: "/" },
+            { label: id },
+          ]}
+        />
         <p className="text-muted-foreground">Agent not found.</p>
       </div>
     );
@@ -261,14 +261,15 @@ export default function AgentDetailClient({ id }: ClientProps) {
 
   return (
     <div className="space-y-6">
+      <Breadcrumbs
+        items={[
+          { label: "Dashboard", href: "/" },
+          { label: "Agents", href: "/" },
+          { label: agent.displayName || agent.name },
+        ]}
+      />
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <Link
-            href="/"
-            className="mb-2 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-          >
-            <ArrowLeft className="h-4 w-4" /> Dashboard
-          </Link>
           <h1 className="text-2xl font-bold">{agent.displayName}</h1>
           <p className="text-sm text-muted-foreground">{agent.name}</p>
         </div>

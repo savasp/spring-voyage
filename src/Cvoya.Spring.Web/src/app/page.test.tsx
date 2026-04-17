@@ -191,8 +191,9 @@ describe("DashboardPage", () => {
     await waitFor(() => {
       expect(screen.getByTestId("unit-card-unit-alpha")).toBeInTheDocument();
     });
-    const link = screen.getByTestId("unit-card-unit-alpha");
-    expect(link).toHaveAttribute("href", "/units/unit-alpha");
+    // The primary "open" affordance lives inside the card.
+    const open = screen.getByTestId("unit-open-unit-alpha");
+    expect(open).toHaveAttribute("href", "/units/unit-alpha");
   });
 
   it("unit cards display status badge and status dot", async () => {
