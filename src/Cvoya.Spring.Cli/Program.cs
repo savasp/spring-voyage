@@ -36,6 +36,7 @@ public class Program
                 ConversationCommand.Create(outputOption),
                 InboxCommand.Create(outputOption),
                 ActivityCommand.Create(outputOption),
+                ConnectorCommand.Create(outputOption),
                 ApplyCommand.Create()
             }
         };

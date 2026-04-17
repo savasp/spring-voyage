@@ -52,6 +52,9 @@ spring conversation send --conversation c-1834 agent://engineering-team/ada "Shi
 spring inbox list
 spring inbox respond c-1834 "Approved"
 spring activity stream --unit engineering-team
+spring connector catalog
+spring connector bind --unit engineering-team --type github --owner my-org --repo platform
+spring connector show --unit engineering-team
 spring build packages/software-engineering
 spring apply -f units/engineering-team.yaml
 spring workflow status software-dev-cycle

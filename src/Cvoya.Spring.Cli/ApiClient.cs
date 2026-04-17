@@ -535,6 +535,105 @@ public class SpringApiClient
         return result ?? new List<DirectoryEntryResponse>();
     }
 
+    // Connectors
+    //
+    // The generic surface at /api/v1/connectors is connector-agnostic: it
+    // lists every registered connector type and carries the pointer for a
+    // unit's current binding. Typed config lives under
+    // /api/v1/connectors/{slug}/units/{unitId}/config and is owned by each
+    // connector package — today only the GitHub connector has a typed PUT
+    // generated into the Kiota client.
+
+    /// <summary>
+    /// Lists every connector type the server is aware of. This is the same
+    /// data the web portal renders in its connector chooser, so
+    /// <c>spring connector catalog</c> stays at parity with the UI.
+    /// </summary>
+    public async Task<IReadOnlyList<ConnectorTypeResponse>> ListConnectorsAsync(
+        CancellationToken ct = default)
+    {
+        var result = await _client.Api.V1.Connectors.GetAsync(cancellationToken: ct);
+        return result ?? new List<ConnectorTypeResponse>();
+    }
+
+    /// <summary>
+    /// Returns the active connector binding pointer for a unit, or
+    /// <c>null</c> when the unit is not bound to any connector. Mirrors the
+    /// portal's handling of the 404 the server returns for an unbound unit.
+    /// </summary>
+    public async Task<UnitConnectorPointerResponse?> GetUnitConnectorAsync(
+        string unitId,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            return await _client.Api.V1.Units[unitId].Connector.GetAsync(cancellationToken: ct);
+        }
+        catch (Microsoft.Kiota.Abstractions.ApiException ex) when (ex.ResponseStatusCode == 404)
+        {
+            // Unbound unit — the CLI surfaces this as a distinct, non-error
+            // state ("no binding") rather than a hard failure, matching the
+            // portal's empty-chooser behaviour.
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Binds a unit to GitHub and upserts its per-unit config atomically.
+    /// Only connector type with a typed PUT surface today; other connectors
+    /// are declined at the CLI layer with a clear error message until they
+    /// ship a typed binding endpoint (tracked alongside their respective
+    /// connector packages).
+    /// </summary>
+    public async Task<UnitGitHubConfigResponse> PutUnitGitHubConfigAsync(
+        string unitId,
+        string owner,
+        string repo,
+        string? appInstallationId,
+        IReadOnlyList<string>? events,
+        CancellationToken ct = default)
+    {
+        var request = new UnitGitHubConfigRequest
+        {
+            Owner = owner,
+            Repo = repo,
+            // The server accepts installationId as either a number or a
+            // string depending on how the client serialises it. Kiota
+            // models the field as UntypedNode; we pass it through as a
+            // string node when supplied so downstream deserialisation
+            // sees the raw value the operator typed.
+            AppInstallationId = string.IsNullOrWhiteSpace(appInstallationId)
+                ? null
+                : new UntypedString(appInstallationId),
+            Events = events?.ToList(),
+        };
+        var result = await _client.Api.V1.Connectors.Github.Units[unitId].Config
+            .PutAsync(request, cancellationToken: ct);
+        return result ?? throw new InvalidOperationException(
+            $"Server returned an empty PutUnitGitHubConfig response for unit '{unitId}'.");
+    }
+
+    /// <summary>
+    /// Reads the GitHub config currently bound to a unit, or <c>null</c>
+    /// when no GitHub binding exists (server returns 404). The CLI
+    /// <c>connector show</c> verb uses this to enrich the generic binding
+    /// pointer with the connector-specific config payload.
+    /// </summary>
+    public async Task<UnitGitHubConfigResponse?> GetUnitGitHubConfigAsync(
+        string unitId,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            return await _client.Api.V1.Connectors.Github.Units[unitId].Config
+                .GetAsync(cancellationToken: ct);
+        }
+        catch (Microsoft.Kiota.Abstractions.ApiException ex) when (ex.ResponseStatusCode == 404)
+        {
+            return null;
+        }
+    }
+
     // Auth tokens
 
     /// <summary>Creates a new API token.</summary>
