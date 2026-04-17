@@ -292,19 +292,66 @@ unit:
 
 ### Orchestration Strategies
 
-Five concrete implementations of `IOrchestrationStrategy`:
+Two concrete implementations of `IOrchestrationStrategy` ship today. Both are registered as keyed singletons in `AddCvoyaSpringDapr` (`"ai"` is the default; `"workflow"` is selected via unit configuration). `UnitActor` resolves the strategy by key from the manifest.
 
+| Strategy (DI key)              | Concrete type                            | How it routes                                                                                                              | AI Involvement | Example                                   |
+| ------------------------------ | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | -------------- | ----------------------------------------- |
+| **AI-orchestrated** (`ai`)     | `AiOrchestrationStrategy`                | A single LLM call receives the message + member list and returns the target member address. Default strategy.               | Full           | Software dev team with intelligent triage |
+| **Workflow** (`workflow`)      | `WorkflowOrchestrationStrategy`          | Runs a workflow container (with a co-launched Dapr sidecar). The container drives the sequence; its stdout decides routing.  | None (minimal) | CI/CD pipeline, compliance review         |
 
-| Strategy               | Description                                                                                                                | AI Involvement | Example                                   |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------------------- | -------------- | ----------------------------------------- |
-| **Rule-based**         | Deterministic routing by policy (round-robin, role-matching, capability-based, priority queue). No LLM.                    | None           | Load-balanced work distribution           |
-| **Workflow**           | A Dapr Workflow drives the sequence. Steps invoke agents as activities. The workflow controls routing.                     | None (minimal) | CI/CD pipeline, compliance review         |
-| **AI-orchestrated**    | LLM receives the message + unit context (members, directory, policies) and decides routing, assignment, and coordination.  | Full           | Software dev team with intelligent triage |
-| **AI+Workflow hybrid** | Workflow provides the skeleton (phases); LLM fills in decisions within each phase (who does it, how to handle exceptions). | Partial        | Structured software dev cycle             |
-| **Peer**               | Broadcast to all members. No routing. Members decide for themselves whether to act (via initiative).                       | None at unit   | Research team brainstorming               |
+Additional strategies (e.g. label-routed orchestration for GitHub triage) are tracked as follow-up work and will be added to this table when they ship. The strategy pattern is intentionally open — a host can register its own `IOrchestrationStrategy` under a new DI key without touching core code.
 
+**Workflow patterns within a workflow strategy** — sequential, parallel, fan-out/fan-in, conditional, human-in-the-loop — are driven by the workflow engine inside the container; see [Workflows](workflows.md) for the full pattern catalogue.
 
-The AI+Workflow hybrid is recommended for structured work: reliable enough to be auditable, flexible enough to handle novel situations.
+### Unit Policy Framework
+
+A unit is a governance boundary, not only an orchestration scope. `UnitPolicy` (`Cvoya.Spring.Core/Policies/UnitPolicy.cs`) is the aggregate governance record attached to a unit; it is a record with five optional sub-policies, each a nullable slot:
+
+| Dimension             | Type                    | What it constrains                                                                                      |
+| --------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------- |
+| **Skill** (`Skill`)   | `SkillPolicy`           | Which tools (skills) agents in the unit may invoke. Allow-list and/or block-list, case-insensitive.     |
+| **Model** (`Model`)   | `ModelPolicy`           | Which AI models agents may run under. Same allow/block shape as `SkillPolicy`.                          |
+| **Cost** (`Cost`)     | `CostPolicy`            | Per-invocation, per-hour, and per-day cost caps (rolling windows). Pre-call check before dispatch.       |
+| **Execution mode** (`ExecutionMode`) | `ExecutionModePolicy` | Pins or whitelists `AgentExecutionMode` (`Auto` / `OnDemand`). A `Forced` mode coerces the dispatch.        |
+| **Initiative** (`Initiative`) | `InitiativePolicy` | Unit-level DENY-overlay on per-agent reflection-action policy (allowed / blocked action types).            |
+
+A `null` slot means "no constraint at this unit along this dimension". An all-`null` policy (`UnitPolicy.Empty`) is equivalent to "this unit does not govern member agents" and repositories may treat it as a row deletion.
+
+Unit policy wins over per-membership overrides and the agent's own declarations. A unit is a trust boundary: a unit that blocks a skill, pins an execution mode, or denies a model cannot be escaped by a per-agent override.
+
+#### `IUnitPolicyEnforcer` and `DefaultUnitPolicyEnforcer`
+
+`IUnitPolicyEnforcer` (`Cvoya.Spring.Core/Policies/IUnitPolicyEnforcer.cs`) is the narrow, DI-swappable enforcement seam. One method per dimension — no generic `Evaluate(action)` dispatch, so call sites stay precise:
+
+- `EvaluateSkillInvocationAsync(agentId, toolName, ct)` — called by `McpServer` before every tool invocation.
+- `EvaluateModelAsync(agentId, modelId, ct)` — called by `AgentActor.ApplyUnitPoliciesAsync` before dispatch.
+- `EvaluateCostAsync(agentId, projectedCost, ct)` — called pre-dispatch and on reflection turns; sums the rolling cost window via `ICostQueryService`.
+- `EvaluateExecutionModeAsync(agentId, mode, ct)` — strict check; fails when a forcing unit coerces away from the requested mode.
+- `ResolveExecutionModeAsync(agentId, mode, ct)` — coercion-aware resolution; callers that accept coercion (e.g. the actor) use this so a forcing unit's `Forced` value is returned instead of a deny.
+- `EvaluateInitiativeActionAsync(agentId, actionType, ct)` — called by the initiative engine before emitting a reflection action.
+
+`DefaultUnitPolicyEnforcer` (`Cvoya.Spring.Core/Policies/DefaultUnitPolicyEnforcer.cs`) is the OSS default — registered via `TryAddScoped<IUnitPolicyEnforcer, DefaultUnitPolicyEnforcer>()` so a private-cloud host can layer audit logging or tenant-scoped caches by registering a decorator before the default call.
+
+##### Evaluation chain
+
+For every dimension, the enforcer walks **every unit the agent is a member of** (via `IUnitMembershipRepository.ListByAgentAsync`), loads that unit's policy (`IUnitPolicyRepository.GetAsync`), and applies the per-dimension evaluator. Rules:
+
+1. **First deny short-circuits.** As soon as one unit denies, the enforcer returns that `PolicyDecision` with the denying unit id recorded on `DenyingUnitId` — subsequent units are not consulted.
+2. **Missing policy = allow.** A unit with a `null` slot along the evaluated dimension contributes nothing; only non-`null` slots can deny.
+3. **Skill / Model:** block-list wins over allow-list. A tool or model present in `Blocked` is always denied; a non-`null` `Allowed` then further restricts the allowed set. Matching is case-insensitive.
+4. **Cost:** per-invocation cap is checked first (no database call). Per-hour and per-day caps query `ICostQueryService` once per window (sums are memoised across units in the same call). The tightest breached cap wins.
+5. **Execution mode:** two passes — first any `Forced` mode wins (returns an allow decision with the coerced mode); only after every unit has been checked for forcing does the `Allowed` whitelist denial fire.
+6. **Initiative:** a DENY overlay. A unit's `BlockedActions` blocks the action even if the agent's own policy allows it; a unit's `AllowedActions`, when non-`null`, tightens the allowed set but does not broaden the agent's own allow list. The agent-level initiative gate is evaluated separately by the initiative engine — the enforcer only speaks for the unit.
+7. **Agents without unit membership:** zero memberships returns `PolicyDecision.Allowed` — there is no unit to consult.
+8. **Thrown errors at the enforcer level:** the callers in `AgentActor` log a warning and proceed as "allowed" so a policy-store outage never silently drops dispatches. Deny outcomes are never thrown; they are returned as `PolicyDecision`.
+
+##### Integration points
+
+- **Skill invocation** — `McpServer` consults `EvaluateSkillInvocationAsync` on every MCP tool call before the tool runs.
+- **Agent dispatch (`AgentActor.ApplyUnitPoliciesAsync`)** — model, cost, and execution-mode evaluators run in sequence before every turn. An allowed execution-mode resolution whose `Mode` differs from the requested mode rewrites the effective `AgentMetadata` so downstream dispatch uses the coerced mode.
+- **Initiative reflection** — before emitting a reflection action the engine checks `EvaluateSkillInvocationAsync` (for the tool) and `EvaluateInitiativeActionAsync` (for the action class) to keep the initiative surface policy-aware.
+
+See [Security](security.md) for how unit policies compose with other authorization surfaces (permissions, RBAC, secret access policies).
 
 ### Root Unit
 

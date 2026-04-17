@@ -88,14 +88,14 @@ Each goal directly addresses a v1 limitation:
 | --- | --- |
 | [Infrastructure](infrastructure.md) | Dapr building blocks, actor model, IAddressable, data persistence |
 | [Messaging](messaging.md) | Mailbox, message processing, addressing, activation model |
-| [Units & Agents](units.md) | Agent model, execution patterns, cloning, unit model, orchestration strategies, expertise discovery, unit lifecycle |
+| [Units & Agents](units.md) | Agent model, execution patterns, cloning, unit model, orchestration strategies, unit policy framework, expertise discovery, unit lifecycle |
 | [Initiative](initiative.md) | Initiative levels, tiered cognition, initiative policies |
-| [Workflows](workflows.md) | Workflow-as-container, platform-internal workflows, A2A, workflow patterns |
+| [Workflows](workflows.md) | Workflow-as-container, platform-internal workflows, A2A execution dispatch, agent tool launchers, A2A sidecar protocol, workflow patterns |
 | [Connectors](connectors.md) | Connector model, skills, implementation tiers |
 | [Observability](observability.md) | Activity events, Rx.NET streams, cost tracking |
 | [CLI & Web](cli-and-web.md) | Client API surface, hosting modes, CLI, deployment topology |
-| [Deployment](deployment.md) | Execution modes, solution structure |
-| [Security](security.md) | Authentication, permissions, multi-tenancy, tenant administration |
+| [Deployment](deployment.md) | Agent hosting modes (ephemeral vs persistent), persistent agent registry lifecycle, container runtime requirements, Dapr sidecar bootstrap, solution structure |
+| [Security](security.md) | Authentication, permissions, multi-tenancy, secrets stack (registry / store / resolver, at-rest encryption, rotation, unit → tenant inheritance, audit logging) |
 | [Packages](packages.md) | Domain packages, skill format, package system |
 | [Open Questions](open-questions.md) | Open design questions, future work |
 
