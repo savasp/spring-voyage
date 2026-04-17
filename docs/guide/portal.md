@@ -20,13 +20,14 @@ Authentication uses the same token flow as the CLI: when the API Host is running
 
 ## Navigation and shell
 
-The left sidebar ([src/Cvoya.Spring.Web/src/components/sidebar.tsx](../../src/Cvoya.Spring.Web/src/components/sidebar.tsx)) is the top-level navigator. It currently exposes five entries:
+The left sidebar ([src/Cvoya.Spring.Web/src/components/sidebar.tsx](../../src/Cvoya.Spring.Web/src/components/sidebar.tsx)) is the top-level navigator. It exposes the following entries:
 
 | Portal route | What it shows | Primary CLI equivalent |
 |--------------|---------------|------------------------|
 | `/` — **Dashboard** | Stats header, unit cards, agent cards, recent activity | (no single CLI equivalent — see individual pages) |
 | `/units` — **Units** | List of all units with status + delete action | `spring unit list` |
 | `/activity` — **Activity** | Paginated activity feed with filters | `spring activity list` |
+| `/connectors` — **Connectors** | Catalog of connector types and which units bind them | `spring connector catalog` / `spring connector show` |
 | `/initiative` — **Initiative** | Per-agent initiative policy editor + recent initiative events | (no CLI equivalent today — parity gap) |
 | `/budgets` — **Budgets** | Tenant daily budget + per-agent budget rows | (no CLI equivalent today — parity gap) |
 
@@ -214,6 +215,30 @@ spring activity list --source unit:<id> --limit 20
 Shows the unit's running totals: total cost, input/output tokens, record count, and the period window.
 
 **CLI equivalent:** cost figures are surfaced in the portal's dashboard and unit detail pages, but the shipped CLI has no cost subcommand today. **This is a CLI/UI parity gap.**
+
+## Connectors browser (`/connectors`)
+
+The connectors page ([src/Cvoya.Spring.Web/src/app/connectors/page.tsx](../../src/Cvoya.Spring.Web/src/app/connectors/page.tsx)) is the portal's mirror of `spring connector catalog`. It lists every `IConnectorType` registered with the host — one card per connector — showing the display name, slug, and short description. Cards link to a per-connector detail page at `/connectors/{slug}`.
+
+When no connector packages are installed (i.e. the catalog is empty), the page shows a guided empty state pointing at `/packages` so operators can find the package catalog and learn how to add a connector package.
+
+| Action | Portal | CLI |
+|--------|--------|-----|
+| List every registered connector type | `/connectors` | `spring connector catalog` |
+| Show a single connector type's metadata, schema, and bindings | `/connectors/{slug}` | `spring connector show --unit <name>` (per-unit view of the same connector) |
+
+### Connector detail (`/connectors/{slug}`)
+
+The detail page ([src/Cvoya.Spring.Web/src/app/connectors/[type]/connector-detail-client.tsx](../../src/Cvoya.Spring.Web/src/app/connectors/%5Btype%5D/connector-detail-client.tsx)) renders four sections beneath a `<Breadcrumbs>` trail:
+
+1. **Identity** — display name, slug, and stable `typeId` (the same id persisted with every binding).
+2. **Binds to** — the URL templates a unit binding writes to (`configUrl`) and the connector's actions base URL (`actionsBaseUrl`).
+3. **Configuration schema** — the JSON Schema fetched from `GET /api/v1/connectors/{slug}/config-schema`, pretty-printed. Connectors that do not advertise a schema show a hint pointing at the raw endpoint.
+4. **Bound units** — every unit currently bound to this connector type. Each row links back to `/units/{id}` so you can open the unit's Connector tab.
+
+The Connector tab on the unit detail page also carries a **Details** deep-link back into `/connectors/{slug}` so navigation is bidirectional.
+
+**CLI equivalent:** `spring connector show --unit <name>` shows the connector + typed config for a single unit binding. There is no single CLI command that prints the full bound-units list for a given connector type today — file a follow-up if you need it.
 
 ## Agent detail (`/agents/{id}`)
 
