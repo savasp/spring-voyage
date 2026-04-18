@@ -326,6 +326,13 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton<IInitiativeEngine, InitiativeEngine>();
 
+        // Agent-scoped initiative evaluator (#415 / PR-PLAT-INIT-1). Scoped
+        // because the default implementation depends on IUnitPolicyEnforcer,
+        // which in turn pulls in the scoped unit-membership repository.
+        // TryAdd so the private cloud repo can layer a tenant-aware / audit
+        // decorator without touching this registration.
+        services.TryAddScoped<IAgentInitiativeEvaluator, DefaultAgentInitiativeEvaluator>();
+
         // Persistent cloning policy (#416). The repository rides the shared
         // IStateStore seam so no new component wiring is needed and the
         // rows flow through the same tenant-scoped durability story the

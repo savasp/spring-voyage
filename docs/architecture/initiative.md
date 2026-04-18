@@ -100,3 +100,24 @@ unit:
 ```
 
 When a cognitive backbone is available (see [Open Questions — Future Work](open-questions.md)), the initiative loop gains pattern recognition ("this type of PR always fails review"), opportunity detection ("no one has updated docs in 3 weeks"), risk assessment, and learning from initiative outcomes. Initiative becomes genuine judgment rather than rule-based + LLM reasoning.
+
+### Initiative evaluator (Proactive / Autonomous)
+
+`IAgentInitiativeEvaluator` (`Cvoya.Spring.Core/Initiative/IAgentInitiativeEvaluator.cs`) is the DI-swappable governance seam that answers, per observed signal and proposed `InitiativeAction`, whether the agent should:
+
+- **`ActAutonomously`** — act immediately without asking for confirmation (reserved for `Autonomous` agents on reversible, in-budget actions that pass every policy gate).
+- **`ActWithConfirmation`** — act, but surface a proposal to a human or the unit's approval channel first. This is the universal outcome for `Proactive` agents, and the fail-closed fallback for `Autonomous` agents when any enforcement layer cannot resolve.
+- **`Defer`** — take no action on this signal. Returned for `Passive` / `Attentive` (Reactive baseline) agents, for empty signal batches, and for policy-lookup failures.
+
+`DefaultAgentInitiativeEvaluator` composes four existing enforcement layers in a fail-closed order:
+
+1. `IAgentPolicyStore.GetEffectiveLevelAsync` — derives the effective level from the agent's own policy composed with the enclosing unit's `InitiativePolicy.MaxLevel` ceiling (see [PR #250](https://github.com/cvoya-com/spring-voyage/pull/473)).
+2. `IUnitPolicyEnforcer.EvaluateInitiativeActionAsync` — unit-level action allow / block overlay.
+3. `IUnitPolicyEnforcer.EvaluateCostAsync` — per-invocation / per-hour / per-day cost caps (#474 / #248) on the action's estimated cost.
+4. `InitiativePolicy.RequireUnitApproval` — operator override that forces confirmation even for Autonomous agents.
+
+A throw in any of those layers downgrades the result by one step (`ActAutonomously` → `ActWithConfirmation` with `FailedClosed = true`; a failed policy lookup drops all the way to `Defer`). A hard deny is surfaced as `ActWithConfirmation` with the enforcer's reason so the operator still sees the proposal and can flip the policy if it was misconfigured.
+
+**No snapshot.** The evaluator re-reads policy on every call. Bumping a unit's `MaxLevel` from `Proactive` to `Autonomous` at runtime takes effect on the next evaluation — the caller does not need to invalidate a cache.
+
+**Reversibility.** `InitiativeAction.IsReversible = false` always forces confirmation, regardless of initiative level. The action model intentionally uses a boolean rather than a severity scale so the evaluator stays simple and the call site carries the reversibility judgement (the caller knows whether it is drafting an internal note or triggering an external side-effect).
