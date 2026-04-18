@@ -377,20 +377,6 @@ The header badge flips between **Running** (with a health pill: `healthy` / `unh
 
 Deployment status is kept fresh by the same activity SSE stream that drives the rest of the portal — agent-scoped events invalidate the `agents.deployment(id)` query slice so health transitions appear without a manual refresh. Logs are a snapshot today (server-side `docker logs --tail`), consistent with the CLI; a streaming upgrade (SSE-backed) is a tracked follow-up and will reuse the existing activity-stream infrastructure rather than a second transport.
 
-## Conversations (`/conversations`, `/conversations/{id}`)
-
-The Conversations index ([src/Cvoya.Spring.Web/src/app/conversations/page.tsx](../../src/Cvoya.Spring.Web/src/app/conversations/page.tsx)) lists every conversation thread the platform has correlated from the activity stream. Each entry uses the shared `ConversationCard` primitive and shows the participants, status, last activity, and a short summary.
-
-Clicking a card opens the conversation detail page ([src/Cvoya.Spring.Web/src/app/conversations/[id]/conversation-detail-client.tsx](../../src/Cvoya.Spring.Web/src/app/conversations/%5Bid%5D/conversation-detail-client.tsx)). The detail page is read-only in this pass (PR-R2 / #392) and renders:
-
-- A `ConversationCard` summary at the top.
-- A participants strip with deep-link pills into the matching `/agents/{id}` or `/units/{id}` page.
-- An ordered timeline of every event correlated to the conversation, plus an "Open in activity feed" shortcut.
-
-Activity rows on the dashboard timeline and on `/activity` deep-link straight into a conversation when an event carries a `correlationId`; otherwise they fall back to the source agent or unit detail page. The chat-style send-message UI is tracked separately under #410.
-
-**CLI equivalent:** none today — conversations are portal-only. **This is a CLI/UI parity gap.**
-
 ## Directory (`/directory`)
 
 The directory page ([src/Cvoya.Spring.Web/src/app/directory/page.tsx](../../src/Cvoya.Spring.Web/src/app/directory/page.tsx)) is the tenant-wide expertise index. It fans out per-agent `GET /api/v1/agents/{id}/expertise` and per-unit `GET /api/v1/units/{id}/expertise/own` reads, flattens them into a single list, and exposes three filters:
