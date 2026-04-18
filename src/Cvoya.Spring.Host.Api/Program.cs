@@ -134,6 +134,7 @@ try
     app.MapDirectoryEndpoints().RequireAuthorization();
     app.MapExpertiseEndpoints();
     app.MapBoundaryEndpoints();
+    app.MapOrchestrationEndpoints();
     app.MapCloneEndpoints().RequireAuthorization();
     app.MapCloningPolicyEndpoints();
     app.MapCostEndpoints().RequireAuthorization();

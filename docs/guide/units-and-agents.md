@@ -87,6 +87,23 @@ spring unit policy skill set eng-team -f path/to/skill-policy.yaml
 
 `spring unit policy <dimension> get <unit>` prints the current slot plus the inheritance chain (today a single hop — see [#414](https://github.com/cvoya-com/spring-voyage/issues/414) for parent-unit overlay). `clear` removes a dimension without touching the other four.
 
+### Orchestration Strategy
+
+Pick the `IOrchestrationStrategy` a unit dispatches through on every domain message. Mirrors the `GET/PUT/DELETE /api/v1/units/{id}/orchestration` surface introduced in #606 — editing the same `orchestration.strategy` slot a `spring apply -f unit.yaml` manifest writes, without needing a full re-apply.
+
+```
+spring unit orchestration get   <unit>
+spring unit orchestration set   <unit> --strategy {ai|workflow|label-routed} [--label-routing <file>]
+spring unit orchestration clear <unit>
+```
+
+- `get` prints the persisted strategy plus the unit's `UnitPolicy.LabelRouting` block (what the `label-routed` strategy consumes).
+- `set` writes the slot. Only the platform-offered keys are whitelisted today; host-registered custom keys are tracked under [#605](https://github.com/cvoya-com/spring-voyage/issues/605).
+- `set --label-routing <file>` is a UI-parity convenience: it also applies the YAML fragment as a `UnitPolicy.LabelRouting` block through the existing `/api/v1/units/{id}/policy` endpoint. Accepts either a bare dimension map (`triggerLabels:`, `addOnAssign:`, `removeOnAssign:`) or a top-level `labelRouting:` / `label-routing:` wrapper — the same tolerance `spring unit policy label-routing set -f` applies.
+- `clear` removes the slot; the resolver falls back to `UnitPolicy.LabelRouting`-inferred `label-routed` when set, otherwise the unkeyed platform default (ADR-0010).
+
+Writes invalidate the in-process resolver cache so the next message dispatched to the unit sees the new strategy immediately.
+
 The legacy shorthand below still exists for a handful of older flags and will be folded into the `policy` verb group over time:
 
 ```

@@ -352,6 +352,26 @@ unit:
 
 An unknown manifest key (declared but not registered in DI) is a misconfiguration, not a routing bug: the resolver logs a warning, drops to the policy inference, and then to the unkeyed default so messages keep flowing while the operator corrects the manifest. The resolver creates a fresh DI scope per message so scoped strategies — `LabelRoutedOrchestrationStrategy` in particular — pick up hot `IUnitPolicyRepository` edits without actor recycling.
 
+#### Direct API / CLI surface
+
+The manifest-persisted `orchestration.strategy` slot is also addressable directly, without needing a full `spring apply` re-apply (#606):
+
+- `GET /api/v1/units/{id}/orchestration` — returns `{ "strategy": "..." }` or `{ "strategy": null }` when no key is declared.
+- `PUT /api/v1/units/{id}/orchestration` with body `{ "strategy": "ai" | "workflow" | "label-routed" }` — writes the slot in place, preserving every other property on the unit's `Definition` JSON.
+- `DELETE /api/v1/units/{id}/orchestration` — strips the slot so the resolver falls back to policy inference / the unkeyed default.
+
+Writes fire `IOrchestrationStrategyCacheInvalidator.Invalidate(actorId)` so the per-message resolver picks up the change on the next dispatch instead of waiting for the provider cache's TTL. The same `IUnitOrchestrationStore` seam is consumed by `UnitCreationService` at manifest ingestion, so a YAML apply and a direct `PUT` produce wire-identical on-disk shape.
+
+CLI parity for the three verbs:
+
+```
+spring unit orchestration get <unit>
+spring unit orchestration set <unit> --strategy {ai|workflow|label-routed} [--label-routing <file>]
+spring unit orchestration clear <unit>
+```
+
+`set --label-routing <file>` is a UI-parity convenience that co-applies a `UnitPolicy.LabelRouting` block through the existing `/api/v1/units/{id}/policy` endpoint so a scripted operator can edit strategy + label routing in one invocation (matching the Orchestration portal tab's two-card layout). Host-registered custom strategy keys are tracked under #605 — today the CLI whitelists only the platform-offered set so `--help` stays authoritative.
+
 ### Unit Policy Framework
 
 A unit is a governance boundary, not only an orchestration scope. `UnitPolicy` (`Cvoya.Spring.Core/Policies/UnitPolicy.cs`) is the aggregate governance record attached to a unit; it is a record with six optional sub-policies, each a nullable slot:

@@ -275,6 +275,14 @@ export const ORCHESTRATION_STRATEGIES = [
 ] as const;
 export type OrchestrationStrategyKey = (typeof ORCHESTRATION_STRATEGIES)[number];
 
+/**
+ * Wire shape for `GET/PUT /api/v1/units/{id}/orchestration` (#606). The
+ * dedicated surface ADR-0010 deferred — consumed by the Orchestration
+ * tab's strategy selector so the dropdown becomes directly editable
+ * instead of linking out to `spring apply`.
+ */
+export type UnitOrchestrationResponse = Schemas["UnitOrchestrationResponse"];
+
 /** Tier 1 (screening) model configuration. */
 export type Tier1Config = Schemas["Tier1Config"];
 
