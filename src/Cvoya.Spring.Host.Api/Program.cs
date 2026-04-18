@@ -148,6 +148,7 @@ try
     app.MapConnectorEndpoints();
     app.MapSecretEndpoints().RequireAuthorization();
     app.MapOllamaEndpoints().RequireAuthorization();
+    app.MapModelsEndpoints().RequireAuthorization();
     app.MapWebhookEndpoints();
 
     await app.RunAsync();

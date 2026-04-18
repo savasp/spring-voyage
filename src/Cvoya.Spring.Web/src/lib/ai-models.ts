@@ -1,12 +1,15 @@
 // Central catalog of AI providers and their models, used by the unit-creation
-// wizard (Bug #258). Kept on the frontend because the backend does not
-// currently expose an authoritative list — when/if a backend catalog arrives
-// (e.g. from IAiProvider), this file becomes the seeding fallback only.
+// wizard (Bug #258). The authoritative source at runtime is the server's
+// `GET /api/v1/models/{provider}` endpoint (#597) — the wizard queries it via
+// `useProviderModels` and falls back to the list below when the request fails
+// (e.g. anonymous / offline dev session).
 //
 // IMPORTANT: the default provider/model pair must match the platform-wide
 // default in `Cvoya.Spring.Dapr/Execution/AiProviderOptions.cs`. Keep them in
 // sync so users who accept the wizard defaults write a model string the server
-// actually supports.
+// actually supports. Provider/model names also drive the server-side static
+// fallback in `Cvoya.Spring.Dapr/Execution/ModelCatalog.cs` — update both
+// files together when adjusting the known-good list.
 //
 // To add a provider or a model, edit the array below. The UI renders the first
 // entry in PROVIDERS as the default; the first model in each provider is the

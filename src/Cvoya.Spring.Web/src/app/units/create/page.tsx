@@ -28,6 +28,7 @@ import { getConnectorWizardStep } from "@/connectors/registry";
 import {
   useConnectorTypes,
   useOllamaModels,
+  useProviderModels,
   useUnitTemplates,
 } from "@/lib/api/queries";
 import { queryKeys } from "@/lib/api/query-keys";
@@ -203,6 +204,20 @@ export default function CreateUnitPage() {
   const ollamaQuery = useOllamaModels({ enabled: ollamaEnabled });
   const ollamaModels = ollamaQuery.data?.map((m) => m.name) ?? null;
   const ollamaModelsLoading = ollamaEnabled && ollamaQuery.isPending;
+
+  // #597: provider-agnostic dynamic model list. The server probes the
+  // provider's own models endpoint (Anthropic, OpenAI) when a key is
+  // configured, so the dropdown tracks the current catalog without a
+  // code change. The server falls back to its static list on any error,
+  // so a null here only means the fetch itself collapsed (e.g. auth
+  // denied on the portal side); `ai-models.ts` is the client-side safety
+  // net in that case. Skipped for ollama — the #350 path is richer
+  // (includes pull status) and we don't want two overlapping requests.
+  const providerModelsEnabled = form.provider !== "ollama";
+  const providerModelsQuery = useProviderModels(form.provider, {
+    enabled: providerModelsEnabled,
+  });
+  const providerModels = providerModelsQuery.data ?? null;
 
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -632,7 +647,9 @@ export default function CreateUnitPage() {
                   form.provider === "ollama" &&
                   ollamaModels
                     ? ollamaModels
-                    : getProvider(form.provider).models.slice()
+                    : providerModelsEnabled && providerModels
+                      ? providerModels
+                      : getProvider(form.provider).models.slice()
                   ).map((m) => (
                     <option key={m} value={m}>
                       {m}
