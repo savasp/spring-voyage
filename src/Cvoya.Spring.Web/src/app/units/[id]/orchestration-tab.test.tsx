@@ -4,19 +4,36 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { UnitPolicyResponse } from "@/lib/api/types";
+import type {
+  UnitOrchestrationResponse,
+  UnitPolicyResponse,
+} from "@/lib/api/types";
 
 const getUnitPolicy = vi.fn<(id: string) => Promise<UnitPolicyResponse>>();
 const setUnitPolicy =
   vi.fn<
     (id: string, p: UnitPolicyResponse | null) => Promise<UnitPolicyResponse>
   >();
+const getUnitOrchestration =
+  vi.fn<(id: string) => Promise<UnitOrchestrationResponse>>();
+const setUnitOrchestration =
+  vi.fn<
+    (
+      id: string,
+      body: UnitOrchestrationResponse,
+    ) => Promise<UnitOrchestrationResponse>
+  >();
+const clearUnitOrchestration = vi.fn<(id: string) => Promise<void>>();
 
 vi.mock("@/lib/api/client", () => ({
   api: {
     getUnitPolicy: (id: string) => getUnitPolicy(id),
     setUnitPolicy: (id: string, p: UnitPolicyResponse | null) =>
       setUnitPolicy(id, p),
+    getUnitOrchestration: (id: string) => getUnitOrchestration(id),
+    setUnitOrchestration: (id: string, body: UnitOrchestrationResponse) =>
+      setUnitOrchestration(id, body),
+    clearUnitOrchestration: (id: string) => clearUnitOrchestration(id),
   },
 }));
 
@@ -40,11 +57,15 @@ describe("OrchestrationTab", () => {
   beforeEach(() => {
     getUnitPolicy.mockReset();
     setUnitPolicy.mockReset();
+    getUnitOrchestration.mockReset();
+    setUnitOrchestration.mockReset();
+    clearUnitOrchestration.mockReset();
     toastMock.mockReset();
   });
 
-  it("offers every platform-offered strategy key and renders the selector read-only", async () => {
+  it("offers every platform-offered strategy key plus an unset / inferred option", async () => {
     getUnitPolicy.mockResolvedValue({});
+    getUnitOrchestration.mockResolvedValue({ strategy: null });
 
     render(
       <Wrapper>
@@ -55,16 +76,18 @@ describe("OrchestrationTab", () => {
     const select = (await screen.findByTestId(
       "orchestration-strategy-select",
     )) as HTMLSelectElement;
-    // Dropdown offers the three platform-registered keys — ADR-0010.
+    // First option is the inferred / default sentinel; the next three are
+    // the platform-registered keys per ADR-0010.
     expect(
       Array.from(select.options).map((o) => o.value),
-    ).toEqual(["ai", "workflow", "label-routed"]);
-    // Read-only until the /orchestration endpoint lands (#606).
-    expect(select).toBeDisabled();
+    ).toEqual(["__unset__", "ai", "workflow", "label-routed"]);
+    // Editable now that the dedicated /orchestration endpoint exists (#606).
+    expect(select).not.toBeDisabled();
   });
 
   it("reports the default strategy when no manifest key and no label routing policy are set", async () => {
     getUnitPolicy.mockResolvedValue({});
+    getUnitOrchestration.mockResolvedValue({ strategy: null });
 
     render(
       <Wrapper>
@@ -85,6 +108,7 @@ describe("OrchestrationTab", () => {
         removeOnAssign: null,
       },
     });
+    getUnitOrchestration.mockResolvedValue({ strategy: null });
 
     render(
       <Wrapper>
@@ -97,6 +121,67 @@ describe("OrchestrationTab", () => {
     expect(effective.textContent).toContain("policy inference");
   });
 
+  it("reports the manifest-declared strategy when the /orchestration endpoint surfaces a key", async () => {
+    getUnitPolicy.mockResolvedValue({});
+    getUnitOrchestration.mockResolvedValue({ strategy: "workflow" });
+
+    render(
+      <Wrapper>
+        <OrchestrationTab unitId="eng-team" />
+      </Wrapper>,
+    );
+
+    const effective = await screen.findByTestId("orchestration-effective");
+    expect(effective.textContent).toContain("workflow");
+    expect(effective.textContent).toContain("manifest key");
+  });
+
+  it("PUTs the selected strategy when the dropdown changes", async () => {
+    getUnitPolicy.mockResolvedValue({});
+    getUnitOrchestration.mockResolvedValue({ strategy: null });
+    setUnitOrchestration.mockResolvedValue({ strategy: "workflow" });
+
+    render(
+      <Wrapper>
+        <OrchestrationTab unitId="eng-team" />
+      </Wrapper>,
+    );
+
+    const select = (await screen.findByTestId(
+      "orchestration-strategy-select",
+    )) as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: "workflow" } });
+
+    await waitFor(() => {
+      expect(setUnitOrchestration).toHaveBeenCalledTimes(1);
+    });
+    const [id, body] = setUnitOrchestration.mock.calls[0];
+    expect(id).toBe("eng-team");
+    expect(body?.strategy).toBe("workflow");
+  });
+
+  it("DELETEs the orchestration slot when the dropdown resets to the inferred / default sentinel", async () => {
+    getUnitPolicy.mockResolvedValue({});
+    getUnitOrchestration.mockResolvedValue({ strategy: "workflow" });
+    clearUnitOrchestration.mockResolvedValue(undefined);
+
+    render(
+      <Wrapper>
+        <OrchestrationTab unitId="eng-team" />
+      </Wrapper>,
+    );
+
+    const select = (await screen.findByTestId(
+      "orchestration-strategy-select",
+    )) as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: "__unset__" } });
+
+    await waitFor(() => {
+      expect(clearUnitOrchestration).toHaveBeenCalledTimes(1);
+    });
+    expect(clearUnitOrchestration).toHaveBeenCalledWith("eng-team");
+  });
+
   it("renders existing label-routing rules from the server", async () => {
     getUnitPolicy.mockResolvedValue({
       labelRouting: {
@@ -105,6 +190,7 @@ describe("OrchestrationTab", () => {
         removeOnAssign: ["needs-triage"],
       },
     });
+    getUnitOrchestration.mockResolvedValue({ strategy: null });
 
     render(
       <Wrapper>
@@ -125,6 +211,7 @@ describe("OrchestrationTab", () => {
     getUnitPolicy.mockResolvedValue({
       skill: { allowed: ["github"], blocked: null },
     });
+    getUnitOrchestration.mockResolvedValue({ strategy: null });
     setUnitPolicy.mockResolvedValue({
       skill: { allowed: ["github"], blocked: null },
       labelRouting: {
@@ -176,6 +263,7 @@ describe("OrchestrationTab", () => {
         removeOnAssign: null,
       },
     });
+    getUnitOrchestration.mockResolvedValue({ strategy: null });
     setUnitPolicy.mockResolvedValue({});
 
     render(

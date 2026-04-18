@@ -16,37 +16,37 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import { api } from "@/lib/api/client";
-import { useUnitPolicy } from "@/lib/api/queries";
+import { useUnitOrchestration, useUnitPolicy } from "@/lib/api/queries";
 import { queryKeys } from "@/lib/api/query-keys";
 import type {
   LabelRoutingPolicy,
   OrchestrationStrategyKey,
+  UnitOrchestrationResponse,
   UnitPolicyResponse,
 } from "@/lib/api/types";
 import { ORCHESTRATION_STRATEGIES } from "@/lib/api/types";
 
 /**
- * Orchestration tab for the unit detail page (#602).
+ * Orchestration tab for the unit detail page (#602, #606).
  *
  * Surfaces two slices the rest of the platform already understands:
  *
  * - **Strategy selector** — the three platform-offered
  *   `IOrchestrationStrategy` keys (`ai`, `workflow`, `label-routed`).
- *   Edits require the dedicated `GET/PUT /api/v1/units/{id}/orchestration`
- *   endpoint tracked as a parity follow-up (#606); the selector is
- *   rendered read-only until that lands, with a note explaining the
- *   manifest-apply workaround today.
+ *   Fully editable through the dedicated
+ *   `GET/PUT/DELETE /api/v1/units/{id}/orchestration` endpoint (#606)
+ *   so the dropdown writes directly rather than linking out to
+ *   `spring apply`.
  * - **Label routing rules** — the sixth `UnitPolicy` dimension that the
- *   `label-routed` strategy consumes (#389). Fully editable through the
+ *   `label-routed` strategy consumes (#389). Editable through the
  *   existing `/api/v1/units/{id}/policy` endpoint so the portal and CLI
  *   round-trip the same wire shape.
  *
  * A read-only **Effective strategy** line shows the resolver's current
  * selection per ADR-0010: manifest key → `LabelRouting` inference →
- * unkeyed default. Only the policy-inference hop is observable from the
- * portal today (the manifest key isn't surfaced via HTTP yet, see
- * #606). The line names that explicitly so the operator understands
- * what's visible and what isn't.
+ * unkeyed default. All three hops are observable from the portal now
+ * that the dedicated orchestration endpoint (#606) surfaces the
+ * manifest-declared key to the browser.
  */
 
 interface OrchestrationTabProps {
@@ -63,31 +63,43 @@ export function OrchestrationTab({ unitId }: OrchestrationTabProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const policyQuery = useUnitPolicy(unitId);
+  const orchestrationQuery = useUnitOrchestration(unitId);
 
   const policy: UnitPolicyResponse = policyQuery.data ?? {};
   const labelRouting = policy.labelRouting ?? null;
+  const manifestStrategy = (orchestrationQuery.data?.strategy ?? null) as
+    | OrchestrationStrategyKey
+    | null;
 
-  // Effective strategy derivation — portal-visible half of the
-  // resolver ladder. The manifest key isn't exposed via HTTP yet
-  // (#606), so we can only report "inferred from policy" and
-  // "platform default"; when #606 lands the manifest-declared case
-  // will override both.
+  // Effective strategy derivation — all three hops of the resolver
+  // ladder (ADR-0010) are now observable through the portal: the
+  // dedicated `/orchestration` endpoint (#606) surfaces the manifest-
+  // declared key, the existing `/policy` endpoint covers the
+  // LabelRouting inference, and the default falls through last.
   const effective = useMemo<EffectiveStrategy>(() => {
+    if (manifestStrategy) {
+      return {
+        key: manifestStrategy,
+        source: "manifest",
+        reason:
+          "orchestration.strategy is set on the unit; resolver dispatches through the matching IOrchestrationStrategy registration.",
+      };
+    }
     if (labelRouting) {
       return {
         key: "label-routed",
         source: "policy-inference",
         reason:
-          "UnitPolicy.LabelRouting is set; resolver infers label-routed per ADR-0007.",
+          "No manifest strategy and UnitPolicy.LabelRouting is set; resolver infers label-routed per ADR-0007.",
       };
     }
     return {
       key: "ai",
       source: "default",
       reason:
-        "No manifest key visible to the portal and no LabelRouting policy; resolver falls through to the platform default.",
+        "No manifest strategy and no LabelRouting policy; resolver falls through to the platform default.",
     };
-  }, [labelRouting]);
+  }, [labelRouting, manifestStrategy]);
 
   const setLabelRoutingMutation = useMutation({
     mutationFn: async (next: LabelRoutingPolicy | null) => {
@@ -97,6 +109,39 @@ export function OrchestrationTab({ unitId }: OrchestrationTabProps) {
     onSuccess: (updated) => {
       queryClient.setQueryData(queryKeys.units.policy(unitId), updated);
       toast({ title: "Label routing saved" });
+    },
+    onError: (err) => {
+      toast({
+        title: "Save failed",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Strategy writer (#606). `null` means "clear" — the dedicated
+  // DELETE verb strips the slot so the resolver falls through to
+  // policy inference / the unkeyed default.
+  const setStrategyMutation = useMutation({
+    mutationFn: async (
+      next: OrchestrationStrategyKey | null,
+    ): Promise<UnitOrchestrationResponse> => {
+      if (next === null) {
+        await api.clearUnitOrchestration(unitId);
+        return { strategy: null };
+      }
+      return await api.setUnitOrchestration(unitId, { strategy: next });
+    },
+    onSuccess: (updated) => {
+      queryClient.setQueryData(
+        queryKeys.units.orchestration(unitId),
+        updated,
+      );
+      toast({
+        title: updated.strategy
+          ? `Strategy set to ${updated.strategy}`
+          : "Strategy cleared (falling back to inferred / default)",
+      });
     },
     onError: (err) => {
       toast({
@@ -118,7 +163,7 @@ export function OrchestrationTab({ unitId }: OrchestrationTabProps) {
     [labelRouting],
   );
 
-  if (policyQuery.isPending) {
+  if (policyQuery.isPending || orchestrationQuery.isPending) {
     return (
       <div className="space-y-4">
         <Skeleton className="h-28" />
@@ -129,7 +174,12 @@ export function OrchestrationTab({ unitId }: OrchestrationTabProps) {
 
   return (
     <div className="space-y-4" data-testid="orchestration-tab">
-      <StrategyCard effective={effective} />
+      <StrategyCard
+        manifestStrategy={manifestStrategy}
+        effective={effective}
+        onChange={(next) => setStrategyMutation.mutate(next)}
+        busy={setStrategyMutation.isPending}
+      />
       <EffectiveStrategyLine effective={effective} />
       <LabelRoutingCard
         key={labelRoutingKey}
@@ -143,12 +193,30 @@ export function OrchestrationTab({ unitId }: OrchestrationTabProps) {
 }
 
 // ---------------------------------------------------------------------------
-// Strategy selector — read-only until #606 lands. We render the dropdown so
-// the operator sees the platform-offered set, but the control is disabled
-// with an explanatory note so no one wires edits to a non-existent endpoint.
+// Strategy selector — fully editable (#606). Writes through the dedicated
+// `/api/v1/units/{id}/orchestration` endpoint so a change here persists on
+// the same JSON slot the manifest apply path writes. An empty selection
+// (`— inferred / default —`) issues a DELETE so the resolver falls back to
+// policy inference / the unkeyed default per ADR-0010.
 // ---------------------------------------------------------------------------
 
-function StrategyCard({ effective }: { effective: EffectiveStrategy }) {
+const MANIFEST_UNSET_VALUE = "__unset__";
+
+interface StrategyCardProps {
+  manifestStrategy: OrchestrationStrategyKey | null;
+  effective: EffectiveStrategy;
+  onChange: (next: OrchestrationStrategyKey | null) => void;
+  busy: boolean;
+}
+
+function StrategyCard({
+  manifestStrategy,
+  effective,
+  onChange,
+  busy,
+}: StrategyCardProps) {
+  const selectedValue = manifestStrategy ?? MANIFEST_UNSET_VALUE;
+
   return (
     <Card data-testid="orchestration-strategy-card">
       <CardHeader>
@@ -156,26 +224,45 @@ function StrategyCard({ effective }: { effective: EffectiveStrategy }) {
           <Workflow className="h-4 w-4" />
           Strategy
           <Badge variant="outline" className="ml-2 text-xs font-normal">
-            {effective.source === "manifest" ? "manifest" : "inferred"}
+            {manifestStrategy
+              ? "manifest"
+              : effective.source === "policy-inference"
+                ? "inferred"
+                : "default"}
           </Badge>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
         <p className="text-xs text-muted-foreground">
           Picks the <code>IOrchestrationStrategy</code> the unit dispatches
-          through on every domain message. Platform-offered strategies:
+          through on every domain message. Platform-offered strategies:{" "}
+          <code>ai</code>, <code>workflow</code>, <code>label-routed</code>.
+          Clearing the selection lets the resolver fall back through the
+          precedence ladder (manifest → LabelRouting inference → default,
+          ADR-0010).
         </p>
         <label className="block space-y-1">
           <span className="text-xs text-muted-foreground">
-            Current strategy (read-only)
+            Manifest strategy
           </span>
           <select
             className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm disabled:cursor-not-allowed disabled:opacity-70"
-            value={effective.key}
-            disabled
+            value={selectedValue}
+            disabled={busy}
+            onChange={(e) => {
+              const next = e.target.value;
+              if (next === MANIFEST_UNSET_VALUE) {
+                onChange(null);
+              } else {
+                onChange(next as OrchestrationStrategyKey);
+              }
+            }}
             aria-label="Orchestration strategy"
             data-testid="orchestration-strategy-select"
           >
+            <option value={MANIFEST_UNSET_VALUE}>
+              — inferred / default —
+            </option>
             {ORCHESTRATION_STRATEGIES.map((key) => (
               <option key={key} value={key}>
                 {key}
@@ -184,23 +271,15 @@ function StrategyCard({ effective }: { effective: EffectiveStrategy }) {
           </select>
         </label>
         <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-          Editing the strategy key directly from the portal requires the
-          dedicated <code>/api/v1/units/{"{id}"}/orchestration</code>{" "}
-          endpoint tracked as a parity follow-up (
-          <a
-            href="https://github.com/cvoya-com/spring-voyage/issues/606"
-            target="_blank"
-            rel="noreferrer"
-            className="text-primary underline-offset-2 hover:underline"
-          >
-            #606
-          </a>
-          ). Today the manifest is the source of truth: set{" "}
-          <code>orchestration.strategy</code> in the unit YAML and reapply
-          via <code>spring apply -f unit.yaml</code>. Setting a{" "}
-          <code>label-routing</code> policy below also switches the
-          effective strategy through the resolver&apos;s inference ladder
-          (ADR-0010).
+          Edits write through{" "}
+          <code>PUT /api/v1/units/{"{id}"}/orchestration</code> (#606) — the
+          same persistence slot as{" "}
+          <code>orchestration.strategy</code> in a{" "}
+          <code>spring apply -f unit.yaml</code> manifest. Clearing the slot
+          issues a <code>DELETE</code>, after which the resolver falls back
+          to <code>UnitPolicy.LabelRouting</code>-inferred{" "}
+          <code>label-routed</code> (when set) or the unkeyed platform
+          default.
         </p>
       </CardContent>
     </Card>

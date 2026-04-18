@@ -62,6 +62,7 @@ public class UnitCreationService : IUnitCreationService
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IUnitBoundaryStore? _boundaryStore;
     private readonly IOrchestrationStrategyCacheInvalidator _orchestrationCacheInvalidator;
+    private readonly IUnitOrchestrationStore? _orchestrationStore;
     private readonly ILogger<UnitCreationService> _logger;
 
     /// <summary>
@@ -75,6 +76,10 @@ public class UnitCreationService : IUnitCreationService
     /// always supplies either the caching decorator or the no-op
     /// <see cref="NullOrchestrationStrategyCacheInvalidator"/>. When it is
     /// <c>null</c> the service falls back to the no-op behaviour.
+    /// The <paramref name="orchestrationStore"/> parameter is optional for
+    /// the same reason (#606 landed after #518) — when <c>null</c> the
+    /// service falls back to the inline DB write that predated the store
+    /// extraction so older test harnesses keep persisting strategy keys.
     /// </summary>
     public UnitCreationService(
         IDirectoryService directoryService,
@@ -89,7 +94,8 @@ public class UnitCreationService : IUnitCreationService
         IServiceScopeFactory scopeFactory,
         ILoggerFactory loggerFactory,
         IUnitBoundaryStore? boundaryStore = null,
-        IOrchestrationStrategyCacheInvalidator? orchestrationCacheInvalidator = null)
+        IOrchestrationStrategyCacheInvalidator? orchestrationCacheInvalidator = null,
+        IUnitOrchestrationStore? orchestrationStore = null)
     {
         _directoryService = directoryService;
         _actorProxyFactory = actorProxyFactory;
@@ -104,6 +110,7 @@ public class UnitCreationService : IUnitCreationService
         _boundaryStore = boundaryStore;
         _orchestrationCacheInvalidator = orchestrationCacheInvalidator
             ?? NullOrchestrationStrategyCacheInvalidator.Instance;
+        _orchestrationStore = orchestrationStore;
         _logger = loggerFactory.CreateLogger<UnitCreationService>();
     }
 
@@ -310,6 +317,18 @@ public class UnitCreationService : IUnitCreationService
     {
         try
         {
+            // #606: prefer the shared IUnitOrchestrationStore when
+            // registered so manifest-apply and the dedicated HTTP surface
+            // stay wire-identical on persistence + cache-invalidation.
+            // Older test fixtures that don't register the store fall
+            // through to the inline DB path so they keep working.
+            if (_orchestrationStore is not null)
+            {
+                await _orchestrationStore.SetStrategyKeyAsync(
+                    unitId, strategyKey, cancellationToken);
+                return;
+            }
+
             await using var scope = _scopeFactory.CreateAsyncScope();
             var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
 

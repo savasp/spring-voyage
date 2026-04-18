@@ -445,6 +445,14 @@ public static class ServiceCollectionExtensions
             sp.GetRequiredService<CachingOrchestrationStrategyProvider>());
         services.TryAddSingleton<IOrchestrationStrategyResolver, DefaultOrchestrationStrategyResolver>();
 
+        // #606: read/write seam for the persisted orchestration.strategy
+        // slot. Shared between UnitCreationService (manifest apply) and the
+        // dedicated `/api/v1/units/{id}/orchestration` HTTP surface so the
+        // two write paths cannot drift. TryAdd so the private cloud repo
+        // can swap in a tenant-scoped reader before calling the OSS
+        // extension.
+        services.TryAddSingleton<IUnitOrchestrationStore, DbUnitOrchestrationStore>();
+
 
         // Prompt
         services.AddSingleton<UnitContextBuilder>();
