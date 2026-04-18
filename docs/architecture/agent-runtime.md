@@ -173,6 +173,87 @@ See [Workflows](workflows.md) for the sidecar-protocol layer diagram.
 
 ---
 
+## 4a. Skill registries
+
+Tools exposed over MCP are surfaced by any number of `ISkillRegistry`
+implementations registered in DI. The MCP server enumerates every registry at
+`tools/list` time and routes every `tools/call` to the registry that declared
+the tool. Two registries ship in the OSS core:
+
+| Registry                    | Source | Surface |
+| --------------------------- | ------ | ------- |
+| `GitHubSkillRegistry`        | GitHub connector package | Hand-rolled tool definitions for GitHub operations (issues, PRs, labels, topology). |
+| `ExpertiseSkillRegistry`     | Core (#359)              | **Expertise-directory-driven**: skills are derived live from `IExpertiseAggregator` (per #487 / #498) and projected through the caller's `BoundaryViewContext` (per #497). No startup snapshot — a mutation (agent gains expertise, unit boundary changes) propagates on the next enumeration. |
+
+### The expertise-directory-driven skill surface (#359)
+
+The skill surface is a **projection of the expertise directory**, not of the
+agent roster. Concretely:
+
+1. **Source of truth.** `IExpertiseSkillCatalog` reads aggregated expertise
+   through `IExpertiseAggregator` — the same interface that serves every
+   other expertise read. There is no parallel capability registry to keep in
+   sync.
+2. **Typed-contract eligibility.** Only `ExpertiseDomain` entries with a
+   non-null `InputSchemaJson` are surfaced as skills. A consultative-only
+   entry (free-form advice, no structured request shape) leaves the schema
+   null and stays message-only.
+3. **Boundary projection.** External callers see only unit-projected entries
+   (`origin = unit://…`). Agent-level expertise inside a unit that isn't
+   covered by a projection is hidden from the outside and visible only to
+   callers already inside the boundary. The catalog applies the boundary in
+   two ways: by asking the aggregator for the caller-aware view, and by
+   filtering non-unit origins out of external enumerations as a defence in
+   depth.
+4. **Naming scheme.** Skill names follow `expertise/{slug}` where the slug is
+   a case-folded, path-safe projection of the domain name (see
+   `ExpertiseSkillNaming`). Agent names never appear in the skill surface —
+   swapping the agent that holds an expertise entry does NOT rename the
+   skill, and the catalog is stable across agent churn.
+5. **Live resolution.** Every enumeration hits the aggregator. The
+   aggregator's cache + `InvalidateAsync` contract from #487 handles the
+   freshness story; the registry's `GetToolDefinitions()` re-fetches on every
+   call (with the last-enumerated snapshot returned while the refresh is in
+   flight, since the `ISkillRegistry` method is synchronous).
+
+### The `ISkillInvoker` seam
+
+Skill callers — planners, the MCP server, any future A2A gateway — never
+reach into `IMessageRouter` directly. Instead they invoke through
+`ISkillInvoker`:
+
+```text
+caller → ISkillInvoker.InvokeAsync(SkillInvocation)
+         → catalog.ResolveAsync(name, caller's BoundaryViewContext)
+         → build Message(to = catalog target, from = caller)
+         → IMessageRouter.RouteAsync(message)         ── boundary + permission + policy + activity
+         → translate response payload back to SkillInvocationResult
+```
+
+Routing through `IMessageRouter` is load-bearing: that is the single
+enforcement seam for boundary opacity (#413 / #497), hierarchy permissions
+(#414), cloning policy (#416), initiative levels (#415), and activity
+emission (#391 / #484). Bypassing the router would make the skill surface a
+governance hole.
+
+A **second, invocation-time boundary re-check** is performed by the invoker:
+the catalog's `ResolveAsync` takes the caller's `BoundaryViewContext`, so a
+skill the caller cannot see is impossible to call even when the caller knows
+the name. Combined with the router's permission chain this gives defence in
+depth.
+
+### Alternative invoker implementations
+
+`ISkillInvoker` is the extension seam that will host the A2A message gateway
+tracked in [#539](https://github.com/cvoya-com/spring-voyage/issues/539).
+The gateway will register an alternative implementation that translates a
+`SkillInvocation` to an outbound A2A call instead of an internal `Message`;
+callers do not change. The default `MessageRouterSkillInvoker` is registered
+with `TryAdd*` so a downstream host (private cloud, integration test harness)
+can pre-register its own and keep it.
+
+---
+
 ## 5. Dapr Conversation wiring (Dapr-Agent only)
 
 The `DaprAgentLauncher` forwards three YAML-driven knobs to the container:
