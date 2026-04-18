@@ -173,6 +173,15 @@ public static class ServiceCollectionExtensions
         services.TryAddScoped<ISkillBundleValidator, DefaultSkillBundleValidator>();
         services.TryAddSingleton<IUnitSkillBundleStore, StateStoreBackedUnitSkillBundleStore>();
 
+        // Agent-as-skill registry (#359). Every registered agent is exposed
+        // through the shared ISkillRegistry seam so other agents / units can
+        // invoke it via the existing skill pipeline. The registry honours
+        // unit-boundary opacity (#413): an agent whose contribution is
+        // stripped from every ancestor unit's external view is not
+        // advertised.
+        services.TryAddSingleton<AgentAsSkillRegistry>();
+        services.AddSingleton<ISkillRegistry>(sp => sp.GetRequiredService<AgentAsSkillRegistry>());
+
         // Unit-membership backfill hosted service (#160 / C2b-1).
         // Gated by Database:BackfillMemberships; idempotent; short-lived.
         // Also gated by doc-gen mode — the service depends on SpringDbContext

@@ -166,6 +166,49 @@ path; persistent agents reuse a stable session id derived from the agent id.
 
 See [Workflows](workflows.md) for the sidecar-protocol layer diagram.
 
+### 4.1 Skill registries — connectors and agents-as-skills
+
+The MCP server aggregates every DI-registered `ISkillRegistry` into a single
+`tools/list` surface. Two kinds of registry ship today:
+
+- **Connector registries** (e.g. `GitHubSkillRegistry`) expose a fixed set of
+  tools per connector. Identity is a stable string (`"github"`), tool names
+  are static (`github_create_pull_request`), and dispatch is a switch on tool
+  name inside the connector assembly.
+- **The agent-as-skill registry** (`AgentAsSkillRegistry`, #359) dynamically
+  wraps every agent registered in the platform directory as its own MCP
+  tool. Registry identity is `"agents"`; each tool is named
+  `agent_{agent-path}` (path separators are flattened to `__` so the tool id
+  is a single identifier). Description and role metadata come straight from
+  `DirectoryEntry.DisplayName` / `Description` / `Role`, and invocation
+  routes a `Message` through `IMessageRouter` to the corresponding
+  `agent://` address. Callers compose these tools exactly like a connector
+  tool — no special handling on the agent side.
+
+#### Boundary interaction
+
+The agent-as-skill registry honours every ancestor unit's **boundary**
+(ADR 0007, `BoundaryFilteringExpertiseAggregator`, `BoundaryViewContext`).
+At enumeration time the registry, for each agent:
+
+1. Reads every `UnitMembership` the agent participates in.
+2. For each owning unit, asks `IExpertiseAggregator` for the *inside* and
+   *external* view.
+3. If at least one ancestor unit's external view strips every contribution
+   attributed to this agent (while the inside view still shows them), the
+   agent is not advertised as a tool — the unit is opaque to outside
+   callers, and a skill is an outside-caller surface.
+
+Units without a boundary configured, or agents with no expertise at all,
+are treated as externally visible — a missing boundary is "transparent" by
+definition, and an expertise-less agent cannot be hidden by an opacity rule
+keyed on origin. The router's own permission checks apply on every
+invocation, so advertising a still-unreachable agent never grants access
+the router would otherwise deny.
+
+The same check runs on invocation so a boundary change made between
+enumeration and invocation still refuses the call (`SkillNotFoundException`).
+
 ---
 
 ## 5. Dapr Conversation wiring (Dapr-Agent only)

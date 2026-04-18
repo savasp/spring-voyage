@@ -485,6 +485,8 @@ PR-PLAT-BOUND-3 (#414) consumes this seam to decide the caller's identity from t
 
 **Write path.** The unit actor persists the boundary through `SetBoundaryAsync`; an empty boundary is represented as an absent state row. HTTP and CLI writes call `IExpertiseAggregator.InvalidateAsync` so the next aggregate read sees fresh rules.
 
+**Agent-as-skill surface (#359).** The `AgentAsSkillRegistry` exposes every registered agent as an `ISkillRegistry` tool so other agents / units can invoke it through the existing MCP skill pipeline (see [Agent Runtime § Skill registries](agent-runtime.md#41-skill-registries--connectors-and-agents-as-skills)). The registry is an outside-caller surface, so it honours the boundary rules above: an agent whose every contribution is stripped by an ancestor unit's external view is not advertised. Units without a boundary, or agents with no expertise seeded, fall through to "visible" — the `IMessageRouter` still permission-checks every dispatch.
+
 **Operator surface.**
 
 - **HTTP** — `GET / PUT / DELETE /api/v1/units/{id}/boundary`. The empty shape is always returned for units that have never had a boundary persisted, so callers never need to branch on 404 vs empty-boundary.
