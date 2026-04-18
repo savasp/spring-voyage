@@ -1195,11 +1195,18 @@ public static class UnitEndpoints
             .Where(m => string.Equals(m.Scheme, "agent", StringComparison.OrdinalIgnoreCase))
             .ToList();
 
-        // Resolve and enrich in parallel. N+1 is fine here — units typically
-        // hold single-digit numbers of agents, and the actor metadata read is
-        // a single state lookup. ParentUnit on each response is derived
-        // from the membership table, not read from the legacy cached state.
-        var enrichmentTasks = agentMembers.Select(async member =>
+        // Resolve and enrich sequentially. Units typically hold single-digit
+        // numbers of agents, so the N+1 cost is negligible. A previous
+        // implementation ran the enrichment tasks concurrently via
+        // Task.WhenAll, but that funneled parallel reads through the same
+        // scoped SpringDbContext (via GetDerivedAgentMetadataAsync →
+        // IUnitMembershipRepository), which is not thread-safe and surfaced
+        // as "A second operation was started on this context instance" ->
+        // HTTP 500 for the Skills settings tab (issue #600). ParentUnit on
+        // each response is derived from the membership table, not read from
+        // the legacy cached state.
+        var responses = new List<AgentResponse>(agentMembers.Count);
+        foreach (var member in agentMembers)
         {
             var entry = await directoryService.ResolveAsync(member, cancellationToken);
             if (entry is null)
@@ -1209,19 +1216,14 @@ public static class UnitEndpoints
                 logger.LogWarning(
                     "Unit {UnitId} lists member {Member} but the directory has no entry for it.",
                     id, member);
-                return null;
+                continue;
             }
             var proxy = actorProxyFactory.CreateActorProxy<IAgentActor>(
                 new ActorId(entry.ActorId), nameof(AgentActor));
             var metadata = await AgentEndpoints.GetDerivedAgentMetadataAsync(
                 proxy, membershipRepository, member.Path, cancellationToken);
-            return AgentEndpoints.ToAgentResponse(entry, metadata);
-        });
-
-        var responses = (await Task.WhenAll(enrichmentTasks))
-            .Where(r => r is not null)
-            .Cast<AgentResponse>()
-            .ToList();
+            responses.Add(AgentEndpoints.ToAgentResponse(entry, metadata));
+        }
 
         return Results.Ok(responses);
     }
