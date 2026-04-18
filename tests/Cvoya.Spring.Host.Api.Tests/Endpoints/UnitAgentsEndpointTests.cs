@@ -107,6 +107,84 @@ public class UnitAgentsEndpointTests : IClassFixture<CustomWebApplicationFactory
     }
 
     [Fact]
+    public async Task ListUnitAgents_MultipleAgents_EnrichesSequentiallyWithoutDbContextRace()
+    {
+        // Regression for #600: the Skills settings tab calls
+        // GET /api/v1/units/{id}/agents, which enriches each agent member
+        // with a server-side membership lookup. A previous implementation
+        // ran the per-agent lookups concurrently through the same scoped
+        // SpringDbContext (via IUnitMembershipRepository.ListByAgentAsync),
+        // which is not thread-safe and surfaced in production as HTTP 500
+        // ("A second operation was started on this context instance...").
+        //
+        // The EF in-memory provider used by these integration tests does
+        // NOT reliably trip the ConcurrencyDetector, so we can't rely on
+        // it to expose the bug. Instead we wrap the shared DI-registered
+        // membership repository with a probe that counts concurrent
+        // in-flight ListByAgentAsync calls and asserts the peak stays at
+        // 1. The probe wraps the real (in-memory-EF-backed) repository so
+        // the rest of the endpoint's integration contract still runs.
+        var ct = TestContext.Current.CancellationToken;
+        ClearAllMocks();
+
+        var unitProxy = ArrangeUnit();
+        unitProxy.GetMembersAsync(Arg.Any<CancellationToken>())
+            .Returns(new Address[]
+            {
+                new("agent", "ada"),
+                new("agent", "babbage"),
+                new("agent", "turing"),
+            });
+
+        ArrangeAgent("ada", "actor-ada",
+            new AgentMetadata(Model: "claude-opus", Enabled: true));
+        ArrangeAgent("babbage", "actor-babbage",
+            new AgentMetadata(Model: "gpt-4", Enabled: true));
+        ArrangeAgent("turing", "actor-turing",
+            new AgentMetadata(Model: "claude-sonnet", Enabled: true));
+
+        await UpsertMembershipAsync(UnitName, "ada");
+        await UpsertMembershipAsync(UnitName, "babbage");
+        await UpsertMembershipAsync(UnitName, "turing");
+
+        // Swap the scoped repository for a concurrency-probing wrapper.
+        // We scope the override to this test via a dedicated factory so we
+        // don't perturb shared fixture state.
+        using var probingFactory = _factory.WithWebHostBuilder(builder =>
+        {
+            builder.ConfigureServices(services =>
+            {
+                var existing = services.FirstOrDefault(d =>
+                    d.ServiceType == typeof(IUnitMembershipRepository));
+                if (existing is not null)
+                {
+                    services.Remove(existing);
+                }
+                services.AddScoped<IUnitMembershipRepository>(sp =>
+                {
+                    var inner = ActivatorUtilities.CreateInstance<
+                        Cvoya.Spring.Dapr.Data.UnitMembershipRepository>(sp);
+                    return new ConcurrencyProbingMembershipRepository(inner);
+                });
+            });
+        });
+        var client = probingFactory.CreateClient();
+
+        var response = await client.GetAsync($"/api/v1/units/{UnitName}/agents", ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var agents = await response.Content.ReadFromJsonAsync<List<AgentResponse>>(JsonOptions, ct);
+        agents.ShouldNotBeNull();
+        agents!.Count.ShouldBe(3);
+        agents.Select(a => a.Name).ShouldBe(new[] { "ada", "babbage", "turing" }, ignoreOrder: true);
+
+        ConcurrencyProbingMembershipRepository.PeakConcurrency
+            .ShouldBe(1,
+                "enrichment must call the membership repository sequentially " +
+                "so the scoped DbContext is never re-entered concurrently.");
+    }
+
+    [Fact]
     public async Task AssignUnitAgent_NewAgent_CreatesMembershipAndAddsMember()
     {
         var ct = TestContext.Current.CancellationToken;
@@ -349,5 +427,74 @@ public class UnitAgentsEndpointTests : IClassFixture<CustomWebApplicationFactory
         using var scope = _factory.Services.CreateScope();
         var repo = scope.ServiceProvider.GetRequiredService<IUnitMembershipRepository>();
         return await repo.GetAsync(unitId, agentAddress, CancellationToken.None);
+    }
+
+    /// <summary>
+    /// Test wrapper around <see cref="IUnitMembershipRepository"/> that
+    /// tracks the peak number of concurrent in-flight
+    /// <see cref="IUnitMembershipRepository.ListByAgentAsync"/> calls. The
+    /// endpoint under test must call the repository sequentially (so the
+    /// scoped <see cref="Cvoya.Spring.Dapr.Data.SpringDbContext"/> is never
+    /// re-entered concurrently); the assertion on <see cref="PeakConcurrency"/>
+    /// pins that contract as a regression guard for #600.
+    /// </summary>
+    private sealed class ConcurrencyProbingMembershipRepository : IUnitMembershipRepository
+    {
+        private static int s_inFlight;
+        private static int s_peak;
+
+        public static int PeakConcurrency => Volatile.Read(ref s_peak);
+
+        private readonly IUnitMembershipRepository _inner;
+
+        public ConcurrencyProbingMembershipRepository(IUnitMembershipRepository inner)
+        {
+            _inner = inner;
+            // Reset across test runs — the wrapper is re-created per scope
+            // but the static counters have to start clean for each test.
+            Interlocked.Exchange(ref s_inFlight, 0);
+            Interlocked.Exchange(ref s_peak, 0);
+        }
+
+        public Task UpsertAsync(UnitMembership membership, CancellationToken cancellationToken = default)
+            => _inner.UpsertAsync(membership, cancellationToken);
+
+        public Task DeleteAsync(string unitId, string agentAddress, CancellationToken cancellationToken = default)
+            => _inner.DeleteAsync(unitId, agentAddress, cancellationToken);
+
+        public Task<UnitMembership?> GetAsync(string unitId, string agentAddress, CancellationToken cancellationToken = default)
+            => _inner.GetAsync(unitId, agentAddress, cancellationToken);
+
+        public Task<IReadOnlyList<UnitMembership>> ListByUnitAsync(string unitId, CancellationToken cancellationToken = default)
+            => _inner.ListByUnitAsync(unitId, cancellationToken);
+
+        public async Task<IReadOnlyList<UnitMembership>> ListByAgentAsync(string agentAddress, CancellationToken cancellationToken = default)
+        {
+            var current = Interlocked.Increment(ref s_inFlight);
+            // Track the peak via a compare-and-swap loop so we don't race
+            // on the max update.
+            int observed;
+            do
+            {
+                observed = Volatile.Read(ref s_peak);
+                if (current <= observed)
+                {
+                    break;
+                }
+            }
+            while (Interlocked.CompareExchange(ref s_peak, current, observed) != observed);
+
+            try
+            {
+                // Give parallel callers, if any, time to overlap so the
+                // probe has a chance to observe concurrency.
+                await Task.Delay(20, cancellationToken);
+                return await _inner.ListByAgentAsync(agentAddress, cancellationToken);
+            }
+            finally
+            {
+                Interlocked.Decrement(ref s_inFlight);
+            }
+        }
     }
 }
