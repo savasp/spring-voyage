@@ -153,6 +153,13 @@ export const queryKeys = {
     models: () => ["ollama", "models"] as const,
   },
 
+  // Dynamic model catalog (#597) — per-provider cache so switching the
+  // provider dropdown doesn't clobber the previous provider's entry.
+  models: {
+    all: ["models"] as const,
+    forProvider: (provider: string) => ["models", provider] as const,
+  },
+
   // Settings drawer (#451) — drawer panels fetch a small amount of
   // per-panel metadata (version/build hash; signed-in user; token
   // list). Single-tuple keys because each slice is global.

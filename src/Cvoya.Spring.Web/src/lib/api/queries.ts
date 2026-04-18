@@ -960,3 +960,36 @@ export function useOllamaModels(
     ...opts,
   });
 }
+
+/**
+ * Dynamic model-list hook for the unit-creation wizard (#597). Queries
+ * <c>GET /api/v1/models/{provider}</c> which either returns a list fetched
+ * live from the provider's API or the server-side static fallback — either
+ * way the endpoint succeeds with a list, so this hook never throws into
+ * the page. Callers still guard with `enabled` to avoid a network round-
+ * trip when they know they want the hard-coded list (e.g. YAML import).
+ */
+export function useProviderModels(
+  provider: string,
+  opts?: SliceOptions<string[] | null>,
+): UseQueryResult<string[] | null, Error> {
+  return useQuery({
+    queryKey: queryKeys.models.forProvider(provider),
+    queryFn: async () => {
+      try {
+        return await api.listProviderModels(provider);
+      } catch {
+        // The server already falls back to the static list on provider
+        // errors; a null here means the call itself failed (auth, CORS,
+        // etc.). Surface null so the wizard can still render its static
+        // catalog from `ai-models.ts`.
+        return null;
+      }
+    },
+    // Models don't change minute-by-minute. Match the server's cache TTL
+    // so repeated wizard opens don't re-issue the request.
+    staleTime: opts?.staleTime ?? 60 * 60 * 1000,
+    refetchInterval: opts?.refetchInterval,
+    enabled: opts?.enabled ?? Boolean(provider),
+  });
+}

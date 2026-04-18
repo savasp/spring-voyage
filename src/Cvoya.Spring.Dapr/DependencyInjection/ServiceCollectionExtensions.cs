@@ -295,6 +295,16 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IPromptAssembler, PromptAssembler>();
         services.AddSingleton<IPlatformPromptProvider, PlatformPromptProvider>();
 
+        // Dynamic model catalog (#597). Backs the unit-creation wizard's model
+        // dropdown so we don't ship a stale hard-coded list for every
+        // provider release. Default implementation fetches from the provider
+        // models endpoint when possible (Anthropic, OpenAI, Ollama) and falls
+        // back to a static curated list otherwise. TryAdd so the private cloud
+        // host can swap in a tenant-scoped catalog (e.g. per-tenant API keys,
+        // per-tenant allowlists) without forking the endpoint.
+        services.AddHttpClient(ModelCatalog.HttpClientName);
+        services.TryAddSingleton<IModelCatalog, ModelCatalog>();
+
         // Container runtime. The worker no longer holds the local container
         // binary; the spring-dispatcher service does. The worker binds a
         // single DispatcherClientContainerRuntime that forwards every call to

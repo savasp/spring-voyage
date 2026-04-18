@@ -942,4 +942,22 @@ export const api = {
       { name: string; size: number; modifiedAt: string | null }[]
     >;
   },
+
+  // Provider-agnostic model discovery (#597). The server returns a
+  // dynamic list from the provider's API when a key is configured and
+  // the provider exposes one, falling back to a curated static list in
+  // every other case. Manual fetch because the endpoint is new.
+  listProviderModels: async (provider: string): Promise<string[]> => {
+    const resp = await fetch(
+      `${BASE}/api/v1/models/${encodeURIComponent(provider)}`,
+    );
+    if (!resp.ok) {
+      throw new ApiError(resp.status, resp.statusText, await resp.text());
+    }
+    const body = (await resp.json()) as {
+      provider: string;
+      models: string[];
+    };
+    return body.models;
+  },
 };

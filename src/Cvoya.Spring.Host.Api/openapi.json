@@ -5946,6 +5946,37 @@
         }
       }
     },
+    "/api/v1/models/{provider}": {
+      "get": {
+        "tags": [
+          "Models"
+        ],
+        "summary": "List available models for an AI provider, dynamically when possible",
+        "operationId": "ListModelsForProvider",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelsResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/webhooks/github": {
       "post": {
         "tags": [
@@ -7771,6 +7802,24 @@
               "null",
               "array"
             ],
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ModelsResponse": {
+        "required": [
+          "provider",
+          "models"
+        ],
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string"
+          },
+          "models": {
+            "type": "array",
             "items": {
               "type": "string"
             }
@@ -9648,6 +9697,9 @@
     },
     {
       "name": "Ollama"
+    },
+    {
+      "name": "Models"
     },
     {
       "name": "Webhooks"
