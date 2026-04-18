@@ -143,6 +143,43 @@ Workflow containers (not agent containers) typically need their own Dapr sidecar
 
 ---
 
+## Release and Image Publishing
+
+### `spring-agent` container image
+
+The `spring-agent` image (Claude Code runtime, `packages/software-engineering/execution/spring-agent/Dockerfile`) is published to `ghcr.io/cvoya-com/spring-agent` by the `Release spring-agent image` GitHub Actions workflow. The workflow is scoped to git tag pushes — day-to-day CI does not push to the registry.
+
+### Tag → GHCR flow
+
+1. A maintainer pushes a semver-style tag to `main` (e.g. `git tag v0.1.0 && git push origin v0.1.0`). The tag pattern `v*` gates the workflow.
+2. `.github/workflows/release-spring-agent-image.yml` runs on `ubuntu-latest` with `permissions: packages: write`. It authenticates to GHCR using the per-job `GITHUB_TOKEN` — no PAT or long-lived secret is involved.
+3. The workflow parses `ARG CLAUDE_CODE_VERSION=<x.y.z>` out of the Dockerfile (single source of truth for the pinned CLI version) and passes it back through as a `--build-arg` so image contents and the workflow's `claude-<version>` tag can never drift.
+4. `docker/build-push-action` builds the image for `linux/amd64` + `linux/arm64` via QEMU + Buildx and pushes four tags:
+   - `<git-tag>` (e.g. `v0.1.0`)
+   - `<semver>` (e.g. `0.1.0`, with the leading `v` stripped)
+   - `claude-<baked-version>` (e.g. `claude-2.1.98`) so operators can pin on CLI revision instead of platform release
+   - `latest` — rolls forward to every published release
+5. OCI labels (`org.opencontainers.image.*` + `com.cvoya.spring-agent.claude-code-version`) are stamped onto the manifest so `docker inspect` shows the source commit and CLI version.
+
+A manual `workflow_dispatch` input is also available for republishing an existing tag without cutting a new git ref — useful if a transient registry failure interrupts the original run.
+
+### Operator pull examples
+
+```bash
+# Pull by platform release
+docker pull ghcr.io/cvoya-com/spring-agent:v0.1.0
+
+# Pull by baked Claude Code CLI revision
+docker pull ghcr.io/cvoya-com/spring-agent:claude-2.1.98
+
+# Sanity-check the baked CLI
+docker run --rm ghcr.io/cvoya-com/spring-agent:v0.1.0 --version
+```
+
+Consumers that want the Dockerfile's `--build-arg CLAUDE_CODE_VERSION=<x.y.z>` escape hatch can continue to build locally; the published image covers the default (pinned) version for operators who don't need a custom CLI build.
+
+---
+
 ## Solution Structure
 
 The solution follows a layered architecture with clean separation between domain abstractions and infrastructure:
