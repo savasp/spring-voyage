@@ -77,6 +77,31 @@ export const queryKeys = {
       ["activity", "query", params ?? {}] as const,
   },
 
+  /**
+   * Analytics rollups (#448 / #457). The CLI `spring analytics
+   * {costs,throughput,waits}` and the portal's `/analytics/*` pages
+   * share these keys. Slice shape:
+   *   - `throughput(source?, from, to)` — key per scope + window.
+   *   - `waits(source?, from, to)` — same.
+   *   - `costs` is served by `queryKeys.dashboard.costs()` already; the
+   *     Analytics Costs page fetches through that hook and adds a filter
+   *     layer client-side so the underlying cache remains shared with
+   *     the dashboard header.
+   */
+  analytics: {
+    all: ["analytics"] as const,
+    throughput: (params: {
+      source?: string;
+      from: string;
+      to: string;
+    }) => ["analytics", "throughput", params] as const,
+    waits: (params: {
+      source?: string;
+      from: string;
+      to: string;
+    }) => ["analytics", "waits", params] as const,
+  },
+
   conversations: {
     all: ["conversations"] as const,
     list: (filters?: Record<string, unknown>) =>
@@ -118,6 +143,18 @@ export const queryKeys = {
 
   ollama: {
     models: () => ["ollama", "models"] as const,
+  },
+
+  // Settings drawer (#451) — drawer panels fetch a small amount of
+  // per-panel metadata (version/build hash; signed-in user; token
+  // list). Single-tuple keys because each slice is global.
+  platform: {
+    info: () => ["platform", "info"] as const,
+  },
+
+  auth: {
+    me: () => ["auth", "me"] as const,
+    tokens: () => ["auth", "tokens"] as const,
   },
 } as const;
 

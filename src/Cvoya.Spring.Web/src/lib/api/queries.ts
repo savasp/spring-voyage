@@ -43,6 +43,9 @@ import type {
   PackageSummary,
   PersistentAgentDeploymentResponse,
   PersistentAgentLogsResponse,
+  PlatformInfoResponse,
+  ThroughputRollupResponse,
+  TokenResponse,
   UnitBoundaryResponse,
   UnitDashboardSummary,
   UnitDetailResponse,
@@ -51,6 +54,8 @@ import type {
   UnitResponse,
   UnitTemplateDetail,
   UnitTemplateSummary,
+  UserProfileResponse,
+  WaitTimeRollupResponse,
 } from "./types";
 
 /**
@@ -415,6 +420,65 @@ export function useActivityQuery(
 }
 
 // ---------------------------------------------------------------------------
+// Analytics (#448 / #457)
+// ---------------------------------------------------------------------------
+//
+// Each hook takes the resolved `(from, to)` window plus an optional source
+// filter. The hooks are the TanStack Query surface the three
+// `/analytics/*` pages ride on; CLI parity is kept by mirroring the
+// `spring analytics {throughput,waits}` flags 1:1 (--window, --unit,
+// --agent) → the same wire contract.
+
+export interface AnalyticsRangeArgs {
+  /** Optional `scheme://name` substring filter; matches the CLI `--unit` / `--agent` flags. */
+  source?: string;
+  /** ISO start of the rollup window. */
+  from: string;
+  /** ISO end of the rollup window. */
+  to: string;
+}
+
+export function useAnalyticsThroughput(
+  args: AnalyticsRangeArgs,
+  opts?: SliceOptions<ThroughputRollupResponse>,
+): UseQueryResult<ThroughputRollupResponse, Error> {
+  return useQuery({
+    queryKey: queryKeys.analytics.throughput({
+      source: args.source,
+      from: args.from,
+      to: args.to,
+    }),
+    queryFn: () =>
+      api.getAnalyticsThroughput({
+        source: args.source,
+        from: args.from,
+        to: args.to,
+      }) as Promise<ThroughputRollupResponse>,
+    ...opts,
+  });
+}
+
+export function useAnalyticsWaits(
+  args: AnalyticsRangeArgs,
+  opts?: SliceOptions<WaitTimeRollupResponse>,
+): UseQueryResult<WaitTimeRollupResponse, Error> {
+  return useQuery({
+    queryKey: queryKeys.analytics.waits({
+      source: args.source,
+      from: args.from,
+      to: args.to,
+    }),
+    queryFn: () =>
+      api.getAnalyticsWaits({
+        source: args.source,
+        from: args.from,
+        to: args.to,
+      }) as Promise<WaitTimeRollupResponse>,
+    ...opts,
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Conversations (#410)
 // ---------------------------------------------------------------------------
 //
@@ -607,15 +671,13 @@ export function useConnectorConfigSchema(
 }
 
 /**
- * Fan-out query that pairs every visible unit with its active
- * connector binding pointer (or `null` when unbound) so the detail
- * page can list "units bound to this connector".
- *
- * The unit list endpoint doesn't carry connector pointers, so we have
- * to N+1 it. The route parameter is `slugOrId`, so we accept either
- * form and match each binding on whichever identifier the pointer
- * carries. Follow-up #520 tracks adding a bulk "units bound to type X"
- * endpoint so this walk can go away.
+ * Row shape the connector detail page and command palette consume to
+ * render "units bound to this connector". Pre-#520 this was stitched
+ * together on the client by fanning out `api.getUnitConnector(u.id)`
+ * across every unit returned by `api.listUnits()`; the walk bypassed
+ * TanStack's per-query cache and serialised behind the browser's
+ * parallel-connection cap for tenants with many units. The row shape
+ * is preserved verbatim so call sites don't change.
  */
 export interface UnitConnectorBindingRow {
   unitId: string;
@@ -625,6 +687,16 @@ export interface UnitConnectorBindingRow {
   typeSlug: string | null;
 }
 
+/**
+ * Lists every unit bound to the given connector type in a single
+ * round-trip (#520). Rides the new bulk endpoint
+ * `GET /api/v1/connectors/{slugOrId}/bindings`, so the portal's N+1
+ * walk from #516 is gone and the CLI's `spring connector bindings
+ * <slug>` rides the same data source. Boundary enforcement is the
+ * server's job: the endpoint walks the same directory surface the
+ * canonical `/api/v1/units` list does, so whatever visibility filter
+ * wraps unit listing applies transparently here too.
+ */
 export function useConnectorBindings(
   slugOrId: string,
   opts?: SliceOptions<UnitConnectorBindingRow[]>,
@@ -632,26 +704,14 @@ export function useConnectorBindings(
   return useQuery({
     queryKey: [...queryKeys.connectors.detail(slugOrId), "bindings"] as const,
     queryFn: async (): Promise<UnitConnectorBindingRow[]> => {
-      const units = await api.listUnits();
-      const needle = slugOrId.toLowerCase();
-      const rows: (UnitConnectorBindingRow | null)[] = await Promise.all(
-        units.map(async (u): Promise<UnitConnectorBindingRow | null> => {
-          const ptr = await api.getUnitConnector(u.id);
-          if (!ptr) return null;
-          const matches =
-            (ptr.typeSlug && ptr.typeSlug.toLowerCase() === needle) ||
-            (ptr.typeId && ptr.typeId.toLowerCase() === needle);
-          if (!matches) return null;
-          return {
-            unitId: u.id,
-            unitName: u.name,
-            unitDisplayName: u.displayName,
-            typeId: ptr.typeId ?? null,
-            typeSlug: ptr.typeSlug ?? null,
-          };
-        }),
-      );
-      return rows.filter((r): r is UnitConnectorBindingRow => r !== null);
+      const rows = await api.listConnectorBindings(slugOrId);
+      return rows.map((b) => ({
+        unitId: b.unitId,
+        unitName: b.unitName,
+        unitDisplayName: b.unitDisplayName,
+        typeId: b.typeId ?? null,
+        typeSlug: b.typeSlug ?? null,
+      }));
     },
     enabled: opts?.enabled ?? Boolean(slugOrId),
     refetchInterval: opts?.refetchInterval,
@@ -739,6 +799,71 @@ export interface OllamaModelEntry {
   name: string;
   size: number;
   modifiedAt: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Settings drawer (#451) — platform metadata + auth view
+// ---------------------------------------------------------------------------
+//
+// The About and Auth panels on the Settings drawer read small,
+// low-churn slices. `staleTime: Infinity` for platform info (the value
+// can't change without a redeploy); auth/me similarly stable within a
+// session; tokens refreshes on focus so newly-minted tokens surface
+// without a page reload once token CRUD ships (#557).
+
+export function usePlatformInfo(
+  opts?: SliceOptions<PlatformInfoResponse | null>,
+): UseQueryResult<PlatformInfoResponse | null, Error> {
+  return useQuery({
+    queryKey: queryKeys.platform.info(),
+    queryFn: async () => {
+      try {
+        return await api.getPlatformInfo();
+      } catch {
+        // The About panel surfaces "(unavailable)" when the platform
+        // endpoint is unreachable (older servers, network blip) rather
+        // than bubbling an error up to the drawer boundary.
+        return null;
+      }
+    },
+    ...opts,
+  });
+}
+
+export function useCurrentUser(
+  opts?: SliceOptions<UserProfileResponse | null>,
+): UseQueryResult<UserProfileResponse | null, Error> {
+  return useQuery({
+    queryKey: queryKeys.auth.me(),
+    queryFn: async () => {
+      try {
+        return await api.getCurrentUser();
+      } catch {
+        // Anonymous / unauthenticated — surface null so the Auth panel
+        // can render the "not signed in" state.
+        return null;
+      }
+    },
+    ...opts,
+  });
+}
+
+export function useAuthTokens(
+  opts?: SliceOptions<TokenResponse[]>,
+): UseQueryResult<TokenResponse[], Error> {
+  return useQuery({
+    queryKey: queryKeys.auth.tokens(),
+    queryFn: async () => {
+      try {
+        return await api.listAuthTokens();
+      } catch {
+        // Tokens live behind auth; return an empty list when the caller
+        // is anonymous so the panel can render the empty state.
+        return [];
+      }
+    },
+    ...opts,
+  });
 }
 
 export function useOllamaModels(

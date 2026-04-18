@@ -68,6 +68,19 @@ export type PersistentAgentLogsResponse =
 /** PATCH /api/v1/agents/{id} request body. */
 export type UpdateAgentMetadataRequest = Schemas["UpdateAgentMetadataRequest"];
 
+// ---------------------------------------------------------------------------
+// Platform metadata + Auth surface — consumed by the Settings drawer (#451).
+// ---------------------------------------------------------------------------
+
+/** GET /api/v1/platform/info response — version / build hash / license. */
+export type PlatformInfoResponse = Schemas["PlatformInfoResponse"];
+
+/** GET /api/v1/auth/me response — current authenticated user. */
+export type UserProfileResponse = Schemas["UserProfileResponse"];
+
+/** One item in the GET /api/v1/auth/tokens response. */
+export type TokenResponse = Schemas["TokenResponse"];
+
 /** Entry in the platform-wide skill catalog (GET /api/v1/skills). */
 export type SkillCatalogEntry = Schemas["SkillCatalogEntry"];
 
@@ -134,6 +147,42 @@ export type SetBudgetRequest = Schemas["SetBudgetRequest"];
 
 /** GET /api/v1/activity query response. */
 export type ActivityQueryResult = Schemas["ActivityQueryResult"];
+
+// ---------------------------------------------------------------------------
+// Analytics (#448, #457) — Throughput / Wait-time rollups
+// ---------------------------------------------------------------------------
+//
+// Every shape below mirrors the `spring analytics {throughput,waits}` CLI
+// surface (PR #474) 1:1 so UI and CLI can never drift on the wire contract.
+// Costs round-trip the existing `CostSummaryResponse` and
+// `CostDashboardSummary` shapes.
+
+/** One row in `GET /api/v1/analytics/throughput`. */
+export type ThroughputEntryResponse = Schemas["ThroughputEntryResponse"];
+
+/** Response body of `GET /api/v1/analytics/throughput`. */
+export type ThroughputRollupResponse = Schemas["ThroughputRollupResponse"];
+
+/** One row in `GET /api/v1/analytics/waits`. */
+export type WaitTimeEntryResponse = Schemas["WaitTimeEntryResponse"];
+
+/** Response body of `GET /api/v1/analytics/waits`. */
+export type WaitTimeRollupResponse = Schemas["WaitTimeRollupResponse"];
+
+/**
+ * Window labels shared by the three Analytics pages. Matches the CLI's
+ * `--window 24h|7d|30d` surface on `spring analytics costs|throughput|waits`
+ * (PR #474). A portal picker that chooses one of these values resolves to
+ * the same `(from, to)` pair the CLI would.
+ */
+export const ANALYTICS_WINDOWS = ["24h", "7d", "30d"] as const;
+export type AnalyticsWindow = (typeof ANALYTICS_WINDOWS)[number];
+
+/** The tri-state scope filter exposed by each Analytics page. */
+export type AnalyticsScope =
+  | { kind: "all" }
+  | { kind: "unit"; name: string }
+  | { kind: "agent"; name: string };
 
 // ---------------------------------------------------------------------------
 // Conversations & inbox (#410, #452, #456)
@@ -247,6 +296,14 @@ export type ConnectorTypeResponse = Schemas["ConnectorTypeResponse"];
 
 /** GET /api/v1/units/{id}/connector response — a pointer to the typed config. */
 export type UnitConnectorPointerResponse = Schemas["UnitConnectorPointerResponse"];
+
+/**
+ * GET /api/v1/connectors/{slugOrId}/bindings response item (#520). One entry
+ * per unit currently bound to the requested connector type. Collapses the
+ * per-unit fan-out that `useConnectorBindings` used to issue into a single
+ * round-trip.
+ */
+export type ConnectorUnitBindingResponse = Schemas["ConnectorUnitBindingResponse"];
 
 /**
  * Optional connector binding bundled into a unit-creation request (#199).

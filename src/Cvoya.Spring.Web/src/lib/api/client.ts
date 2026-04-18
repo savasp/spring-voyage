@@ -503,6 +503,41 @@ export const api = {
       }),
     ),
 
+  // Analytics (#448 / #457).
+  //
+  // Three verbs live on two endpoints: costs reuse the per-entity + tenant
+  // cost endpoints that already shipped (GetAgentCost / GetUnitCost /
+  // GetTenantCost), and the two new /analytics endpoints serve throughput
+  // and wait-time rollups. The portal + CLI share the same wire shape so
+  // `spring analytics {costs,throughput,waits}` round-trips the exact JSON
+  // the portal renders.
+  getAnalyticsThroughput: async (
+    params?: { source?: string; from?: string; to?: string },
+  ) => {
+    const query: Record<string, string> = {};
+    if (params?.source) query.source = params.source;
+    if (params?.from) query.from = params.from;
+    if (params?.to) query.to = params.to;
+    return unwrap(
+      await fetchClient.GET("/api/v1/analytics/throughput", {
+        params: { query: query as never },
+      }),
+    );
+  },
+  getAnalyticsWaits: async (
+    params?: { source?: string; from?: string; to?: string },
+  ) => {
+    const query: Record<string, string> = {};
+    if (params?.source) query.source = params.source;
+    if (params?.from) query.from = params.from;
+    if (params?.to) query.to = params.to;
+    return unwrap(
+      await fetchClient.GET("/api/v1/analytics/waits", {
+        params: { query: query as never },
+      }),
+    );
+  },
+
   // Conversations (#410)
   //
   // Conversations are a projection over the activity event stream;
@@ -656,6 +691,22 @@ export const api = {
     }
     return JSON.parse(text) as unknown;
   },
+  /**
+   * Returns every unit bound to the given connector type (#520). Replaces
+   * the per-unit fan-out that `useConnectorBindings` used to issue after
+   * #516 landed — the server now walks the unit directory once and
+   * returns one array in a single round-trip. The response carries the
+   * unit identity and pointer together so the portal's "Bound units"
+   * list, and `spring connector bindings <slug>`, render without a
+   * second lookup. 404 is reserved for "unknown connector type"; a
+   * registered connector with no bindings returns `[]`.
+   */
+  listConnectorBindings: async (slugOrId: string) =>
+    unwrap(
+      await fetchClient.GET("/api/v1/connectors/{slugOrId}/bindings", {
+        params: { path: { slugOrId } },
+      }),
+    ),
   /**
    * Returns the unit's active connector binding pointer, or `null` when
    * the unit isn't bound. Normalizing 404 → null here keeps call sites
@@ -826,6 +877,21 @@ export const api = {
     unwrap(
       await fetchClient.POST("/api/v1/directory/search", { body }),
     ) as DirectorySearchResponse,
+
+  // Platform metadata (#451). Anonymous read — the About panel and
+  // `spring platform info` both point here so version reporting can't
+  // drift between UI and CLI.
+  getPlatformInfo: async () =>
+    unwrap(await fetchClient.GET("/api/v1/platform/info")),
+
+  // Auth — the portal's Settings → Auth panel ships a read-only view of
+  // the current session plus the token list the CLI already exposes via
+  // `spring auth token {list,create,revoke}`. The create/revoke wiring
+  // is tracked as a follow-up (needs a "reveal once" primitive).
+  getCurrentUser: async () =>
+    unwrap(await fetchClient.GET("/api/v1/auth/me")),
+  listAuthTokens: async () =>
+    unwrap(await fetchClient.GET("/api/v1/auth/tokens")),
 
   // Ollama model discovery (#350) — uses a manual fetch because the
   // endpoint is new and may not be present in the generated schema yet.

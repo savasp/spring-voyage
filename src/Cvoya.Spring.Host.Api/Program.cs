@@ -3,6 +3,7 @@
 
 using System.Text.Json.Serialization;
 
+using Cvoya.Spring.Connector.Arxiv.DependencyInjection;
 using Cvoya.Spring.Connector.GitHub.DependencyInjection;
 using Cvoya.Spring.Dapr.Auth;
 using Cvoya.Spring.Dapr.DependencyInjection;
@@ -28,6 +29,7 @@ builder.Services
     .AddCvoyaSpringDapr(builder.Configuration)
     .AddCvoyaSpringOllamaLlm(builder.Configuration)
     .AddCvoyaSpringConnectorGitHub(builder.Configuration)
+    .AddCvoyaSpringConnectorArxiv(builder.Configuration)
     .AddCvoyaSpringApiServices(builder.Configuration);
 
 // DataProtection tries to persist/load keys from disk and logs a warning when
@@ -110,6 +112,10 @@ app.MapGet("/health", () => Results.Ok(new { Status = "Healthy" }))
     .ExcludeFromDescription();
 
 app.MapAuthEndpoints();
+// Platform info is deliberately anonymous — the About panel / CLI verb
+// needs to work before a caller has negotiated an auth token. The
+// payload is static version + license metadata; nothing tenant-scoped.
+app.MapPlatformEndpoints();
 app.MapAgentEndpoints().RequireAuthorization();
 app.MapUnitEndpoints().RequireAuthorization();
 app.MapUnitPolicyEndpoints().RequireAuthorization();

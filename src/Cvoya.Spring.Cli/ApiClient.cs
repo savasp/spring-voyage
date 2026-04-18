@@ -832,6 +832,20 @@ public class SpringApiClient
     }
 
     /// <summary>
+    /// Returns every unit bound to the given connector type (#520). Mirrors
+    /// the portal's <c>useConnectorBindings</c> hook — both surfaces ride the
+    /// same bulk endpoint so the CLI table and the portal's "Bound units"
+    /// list are produced from the same data in one round-trip.
+    /// </summary>
+    public async Task<IReadOnlyList<ConnectorUnitBindingResponse>> ListConnectorBindingsAsync(
+        string slugOrId,
+        CancellationToken ct = default)
+    {
+        var result = await _client.Api.V1.Connectors[slugOrId].Bindings.GetAsync(cancellationToken: ct);
+        return result ?? new List<ConnectorUnitBindingResponse>();
+    }
+
+    /// <summary>
     /// Returns the active connector binding pointer for a unit, or
     /// <c>null</c> when the unit is not bound to any connector. Mirrors the
     /// portal's handling of the 404 the server returns for an unbound unit.
@@ -1205,6 +1219,21 @@ public class SpringApiClient
     /// <summary>Revokes an API token by name.</summary>
     public Task RevokeTokenAsync(string name, CancellationToken ct = default)
         => _client.Api.V1.Auth.Tokens[name].DeleteAsync(cancellationToken: ct);
+
+    // Platform info (#451). The About panel on the portal and the
+    // `spring platform info` CLI verb read the same endpoint so version
+    // reporting can't drift between surfaces.
+
+    /// <summary>
+    /// Reads platform version, build hash, and license metadata. Mirrors
+    /// the portal's Settings → About panel; the endpoint is anonymous so
+    /// the client works before a caller has negotiated a token.
+    /// </summary>
+    public async Task<PlatformInfoResponse> GetPlatformInfoAsync(CancellationToken ct = default)
+    {
+        var result = await _client.Api.V1.Platform.Info.GetAsync(cancellationToken: ct);
+        return result ?? throw new InvalidOperationException("Server returned an empty platform info response.");
+    }
 
     // Packages (#395). Backs `spring package list / show` and
     // `spring template show <package>/<template>`. The portal's

@@ -126,6 +126,27 @@
         }
       }
     },
+    "/api/v1/platform/info": {
+      "get": {
+        "tags": [
+          "Platform"
+        ],
+        "summary": "Get platform version, build hash, and license metadata",
+        "operationId": "GetPlatformInfo",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformInfoResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/agents": {
       "get": {
         "tags": [
@@ -4149,6 +4170,50 @@
         }
       }
     },
+    "/api/v1/connectors/{slugOrId}/bindings": {
+      "get": {
+        "tags": [
+          "Connectors"
+        ],
+        "summary": "List every unit bound to the given connector type (#520)",
+        "operationId": "ListConnectorBindings",
+        "parameters": [
+          {
+            "name": "slugOrId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ConnectorUnitBindingResponse"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/connectors/github/units/{unitId}/config": {
       "get": {
         "tags": [
@@ -4511,6 +4576,117 @@
               "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/connectors/arxiv/units/{unitId}/config": {
+      "get": {
+        "tags": [
+          "Connectors.Arxiv"
+        ],
+        "summary": "Get the arxiv connector config bound to a unit",
+        "operationId": "GetUnitArxivConnectorConfig",
+        "parameters": [
+          {
+            "name": "unitId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnitArxivConfigResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Connectors.Arxiv"
+        ],
+        "summary": "Bind a unit to arxiv and upsert its per-unit config",
+        "operationId": "PutUnitArxivConnectorConfig",
+        "parameters": [
+          {
+            "name": "unitId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnitArxivConfigRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnitArxivConfigResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/connectors/arxiv/config-schema": {
+      "get": {
+        "tags": [
+          "Connectors.Arxiv"
+        ],
+        "summary": "Get the JSON Schema describing the arxiv connector config body",
+        "operationId": "GetArxivConnectorConfigSchema",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JsonElement"
                 }
               }
             }
@@ -6235,6 +6411,42 @@
           }
         }
       },
+      "ConnectorUnitBindingResponse": {
+        "required": [
+          "unitId",
+          "unitName",
+          "unitDisplayName",
+          "typeId",
+          "typeSlug",
+          "configUrl",
+          "actionsBaseUrl"
+        ],
+        "type": "object",
+        "properties": {
+          "unitId": {
+            "type": "string"
+          },
+          "unitName": {
+            "type": "string"
+          },
+          "unitDisplayName": {
+            "type": "string"
+          },
+          "typeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "typeSlug": {
+            "type": "string"
+          },
+          "configUrl": {
+            "type": "string"
+          },
+          "actionsBaseUrl": {
+            "type": "string"
+          }
+        }
+      },
       "ConversationDetail": {
         "required": [
           "summary",
@@ -7776,6 +7988,28 @@
           }
         }
       },
+      "PlatformInfoResponse": {
+        "required": [
+          "version",
+          "buildHash",
+          "license"
+        ],
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string"
+          },
+          "buildHash": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "license": {
+            "type": "string"
+          }
+        }
+      },
       "ProblemDetails": {
         "type": "object",
         "properties": {
@@ -8305,6 +8539,56 @@
             "items": {
               "type": "string"
             }
+          }
+        }
+      },
+      "UnitArxivConfigRequest": {
+        "type": "object",
+        "properties": {
+          "defaultCategories": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "maxResults": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "UnitArxivConfigResponse": {
+        "required": [
+          "unitId",
+          "defaultCategories",
+          "maxResults"
+        ],
+        "type": "object",
+        "properties": {
+          "unitId": {
+            "type": "string"
+          },
+          "defaultCategories": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "maxResults": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
           }
         }
       },
@@ -9068,6 +9352,9 @@
       "name": "Auth"
     },
     {
+      "name": "Platform"
+    },
+    {
       "name": "Agents"
     },
     {
@@ -9132,6 +9419,9 @@
     },
     {
       "name": "Connectors.GitHub.OAuth"
+    },
+    {
+      "name": "Connectors.Arxiv"
     },
     {
       "name": "Secrets"

@@ -58,6 +58,7 @@ spring connector show --unit engineering-team
 spring directory list
 spring directory show python/fastapi
 spring directory search "refactor python"
+spring connector bindings github
 spring build packages/software-engineering
 spring apply -f units/engineering-team.yaml
 spring workflow status software-dev-cycle
