@@ -10,7 +10,11 @@ import type {
   CreateUnitFromTemplateRequest,
   CreateUnitFromYamlRequest,
   DashboardSummary,
+  DeployPersistentAgentRequest,
   InitiativePolicy,
+  PersistentAgentDeploymentResponse,
+  PersistentAgentLogsResponse,
+  ScalePersistentAgentRequest,
   SetBudgetRequest,
   UnitConnectorBindingRequest,
   UnitGitHubConfigRequest,
@@ -145,6 +149,65 @@ export const api = {
       }),
     );
   },
+
+  // Persistent-agent lifecycle (#396 / PR-PLAT-RUN-2b). The same verbs the
+  // CLI ships under `spring agent {deploy,undeploy,scale,logs}` plus the
+  // read-only `deployment` inspector. Ephemeral agents will receive a 400
+  // from the server; the portal surfaces that verbatim per the CLI-parity
+  // rule in AGENTS.md.
+  deployPersistentAgent: async (
+    id: string,
+    body?: DeployPersistentAgentRequest,
+  ): Promise<PersistentAgentDeploymentResponse> =>
+    unwrap(
+      await fetchClient.POST("/api/v1/agents/{id}/deploy", {
+        params: { path: { id } },
+        // The server's request body is optional (oneOf null). Omit the
+        // body entirely when no overrides are supplied so the openapi
+        // client doesn't serialize an empty object.
+        ...(body !== undefined ? { body } : {}),
+      }),
+    ) as PersistentAgentDeploymentResponse,
+  undeployPersistentAgent: async (
+    id: string,
+  ): Promise<PersistentAgentDeploymentResponse> =>
+    unwrap(
+      await fetchClient.POST("/api/v1/agents/{id}/undeploy", {
+        params: { path: { id } },
+      }),
+    ) as PersistentAgentDeploymentResponse,
+  scalePersistentAgent: async (
+    id: string,
+    body: ScalePersistentAgentRequest,
+  ): Promise<PersistentAgentDeploymentResponse> =>
+    unwrap(
+      await fetchClient.POST("/api/v1/agents/{id}/scale", {
+        params: { path: { id } },
+        body,
+      }),
+    ) as PersistentAgentDeploymentResponse,
+  getPersistentAgentLogs: async (
+    id: string,
+    tail?: number,
+  ): Promise<PersistentAgentLogsResponse> => {
+    const query = tail != null ? { tail } : undefined;
+    return unwrap(
+      await fetchClient.GET("/api/v1/agents/{id}/logs", {
+        params: {
+          path: { id },
+          ...(query ? { query: query as never } : {}),
+        },
+      }),
+    ) as PersistentAgentLogsResponse;
+  },
+  getPersistentAgentDeployment: async (
+    id: string,
+  ): Promise<PersistentAgentDeploymentResponse> =>
+    unwrap(
+      await fetchClient.GET("/api/v1/agents/{id}/deployment", {
+        params: { path: { id } },
+      }),
+    ) as PersistentAgentDeploymentResponse,
 
   // Units
   //

@@ -257,6 +257,23 @@ spring activity list --source agent:<id>
 
 There is no portal flow for creating a brand-new agent today — use `spring agent create`. **This is a CLI/UI parity gap.**
 
+### Persistent deployment panel
+
+Right under "Agent Info" the page carries a **Persistent deployment** panel ([lifecycle-panel.tsx](../../src/Cvoya.Spring.Web/src/app/agents/%5Bid%5D/lifecycle-panel.tsx)) that mirrors the `spring agent deploy / undeploy / scale / logs` verbs 1:1. The panel is rendered for every agent so the portal stays on the same surface as the CLI; ephemeral agents simply receive a `400` from the lifecycle endpoints, which the panel surfaces as a toast.
+
+The header badge flips between **Running** (with a health pill: `healthy` / `unhealthy` / `unknown`) and **Not deployed**. When the agent is running, a details grid shows the image, endpoint, short container id, start time, consecutive health failures, and replica count.
+
+| Action | Portal | CLI |
+|--------|--------|-----|
+| Deploy a persistent agent (with optional image override) | **Deploy** button (and the image-override input) | `spring agent deploy <id> [--image <image>] [--replicas 0|1]` |
+| Undeploy (tear down the container) | **Undeploy** button | `spring agent undeploy <id>` |
+| Scale to 1 (ensure running) | **Scale to 1** | `spring agent scale <id> --replicas 1` |
+| Scale to 0 (undeploy) | **Scale to 0** | `spring agent scale <id> --replicas 0` |
+| Read the container log tail | **Show logs** (with a `tail` input; defaults to 200) | `spring agent logs <id> [--tail <n>]` |
+| Refresh deployment status | refresh icon in the toolbar | `spring agent deploy <id>` is idempotent; re-reading state uses `GET /api/v1/agents/{id}/deployment` |
+
+Deployment status is kept fresh by the same activity SSE stream that drives the rest of the portal — agent-scoped events invalidate the `agents.deployment(id)` query slice so health transitions appear without a manual refresh. Logs are a snapshot today (server-side `docker logs --tail`), consistent with the CLI; a streaming upgrade (SSE-backed) is a tracked follow-up and will reuse the existing activity-stream infrastructure rather than a second transport.
+
 ## Conversations (`/conversations`, `/conversations/{id}`)
 
 The Conversations index ([src/Cvoya.Spring.Web/src/app/conversations/page.tsx](../../src/Cvoya.Spring.Web/src/app/conversations/page.tsx)) lists every conversation thread the platform has correlated from the activity stream. Each entry uses the shared `ConversationCard` primitive and shows the participants, status, last activity, and a short summary.

@@ -38,6 +38,8 @@ import type {
   InitiativePolicy,
   PackageDetail,
   PackageSummary,
+  PersistentAgentDeploymentResponse,
+  PersistentAgentLogsResponse,
   UnitDashboardSummary,
   UnitDetailResponse,
   UnitReadinessResponse,
@@ -252,6 +254,67 @@ export function useAgentInitiativeLevel(
       try {
         return await api.getAgentInitiativeLevel(id);
       } catch {
+        return null;
+      }
+    },
+    enabled: opts?.enabled ?? Boolean(id),
+    refetchInterval: opts?.refetchInterval,
+    staleTime: opts?.staleTime,
+  });
+}
+
+/**
+ * Current persistent-agent deployment state (#396). Returns the canonical
+ * "not running" shape (Running=false, HealthStatus="unknown", Replicas=0)
+ * when no deployment is tracked — the server's `GET /deployment` already
+ * normalises this, so callers don't need to special-case empty state.
+ * Ephemeral agents never yield a non-empty response; the lifecycle UI
+ * still renders so the verbs stay reachable per UI/CLI parity, and the
+ * mutation handlers surface the server's 400 verbatim.
+ */
+export function useAgentDeployment(
+  id: string,
+  opts?: SliceOptions<PersistentAgentDeploymentResponse | null>,
+): UseQueryResult<PersistentAgentDeploymentResponse | null, Error> {
+  return useQuery({
+    queryKey: queryKeys.agents.deployment(id),
+    queryFn: async () => {
+      try {
+        return await api.getPersistentAgentDeployment(id);
+      } catch {
+        // A 404 here means the agent itself was removed. Surface null so
+        // the tab can render the empty state rather than bubbling the
+        // error up through an error boundary.
+        return null;
+      }
+    },
+    enabled: opts?.enabled ?? Boolean(id),
+    refetchInterval: opts?.refetchInterval,
+    staleTime: opts?.staleTime,
+  });
+}
+
+/**
+ * Snapshot of the persistent-agent container logs. Mirrors
+ * `spring agent logs <id> --tail <n>`. The `tail` knob is part of the
+ * query key so two tabs open on different tail windows don't collide.
+ * A streaming upgrade is tracked as a follow-up — today this is a
+ * manual-refresh snapshot, consistent with the CLI.
+ */
+export function useAgentLogs(
+  id: string,
+  tail: number,
+  opts?: SliceOptions<PersistentAgentLogsResponse | null>,
+): UseQueryResult<PersistentAgentLogsResponse | null, Error> {
+  return useQuery({
+    queryKey: queryKeys.agents.logs(id, tail),
+    queryFn: async () => {
+      try {
+        return await api.getPersistentAgentLogs(id, tail);
+      } catch {
+        // Agent exists but no container deployment — the server returns
+        // 404 for "not deployed". Surface null so the UI can render a
+        // clean "deploy first" state instead of the error boundary.
         return null;
       }
     },
