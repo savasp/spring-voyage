@@ -76,9 +76,10 @@ The catalog is hydrated from the open-source registration API: every package tha
 
 ### Built-in connectors
 
-The open-source host ships two connector types out of the box:
+The open-source host ships three connector types out of the box:
 
 | Slug | Project | Scope |
 | ---- | ------- | ----- |
 | `github` | `src/Cvoya.Spring.Connector.GitHub/` | Rich: OAuth / App auth, webhooks, issue + PR CRUD, rate limiting, response cache. |
 | `arxiv` | `src/Cvoya.Spring.Connector.Arxiv/` | Read-only: `searchLiterature` and `fetchAbstract` skills; no auth, no webhooks. |
+| `web-search` | `src/Cvoya.Spring.Connector.WebSearch/` | Generic façade over a pluggable `IWebSearchProvider`. Default provider is Brave Search; Bing, Google Custom Search, or SearxNG can be slotted in by registering an additional `IWebSearchProvider` before the host resolves the DI graph. API keys are referenced by unit-scoped secret name and resolved through `ISecretResolver` at skill-invoke time — plaintext never lands in the stored binding. |
