@@ -4694,6 +4694,141 @@
         }
       }
     },
+    "/api/v1/connectors/web-search/units/{unitId}/config": {
+      "get": {
+        "tags": [
+          "Connectors.WebSearch"
+        ],
+        "summary": "Get the web-search connector config bound to a unit",
+        "operationId": "GetUnitWebSearchConnectorConfig",
+        "parameters": [
+          {
+            "name": "unitId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnitWebSearchConfigResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Connectors.WebSearch"
+        ],
+        "summary": "Bind a unit to the web-search connector and upsert its config",
+        "operationId": "PutUnitWebSearchConnectorConfig",
+        "parameters": [
+          {
+            "name": "unitId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnitWebSearchConfigRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnitWebSearchConfigResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/connectors/web-search/actions/providers": {
+      "get": {
+        "tags": [
+          "Connectors.WebSearch"
+        ],
+        "summary": "List the web-search providers currently registered in this host",
+        "operationId": "ListWebSearchProviders",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WebSearchProviderDescriptor"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/connectors/web-search/config-schema": {
+      "get": {
+        "tags": [
+          "Connectors.WebSearch"
+        ],
+        "summary": "Get the JSON Schema describing the web-search connector config body",
+        "operationId": "GetWebSearchConnectorConfigSchema",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JsonElement"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/units/{id}/secrets": {
       "get": {
         "tags": [
@@ -9113,6 +9248,73 @@
           }
         }
       },
+      "UnitWebSearchConfigRequest": {
+        "required": [
+          "provider"
+        ],
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string"
+          },
+          "apiKeySecretName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "maxResults": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "safesearch": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          }
+        }
+      },
+      "UnitWebSearchConfigResponse": {
+        "required": [
+          "unitId",
+          "provider",
+          "apiKeySecretName",
+          "maxResults",
+          "safesearch"
+        ],
+        "type": "object",
+        "properties": {
+          "unitId": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "apiKeySecretName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "maxResults": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "safesearch": {
+            "type": "boolean"
+          }
+        }
+      },
       "UpdateAgentMetadataRequest": {
         "type": "object",
         "properties": {
@@ -9312,6 +9514,21 @@
           }
         }
       },
+      "WebSearchProviderDescriptor": {
+        "required": [
+          "id",
+          "displayName"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          }
+        }
+      },
       "WorkflowSummary": {
         "required": [
           "package",
@@ -9408,6 +9625,9 @@
     },
     {
       "name": "Connectors.Arxiv"
+    },
+    {
+      "name": "Connectors.WebSearch"
     },
     {
       "name": "Secrets"

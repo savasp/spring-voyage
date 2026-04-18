@@ -81,6 +81,7 @@ No versions have been tagged yet. The entries below capture the repository's his
 
 - Research domain package (agent templates, research-team unit, and skill bundles; additional research connectors deferred to follow-ups) ([#417](https://github.com/cvoya-com/spring-voyage/issues/417)).
 - Research-domain arxiv connector (read-only `searchLiterature` + `fetchAbstract` skills, no auth, no webhooks) ([#562](https://github.com/cvoya-com/spring-voyage/issues/562)).
+- Research-domain web-search connector — pluggable `IWebSearchProvider` abstraction with a Brave Search default implementation; unit-scoped secret references for API keys; never logs plaintext ([#563](https://github.com/cvoya-com/spring-voyage/issues/563)).
 
 #### Work beyond original phasing
 

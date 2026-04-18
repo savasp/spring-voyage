@@ -5,6 +5,7 @@ using System.Text.Json.Serialization;
 
 using Cvoya.Spring.Connector.Arxiv.DependencyInjection;
 using Cvoya.Spring.Connector.GitHub.DependencyInjection;
+using Cvoya.Spring.Connector.WebSearch.DependencyInjection;
 using Cvoya.Spring.Dapr.Auth;
 using Cvoya.Spring.Dapr.DependencyInjection;
 using Cvoya.Spring.Host.Api.Auth;
@@ -30,6 +31,7 @@ builder.Services
     .AddCvoyaSpringOllamaLlm(builder.Configuration)
     .AddCvoyaSpringConnectorGitHub(builder.Configuration)
     .AddCvoyaSpringConnectorArxiv(builder.Configuration)
+    .AddCvoyaSpringConnectorWebSearch(builder.Configuration)
     .AddCvoyaSpringApiServices(builder.Configuration);
 
 // DataProtection tries to persist/load keys from disk and logs a warning when
