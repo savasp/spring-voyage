@@ -1,6 +1,6 @@
 # Phase 5: Unit Nesting + Directory + Boundaries
 
-> **[Roadmap Index](README.md)** | **Status: Partially complete**
+> **[Roadmap Index](README.md)** | _Historical snapshot — live progress in the [V2 milestone](https://github.com/cvoya-com/spring-voyage/milestone/1) and umbrella [#418](https://github.com/cvoya-com/spring-voyage/issues/418)._
 
 Organizational structure beyond flat teams.
 
