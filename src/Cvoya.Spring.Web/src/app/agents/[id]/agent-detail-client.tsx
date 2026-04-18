@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { LifecyclePanel } from "./lifecycle-panel";
 import {
   Table,
   TableBody,
@@ -329,6 +330,12 @@ export default function AgentDetailClient({ id }: ClientProps) {
           </div>
         </CardContent>
       </Card>
+
+      {/* Persistent-agent lifecycle (#396, #508). Always rendered — the
+          server validates hosting mode and returns 400 for ephemeral
+          agents, so the verbs stay 1:1 with the CLI surface and the UI
+          never has to guess the hosting mode from an incomplete signal. */}
+      <LifecyclePanel agentId={id} initialDeployment={data.deployment ?? null} />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {cost !== null && (

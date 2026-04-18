@@ -35,6 +35,13 @@ export const queryKeys = {
       ["agents", "initiativePolicy", id] as const,
     initiativeLevel: (id: string) =>
       ["agents", "initiativeLevel", id] as const,
+    // Persistent-agent lifecycle (#396). The deployment slice is the
+    // PersistentAgentDeploymentResponse for one agent; the logs slice is
+    // a per-(id, tail) snapshot. Both invalidate on the matching agent
+    // activity key via `queryKeysAffectedBySource`.
+    deployment: (id: string) => ["agents", "deployment", id] as const,
+    logs: (id: string, tail: number) =>
+      ["agents", "logs", id, tail] as const,
   },
 
   units: {
@@ -132,6 +139,11 @@ export function queryKeysAffectedBySource(source: {
       queryKeys.conversations.all,
       queryKeys.agents.detail(source.path),
       queryKeys.agents.cost(source.path),
+      // Lifecycle (#396) rides the same activity SSE — container health
+      // transitions surface as `StateChanged` events scoped to the agent.
+      // Invalidating here keeps the lifecycle panel fresh without a
+      // separate poller.
+      queryKeys.agents.deployment(source.path),
       queryKeys.conversations.all,
     ];
   }

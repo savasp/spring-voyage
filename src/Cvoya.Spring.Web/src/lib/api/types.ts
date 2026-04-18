@@ -40,6 +40,31 @@ export type AgentResponse = Schemas["AgentResponse"];
 /** GET /api/v1/agents/{id} full response with status. */
 export type AgentDetailResponse = Schemas["AgentDetailResponse"];
 
+/**
+ * Response body for the persistent-agent lifecycle verbs
+ * (`POST /deploy|undeploy|scale`, `GET /deployment`). Also embedded
+ * inside `AgentDetailResponse.deployment` when the agent has a tracked
+ * container deployment in the registry (#396).
+ */
+export type PersistentAgentDeploymentResponse =
+  Schemas["PersistentAgentDeploymentResponse"];
+
+/** Request body for `POST /api/v1/agents/{id}/deploy`. */
+export type DeployPersistentAgentRequest =
+  Schemas["DeployPersistentAgentRequest"];
+
+/** Request body for `POST /api/v1/agents/{id}/scale`. */
+export type ScalePersistentAgentRequest =
+  Schemas["ScalePersistentAgentRequest"];
+
+/**
+ * Response body for `GET /api/v1/agents/{id}/logs`. Currently a snapshot
+ * (server-side `docker logs --tail`); the stream upgrade is tracked as a
+ * follow-up.
+ */
+export type PersistentAgentLogsResponse =
+  Schemas["PersistentAgentLogsResponse"];
+
 /** PATCH /api/v1/agents/{id} request body. */
 export type UpdateAgentMetadataRequest = Schemas["UpdateAgentMetadataRequest"];
 
