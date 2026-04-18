@@ -175,6 +175,24 @@ public static class ServiceCollectionExtensions
         services.TryAddScoped<ISkillBundleValidator, DefaultSkillBundleValidator>();
         services.TryAddSingleton<IUnitSkillBundleStore, StateStoreBackedUnitSkillBundleStore>();
 
+        // Agents-as-skills surface (#359 — rework of closed #532). The
+        // catalog derives the skill surface live from the expertise
+        // directory (#487 / #498) rather than from a startup snapshot, so
+        // directory mutations (agent gains expertise, unit boundary
+        // changes) propagate on the next enumeration. The invoker is the
+        // protocol-agnostic seam that skill callers use instead of
+        // IMessageRouter directly — the default implementation routes
+        // through the bus so the boundary / permission / policy / activity
+        // chain runs end-to-end; the future A2A gateway (#539) will slot in
+        // here as an alternative implementation. TryAdd* so downstream
+        // hosts (test harnesses, tenant-scoped wrappers, #539 gateway) can
+        // pre-register their own catalog / invoker and keep it.
+        services.TryAddSingleton<IExpertiseSkillCatalog, ExpertiseSkillCatalog>();
+        services.TryAddSingleton<ISkillInvoker, MessageRouterSkillInvoker>();
+        services.TryAddSingleton<ExpertiseSkillRegistry>();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<ISkillRegistry, ExpertiseSkillRegistry>(
+            sp => sp.GetRequiredService<ExpertiseSkillRegistry>()));
+
         // Unit-membership backfill hosted service (#160 / C2b-1).
         // Gated by Database:BackfillMemberships; idempotent; short-lived.
         // Also gated by doc-gen mode — the service depends on SpringDbContext

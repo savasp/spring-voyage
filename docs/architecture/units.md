@@ -605,6 +605,8 @@ The origin chain lets peer-lookup callers tell **where** a capability came from 
 
 **Extension points.** The aggregator is a DI service (`TryAddSingleton<IExpertiseAggregator, ExpertiseAggregator>`). A cloud host can pre-register a decorator to layer tenant-scoped caches or audit logging. A future **boundary projection / filtering** layer (#413) will plug in as a filter over the aggregator's output rather than altering the walk itself, so the basic recursive composition keeps shipping unchanged while opacity rules evolve.
 
+**Typed-contract entries are skill-callable (#359).** An `ExpertiseDomain` whose `InputSchemaJson` is non-null has declared a structured request shape — the platform treats it as a **skill** and surfaces it through `IExpertiseSkillCatalog` / `ExpertiseSkillRegistry` with the catalog-addressable name `expertise/{slug}`. Consultative-only entries (no schema) stay message-only. External callers see only boundary-projected entries; agent-level entries inside a unit are skill-callable only by callers already inside the boundary. All skill invocations flow through `ISkillInvoker` and, by default, back onto `IMessageRouter` so the boundary / permission / policy / activity chain runs end-to-end. See [Agent Runtime — Skill registries](agent-runtime.md#4a-skill-registries) for the full projection.
+
 **Wire surface.**
 
 - `GET /api/v1/agents/{id}/expertise` · `PUT /api/v1/agents/{id}/expertise` — per-agent profile.
