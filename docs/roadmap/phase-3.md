@@ -1,6 +1,6 @@
 # Phase 3: Initiative + Product Management Domain
 
-> **[Roadmap Index](README.md)** | **Status: Complete**
+> **[Roadmap Index](README.md)** | _Historical snapshot — live progress in the [V2 milestone](https://github.com/cvoya-com/spring-voyage/milestone/1) and umbrella [#418](https://github.com/cvoya-com/spring-voyage/issues/418)._
 
 Agents start taking initiative. A product management domain package (templates only, no connector) proves the platform is domain-agnostic.
 

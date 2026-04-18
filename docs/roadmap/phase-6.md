@@ -1,6 +1,6 @@
 # Phase 6: Platform Maturity
 
-> **[Roadmap Index](README.md)** | **Status: Not started**
+> **[Roadmap Index](README.md)** | _Historical snapshot — live progress in the [V2 milestone](https://github.com/cvoya-com/spring-voyage/milestone/1) and umbrella [#418](https://github.com/cvoya-com/spring-voyage/issues/418)._
 
 Formal package distribution and additional domain packages.
 

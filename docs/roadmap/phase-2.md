@@ -1,6 +1,6 @@
 # Phase 2: Observability + Multi-Human
 
-> **[Roadmap Index](README.md)** | **Status: Complete**
+> **[Roadmap Index](README.md)** | _Historical snapshot — live progress in the [V2 milestone](https://github.com/cvoya-com/spring-voyage/milestone/1) and umbrella [#418](https://github.com/cvoya-com/spring-voyage/issues/418)._
 
 Real-time visibility into what agents are doing, and support for multiple human participants.
 
