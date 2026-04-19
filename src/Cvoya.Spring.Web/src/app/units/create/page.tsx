@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -379,23 +379,35 @@ export default function CreateUnitPage() {
     });
 
   // Any edit to the key (or switching tool/provider so a different
-  // credential is required) invalidates a prior verdict. We keep the
-  // previous models around so the dropdown doesn't flicker while the
-  // operator retypes; `status === "idle"` is the signal to re-validate
-  // before advancing.
-  useEffect(() => {
-    setCredentialValidation((prev) => {
-      if (prev.status === "idle") return prev;
-      const trimmed = form.credentialKey.trim();
-      if (
-        prev.validatedKey === trimmed &&
-        prev.validatedProvider === requiredCredentialProvider
-      ) {
-        return prev;
-      }
-      return { ...prev, status: "idle", error: null };
-    });
-  }, [form.credentialKey, requiredCredentialProvider]);
+  // credential is required) invalidates a prior verdict. Rather than
+  // sync it via a setState-in-effect (flagged by
+  // react-hooks/set-state-in-effect as a cascading-render smell), we
+  // derive the effective status/error below: when the stored verdict
+  // does not match the current inputs, treat it as `"idle"` and hide
+  // any stale error. The raw `credentialValidation` state is still the
+  // source of truth for the mutation callbacks.
+  const effectiveValidation = useMemo<{
+    status: "idle" | "validating" | "valid" | "invalid";
+    error: string | null;
+  }>(() => {
+    if (credentialValidation.status === "idle") {
+      return { status: "idle", error: null };
+    }
+    if (credentialValidation.status === "validating") {
+      return { status: "validating", error: null };
+    }
+    const trimmed = form.credentialKey.trim();
+    const matchesCurrent =
+      credentialValidation.validatedKey === trimmed &&
+      credentialValidation.validatedProvider === requiredCredentialProvider;
+    if (!matchesCurrent) {
+      return { status: "idle", error: null };
+    }
+    return {
+      status: credentialValidation.status,
+      error: credentialValidation.error,
+    };
+  }, [credentialValidation, form.credentialKey, requiredCredentialProvider]);
 
   const validateCredential = useMutation({
     mutationFn: async () => {
@@ -481,9 +493,9 @@ export default function CreateUnitPage() {
       form.credentialKey.trim().length > 0 &&
       !credentialValidated
     ) {
-      if (credentialValidation.status === "invalid") {
+      if (effectiveValidation.status === "invalid") {
         return (
-          credentialValidation.error ??
+          effectiveValidation.error ??
           `Validation failed for the ${providerLabel(requiredCredentialProvider)} API key.`
         );
       }
@@ -1138,8 +1150,8 @@ export default function CreateUnitPage() {
                   ollamaProbe={
                     form.provider === "ollama" ? credentialStatus : null
                   }
-                  validationStatus={credentialValidation.status}
-                  validationError={credentialValidation.error}
+                  validationStatus={effectiveValidation.status}
+                  validationError={effectiveValidation.error}
                   validationPassed={credentialValidated}
                   onValidate={() => validateCredential.mutate()}
                   onKeyChange={(v) => update("credentialKey", v)}
@@ -1215,8 +1227,8 @@ export default function CreateUnitPage() {
                   saveAsTenantDefault={form.saveAsTenantDefault}
                   overrideOpen={form.credentialOverrideOpen}
                   ollamaProbe={null}
-                  validationStatus={credentialValidation.status}
-                  validationError={credentialValidation.error}
+                  validationStatus={effectiveValidation.status}
+                  validationError={effectiveValidation.error}
                   validationPassed={credentialValidated}
                   onValidate={() => validateCredential.mutate()}
                   onKeyChange={(v) => update("credentialKey", v)}
