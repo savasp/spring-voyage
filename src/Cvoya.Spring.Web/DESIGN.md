@@ -290,6 +290,18 @@ Unit boundary configuration (#495) is the canonical **multi-rule editor** layout
 - **Add-rule form inside each sub-card.** A nested `rounded-md border border-border p-3` block carries the per-dimension input grid (`grid-cols-1 sm:grid-cols-2`) and a trailing **Add** button that appends to local state and clears the inputs. Required fields are marked with a `text-destructive` asterisk (Synthesis' `name`).
 - **Local edits, one PUT.** The entire set is held in local `useState` so the user can stage multiple changes before pressing **Save boundary**; that PUT replaces the whole boundary (matches the CLI's `set` semantics). **Clear all rules** opens the shared `ConfirmDialog` and DELETEs.
 
+### 7.11d Inherit-from-parent indicator — `app/agents/[id]/execution-panel.tsx`
+
+The Agent Execution panel (#601 B-wide — PR landed alongside this entry) introduced a reusable indicator shape for form fields whose blank value is resolved to a parent entity's default at save time. Use this pattern anywhere an editor lets an operator override an inherited value and needs to show what the default currently is:
+
+- **Italic grey placeholder** on the field itself: `placeholder="inherited from unit: ghcr.io/acme/spring-agent:v1"` plus `className="italic text-muted-foreground placeholder:italic placeholder:text-muted-foreground"`. On `<select>`, the first `<option>` carries the same `inherited: …` prefix and the select itself drops into italic grey while the value is null.
+- **Help copy below the control** duplicates the value in plain text prefixed with `inherited from unit:` (or the equivalent parent noun). The help row carries `data-testid="inherit-indicator"` so the unit-tests can assert coverage without scraping placeholders out of shadow DOM.
+- **No visual lock.** The control stays fully editable — clicking into the field clears the indicator and lets the operator type their own value. Leaving the field blank on save persists `null` on the child; the backend resolves to the parent default at runtime.
+- **Server trip.** The indicator needs the parent's own config, so the component fetches both the child and parent blocks via TanStack Query (`useAgentExecution(agentId)` + `useUnitExecution(parentUnitId)`) — keyed by the parent's id so cached reads are shared across any other surface that renders the same parent.
+- **A11y.** The placeholder is decorative (contrast is intentionally low so the override intent reads as "not my own value"); the help copy below carries the real text so assistive tech never depends on the placeholder. The card header carries an `Inherits` outline badge when the child has no own declarations, flipping to a solid `Configured` badge once any override is persisted.
+
+Don't reach for this pattern for fields that **must** be filled (e.g. required connector configs) — those use a bordered warning banner like §7.4a. The inherit indicator is specifically for the "blank means inherit" editor contract.
+
 ### 7.11c Orchestration tab — `app/units/[id]/orchestration-tab.tsx`
 
 Unit orchestration configuration (#602) follows the multi-card tab pattern from §7.11b but renders two slices rather than N peer dimensions — a read-only strategy selector and an editable label-routing card.

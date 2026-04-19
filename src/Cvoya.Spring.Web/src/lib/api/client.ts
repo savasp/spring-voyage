@@ -3,6 +3,7 @@ import createClient from "openapi-fetch";
 import type { paths } from "./schema";
 import type {
   AgentDetailResponse,
+  AgentExecutionResponse,
   ConversationListFilters,
   ConversationMessageRequest,
   CreateCloneRequest,
@@ -21,6 +22,7 @@ import type {
   SetBudgetRequest,
   UnitBoundaryResponse,
   UnitConnectorBindingRequest,
+  UnitExecutionResponse,
   UnitGitHubConfigRequest,
   UnitOrchestrationResponse,
   UnitPolicyResponse,
@@ -904,6 +906,71 @@ export const api = {
     assertOk(
       await fetchClient.DELETE("/api/v1/units/{id}/orchestration", {
         params: { path: { id: unitId } },
+      }),
+    );
+  },
+
+  // Unit execution defaults (#601 / #603 / #409 B-wide, backend PR #628).
+  // Dedicated surface for the manifest-persisted `execution:` block that
+  // member agents inherit at dispatch time. PUT semantics are
+  // **partial update** — a non-null field replaces the corresponding
+  // slot, null leaves the existing value alone. The portal's per-field
+  // Clear button implements the "unset this one field" intent by reading
+  // the current block, clearing the field, and re-PUTing with the
+  // remaining fields (or DELETE if every field ends up null).
+  getUnitExecution: async (unitId: string): Promise<UnitExecutionResponse> =>
+    unwrap(
+      await fetchClient.GET("/api/v1/units/{id}/execution", {
+        params: { path: { id: unitId } },
+      }),
+    ),
+  setUnitExecution: async (
+    unitId: string,
+    body: UnitExecutionResponse,
+  ): Promise<UnitExecutionResponse> =>
+    unwrap(
+      await fetchClient.PUT("/api/v1/units/{id}/execution", {
+        params: { path: { id: unitId } },
+        body,
+      }),
+    ),
+  clearUnitExecution: async (unitId: string): Promise<void> => {
+    assertOk(
+      await fetchClient.DELETE("/api/v1/units/{id}/execution", {
+        params: { path: { id: unitId } },
+      }),
+    );
+  },
+
+  // Agent execution (#601 / #603 / #409 B-wide, backend PR #628). The
+  // agent-owned `execution:` block carries the same five fields as the
+  // unit plus the agent-exclusive `hosting` slot. The response shape is
+  // the agent's **own declared** block — inherited unit defaults are
+  // merged at dispatch time, not by this endpoint. The portal's
+  // `inherited from unit` indicator overlays the value it reads from
+  // `getUnitExecution`.
+  getAgentExecution: async (
+    agentId: string,
+  ): Promise<AgentExecutionResponse> =>
+    unwrap(
+      await fetchClient.GET("/api/v1/agents/{id}/execution", {
+        params: { path: { id: agentId } },
+      }),
+    ),
+  setAgentExecution: async (
+    agentId: string,
+    body: AgentExecutionResponse,
+  ): Promise<AgentExecutionResponse> =>
+    unwrap(
+      await fetchClient.PUT("/api/v1/agents/{id}/execution", {
+        params: { path: { id: agentId } },
+        body,
+      }),
+    ),
+  clearAgentExecution: async (agentId: string): Promise<void> => {
+    assertOk(
+      await fetchClient.DELETE("/api/v1/agents/{id}/execution", {
+        params: { path: { id: agentId } },
       }),
     );
   },

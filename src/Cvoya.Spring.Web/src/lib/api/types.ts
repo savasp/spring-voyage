@@ -283,6 +283,78 @@ export type OrchestrationStrategyKey = (typeof ORCHESTRATION_STRATEGIES)[number]
  */
 export type UnitOrchestrationResponse = Schemas["UnitOrchestrationResponse"];
 
+/**
+ * Wire shape for `GET/PUT /api/v1/units/{id}/execution` (#601 / #603 /
+ * #409 B-wide — backend in PR #628). Holds the unit-level defaults
+ * (image / runtime / tool / provider / model) that member agents inherit
+ * at dispatch time. Every field is independently nullable: a unit may
+ * declare any subset. A PUT replaces the whole persisted block, so the
+ * portal always sends the full merged shape; per-field clear issues a
+ * PUT with the remaining fields (and a final DELETE when all fields end
+ * up null).
+ */
+export type UnitExecutionResponse = Schemas["UnitExecutionResponse"];
+
+/**
+ * Wire shape for `GET/PUT /api/v1/agents/{id}/execution` (#601 / #603 /
+ * #409 B-wide — backend in PR #628). Mirrors {@link UnitExecutionResponse}
+ * plus the agent-exclusive `hosting` field (`ephemeral` / `persistent`).
+ * Response carries only the agent's own declared fields — inherited
+ * unit defaults are NOT merged in by the endpoint; the portal's
+ * `inherited from unit` indicator overlays them from the owning unit's
+ * `/execution` response (read from {@link UnitExecutionResponse}).
+ */
+export type AgentExecutionResponse = Schemas["AgentExecutionResponse"];
+
+/**
+ * Platform-offered runtime keys (#601). The portal surfaces only these
+ * two because the reference dispatcher knows how to launch containers
+ * through them; custom runtimes are registered on the host as an
+ * extension but a generic dropdown can't describe them.
+ */
+export const EXECUTION_RUNTIMES = ["docker", "podman"] as const;
+export type ExecutionRuntime = (typeof EXECUTION_RUNTIMES)[number];
+
+/**
+ * Launcher keys the reference dispatcher ships with (#601). Mirrors the
+ * `ExecutionTool` set in `src/lib/ai-models.ts` one-for-one — kept here
+ * alongside the execution wire shapes so the unit/agent Execution panels
+ * can render the dropdown without pulling in the AI-model catalog.
+ */
+export const EXECUTION_TOOL_KEYS = [
+  "claude-code",
+  "codex",
+  "gemini",
+  "dapr-agent",
+  "custom",
+] as const;
+export type ExecutionToolKey = (typeof EXECUTION_TOOL_KEYS)[number];
+
+/**
+ * Provider keys accepted by the unit/agent Execution surfaces when the
+ * launcher is `dapr-agent`. The backend's canonical mapping lives in
+ * <c>LlmCredentialResolver.DescriptorFor</c> — `anthropic`, `openai`,
+ * `google`, `ollama` are the canonical spellings the credential probe
+ * accepts. The resolver also accepts synonyms (`claude`, `gemini`,
+ * `googleai`) but the portal dropdown standardises on the canonical
+ * names so the value round-trips cleanly.
+ */
+export const EXECUTION_PROVIDERS = [
+  "anthropic",
+  "openai",
+  "google",
+  "ollama",
+] as const;
+export type ExecutionProvider = (typeof EXECUTION_PROVIDERS)[number];
+
+/**
+ * Hosting modes the backend accepts on an agent's execution block. The
+ * reference dispatcher reads this to pick between the ephemeral and
+ * persistent launcher paths.
+ */
+export const EXECUTION_HOSTING_MODES = ["ephemeral", "persistent"] as const;
+export type ExecutionHostingMode = (typeof EXECUTION_HOSTING_MODES)[number];
+
 /** Tier 1 (screening) model configuration. */
 export type Tier1Config = Schemas["Tier1Config"];
 
