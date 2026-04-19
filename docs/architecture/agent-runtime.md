@@ -53,6 +53,24 @@ The dispatcher does **not** know the tool. It looks up the launcher by the
 `AgentExecutionConfig.Tool` string in an `IDictionary<string, IAgentToolLauncher>`
 populated from DI, and hands off to the launcher for prep.
 
+**Unit-inheritance merge (#601 B-wide).** The
+`AgentExecutionConfig` the dispatcher receives is already merged with the
+parent unit's `execution:` defaults. `DbAgentDefinitionProvider.GetByIdAsync`
+reads the agent's own declared block, looks up the agent's parent unit (first
+membership by `CreatedAt`), pulls the unit's persisted execution defaults
+through `IUnitExecutionStore`, and runs a field-level precedence merge:
+
+- Per field (`tool`, `image`, `runtime`, `provider`, `model`) — **agent wins** when the
+  agent set the value; otherwise the unit default fills in; otherwise the
+  field is null and the dispatcher fails cleanly with a merge-aware error
+  message pointing operators at both surfaces.
+- `hosting` is **agent-exclusive** — never inherits. A unit cannot change
+  whether an agent is ephemeral or persistent.
+
+See `docs/architecture/units.md § Unit execution defaults and the agent →
+unit → fail resolution chain` for the full contract and the HTTP / CLI / portal
+surfaces that edit the same persisted JSON the merge reads.
+
 ```text
 AgentActor.ExecuteTurn()
   → A2AExecutionDispatcher.DispatchAsync(message, context)

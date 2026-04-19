@@ -89,6 +89,10 @@ public static class UnitCommand
         // #606 — orchestration get/set/clear for the manifest-persisted
         // strategy slot (direct read/write surface deferred by ADR-0010).
         unitCommand.Subcommands.Add(UnitOrchestrationCommand.Create(outputOption));
+        // #601 / #603 / #409 B-wide — execution get/set/clear for the
+        // unit's execution defaults (image / runtime / tool / provider /
+        // model) inherited by member agents.
+        unitCommand.Subcommands.Add(UnitExecutionCommand.Create(outputOption));
 
         return unitCommand;
     }

@@ -67,7 +67,7 @@ ai:
     runtime: podman                    # podman | docker | kubernetes
 ```
 
-Agents that don't specify `ai.environment` inherit the default from their unit's `execution` block (see Unit Model below).
+Agents that don't specify `execution.<field>` inherit the default from their parent unit's `execution` block (see Unit Model below). This is implemented end-to-end per the "Unit execution defaults and the agent → unit → fail resolution chain" section below — the `IAgentDefinitionProvider` merges the unit-level block onto the agent-declared block at dispatch time, and both HTTP / CLI surfaces edit the same persisted JSON document the resolver reads.
 
 **Lightweight LLM calls** (routing decisions, classification, summarisation) remain in-platform via `IAiProvider.CompleteAsync` / `StreamCompleteAsync`. These are utility calls — no multi-turn loop, no tool use — and do not constitute agent execution.
 
@@ -250,11 +250,17 @@ unit:
     - agent: hopper
     - unit: database-team            # recursive composition
   
-  # --- Default execution environment for member agents ---
-  # Members that don't specify their own ai.environment inherit this
+  # --- Default execution block for member agents (#601 B-wide) ---
+  # Members that don't declare a given field inherit from this block
+  # per the agent → unit → fail resolution chain. Every field is
+  # independently optional — a unit may carry just `image`, or just
+  # `runtime`, and leave the rest to each agent.
   execution:
     image: spring-agent:latest
-    runtime: podman                  # podman | docker | kubernetes
+    runtime: podman                  # docker | podman
+    tool: claude-code                # claude-code | codex | gemini | dapr-agent | custom
+    provider: anthropic              # dapr-agent only (#598 gating)
+    model: claude-sonnet             # dapr-agent only (#598 gating)
   
   connectors:
     - type: github
@@ -557,6 +563,46 @@ unit:
 ```
 
 Synthesis entries with a blank / missing `name:` are silently dropped so a misspelled manifest never fabricates an empty team capability. Unknown `override_level` / `level` strings resolve to `null` rather than failing deserialisation — matches the HTTP DTO so operators can copy values verbatim between the two surfaces.
+
+### Unit execution defaults and the agent → unit → fail resolution chain (#601 B-wide)
+
+Each unit owns an optional `execution:` block that acts as the **default container-runtime configuration** inherited by member agents. The block carries five fields:
+
+| Field      | Semantics                                                                                          |
+| ---------- | -------------------------------------------------------------------------------------------------- |
+| `image`    | Container image reference (e.g. `ghcr.io/...:tag`, `spring-agent:latest`).                         |
+| `runtime`  | Container runtime (`docker` or `podman`).                                                          |
+| `tool`     | External agent tool identifier (`claude-code`, `codex`, `gemini`, `dapr-agent`, `custom`).         |
+| `provider` | LLM provider. Meaningful only when `tool = dapr-agent` (#598 gating).                              |
+| `model`    | Model identifier. Meaningful only when `tool = dapr-agent` (#598 gating).                          |
+
+Every field is **independently optional and independently clearable** — a unit can declare only `runtime: podman` and leave `image`, `tool`, etc. for each member agent to provide.
+
+**Resolution chain per field.** At dispatch time `IAgentDefinitionProvider` merges the agent's own declared block with its parent unit's defaults:
+
+1. **Agent wins** when the agent sets the field (non-null / non-whitespace).
+2. Otherwise the **unit default** fills in.
+3. Otherwise the field is null; the dispatcher fails cleanly at dispatch or the save-time validator rejects the configuration (required fields: `image` under ephemeral hosting, `tool` always).
+
+`hosting` (ephemeral vs persistent) is **agent-exclusive** — a unit cannot change whether an agent is ephemeral or persistent.
+
+**Tool-specific gating.** `provider` and `model` are only meaningful when the resolved `tool` is `dapr-agent`. The portal's Execution tab hides those fields when another tool is selected; the CLI accepts them unconditionally but they are ignored at dispatch for non-`dapr-agent` launchers. This matches the symmetric gating on unit creation from #598.
+
+**Save-time validation.** The portal and CLI reject a save whenever ephemeral hosting is declared on an agent and no resolvable image exists on either the agent or the unit. This surfaces the error when the operator is still editing rather than deferring to dispatch.
+
+**Persistence and surfaces.**
+
+- **Wire shape.** Both HTTP (`GET / PUT / DELETE /api/v1/units/{id}/execution`, `/api/v1/agents/{id}/execution`) and manifest apply write through `IUnitExecutionStore` / `IAgentExecutionStore` so the on-disk JSON cannot drift between the two entry points.
+- **Manifest.** A unit YAML's `execution:` block is persisted on `UnitDefinitions.Definition` under `execution`; the manifest applier no longer warns "unsupported section" for it.
+- **CLI.** `spring unit execution get|set|clear` and `spring agent execution get|set|clear` with `--image / --runtime / --tool / --provider / --model` (plus `--hosting` on the agent verb). `clear` without arguments strips the whole block; `clear --field X` clears one field.
+- **Portal.** A dedicated Execution tab on the unit detail page and an Execution panel on the agent detail page (delivered in the companion portal PR).
+
+**Extension seams for V2.1.** Two seams are reserved for follow-up issues and **not implemented** in the B-wide PR:
+
+- **#622 — `IImageReferenceHistory`** — a scoped-registered seam so a hosted downstream can partition recently-dispatched image references per tenant. Shape 2 of the image-selection UX: autocomplete suggestions on the `Image` text field.
+- **#623 — registry integration** — Shape 3: discover images directly from a configured container registry (GHCR / GCR / ECR / Harbor / Quay). Marked `needs-thinking` pending auth-scope and caching decisions.
+
+Both are V2.1 work; today's PR ships Shape 1 (plain text input) with the inheritance merge and the save-time validation.
 
 ### Organizational Patterns
 
@@ -1041,12 +1087,25 @@ Stops all agents, deactivates actors, cleans up subscriptions and execution envi
         },
         "execution": {
           "type": "object",
-          "description": "Default execution environment for member agents that don't specify their own ai.environment.",
+          "description": "Default execution block for member agents that don't declare the given field. Five-field shape (#601 B-wide). Resolution chain: agent.X → unit.X → fail-clean.",
           "properties": {
-            "image": { "type": "string", "description": "Default container image for members." },
+            "image": { "type": "string", "description": "Default container image reference." },
             "runtime": {
               "type": "string",
-              "enum": ["podman", "docker", "kubernetes"]
+              "enum": ["podman", "docker"],
+              "description": "Default container runtime."
+            },
+            "tool": {
+              "type": "string",
+              "description": "Default external agent tool identifier. Known values: claude-code, codex, gemini, dapr-agent, custom."
+            },
+            "provider": {
+              "type": "string",
+              "description": "Default LLM provider. Meaningful only when tool = dapr-agent (#598 gating)."
+            },
+            "model": {
+              "type": "string",
+              "description": "Default model identifier. Meaningful only when tool = dapr-agent (#598 gating)."
             }
           }
         },

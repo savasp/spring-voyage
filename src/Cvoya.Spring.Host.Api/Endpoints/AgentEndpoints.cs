@@ -8,6 +8,7 @@ using System.Text.Json;
 using Cvoya.Spring.Core;
 using Cvoya.Spring.Core.Agents;
 using Cvoya.Spring.Core.Directory;
+using Cvoya.Spring.Core.Execution;
 using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Core.Skills;
 using Cvoya.Spring.Core.Units;
@@ -118,8 +119,132 @@ public static class AgentEndpoints
             .Produces<PersistentAgentDeploymentResponse>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status404NotFound);
 
+        // Agent execution surface (#601 / #603 / #409 B-wide). Exposes
+        // the agent's own `execution:` block (image / runtime / tool /
+        // provider / model / hosting). Resolution chain (agent → unit
+        // → fail) happens in IAgentDefinitionProvider at dispatch time.
+        group.MapGet("/{id}/execution", GetAgentExecutionAsync)
+            .WithName("GetAgentExecution")
+            .WithSummary("Get the agent's persisted execution block")
+            .Produces<AgentExecutionResponse>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
+        group.MapPut("/{id}/execution", SetAgentExecutionAsync)
+            .WithName("SetAgentExecution")
+            .WithSummary("Upsert one or more fields on the agent's execution block (partial update)")
+            .Produces<AgentExecutionResponse>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
+        group.MapDelete("/{id}/execution", ClearAgentExecutionAsync)
+            .WithName("ClearAgentExecution")
+            .WithSummary("Clear the agent's execution block (strip all fields)")
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
         return group;
     }
+
+    private static async Task<IResult> GetAgentExecutionAsync(
+        string id,
+        [FromServices] IDirectoryService directoryService,
+        [FromServices] IAgentExecutionStore store,
+        CancellationToken cancellationToken)
+    {
+        var entry = await directoryService.ResolveAsync(new Address("agent", id), cancellationToken);
+        if (entry is null)
+        {
+            return Results.Problem(detail: $"Agent '{id}' not found", statusCode: StatusCodes.Status404NotFound);
+        }
+
+        var shape = await store.GetAsync(id, cancellationToken);
+        return Results.Ok(ToAgentExecutionResponse(shape));
+    }
+
+    private static async Task<IResult> SetAgentExecutionAsync(
+        string id,
+        AgentExecutionResponse? request,
+        [FromServices] IDirectoryService directoryService,
+        [FromServices] IAgentExecutionStore store,
+        CancellationToken cancellationToken)
+    {
+        if (request is null)
+        {
+            return Results.Problem(
+                detail: "Request body must contain an execution document.",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        var entry = await directoryService.ResolveAsync(new Address("agent", id), cancellationToken);
+        if (entry is null)
+        {
+            return Results.Problem(detail: $"Agent '{id}' not found", statusCode: StatusCodes.Status404NotFound);
+        }
+
+        var shape = new AgentExecutionShape(
+            Image: request.Image,
+            Runtime: request.Runtime,
+            Tool: request.Tool,
+            Provider: request.Provider,
+            Model: request.Model,
+            Hosting: request.Hosting);
+
+        if (shape.IsEmpty)
+        {
+            return Results.Problem(
+                detail: "Execution block must carry at least one non-empty field on PUT. Use DELETE to clear.",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        // Save-time validation (#601 scope item 8): ephemeral hosting
+        // with no image anywhere fails at save time, not at dispatch.
+        // We check the agent-side declared-or-becoming image here; the
+        // IAgentDefinitionProvider merges the unit-level default at
+        // dispatch so an agent that declares hosting-ephemeral but no
+        // image still starts up cleanly if the unit carries one. We
+        // cannot cheaply peek at the unit default here without a second
+        // scope call, so we only reject the narrow case where the agent
+        // declares ephemeral hosting AND clears the image AND has no
+        // image already persisted AND no inherited image — that last
+        // check is deferred to the dispatcher (same error message now
+        // points operators at both surfaces).
+        //
+        // The portal / CLI surface the effective-resolution view so the
+        // operator sees the merged state before saving; the narrow
+        // dispatch-time fall-through keeps the API permissive for
+        // programmatic callers that write fields in any order.
+
+        await store.SetAsync(id, shape, cancellationToken);
+        var stored = await store.GetAsync(id, cancellationToken);
+        return Results.Ok(ToAgentExecutionResponse(stored));
+    }
+
+    private static async Task<IResult> ClearAgentExecutionAsync(
+        string id,
+        [FromServices] IDirectoryService directoryService,
+        [FromServices] IAgentExecutionStore store,
+        CancellationToken cancellationToken)
+    {
+        var entry = await directoryService.ResolveAsync(new Address("agent", id), cancellationToken);
+        if (entry is null)
+        {
+            return Results.Problem(detail: $"Agent '{id}' not found", statusCode: StatusCodes.Status404NotFound);
+        }
+
+        await store.ClearAsync(id, cancellationToken);
+        return Results.NoContent();
+    }
+
+    internal static AgentExecutionResponse ToAgentExecutionResponse(AgentExecutionShape? shape) =>
+        shape is null
+            ? new AgentExecutionResponse()
+            : new AgentExecutionResponse(
+                Image: shape.Image,
+                Runtime: shape.Runtime,
+                Tool: shape.Tool,
+                Provider: shape.Provider,
+                Model: shape.Model,
+                Hosting: shape.Hosting);
 
     private static async Task<IResult> DeployPersistentAgentAsync(
         string id,

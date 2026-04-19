@@ -629,6 +629,95 @@ public class SpringApiClient
     public Task ClearUnitOrchestrationAsync(string unitId, CancellationToken ct = default)
         => _client.Api.V1.Units[unitId].Orchestration.DeleteAsync(cancellationToken: ct);
 
+    // Unit execution (#601 / #603 / #409 B-wide). Dedicated GET/PUT/DELETE
+    // surface for the manifest-persisted unit `execution:` block (image /
+    // runtime / tool / provider / model). Rides the same
+    // UnitDefinitions.Definition JSON the manifest-apply path writes, so
+    // either entry point yields a wire-identical on-disk shape.
+
+    /// <summary>
+    /// Gets the unit's <see cref="UnitExecutionResponse"/>. Returns the
+    /// canonical empty shape (all fields <c>null</c>) when the unit has
+    /// no manifest-declared execution defaults — agents will then need
+    /// to declare their own image / tool / etc.
+    /// </summary>
+    public async Task<UnitExecutionResponse> GetUnitExecutionAsync(
+        string unitId,
+        CancellationToken ct = default)
+    {
+        var result = await _client.Api.V1.Units[unitId].Execution.GetAsync(cancellationToken: ct);
+        return result ?? new UnitExecutionResponse();
+    }
+
+    /// <summary>
+    /// Upserts one or more fields on the unit's execution defaults.
+    /// Partial update — null fields leave the corresponding slot alone.
+    /// A body where every field is null is rejected server-side with a
+    /// 400; use <see cref="ClearUnitExecutionAsync"/> to strip the block.
+    /// </summary>
+    public async Task<UnitExecutionResponse> SetUnitExecutionAsync(
+        string unitId,
+        UnitExecutionResponse defaults,
+        CancellationToken ct = default)
+    {
+        var body = new Cvoya.Spring.Cli.Generated.Api.V1.Units.Item.Execution.ExecutionRequestBuilder.ExecutionPutRequestBody
+        {
+            UnitExecutionResponse = defaults,
+        };
+        var result = await _client.Api.V1.Units[unitId].Execution.PutAsync(body, cancellationToken: ct);
+        return result ?? throw new InvalidOperationException(
+            $"Server returned an empty execution response for unit '{unitId}'.");
+    }
+
+    /// <summary>
+    /// Clears the unit's execution defaults. Idempotent — calling on a
+    /// unit that never had defaults declared is a no-op and returns
+    /// cleanly.
+    /// </summary>
+    public Task ClearUnitExecutionAsync(string unitId, CancellationToken ct = default)
+        => _client.Api.V1.Units[unitId].Execution.DeleteAsync(cancellationToken: ct);
+
+    // Agent execution (#601 / #603 / #409 B-wide). Symmetric with the
+    // unit-execution surface, plus the agent-owned `hosting` field
+    // (ephemeral / persistent) that never inherits.
+
+    /// <summary>
+    /// Gets the agent's declared <see cref="AgentExecutionResponse"/>.
+    /// Returns all-null fields when the agent has no execution block on
+    /// disk — at dispatch time the IAgentDefinitionProvider merges the
+    /// parent unit's defaults on top.
+    /// </summary>
+    public async Task<AgentExecutionResponse> GetAgentExecutionAsync(
+        string agentId,
+        CancellationToken ct = default)
+    {
+        var result = await _client.Api.V1.Agents[agentId].Execution.GetAsync(cancellationToken: ct);
+        return result ?? new AgentExecutionResponse();
+    }
+
+    /// <summary>
+    /// Upserts one or more fields on the agent's execution block.
+    /// Partial update — null fields leave the slot alone. All-null body
+    /// is rejected with 400; use <see cref="ClearAgentExecutionAsync"/>.
+    /// </summary>
+    public async Task<AgentExecutionResponse> SetAgentExecutionAsync(
+        string agentId,
+        AgentExecutionResponse shape,
+        CancellationToken ct = default)
+    {
+        var body = new Cvoya.Spring.Cli.Generated.Api.V1.Agents.Item.Execution.ExecutionRequestBuilder.ExecutionPutRequestBody
+        {
+            AgentExecutionResponse = shape,
+        };
+        var result = await _client.Api.V1.Agents[agentId].Execution.PutAsync(body, cancellationToken: ct);
+        return result ?? throw new InvalidOperationException(
+            $"Server returned an empty execution response for agent '{agentId}'.");
+    }
+
+    /// <summary>Clears the agent's execution block. Idempotent.</summary>
+    public Task ClearAgentExecutionAsync(string agentId, CancellationToken ct = default)
+        => _client.Api.V1.Agents[agentId].Execution.DeleteAsync(cancellationToken: ct);
+
     // Humans (#454). Three verbs — add, remove, list — all target the
     // server's /humans surface. `add` maps to PATCH
     // /humans/{humanId}/permissions; `remove` maps to DELETE on the same

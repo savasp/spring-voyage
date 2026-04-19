@@ -91,7 +91,7 @@ The create flow ([src/Cvoya.Spring.Web/src/app/units/create/page.tsx](../../src/
 
 ### Step 1 — Details
 
-Collects the unit `name` (URL-safe lowercase/digits/hyphens), `display name`, `description`, execution `tool` (claude-code, codex, gemini, dapr-agent, custom), `hosting mode` (ephemeral or persistent), and a UI `color`.
+Collects the unit `name` (URL-safe lowercase/digits/hyphens), `display name`, `description`, execution `tool` (claude-code, codex, gemini, dapr-agent, custom), `hosting mode` (ephemeral or persistent), unit-level `image` + `runtime` defaults (#601 B-wide — inherited by member agents; see [Execution tab](#execution-601-b-wide)), and a UI `color`.
 
 **Provider + Model are only shown when `tool = dapr-agent`** (#598). Claude Code, Codex, and Gemini hardcode their provider inside the tool CLI, so exposing a Provider dropdown on them would be misleading — the selection would have no runtime effect. Custom tools also hide the fields because the contract is undefined; see [`docs/architecture/agent-runtime.md`](../architecture/agent-runtime.md) for the full tool × provider matrix. When the `dapr-agent` + `ollama` combination is chosen, the model picker auto-populates from the connected Ollama server's `/api/tags` response.
 
@@ -313,6 +313,28 @@ The tab is **not** a per-dimension API — saving always PUTs the entire boundar
 
 **Bulk YAML upload (#524).** Next to the per-rule editor the tab also accepts a YAML file (drop-zone + paste area), parsed client-side with a live diff against the current boundary before anything hits the server. Both the `spring unit boundary set -f` camelCase shape and the `spring apply -f` manifest snake_case shape are accepted, so a `spring unit boundary get <unit> --output json` dump or an existing unit manifest's `boundary:` block can be round-tripped through the portal. Malformed YAML surfaces an inline error with no server round-trip; applying triggers the same `PUT /api/v1/units/{id}/boundary` path the per-rule form uses.
 
+### Execution (#601 B-wide)
+
+Unit-level defaults for the container-runtime configuration member agents inherit: `image`, `runtime`, `tool`, `provider`, `model`. Implemented at [src/Cvoya.Spring.Web/src/app/units/[id]/execution-tab.tsx](../../src/Cvoya.Spring.Web/src/app/units/%5Bid%5D/execution-tab.tsx); the backend contract landed in PR #628.
+
+The tab reads `GET /api/v1/units/{id}/execution`, edits each field in place, and writes through `PUT /api/v1/units/{id}/execution` per field (partial update). A per-field **Clear** pill next to every input re-PUTs with the field set to `null` (the remaining fields carry through verbatim) or falls through to `DELETE` when the operator clears the last surviving field — matching PR #628's partial-update contract. A card-level **Clear all** button issues `DELETE` directly.
+
+| Field | Input shape | CLI equivalent |
+|-------|-------------|----------------|
+| **Image** | Plain text input. Placeholder: `ghcr.io/... or spring-agent:latest`. Shape 1 — autocomplete from history is #622 (V2.1), registry discovery is #623 (V2.1). | `spring unit execution set <unit> --image <ref>` |
+| **Runtime** | Dropdown: `docker` / `podman` (or `(leave to default)`). | `--runtime docker\|podman` |
+| **Tool** | Dropdown: `claude-code` / `codex` / `gemini` / `dapr-agent` / `custom`. | `--tool <key>` |
+| **Provider** | Dropdown: `anthropic` / `openai` / `google` / `ollama`. **Only shown when Tool is `dapr-agent`, or when Tool is unset** (#598 gating, matches PR #627). | `--provider <key>` |
+| **Model** | Text input — promoted to a dropdown when the provider publishes a model catalog (#613). Same gating as Provider. | `--model <id>` |
+
+Each field is independently clearable — the editor lets an operator wipe just `image` while leaving `runtime` configured. The matching CLI verb is `spring unit execution clear <unit> --field image`.
+
+Whenever Provider is visible and selected, the tab surfaces the credential-status banner reused from the wizard's Step 1 (PR #627): emerald "configured" pill when a secret resolves at unit or tenant scope, warning "not configured" pill otherwise with a deep-link to Settings → Tenant defaults.
+
+The **agent** detail page carries a symmetric **Execution** panel at [src/Cvoya.Spring.Web/src/app/agents/[id]/execution-panel.tsx](../../src/Cvoya.Spring.Web/src/app/agents/%5Bid%5D/execution-panel.tsx): same five fields plus the agent-exclusive **Hosting** dropdown (`ephemeral` / `persistent`). When an agent leaves a field blank and its owning unit has a default for that field, the input renders the inherited value as an italic grey placeholder (`inherited from unit: ghcr.io/...:v1`) so the operator sees the effective value without guessing; the help copy below the input repeats the value for screen readers. Clicking into the field clears the placeholder and lets the operator type their own override; leaving the field blank on save persists `null` on the agent block, and the dispatcher merges the unit default at dispatch (per PR #628). The owning unit is resolved from `agent.parentUnit` on the detail response and its execution defaults are fetched via `GET /api/v1/units/{unitId}/execution` (cached through TanStack Query).
+
+**Save-time validation.** A save is rejected when an agent declares ephemeral hosting and no image is resolvable on either the agent or the unit. The portal surfaces the error inline with a link to whichever surface needs an image. The CLI mirrors the check at `set` time.
+
 ### Activity
 
 Unit-scoped activity feed ([activity-tab.tsx](../../src/Cvoya.Spring.Web/src/app/units/%5Bid%5D/activity-tab.tsx)) — pulls `/api/v1/activity?source=unit:{id}&pageSize=20`.
@@ -415,6 +437,21 @@ The header badge flips between **Running** (with a health pill: `healthy` / `unh
 | Refresh deployment status | refresh icon in the toolbar | `spring agent deploy <id>` is idempotent; re-reading state uses `GET /api/v1/agents/{id}/deployment` |
 
 Deployment status is kept fresh by the same activity SSE stream that drives the rest of the portal — agent-scoped events invalidate the `agents.deployment(id)` query slice so health transitions appear without a manual refresh. Logs are a snapshot today (server-side `docker logs --tail`), consistent with the CLI; a streaming upgrade (SSE-backed) is a tracked follow-up and will reuse the existing activity-stream infrastructure rather than a second transport.
+
+### Agent Execution panel
+
+Directly below the Persistent deployment panel, the detail page carries an **Execution** card ([execution-panel.tsx](../../src/Cvoya.Spring.Web/src/app/agents/%5Bid%5D/execution-panel.tsx)) that surfaces the agent's own `execution:` block — `image`, `runtime`, `tool`, `provider`, `model`, plus the agent-exclusive `hosting` slot. The card reads / writes `GET|PUT|DELETE /api/v1/agents/{id}/execution` (backend PR #628) with the same per-field clear semantics as the unit Execution tab.
+
+When the agent leaves a field blank AND the owning unit has a default for that field, the control renders the inherited value as an italic grey placeholder (`inherited from unit: ghcr.io/...:v1`). The help copy directly below the control repeats the value in plain text so screen readers can surface it. Clicking into a field clears the placeholder; typing persists the operator's override on save. Leaving the field blank on save writes `null` on the agent block — the dispatcher merges the unit default at runtime (per PR #628).
+
+Provider + Model are gated behind the effective launcher tool: visible when the resolved `tool` (agent's own value winning over the unit default) is `dapr-agent` or unset, hidden for every other launcher. The credential-status banner from PR #627 reappears whenever Provider is shown and has a value, linking back to Settings → Tenant defaults on "not configured".
+
+| Action | Portal | CLI |
+|--------|--------|-----|
+| Show agent execution block | Agent detail → **Execution** card | `spring agent execution get <id>` |
+| Override a unit default on the agent | Edit field + **Save** | `spring agent execution set <id> --<field> <value>` |
+| Clear one field (falls back to unit default) | Per-field **Clear** button | `spring agent execution clear <id> --field <name>` |
+| Clear every field | **Clear all** | `spring agent execution clear <id>` |
 
 ## Directory (`/directory`)
 

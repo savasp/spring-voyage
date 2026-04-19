@@ -104,6 +104,31 @@ spring unit orchestration clear <unit>
 
 Writes invalidate the in-process resolver cache so the next message dispatched to the unit sees the new strategy immediately.
 
+### Execution defaults (#601 B-wide)
+
+Units and agents share a five-field `execution:` block (`image`, `runtime`, `tool`, `provider`, `model`). The unit block acts as the default inherited by member agents that don't declare their own value — see `docs/architecture/units.md § Unit execution defaults` for the full agent → unit → fail resolution chain.
+
+```
+spring unit execution get   <unit>
+spring unit execution set   <unit> [--image …] [--runtime docker|podman] [--tool …] [--provider …] [--model …]
+spring unit execution clear <unit> [--field image|runtime|tool|provider|model]
+
+spring agent execution get   <agent>
+spring agent execution set   <agent> [--image …] [--runtime …] [--tool …] [--provider …] [--model …] [--hosting ephemeral|persistent]
+spring agent execution clear <agent> [--field image|runtime|tool|provider|model|hosting]
+```
+
+- `set` is a **partial update** — pass only the flags you want to change.
+- `clear` without `--field` strips the whole block; `clear --field X` clears one field only.
+- `--hosting` is agent-exclusive (never inherits from the unit).
+- `--provider` / `--model` are meaningful only when `--tool dapr-agent` (#598 gating). The portal hides them for other tool selections; the CLI accepts them unconditionally but they're ignored at dispatch for non-`dapr-agent` launchers.
+
+`spring agent create` also accepts `--image`, `--runtime`, `--tool` as convenience shorthands for the equivalent `execution.X` fields — they overlay onto any `--definition` / `--definition-file` JSON body (last-writer-wins per field). Closes the #409 acceptance criterion for CLI parity.
+
+```
+spring agent create backend-eng --tool claude-code --image ghcr.io/my/agent:v1 --runtime podman
+```
+
 The legacy shorthand below still exists for a handful of older flags and will be folded into the `policy` verb group over time:
 
 ```

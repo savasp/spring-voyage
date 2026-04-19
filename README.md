@@ -160,6 +160,17 @@ dotnet publish src/Cvoya.Spring.Cli -c Release -o ./out
 
 See the [Getting Started guide](docs/guide/getting-started.md) for a full walkthrough — creating a unit, adding agents, wiring connectors, and sending the first message.
 
+### Custom agent images
+
+An agent dispatches in a container — by default `spring-agent:latest`. To run agents in a custom image (extra CLI tools, pinned tags, bespoke MCP servers), the shortest path is a Dockerfile that extends the base image. Two starter templates ship under [`deployment/examples/dockerfiles/`](deployment/examples/dockerfiles/):
+
+| Template | When to use |
+| -------- | ----------- |
+| [`minimal-extension`](deployment/examples/dockerfiles/minimal-extension/) | Re-tag `spring-agent:latest` under your own registry. |
+| [`custom-tools`](deployment/examples/dockerfiles/custom-tools/) | Layer extra CLI tools on top of the base. |
+
+Reference the built image through a unit's or agent's `execution.image` field — either from a YAML manifest or through the portal's new **Execution** tab (unit detail / agent detail). The five-field execution block (`image`, `runtime`, `tool`, `provider`, `model`) plus the **agent → unit → fail** resolution chain is described in [`docs/architecture/units.md`](docs/architecture/units.md#unit-execution-defaults-and-the-agent--unit--fail-resolution-chain-601-b-wide).
+
 ## Web Dashboard
 
 The web dashboard is a React/Next.js + TypeScript application at `src/Cvoya.Spring.Web/`.

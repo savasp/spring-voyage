@@ -27,6 +27,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CostOverTimeCard } from "./cost-over-time";
+import { AgentExecutionPanel } from "./execution-panel";
 import { LifecyclePanel } from "./lifecycle-panel";
 import {
   Table,
@@ -338,6 +339,15 @@ export default function AgentDetailClient({ id }: ClientProps) {
           agents, so the verbs stay 1:1 with the CLI surface and the UI
           never has to guess the hosting mode from an incomplete signal. */}
       <LifecyclePanel agentId={id} initialDeployment={data.deployment ?? null} />
+
+      {/* Execution panel (#601 / #603 / #409 B-wide — backend PR #628).
+          Surfaces the agent's own `execution:` block (image / runtime /
+          tool / provider / model / hosting) with "inherited from unit"
+          indicators for any slot the agent leaves blank. */}
+      <AgentExecutionPanel
+        agentId={agent.name}
+        parentUnitId={agent.parentUnit ?? null}
+      />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {cost !== null && (

@@ -17,6 +17,7 @@ import { AgentsTab } from "./agents-tab";
 import { BoundaryTab } from "./boundary-tab";
 import { ConnectorTab } from "./connector-tab";
 import { CostsTab } from "./costs-tab";
+import { ExecutionTab } from "./execution-tab";
 import { OrchestrationTab } from "./orchestration-tab";
 import { PoliciesTab } from "./policies-tab";
 import { SecretsTab } from "./secrets-tab";
@@ -362,6 +363,7 @@ export default function UnitConfigClient({ id }: ClientProps) {
           <TabsTrigger value="skills">Skills</TabsTrigger>
           <TabsTrigger value="policies">Policies</TabsTrigger>
           <TabsTrigger value="orchestration">Orchestration</TabsTrigger>
+          <TabsTrigger value="execution">Execution</TabsTrigger>
           <TabsTrigger value="connector">Connector</TabsTrigger>
           <TabsTrigger value="secrets">Secrets</TabsTrigger>
           <TabsTrigger value="boundary">Boundary</TabsTrigger>
@@ -471,6 +473,10 @@ export default function UnitConfigClient({ id }: ClientProps) {
 
         <TabsContent value="orchestration">
           <OrchestrationTab unitId={id} />
+        </TabsContent>
+
+        <TabsContent value="execution">
+          <ExecutionTab unitId={id} />
         </TabsContent>
 
         <TabsContent value="boundary">
