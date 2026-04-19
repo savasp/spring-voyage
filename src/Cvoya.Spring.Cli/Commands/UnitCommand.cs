@@ -137,7 +137,10 @@ public static class UnitCommand
         // of truth on shape.
         var modelOption = new Option<string?>("--model")
         {
-            Description = "Optional LLM model identifier (e.g. claude-sonnet-4-20250514).",
+            Description =
+                "Optional LLM model identifier (e.g. claude-sonnet-4-20250514). " +
+                "Accepted as opaque for every tool that carries a known provider " +
+                "(claude-code / codex / gemini / dapr-agent); validation happens at unit activation.",
         };
         var colorOption = new Option<string?>("--color")
         {
@@ -229,10 +232,11 @@ public static class UnitCommand
             var saveAsTenantDefault = parseResult.GetValue(saveAsTenantDefaultOption);
             var output = parseResult.GetValue(outputOption) ?? "table";
 
-            // #598: reject --provider / --model on non-dapr-agent tools.
-            // The other launchers (Claude Code, Codex, Gemini) have their
-            // provider baked in; accepting these flags and silently
-            // dropping them at dispatch time confuses operators.
+            // #598 + #644: reject --provider on non-dapr-agent tools
+            // (their provider is baked in), and reject both flags on
+            // --tool=custom (no declared contract). --model is accepted
+            // for every tool that carries a known provider family so
+            // operators can pick within that family.
             var providerModelError = ValidateProviderModelAgainstTool(tool, provider, model);
             if (providerModelError is not null)
             {
@@ -401,7 +405,10 @@ public static class UnitCommand
         displayNameOption.Aliases.Add("--display");
         var modelOption = new Option<string?>("--model")
         {
-            Description = "Optional LLM model identifier override (e.g. claude-sonnet-4-20250514).",
+            Description =
+                "Optional LLM model identifier override (e.g. claude-sonnet-4-20250514). " +
+                "Accepted as opaque for every tool that carries a known provider " +
+                "(claude-code / codex / gemini / dapr-agent); validation happens at unit activation.",
         };
         var colorOption = new Option<string?>("--color")
         {
@@ -471,7 +478,9 @@ public static class UnitCommand
             var saveAsTenantDefault = parseResult.GetValue(saveAsTenantDefaultOption);
             var output = parseResult.GetValue(outputOption) ?? "table";
 
-            // #598: same gate applies to the template path.
+            // #598 + #644: same gate applies to the template path —
+            // --provider rejected for non-dapr-agent, both rejected for
+            // custom, --model accepted for every known-provider tool.
             var providerModelError = ValidateProviderModelAgainstTool(tool, provider, model);
             if (providerModelError is not null)
             {
@@ -1166,23 +1175,42 @@ public static class UnitCommand
         bool? Enabled,
         AgentExecutionMode? ExecutionMode);
 
+    // Canonical rejection message (#644) — operators read this verbatim
+    // when they combine --provider / --model with a tool that doesn't
+    // accept that flag. The CLI and the portal mirror the same policy:
+    // dapr-agent takes both, claude-code/codex/gemini take --model only,
+    // custom takes neither.
+    internal const string ProviderModelRejectionMessage =
+        "--provider is only meaningful for --tool=dapr-agent; " +
+        "other tools (claude-code, codex, gemini) have their provider hardcoded in the tool CLI, " +
+        "but accept --model to pick within that provider's model family.";
+
     /// <summary>
     /// Shared validator used by <c>spring unit create</c> and
     /// <c>spring unit create-from-template</c>. Rejects <c>--provider</c>
-    /// and <c>--model</c> when <c>--tool</c> is not <c>dapr-agent</c>
-    /// (#598). The other tools — Claude Code, Codex, Gemini — hard-code
-    /// their provider in the tool's own CLI, so exposing a Provider /
-    /// Model knob on those tools would be misleading. Custom tools have
-    /// no provider contract either (see
-    /// <c>docs/architecture/agent-runtime.md</c>).
+    /// and <c>--model</c> on the tools that don't accept them (#598,
+    /// #644). The matrix is:
+    /// <list type="bullet">
+    /// <item><description><c>dapr-agent</c> — both flags accepted.</description></item>
+    /// <item><description><c>claude-code</c> / <c>codex</c> / <c>gemini</c> —
+    /// provider is hardcoded in the tool's own CLI (rejected), but
+    /// <c>--model</c> is accepted so operators can pick within the tool's
+    /// baked-in provider family (Anthropic / OpenAI / Google). Value is
+    /// treated as opaque; the server validates at unit activation.</description></item>
+    /// <item><description><c>custom</c> — no declared contract, both
+    /// rejected.</description></item>
+    /// <item><description>tool unset — no second-guessing the server
+    /// default, both flags accepted.</description></item>
+    /// </list>
+    /// See <c>docs/architecture/cli-and-web.md</c> and
+    /// <c>docs/architecture/agent-runtime.md</c> for the full rationale.
     /// </summary>
     /// <param name="tool">Value of <c>--tool</c> (null when not supplied).</param>
     /// <param name="provider">Value of <c>--provider</c> (null when not supplied).</param>
     /// <param name="model">Value of <c>--model</c> (null when not supplied).</param>
     /// <returns>
-    /// Null when the combination is valid (including the "tool unset"
-    /// case where the server picks the default). An error message
-    /// suitable for stderr when the combination is rejected.
+    /// Null when the combination is valid. An error message suitable for
+    /// stderr when the combination is rejected.
     /// </returns>
     public static string? ValidateProviderModelAgainstTool(
         string? tool,
@@ -1194,29 +1222,33 @@ public static class UnitCommand
         // skip the check: the server picks the default tool (claude-code
         // at the time of writing) and the CLI doesn't know the default
         // authoritatively, so rejecting `--provider` in that case would
-        // be overreach. Operators who want to pin Provider + Model must
+        // be overreach. Operators who want to pin Provider / Model must
         // also name the tool they're targeting.
-        var hasProviderOrModel =
-            !string.IsNullOrWhiteSpace(provider) || !string.IsNullOrWhiteSpace(model);
-        if (!hasProviderOrModel)
+        var hasProvider = !string.IsNullOrWhiteSpace(provider);
+        var hasModel = !string.IsNullOrWhiteSpace(model);
+        if (!hasProvider && !hasModel)
         {
             return null;
         }
 
         var normalizedTool = (tool ?? string.Empty).Trim().ToLowerInvariant();
-        if (normalizedTool == "dapr-agent")
+        if (normalizedTool.Length == 0)
         {
             return null;
         }
 
-        // Only enforce when the user explicitly named a non-dapr-agent tool.
-        if (string.IsNullOrEmpty(normalizedTool))
+        // dapr-agent is the only tool that takes a user-chosen provider.
+        // The other supported tools (claude-code, codex, gemini) have
+        // their provider baked in but still accept --model. custom has
+        // no declared contract so both flags are rejected.
+        return normalizedTool switch
         {
-            return null;
-        }
-
-        return "--provider and --model are only meaningful for --tool=dapr-agent; " +
-            "other tools (claude-code, codex, gemini) have their provider hardcoded in the tool CLI.";
+            "dapr-agent" => null,
+            "claude-code" or "codex" or "gemini" => hasProvider
+                ? ProviderModelRejectionMessage
+                : null,
+            _ => ProviderModelRejectionMessage,
+        };
     }
 
     /// <summary>

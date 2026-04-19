@@ -15,15 +15,17 @@ using Xunit;
 /// exercised end-to-end elsewhere — these tests pin the validation
 /// contract so <c>spring unit create</c> and
 /// <c>spring unit create-from-template</c> reject mis-composed flag
-/// sets consistently (#598).
+/// sets consistently (#598 + #644).
 /// </summary>
 public class UnitCommandTests
 {
-    // Canonical rejection message — operators read this verbatim when
-    // they combine --provider / --model with a non-dapr-agent tool.
+    // Canonical rejection message (#644) — operators read this verbatim
+    // when they combine --provider / --model with a tool that doesn't
+    // accept that flag.
     private const string ExpectedErrorMessage =
-        "--provider and --model are only meaningful for --tool=dapr-agent; " +
-        "other tools (claude-code, codex, gemini) have their provider hardcoded in the tool CLI.";
+        "--provider is only meaningful for --tool=dapr-agent; " +
+        "other tools (claude-code, codex, gemini) have their provider hardcoded in the tool CLI, " +
+        "but accept --model to pick within that provider's model family.";
 
     [Theory]
     [InlineData("dapr-agent", "openai", "gpt-4o")]
@@ -55,14 +57,58 @@ public class UnitCommandTests
 
     [Theory]
     [InlineData("claude-code", "anthropic", null)]
-    [InlineData("claude-code", null, "claude-sonnet-4-20250514")]
     [InlineData("claude-code", "anthropic", "claude-sonnet-4-20250514")]
     [InlineData("codex", "openai", "gpt-4o")]
     [InlineData("codex", "openai", null)]
     [InlineData("gemini", "google", "gemini-2.5-pro")]
-    [InlineData("gemini", null, "gemini-2.5-pro")]
+    public void ValidateProviderModelAgainstTool_TooledProviderFlag_Rejected(
+        string tool,
+        string? provider,
+        string? model)
+    {
+        // The tool hardcodes its provider in its own CLI — passing
+        // --provider would silently be dropped at dispatch. Reject it
+        // up-front with the canonical message so operators see the shape
+        // of the contract instead of diagnosing a no-op.
+        var error = UnitCommand.ValidateProviderModelAgainstTool(tool, provider, model);
+        error.ShouldBe(ExpectedErrorMessage);
+    }
+
+    [Theory]
+    // #644 parity fix: --model is meaningful for every tool that carries
+    // a known provider family — the portal's wizard (PR #645) and
+    // execution-tab (PR #643 follow-up) render the Model dropdown for
+    // these tools, so the CLI must not be stricter than the portal.
+    [InlineData("claude-code", "claude-sonnet-4-20250514")]
+    [InlineData("claude-code", "claude-opus-4-20250514")]
+    [InlineData("claude-code", "claude-haiku-4-20250514")]
+    [InlineData("codex", "gpt-4o")]
+    [InlineData("codex", "gpt-4o-mini")]
+    [InlineData("gemini", "gemini-2.5-pro")]
+    [InlineData("gemini", "gemini-2.5-flash")]
+    // Opaque string we don't know — still accepted. Per (1) in #644 the
+    // CLI treats model ids as opaque and defers validation to unit
+    // activation on the server.
+    [InlineData("claude-code", "something-that-does-not-exist-yet")]
+    public void ValidateProviderModelAgainstTool_TooledModelFlag_Accepted(
+        string tool,
+        string model)
+    {
+        // No provider flag → no rejection. The tool provides the
+        // provider internally; the operator's job is only to pick the
+        // model inside that family.
+        UnitCommand.ValidateProviderModelAgainstTool(tool, provider: null, model: model)
+            .ShouldBeNull();
+    }
+
+    [Theory]
+    // #644: --tool=custom has no declared provider / model contract, so
+    // both flags are still rejected there (unchanged from the #598
+    // behaviour).
     [InlineData("custom", "ollama", "llama3.2:3b")]
-    public void ValidateProviderModelAgainstTool_NonDaprAgent_RejectsWithCanonicalMessage(
+    [InlineData("custom", "ollama", null)]
+    [InlineData("custom", null, "llama3.2:3b")]
+    public void ValidateProviderModelAgainstTool_Custom_RejectsBoth(
         string tool,
         string? provider,
         string? model)
@@ -82,6 +128,24 @@ public class UnitCommandTests
             provider: "openai",
             model: "gpt-4o")
             .ShouldBeNull();
+    }
+
+    [Fact]
+    public void ValidateProviderModelAgainstTool_CaseInsensitive_OnTooledTool()
+    {
+        // Same normalisation for the tool-hardcoded-provider tools:
+        // "Claude-Code" + --model is accepted just like "claude-code".
+        UnitCommand.ValidateProviderModelAgainstTool(
+            "Claude-Code",
+            provider: null,
+            model: "claude-sonnet-4-20250514")
+            .ShouldBeNull();
+
+        UnitCommand.ValidateProviderModelAgainstTool(
+            "Claude-Code",
+            provider: "anthropic",
+            model: null)
+            .ShouldBe(ExpectedErrorMessage);
     }
 
     [Fact]

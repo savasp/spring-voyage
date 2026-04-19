@@ -26,11 +26,17 @@ using Cvoya.Spring.Cli.Output;
 /// clears one field only.
 /// </para>
 /// <para>
-/// <c>--provider</c> and <c>--model</c> are meaningful only when
-/// <c>--tool dapr-agent</c> is set on the unit (or the agent inheriting
-/// from it). The CLI does not enforce this today (no whitelist on the
-/// server either) to keep the existing dapr-agent gating behaviour
-/// (#598) in one place.
+/// <c>--provider</c> is meaningful only when <c>--tool dapr-agent</c>
+/// is set on the unit (or the agent inheriting from it); the other
+/// tools bake their provider in. <c>--model</c> is meaningful for every
+/// tool that carries a known provider family — <c>claude-code</c>
+/// (Anthropic), <c>codex</c> (OpenAI), <c>gemini</c> (Google), and
+/// <c>dapr-agent</c> — and the CLI treats the value as opaque per the
+/// #644 parity fix. The <c>set</c> verb does not enforce either rule
+/// today (no whitelist on the server either) so the gating behaviour
+/// lives in one place (<c>UnitCommand.ValidateProviderModelAgainstTool</c>);
+/// see <c>docs/architecture/cli-and-web.md § Provider + Model flag
+/// validation</c>.
 /// </para>
 /// </remarks>
 public static class UnitExecutionCommand
@@ -148,7 +154,10 @@ public static class UnitExecutionCommand
         };
         var modelOption = new Option<string?>("--model")
         {
-            Description = "Default model identifier (Dapr-Agent-tool-specific; e.g. llama3.2:3b, gpt-4o-mini).",
+            Description =
+                "Default model identifier. Meaningful for every tool that carries a known provider family " +
+                "(claude-code, codex, gemini, dapr-agent); the value is accepted as opaque and validated at " +
+                "unit activation.",
         };
 
         var command = new Command(
