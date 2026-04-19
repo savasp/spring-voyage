@@ -225,13 +225,21 @@ The portal's primitive library lives in `src/components/ui/`. Shared composites 
 
 ### 7.4a Inline alert banners (not a component — a shared pattern)
 
-Used for "this thing needs operator attention" callouts inside wizard steps and tab bodies — e.g. the GitHub install-link banner on `src/Cvoya.Spring.Connector.GitHub/web/connector-wizard-step.tsx` (PR #610) and the LLM provider credential-status indicator on `src/Cvoya.Spring.Web/src/app/units/create/page.tsx` (PR-S2 / #598). Reuse the same token palette so a single axe-clean configuration covers them:
+Used for "this thing needs operator attention" callouts inside wizard steps and tab bodies — e.g. the GitHub install-link banner on `src/Cvoya.Spring.Connector.GitHub/web/connector-wizard-step.tsx` (PR #610) and the LLM provider credential-status indicator on `src/Cvoya.Spring.Web/src/app/units/create/page.tsx` (PR-S2 / #598, extended by #626). Reuse the same token palette so a single axe-clean configuration covers them:
 
-- **Warning** (not-configured, unreachable, deprecated, etc.): `rounded-md border border-warning/50 bg-warning/15 px-3 py-2 text-sm text-warning`, inner text in `text-foreground` for the body copy. `role="alert"`. Include an actionable link or button whenever possible (e.g. a deep-link to the Settings drawer).
-- **Success** (configured, inherited, healthy): `rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-900 dark:text-emerald-200`. `role="status"`.
+- **Warning** (not-configured, unreachable, deprecated, etc.): `rounded-md border border-warning/50 bg-warning/15 px-3 py-2 text-sm text-warning`, inner text in `text-foreground` for the body copy. `role="alert"`. Include an actionable control inside the banner whenever possible — either a deep-link, an inline form (the #626 credential input), or a primary button.
+- **Success** (configured, inherited, healthy): `rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-900 dark:text-emerald-200`. `role="status"`. A success banner may carry a secondary "Override" button (see `src/Cvoya.Spring.Web/src/app/units/create/page.tsx` `CredentialSection`) rendered as a `<button>` with `underline underline-offset-2` — never a div with `onClick` (axe catches that in the a11y smoke).
 - Prefix with the matching lucide icon at `h-4 w-4` (`AlertTriangle` for warning, `CheckCircle2` for success); mark the icon `aria-hidden` since the `role` already conveys the status.
 
 Don't invent new token pairs for these — PR #599 pinned the current tokens as axe AA-clean and the wizard a11y regression tests exercise them directly.
+
+#### 7.4b Inline credential input (#626)
+
+The credential input that appears inside the #626 banner is NOT a generic reusable component — it is tightly coupled to the credential surface. When copying the pattern elsewhere, preserve these invariants:
+
+- The text field defaults to `type="password"` and is paired with a `<Button type="button" variant="outline" size="sm">` that flips it to `text`. The button uses `aria-label="Show <Provider> API key"` / `"Hide ..."` (not icon-only) and sets `aria-pressed` to reflect state. Keyboard focus reaches it via the natural tab order; never build this as a pure-icon div.
+- The "Save as tenant default" toggle is a real `<input type="checkbox">` with a matching `<label htmlFor>`, not a custom switch — the simpler primitive avoids the `aria-checked` / keyboard traps that "switch" role implementations tend to collect.
+- Plaintext values live in React state only long enough to be POSTed; never persist them, never send them to the status endpoint, never interpolate them into log messages.
 
 ### 7.5 Dialogs — `src/components/ui/dialog.tsx`, `confirm-dialog.tsx`
 

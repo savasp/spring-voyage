@@ -116,6 +116,47 @@ The `spring directory` family mirrors the portal's `/directory` surface over the
 
 This mirrors the portal wizard, which hides the Provider + Model fields entirely for non-Dapr-Agent tools. See the Tool × Provider matrix in [`docs/architecture/agent-runtime.md`](agent-runtime.md) for the full rationale. When `--tool` is not supplied, the CLI does not second-guess the server's deployment default — `--provider` alone is still accepted, and the server enforces the honest contract at dispatch time.
 
+### Inline credential flags (#626)
+
+`spring unit create` and `spring unit create-from-template` accept three paired flags for supplying the LLM API key at unit-create time:
+
+| Flag | Purpose |
+|------|---------|
+| `--api-key <value>` | Pass the key inline (one-liner form — suitable for scripts that already resolve secrets via another path). |
+| `--api-key-from-file <path>` | Read the key from a file; trailing newlines are stripped. Preferred in CI because the key never reaches shell history. Mutually exclusive with `--api-key`. |
+| `--save-as-tenant-default` | Boolean flag. When set, the key is written as a **tenant-scoped** secret (via `POST /api/v1/tenant/secrets`, or `PUT` when the slot already holds a value — the wizard's "override tenant default" path). When unset, the key is written as a **unit-scoped** secret (`POST /api/v1/units/{id}/secrets`) after the unit exists. |
+
+The CLI derives the required provider from `--tool` + `--provider` using the same mapping as the wizard (`deriveRequiredCredentialProvider` in `src/Cvoya.Spring.Web/src/app/units/create/page.tsx` and `UnitCommand.DeriveRequiredCredentialProvider` in `src/Cvoya.Spring.Cli/Commands/UnitCommand.cs`). Rejection matrix:
+
+- `--tool=custom` + `--api-key` → rejected (no declared credential contract).
+- `--tool=dapr-agent --provider=ollama` + `--api-key` → rejected (Ollama is local; no API key).
+- `--save-as-tenant-default` without `--api-key` / `--api-key-from-file` → rejected (no value to write).
+- `--api-key` and `--api-key-from-file` together → rejected (pass exactly one).
+
+The canonical secret names are `anthropic-api-key`, `openai-api-key`, and `google-api-key`; the CLI picks one based on the derived provider and writes it under that name on the chosen scope. The backing `ILlmCredentialResolver` reads the same names at dispatch time, so the write/read sides cannot drift.
+
+**Example — per-unit override without touching the tenant default:**
+
+```
+# Creates unit "research" and writes a unit-scoped anthropic-api-key
+# using the plaintext read from the file.
+spring unit create research \
+  --tool claude-code \
+  --api-key-from-file ~/.secrets/anthropic-research.txt
+```
+
+**Example — rotating the tenant default while creating a unit:**
+
+```
+# When an anthropic-api-key already exists at tenant scope, this call
+# PUTs the new value (rotation) before creating the unit, so every
+# future unit inherits the fresh key.
+spring unit create default-pilot \
+  --tool claude-code \
+  --api-key-from-file ./new-key.txt \
+  --save-as-tenant-default
+```
+
 **Distribution modes:**
 
 - **dotnet tool:** `dotnet tool install -g spring-cli`. Requires .NET SDK. Updated via `dotnet tool update -g spring-cli`.

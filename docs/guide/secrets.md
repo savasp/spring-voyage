@@ -252,6 +252,46 @@ spring secret create \
 
 The same flow is available from the portal: open the Settings drawer and use the **Tenant defaults** panel to set the tenant-wide key, then use the unit's **Secrets** tab to register a same-name override. The **Secrets** tab renders an "inherited from tenant" badge for every name the unit picks up transitively so operators can see at a glance which tier is active.
 
+## Supplying a credential during unit creation
+
+The unit-creation wizard at `/units/create` and the `spring unit create` / `spring unit create-from-template` CLI verbs both accept an LLM API key inline (#626). This is the least-friction onboarding path — a new operator can stand up their first unit without detouring through the Settings drawer first.
+
+### Portal
+
+1. On Step 1, pick an execution tool. The wizard derives which provider's API key is needed (Claude Code → Anthropic, Codex → OpenAI, Gemini → Google, Dapr Agent → the selected provider, Ollama → none).
+2. If the probe reports the credential as **not configured**, the wizard renders an inline input with a show/hide toggle and a **"Save as tenant default"** checkbox.
+   - Checkbox **unticked** (default) → the key is written as a unit-scoped `<provider>-api-key` secret after the unit is created. No other unit picks it up.
+   - Checkbox **ticked** → the key is written as a tenant-scoped secret before the unit is created, so every future unit in the tenant inherits it. Pick this when you want one key to drive the whole tenant.
+3. If the probe reports the credential as **inherited from tenant default**, the wizard shows an **Override** button. Clicking Override opens the same input — use it to set a per-unit override (toggle off) or to rotate the tenant default itself (toggle on).
+
+The wizard **never shows the existing plaintext** — Override clears the input so you type a replacement rather than editing the stored value. The probe endpoint is key-free by construction; see [`docs/architecture/security.md`](../architecture/security.md).
+
+### CLI
+
+```bash
+# Unit-scoped override — the key is written as a per-unit secret
+# (POST /api/v1/units/{id}/secrets) after the unit exists.
+spring unit create research-team \
+  --tool claude-code \
+  --api-key-from-file ~/.secrets/anthropic-research.txt
+
+# Tenant default — the key is written as a tenant-scoped secret
+# (POST /api/v1/tenant/secrets) before the unit is created, so
+# every subsequent unit inherits it unless it registers an override.
+spring unit create platform \
+  --tool claude-code \
+  --api-key "sk-ant-xyz" \
+  --save-as-tenant-default
+
+# Rejected — Ollama is local (no API key).
+spring unit create local-dev \
+  --tool dapr-agent --provider ollama \
+  --api-key "anything"
+# → "--api-key / --api-key-from-file is only valid for tools that need an LLM API key ..."
+```
+
+See [CLI & Web §Inline credential flags (#626)](../architecture/cli-and-web.md#inline-credential-flags-626) for the full rejection matrix.
+
 ## Per-agent secrets
 
 The OSS contract stops at unit scope. There is no `SecretScope.Agent`, and the resolver has no agent-aware logic: every agent inside a unit sees the unit's full secret set (and any tenant secrets the unit inherits under the rules above).
