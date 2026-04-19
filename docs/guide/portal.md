@@ -131,10 +131,18 @@ spring unit create <name> \
   --hosting <ephemeral|persistent> \
   --color "#6366f1"
 
-# --provider and --model are only valid when --tool=dapr-agent (#598):
+# --provider is only valid when --tool=dapr-agent (#598):
 spring unit create <name> --tool dapr-agent \
   --provider <ollama|openai|google|anthropic|claude> \
   --model <model-id>
+
+# --model is also accepted on claude-code / codex / gemini so the CLI
+# matches the portal's Model dropdown (#644 parity fix). The tool
+# supplies the provider internally; --model picks within that provider's
+# model family and is treated as opaque by the CLI.
+spring unit create <name> --tool claude-code --model claude-sonnet-4-20250514
+spring unit create <name> --tool codex --model gpt-4o
+spring unit create <name> --tool gemini --model gemini-2.5-pro
 
 # #626: inline credential entry. Pair --api-key / --api-key-from-file
 # with either --tool=<tool-with-fixed-provider> or --tool=dapr-agent
@@ -352,7 +360,7 @@ The tab reads `GET /api/v1/units/{id}/execution`, edits each field in place, and
 | **Runtime** | Dropdown: `docker` / `podman` (or `(leave to default)`). | `--runtime docker\|podman` |
 | **Tool** | Dropdown: `claude-code` / `codex` / `gemini` / `dapr-agent` / `custom`. | `--tool <key>` |
 | **Provider** | Dropdown: `anthropic` / `openai` / `google` / `ollama`. **Only shown when Tool is `dapr-agent`, or when Tool is unset** (#598 gating, matches PR #627). | `--provider <key>` |
-| **Model** | Text input — promoted to a dropdown when the provider publishes a model catalog (#613). **Rendered for every tool that has a known catalog** (claude-code / codex / gemini via the tool's implicit provider; dapr-agent via the selected Provider). `custom` collapses the field (#641). | `--model <id>` |
+| **Model** | Text input — promoted to a dropdown when the provider publishes a model catalog (#613). **Rendered for every tool that has a known catalog** (claude-code / codex / gemini via the tool's implicit provider; dapr-agent via the selected Provider); hidden only for `custom` (#641 / #644 parity fix). | `--model <id>` |
 
 Each field is independently clearable — the editor lets an operator wipe just `image` while leaving `runtime` configured. The matching CLI verb is `spring unit execution clear <unit> --field image`.
 
