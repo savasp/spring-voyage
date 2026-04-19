@@ -145,6 +145,52 @@ Volumes (`spring-postgres-data`, `spring-redis-data`, `spring-caddy-data`,
 `spring-caddy-config`) persist across `down`/`up` cycles. Remove them with
 `podman volume rm` when you need a clean slate.
 
+### Startup configuration validation (#616)
+
+The API and Worker hosts validate their tier-1 configuration at startup.
+When a **mandatory** requirement is missing or malformed, the host refuses
+to boot and exits non-zero — Podman / systemd restart as normal, but the
+platform stays down until the operator fixes the underlying value. The
+original fail-fast that landed in #261 for `ConnectionStrings:SpringDb`
+remains the headline example: no connection string, no boot, and you'll
+see something like:
+
+```
+System.InvalidOperationException: No connection string found for SpringDbContext.
+Set the ConnectionStrings:SpringDb configuration value (environment
+variable ConnectionStrings__SpringDb=...) to a valid PostgreSQL
+connection string. See deployment/README.md.
+```
+
+PEM-parse failures for `GITHUB_APP_PRIVATE_KEY` fail-fast the same way
+(carried forward from PR #621); a garbage value won't defer the failure
+to the first `list-installations` call.
+
+**Optional** requirements (GitHub App credentials when you haven't run
+`spring github-app register` yet, Ollama when it's still warming up with
+`LanguageModel:Ollama:RequireHealthyAtStartup=false`) do NOT abort boot
+— they register the dependent features as disabled-with-reason and
+surface the reason to operators.
+
+Inspect the result post-deploy:
+
+```bash
+# CLI
+spring system configuration                  # table view
+spring system configuration --json           # JSON (for jq pipelines)
+spring system configuration "GitHub Connector"  # drill into one subsystem
+
+# HTTP
+curl http://localhost:5000/api/v1/system/configuration | jq .
+
+# Portal
+# Visit /system/configuration in your browser.
+```
+
+The report is cached at host startup — it does not move until the host
+restarts. Changing a tier-1 value (new connection string, new GitHub App)
+requires `./deploy.sh restart` or the matching per-container restart.
+
 ### Post-deploy: LLM provider credentials (tier-2, #615)
 
 LLM provider API keys (Anthropic, OpenAI, Google) are **tier-2 tenant-default
@@ -322,6 +368,57 @@ Key Vault, HashiCorp Vault, or Kubernetes secrets; the other production
 components reference the store by name (`secretstore`) so they require no
 changes. See [Infrastructure](../docs/architecture/infrastructure.md#data-persistence--configuration)
 and [`dapr/README.md`](../dapr/README.md) for profile details.
+
+### GitHub App setup
+
+There are two ways to bootstrap the GitHub App credentials the connector
+needs. The CLI helper is the recommended path — it drops the ~10 manual
+GitHub-docs steps to one browser click.
+
+#### Option A — one-shot CLI helper (`spring github-app register`)
+
+```bash
+# User-account App
+spring github-app register --name "Spring Voyage (prod)"
+
+# Or register under an org
+spring github-app register \
+  --name "Spring Voyage (prod)" \
+  --org cvoya-com
+
+# Air-gapped / CI inspection — builds manifest + prints URL, no I/O
+spring github-app register --name "Spring Voyage (prod)" --dry-run
+```
+
+The verb drives GitHub's [App-from-manifest flow](https://docs.github.com/en/apps/sharing-github-apps/registering-a-github-app-from-a-manifest):
+
+1. Binds a loopback HTTP listener on `127.0.0.1:<ephemeral-port>` (retries
+   on port collisions up to three times).
+2. Opens your browser at `https://github.com/settings/apps/new?manifest=<base64>`
+   with every permission + webhook event pre-filled.
+3. You click **Create**. GitHub redirects back to the listener with a
+   one-time code.
+4. CLI exchanges the code via `POST /app-manifests/{code}/conversions`
+   and receives the App ID, PEM, webhook secret, and OAuth client id/secret.
+5. Credentials land in `deployment/spring.env` (default — `--write-env`)
+   or in the platform-secrets store (`--write-secrets`; uses
+   `spring secret --scope platform create` from #612).
+6. The install URL is printed — visit it to install the App on the repos
+   you care about.
+
+The listener times out after 5 minutes; if you close the browser without
+confirming, re-run the verb. GitHub's own errors (e.g. "name has already
+been taken") are surfaced verbatim so you can rename with a suffix.
+
+See [`docs/architecture/cli-and-web.md § GitHub App bootstrap verb (#631)`](../docs/architecture/cli-and-web.md#github-app-bootstrap-verb-631)
+for the full flag list.
+
+#### Option B — register manually via the GitHub UI
+
+When you need fine-grained control (custom description, private-repo
+restrictions beyond the manifest default, etc.), follow the GitHub docs
+to register the App by hand. The connector expects the credentials in
+the env vars documented below.
 
 ### GitHub App credentials — PEM, not a path
 

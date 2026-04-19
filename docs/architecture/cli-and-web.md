@@ -75,7 +75,14 @@ spring agent execution get ada
 spring agent execution set ada --image ghcr.io/my/agent-ada:v1 --hosting ephemeral
 spring agent execution clear ada --field provider
 spring agent create backend-eng --tool claude-code --image ghcr.io/my/agent:v1 --runtime podman
+
+# Startup configuration report (#616)
+spring system configuration                       # all subsystems, table view
+spring system configuration --json                # raw JSON
+spring system configuration "GitHub Connector"    # drill into one subsystem
 ```
+
+The `spring system configuration` verb reads the cached startup configuration report over `GET /api/v1/system/configuration` — the same endpoint the portal's `/system/configuration` page consumes. See [Configuration](configuration.md) for the framework contract and validation policy.
 
 ### Execution verbs (#601 B-wide)
 
@@ -171,6 +178,65 @@ The command name is `spring` in both cases.
 The `spring` CLI's strongly-typed HTTP client (`src/Cvoya.Spring.Cli/Generated/`) is generated from that committed `openapi.json` by [Kiota](https://github.com/microsoft/kiota) (pinned in `.config/dotnet-tools.json`, currently `1.31.1`). The `GenerateKiotaClient` MSBuild target regenerates the client before every compile; the `Generated/` tree is gitignored. `Microsoft.Kiota.Bundle` (pinned in `Directory.Packages.props`) is the runtime dependency that the generated code calls into.
 
 The OpenAPI document carries a `servers` entry (absolute URL, development placeholder) so Kiota can embed a default base URL rather than forcing every caller to set one on the request adapter. Real callers override `BaseUrl` on the adapter at runtime; the default is only used if no override is supplied.
+
+### GitHub App bootstrap verb (#631)
+
+`spring github-app register` is the one-shot alternative to the ~10 manual
+GitHub-docs steps for registering the App that backs the GitHub connector.
+Per #616's **Option B+** distribution decision, the OSS connector stays
+in-tree and this verb is the friction remover. The verb drives GitHub's
+[App-from-manifest flow](https://docs.github.com/en/apps/sharing-github-apps/registering-a-github-app-from-a-manifest):
+bind a loopback listener → open a pre-filled "create App" page in the
+browser → receive a one-time code on the callback → exchange the code for
+the PEM + webhook secret → persist.
+
+```bash
+# Default — writes to deployment/spring.env
+spring github-app register --name "Spring Voyage (prod)"
+
+# Org-owned App
+spring github-app register --name "Spring Voyage (prod)" --org cvoya-com
+
+# Persist via platform secrets (#612) instead of spring.env
+spring github-app register --name "Spring Voyage (prod)" --write-secrets
+
+# Override the derived webhook URL (e.g. when behind a webhook-relay tunnel)
+spring github-app register \
+  --name "Spring Voyage (dev)" \
+  --webhook-url https://my-relay.ngrok-free.app/api/v1/webhooks/github
+
+# Build manifest + print creation URL, no I/O
+spring github-app register --name "Spring Voyage (prod)" --dry-run
+```
+
+| Flag | Purpose |
+|------|---------|
+| `--name <string>` (required) | App name on github.com. Must be globally unique; GitHub's "name already taken" error is surfaced verbatim with a suggestion to add a suffix. |
+| `--org <slug>` | Register under a GitHub org (`/organizations/{org}/settings/apps/new`) instead of the user account. |
+| `--webhook-url <url>` | Override the derived webhook URL. Default is `<deployment-origin>/api/v1/webhooks/github`, taken from `SPRING_API_URL` / `~/.spring/config.json`. |
+| `--write-env` (default) | Append credentials to `deployment/spring.env`. Existing `GitHub__*` lines are commented out with a timestamp for audit. Multi-line PEM is newline-escaped so Podman/Compose's `--env-file` reader accepts it verbatim. |
+| `--write-secrets` | Persist credentials via `spring secret --scope platform create` (#612) instead of `spring.env`. |
+| `--env-path <path>` | Override the `deployment/spring.env` default written to by `--write-env`. |
+| `--dry-run` | Build the manifest, print the creation URL, exit. No browser, no listener, no network I/O. |
+| `--callback-timeout-seconds <int>` | How long to wait for the GitHub redirect before erroring out as resumable. Default 300 (5 min, matches GitHub's one-time-code TTL). |
+
+**Permissions requested** — hardcoded to match the shipped connector skill
+bundles: read `issues` / `pull_requests` / `contents` / `metadata`; write
+`issue_comment` / `statuses` / `checks`. Webhook events: `issues`,
+`pull_request`, `issue_comment`, `installation`. `public: false`.
+
+**Port binding.** The callback listener binds to `127.0.0.1:0` (OS-assigned
+ephemeral) and retries up to three times on
+`HttpListenerException` — the same pattern used for the MCP test fixture
+(PR #617). The chosen port is baked into the manifest's `redirect_url`
+and `callback_urls` fields so GitHub redirects back to the exact loopback
+slot the listener is bound on.
+
+**Out of scope for this verb** — installing the App on specific repos/orgs
+(the portal's install-link flow from PR #610 handles that; the CLI just
+prints the install URL), credential rotation on an already-registered App,
+OAuth-App registration, and GitHub Enterprise Server (URL is hardcoded to
+`github.com`).
 
 ## Deployment Topology
 
