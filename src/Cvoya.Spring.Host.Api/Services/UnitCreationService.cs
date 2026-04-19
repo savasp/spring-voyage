@@ -13,6 +13,7 @@ using System.Threading.Tasks;
 using Cvoya.Spring.Connectors;
 using Cvoya.Spring.Core.Capabilities;
 using Cvoya.Spring.Core.Directory;
+using Cvoya.Spring.Core.Execution;
 using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Core.Orchestration;
 using Cvoya.Spring.Core.Skills;
@@ -63,6 +64,7 @@ public class UnitCreationService : IUnitCreationService
     private readonly IUnitBoundaryStore? _boundaryStore;
     private readonly IOrchestrationStrategyCacheInvalidator _orchestrationCacheInvalidator;
     private readonly IUnitOrchestrationStore? _orchestrationStore;
+    private readonly IUnitExecutionStore? _executionStore;
     private readonly ILogger<UnitCreationService> _logger;
 
     /// <summary>
@@ -95,7 +97,8 @@ public class UnitCreationService : IUnitCreationService
         ILoggerFactory loggerFactory,
         IUnitBoundaryStore? boundaryStore = null,
         IOrchestrationStrategyCacheInvalidator? orchestrationCacheInvalidator = null,
-        IUnitOrchestrationStore? orchestrationStore = null)
+        IUnitOrchestrationStore? orchestrationStore = null,
+        IUnitExecutionStore? executionStore = null)
     {
         _directoryService = directoryService;
         _actorProxyFactory = actorProxyFactory;
@@ -111,6 +114,7 @@ public class UnitCreationService : IUnitCreationService
         _orchestrationCacheInvalidator = orchestrationCacheInvalidator
             ?? NullOrchestrationStrategyCacheInvalidator.Instance;
         _orchestrationStore = orchestrationStore;
+        _executionStore = executionStore;
         _logger = loggerFactory.CreateLogger<UnitCreationService>();
     }
 
@@ -230,7 +234,59 @@ public class UnitCreationService : IUnitCreationService
             await PersistUnitBoundaryAsync(name, manifest.Boundary, cancellationToken);
         }
 
+        // #601 / #603 / #409 B-wide: persist the manifest's `execution:`
+        // block through IUnitExecutionStore so the unit's execution
+        // defaults match what a PUT /api/v1/units/{id}/execution call
+        // would produce. An absent or all-empty block is a no-op so an
+        // operator who clears the YAML doesn't re-apply a stale default.
+        if (manifest.Execution is { IsEmpty: false })
+        {
+            await PersistUnitExecutionAsync(name, manifest.Execution, cancellationToken);
+        }
+
         return result;
+    }
+
+    /// <summary>
+    /// Writes the manifest <c>execution:</c> block onto the persisted
+    /// <c>UnitDefinitions.Definition</c> JSON through the
+    /// <see cref="IUnitExecutionStore"/> seam. Failures are non-fatal —
+    /// the unit is already live; the operator can push the block via
+    /// <c>PUT /api/v1/units/{id}/execution</c> if the write hiccups.
+    /// </summary>
+    private async Task PersistUnitExecutionAsync(
+        string unitName,
+        ExecutionManifest execution,
+        CancellationToken cancellationToken)
+    {
+        if (_executionStore is null)
+        {
+            _logger.LogWarning(
+                "Unit '{UnitName}': manifest declared an execution block but no IUnitExecutionStore is registered; skipping execution persistence.",
+                unitName);
+            return;
+        }
+
+        try
+        {
+            var defaults = new UnitExecutionDefaults(
+                Image: execution.Image,
+                Runtime: execution.Runtime,
+                Tool: execution.Tool,
+                Provider: execution.Provider,
+                Model: execution.Model);
+            await _executionStore.SetAsync(unitName, defaults, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Unit '{UnitName}': failed to persist execution block from manifest; unit remains with whatever execution defaults (if any) were previously configured.",
+                unitName);
+        }
     }
 
     /// <summary>

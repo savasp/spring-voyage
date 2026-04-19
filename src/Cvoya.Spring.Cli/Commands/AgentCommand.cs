@@ -101,6 +101,12 @@ public static class AgentCommand
         agentCommand.Subcommands.Add(CreateScaleCommand(outputOption));
         agentCommand.Subcommands.Add(CreateLogsCommand());
 
+        // #601 / #603 / #409 B-wide — execution get/set/clear for the
+        // agent's own execution block on AgentDefinitions.Definition.
+        // Unit defaults merge at dispatch; this verb edits the on-disk
+        // agent slot only.
+        agentCommand.Subcommands.Add(AgentExecutionCommand.Create(outputOption));
+
         return agentCommand;
     }
 
@@ -138,12 +144,40 @@ public static class AgentCommand
         {
             Description = "Inline JSON literal for the agent definition document. Alternative to --definition-file.",
         };
+
+        // #409 acceptance: CLI parity for the agent execution block.
+        // These flags are convenience shorthands for the equivalent
+        // `execution.X` keys in --definition-file / --definition. When
+        // BOTH a definition JSON and these flags are supplied, the
+        // flags override the definition document (last-writer-wins per
+        // field).
+        var imageOption = new Option<string?>("--image")
+        {
+            Description = "Container image reference (shorthand for execution.image on the agent definition).",
+        };
+        var runtimeOption = new Option<string?>("--runtime")
+        {
+            Description = "Container runtime (shorthand for execution.runtime). Allowed: " +
+                string.Join(", ", UnitExecutionCommand.RuntimeKeys) + ".",
+        };
+        runtimeOption.AcceptOnlyFromAmong(UnitExecutionCommand.RuntimeKeys);
+
+        var toolOption = new Option<string?>("--tool")
+        {
+            Description = "External agent tool (shorthand for execution.tool). Allowed: " +
+                string.Join(", ", UnitExecutionCommand.ToolKeys) + ".",
+        };
+        toolOption.AcceptOnlyFromAmong(UnitExecutionCommand.ToolKeys);
+
         var command = new Command("create", "Create a new agent");
         command.Arguments.Add(idArg);
         command.Options.Add(nameOption);
         command.Options.Add(roleOption);
         command.Options.Add(definitionFileOption);
         command.Options.Add(definitionOption);
+        command.Options.Add(imageOption);
+        command.Options.Add(runtimeOption);
+        command.Options.Add(toolOption);
 
         command.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
         {
@@ -152,6 +186,9 @@ public static class AgentCommand
             var role = parseResult.GetValue(roleOption);
             var definitionFile = parseResult.GetValue(definitionFileOption);
             var definitionInline = parseResult.GetValue(definitionOption);
+            var image = parseResult.GetValue(imageOption);
+            var runtime = parseResult.GetValue(runtimeOption);
+            var tool = parseResult.GetValue(toolOption);
             var output = parseResult.GetValue(outputOption) ?? "table";
 
             string? definitionJson = definitionInline;
@@ -170,6 +207,15 @@ public static class AgentCommand
                 definitionJson = await System.IO.File.ReadAllTextAsync(definitionFile, ct);
             }
 
+            // #409 execution-shorthand flags. Merge into the definition
+            // JSON so the single server write covers everything. When the
+            // caller also passed a --definition / --definition-file, the
+            // shorthand flags overlay on top.
+            if (!string.IsNullOrWhiteSpace(image) || !string.IsNullOrWhiteSpace(runtime) || !string.IsNullOrWhiteSpace(tool))
+            {
+                definitionJson = MergeExecutionShorthand(definitionJson, image, runtime, tool);
+            }
+
             var client = ClientFactory.Create();
 
             var result = await client.CreateAgentAsync(id, displayName, role, definitionJson, ct);
@@ -180,6 +226,58 @@ public static class AgentCommand
         });
 
         return command;
+    }
+
+    /// <summary>
+    /// Merges <c>--image / --runtime / --tool</c> shorthand flags into
+    /// an optional agent-definition JSON string. When
+    /// <paramref name="definitionJson"/> is null / empty, a fresh
+    /// document carrying just the shorthand fields is produced.
+    /// </summary>
+    internal static string MergeExecutionShorthand(
+        string? definitionJson,
+        string? image,
+        string? runtime,
+        string? tool)
+    {
+        using var document = string.IsNullOrWhiteSpace(definitionJson)
+            ? System.Text.Json.JsonDocument.Parse("{}")
+            : System.Text.Json.JsonDocument.Parse(definitionJson);
+
+        // Build a mutable representation.
+        var properties = new Dictionary<string, System.Text.Json.JsonElement>();
+        foreach (var prop in document.RootElement.EnumerateObject())
+        {
+            properties[prop.Name] = prop.Value.Clone();
+        }
+
+        // Preserve any existing execution block; overlay shorthand fields.
+        var exec = new Dictionary<string, object?>();
+        if (properties.TryGetValue("execution", out var existingExec)
+            && existingExec.ValueKind == System.Text.Json.JsonValueKind.Object)
+        {
+            foreach (var p in existingExec.EnumerateObject())
+            {
+                exec[p.Name] = p.Value.ValueKind == System.Text.Json.JsonValueKind.String
+                    ? p.Value.GetString()
+                    : (object?)p.Value;
+            }
+        }
+        if (!string.IsNullOrWhiteSpace(image)) exec["image"] = image;
+        if (!string.IsNullOrWhiteSpace(runtime)) exec["runtime"] = runtime;
+        if (!string.IsNullOrWhiteSpace(tool)) exec["tool"] = tool;
+
+        var payload = new Dictionary<string, object?>();
+        foreach (var kvp in properties)
+        {
+            if (!string.Equals(kvp.Key, "execution", StringComparison.OrdinalIgnoreCase))
+            {
+                payload[kvp.Key] = kvp.Value;
+            }
+        }
+        payload["execution"] = exec;
+
+        return System.Text.Json.JsonSerializer.Serialize(payload);
     }
 
     private static Command CreateStatusCommand(Option<string> outputOption)

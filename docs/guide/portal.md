@@ -313,6 +313,26 @@ The tab is **not** a per-dimension API — saving always PUTs the entire boundar
 
 **Bulk YAML upload (#524).** Next to the per-rule editor the tab also accepts a YAML file (drop-zone + paste area), parsed client-side with a live diff against the current boundary before anything hits the server. Both the `spring unit boundary set -f` camelCase shape and the `spring apply -f` manifest snake_case shape are accepted, so a `spring unit boundary get <unit> --output json` dump or an existing unit manifest's `boundary:` block can be round-tripped through the portal. Malformed YAML surfaces an inline error with no server round-trip; applying triggers the same `PUT /api/v1/units/{id}/boundary` path the per-rule form uses.
 
+### Execution (#601 B-wide)
+
+Unit-level defaults for the container-runtime configuration member agents inherit: `image`, `runtime`, `tool`, `provider`, `model`. Delivered in the companion portal PR (closes #601 / #603 / #409) at `src/Cvoya.Spring.Web/src/app/units/[id]/unit-config-client.tsx`.
+
+The tab reads `GET /api/v1/units/{id}/execution`, edits each field in place, and writes through `PUT /api/v1/units/{id}/execution` per field (partial update). **Clear execution defaults** issues `DELETE` to strip the whole block.
+
+| Field | Input shape | CLI equivalent |
+|-------|-------------|----------------|
+| **Image** | Plain text input. Placeholder: `ghcr.io/... or spring-agent:latest`. Shape 1 — autocomplete from history is #622 (V2.1), registry discovery is #623 (V2.1). | `spring unit execution set <unit> --image <ref>` |
+| **Runtime** | Dropdown: `docker` / `podman`. | `--runtime docker|podman` |
+| **Tool** | Dropdown: `claude-code` / `codex` / `gemini` / `dapr-agent` / `custom`. | `--tool <key>` |
+| **Provider** | Dropdown. **Only shown when Tool = `dapr-agent`** (#598 gating). | `--provider <key>` |
+| **Model** | Dropdown / input. **Only shown when Tool = `dapr-agent`** (#598 gating). | `--model <id>` |
+
+Each field is independently clearable — the editor lets an operator wipe just `image` while leaving `runtime` configured. The matching CLI verb is `spring unit execution clear <unit> --field image`.
+
+The **agent** detail page carries a symmetric **Execution** panel: same five fields plus the agent-exclusive **Hosting** dropdown (`ephemeral` / `persistent`). When an agent leaves a field blank and its parent unit has a default for that field, the input renders the inherited value as an italic grey placeholder (`inherited: ghcr.io/...:v1`) so the operator sees the effective value without guessing. Saving does not overwrite the unit default — it persists only the fields the operator actually filled in on the agent row.
+
+**Save-time validation.** A save is rejected when an agent declares ephemeral hosting and no image is resolvable on either the agent or the unit. The portal surfaces the error inline with a link to whichever surface needs an image. The CLI mirrors the check at `set` time.
+
 ### Activity
 
 Unit-scoped activity feed ([activity-tab.tsx](../../src/Cvoya.Spring.Web/src/app/units/%5Bid%5D/activity-tab.tsx)) — pulls `/api/v1/activity?source=unit:{id}&pageSize=20`.

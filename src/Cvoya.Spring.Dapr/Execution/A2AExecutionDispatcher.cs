@@ -126,9 +126,15 @@ public class A2AExecutionDispatcher(
         {
             if (definition.Execution.Image is null)
             {
+                // #601 B-wide: image resolution chain is agent → unit →
+                // fail. The provider merges unit defaults before we see
+                // the definition here, so a null image at this point
+                // means neither surface declared one.
                 throw new SpringException(
                     $"Ephemeral agent '{agentId}' requires a container image. " +
-                    "Set execution.image in the agent YAML or use hosting: persistent.");
+                    "Set execution.image on the agent (spring agent execution set --image) " +
+                    "or on the parent unit as a default (spring unit execution set --image), " +
+                    "or switch the agent to hosting: persistent.");
             }
 
             var config = new ContainerConfig(
@@ -208,9 +214,11 @@ public class A2AExecutionDispatcher(
 
         if (definition.Execution?.Image is null)
         {
+            // #601 B-wide: same merge-aware error as the ephemeral path.
             throw new SpringException(
                 $"Persistent agent '{agentId}' requires a container image. " +
-                "Set execution.image in the agent YAML.");
+                "Set execution.image on the agent (spring agent execution set --image) " +
+                "or on the parent unit as a default (spring unit execution set --image).");
         }
 
         if (!_launchersByTool.TryGetValue(definition.Execution.Tool, out var launcher))

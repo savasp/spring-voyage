@@ -194,16 +194,74 @@ public class MemberManifest
     public string? Unit { get; set; }
 }
 
-/// <summary>Execution/runtime description.</summary>
+/// <summary>
+/// Unit-level execution defaults (#601 / #603 / #409 — "B-wide" shape).
+/// A unit's execution block declares the fallback container runtime
+/// configuration inherited by member agents that don't declare their own.
+/// Every field is independent and independently clearable — a unit may
+/// declare only <c>runtime: podman</c> and leave <c>image</c>, <c>tool</c>,
+/// etc. to each member agent.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Resolution chain (see <c>docs/architecture/units.md</c>): agent.X →
+/// unit.X → fail-clean at dispatch / save time. Agent wins on conflict;
+/// a missing field on the agent pulls from the unit; when neither
+/// declares a required field (image for ephemeral hosting, tool) the
+/// platform rejects the configuration at save time rather than waiting
+/// for dispatch.
+/// </para>
+/// <para>
+/// <see cref="Provider"/> and <see cref="Model"/> are Dapr-Agent-tool
+/// specific (#598 gating) — they're only meaningful when
+/// <see cref="Tool"/> = <c>dapr-agent</c>. The portal hides them for
+/// other tool selections.
+/// </para>
+/// </remarks>
 public class ExecutionManifest
 {
-    /// <summary>Container image reference.</summary>
+    /// <summary>Container image reference (e.g. <c>ghcr.io/...</c>, <c>spring-agent:latest</c>).</summary>
     [YamlMember(Alias = "image")]
     public string? Image { get; set; }
 
-    /// <summary>Runtime identifier (e.g. <c>docker</c>).</summary>
+    /// <summary>Container runtime identifier (<c>docker</c> or <c>podman</c>).</summary>
     [YamlMember(Alias = "runtime")]
     public string? Runtime { get; set; }
+
+    /// <summary>
+    /// Default external agent tool identifier inherited by member agents
+    /// that do not declare their own (e.g. <c>claude-code</c>,
+    /// <c>codex</c>, <c>gemini</c>, <c>dapr-agent</c>).
+    /// </summary>
+    [YamlMember(Alias = "tool")]
+    public string? Tool { get; set; }
+
+    /// <summary>
+    /// Default LLM provider (Dapr-Agent-tool-specific; see class remarks).
+    /// Forwarded to the agent runtime by Dapr-Conversation-backed launchers.
+    /// </summary>
+    [YamlMember(Alias = "provider")]
+    public string? Provider { get; set; }
+
+    /// <summary>
+    /// Default model identifier (Dapr-Agent-tool-specific; see class remarks).
+    /// Forwarded to the provider by Dapr-Conversation-backed launchers.
+    /// </summary>
+    [YamlMember(Alias = "model")]
+    public string? Model { get; set; }
+
+    /// <summary>
+    /// True when every field is null / whitespace. Used by the manifest
+    /// applier and portal to decide whether a unit execution write is a
+    /// "clear" rather than a "set".
+    /// </summary>
+    [YamlIgnore]
+    public bool IsEmpty =>
+        string.IsNullOrWhiteSpace(Image)
+        && string.IsNullOrWhiteSpace(Runtime)
+        && string.IsNullOrWhiteSpace(Tool)
+        && string.IsNullOrWhiteSpace(Provider)
+        && string.IsNullOrWhiteSpace(Model);
 }
 
 /// <summary>Connector configuration entry.</summary>

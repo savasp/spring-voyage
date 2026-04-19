@@ -63,7 +63,36 @@ spring build packages/software-engineering
 spring apply -f units/engineering-team.yaml
 spring workflow status software-dev-cycle
 spring images list
+
+# Unit / agent execution defaults (#601 B-wide)
+spring unit execution get engineering-team
+spring unit execution set engineering-team --image ghcr.io/my/agent:v1 --runtime podman
+spring unit execution set engineering-team --tool dapr-agent --provider ollama --model llama3.2:3b
+spring unit execution clear engineering-team --field image
+spring unit execution clear engineering-team
+
+spring agent execution get ada
+spring agent execution set ada --image ghcr.io/my/agent-ada:v1 --hosting ephemeral
+spring agent execution clear ada --field provider
+spring agent create backend-eng --tool claude-code --image ghcr.io/my/agent:v1 --runtime podman
 ```
+
+### Execution verbs (#601 B-wide)
+
+`spring unit execution` and `spring agent execution` edit the persisted `execution:` block. Both carry the same five shared fields:
+
+| Flag         | Unit   | Agent  | Notes                                                     |
+| ------------ | ------ | ------ | --------------------------------------------------------- |
+| `--image`    | ✓      | ✓      | Container image reference.                                |
+| `--runtime`  | ✓      | ✓      | `docker` or `podman`.                                     |
+| `--tool`     | ✓      | ✓      | `claude-code` / `codex` / `gemini` / `dapr-agent` / `custom`. |
+| `--provider` | ✓      | ✓      | Dapr-Agent-tool-specific.                                 |
+| `--model`    | ✓      | ✓      | Dapr-Agent-tool-specific.                                 |
+| `--hosting`  | —      | ✓      | `ephemeral` / `persistent`. Agent-exclusive (never inherits). |
+
+`set` performs a **partial update** — unlisted flags keep their current values. `clear` without `--field` strips the whole block; `clear --field X` clears one field. Resolution at dispatch is agent → unit → fail; see `docs/architecture/units.md § Unit execution defaults`.
+
+`spring agent create` picks up `--image`, `--runtime`, and `--tool` as convenience shorthands that overlay onto any `--definition` / `--definition-file` JSON body (last-writer-wins per field).
 
 ### Directory verbs
 

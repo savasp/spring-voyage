@@ -23,9 +23,16 @@ public static class ManifestParser
     /// applied by the platform. Listed here so consumers emit a consistent
     /// warning per section.
     /// </summary>
+    /// <remarks>
+    /// <c>execution</c> left this list in the B-wide implementation of
+    /// #601 / #603 / #409 — the unit's execution block is now persisted
+    /// and resolved as agent-level default (see
+    /// <c>UnitCreationService.PersistUnitDefinitionExecutionAsync</c> and
+    /// <c>IUnitExecutionStore</c>).
+    /// </remarks>
     public static readonly IReadOnlyList<string> UnsupportedSections = new[]
     {
-        "ai", "connectors", "policies", "humans", "execution",
+        "ai", "connectors", "policies", "humans",
     };
 
     /// <summary>
@@ -95,7 +102,6 @@ public static class ManifestParser
         "connectors" => manifest.Connectors is { Count: > 0 },
         "policies" => manifest.Policies is { Count: > 0 },
         "humans" => manifest.Humans is { Count: > 0 },
-        "execution" => manifest.Execution is not null,
         _ => false,
     };
 }

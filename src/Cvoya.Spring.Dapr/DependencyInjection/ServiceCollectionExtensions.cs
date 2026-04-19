@@ -465,6 +465,20 @@ public static class ServiceCollectionExtensions
         // extension.
         services.TryAddSingleton<IUnitOrchestrationStore, DbUnitOrchestrationStore>();
 
+        // #601 / #603 / #409 B-wide: read/write seam for the persisted unit
+        // execution block. Shared between UnitCreationService (manifest
+        // apply) and the dedicated `/api/v1/units/{id}/execution` HTTP
+        // surface so the two write paths cannot drift on shape or
+        // validation. TryAdd so a hosted overlay can swap in a
+        // tenant-scoped variant.
+        services.TryAddSingleton<IUnitExecutionStore, DbUnitExecutionStore>();
+
+        // #601 B-wide: companion read/write seam for the agent's own
+        // execution block on AgentDefinitions.Definition. Shared between
+        // manifest apply and the dedicated /api/v1/agents/{id}/execution
+        // HTTP surface.
+        services.TryAddSingleton<IAgentExecutionStore, DbAgentExecutionStore>();
+
 
         // Prompt
         services.AddSingleton<UnitContextBuilder>();

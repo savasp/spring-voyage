@@ -18,6 +18,37 @@ open-source single-host scenario.
 | `Caddyfile.multi-host`  | Per-service hostnames variant (web / API / webhook each FQDN).    |
 | `relay.sh`              | Local-dev SSH reverse tunnel for webhook delivery to a laptop.    |
 | `spring.env.example`    | Documented env template. Copy to `spring.env` and fill in.        |
+| `examples/dockerfiles/` | Starter Dockerfiles showing how to extend `spring-agent:latest` (see **Custom agent images** below). |
+
+## Custom agent images
+
+Unit and agent execution blocks (`execution.image`) accept any container
+reference the host can pull. To run an agent in a custom image — whether
+you just want a pinned tag, or you need to layer extra CLI tools on top
+of `spring-agent:latest` — start from one of the templates under
+`examples/dockerfiles/`:
+
+| Template            | When to use it                                                         |
+| ------------------- | ---------------------------------------------------------------------- |
+| `minimal-extension` | Re-tag `spring-agent:latest` under your own registry / name. No code changes; useful for pinning a stable reference. |
+| `custom-tools`      | Add extra CLI tools (system packages, npm-installed MCP servers, language toolchains). |
+
+Each template ships with its own `README.md` covering build, reference,
+and the extension pattern. Reference the built image from a unit or
+agent manifest:
+
+```yaml
+unit:
+  name: my-team
+  execution:
+    image: localhost/my-agent:latest
+    runtime: podman
+```
+
+…or through the portal's **Execution** tab (new with the B-wide
+#601 / #603 / #409 PR). The agent → unit → fail-clean resolution chain
+documented in `../docs/architecture/units.md` means agents without their
+own `execution.image` inherit the unit's default.
 
 ## Prerequisites
 
