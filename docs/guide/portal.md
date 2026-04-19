@@ -95,14 +95,28 @@ Collects the unit `name` (URL-safe lowercase/digits/hyphens), `display name`, `d
 
 **Provider + Model are only shown when `tool = dapr-agent`** (#598). Claude Code, Codex, and Gemini hardcode their provider inside the tool CLI, so exposing a Provider dropdown on them would be misleading — the selection would have no runtime effect. Custom tools also hide the fields because the contract is undefined; see [`docs/architecture/agent-runtime.md`](../architecture/agent-runtime.md) for the full tool × provider matrix. When the `dapr-agent` + `ollama` combination is chosen, the model picker auto-populates from the connected Ollama server's `/api/tags` response.
 
-**Credential-status indicator.** Directly below the Provider + Model fields, the wizard renders a small banner showing whether the selected provider's credentials are configured:
+**Credential section (#626).** The wizard derives which LLM provider actually needs an API key from the selected tool + provider, then shows one of four shapes:
 
-- **Tenant default inherited** — `Anthropic credentials: inherited from tenant default` (green).
-- **Unit override set** — `Anthropic credentials: set on unit` (green).
-- **Not configured** — `Anthropic credentials: not configured. Configure in Settings → Tenant defaults` (amber), with a deep-link that opens the Settings drawer's Tenant defaults panel.
-- **Ollama unreachable** — `Ollama not reachable at <BaseUrl>. Check that the Ollama server is running.` (amber). Ollama has no API key; this is a health-probe result against the configured endpoint.
+| Selection | Required provider | Status shape |
+|---|---|---|
+| `claude-code` | `anthropic` | full credential section (always — #626 threads Anthropic even though the Provider dropdown is hidden on Claude Code) |
+| `codex` | `openai` | full credential section |
+| `gemini` | `google` | full credential section |
+| `dapr-agent` + provider `anthropic` / `openai` / `google` | same | full credential section |
+| `dapr-agent` + `ollama` | none | reachability banner only — no inline input (Ollama is local; no API key) |
+| `custom` | none | nothing rendered — custom tools have no declared credential contract |
 
-The banner rides `GET /api/v1/system/credentials/{provider}/status`. The endpoint is read-only and **never includes the credential value** in its response — only a boolean resolvable flag, the source tier (`unit` / `tenant` / `null`), and an operator-facing suggestion string. Key material never crosses this boundary.
+The full credential section has three visible states:
+
+- **Tenant default inherited** — `Anthropic credentials: inherited from tenant default` (green) with an **Override** button. Clicking Override opens the inline input so the operator can supply a new value — the existing tenant-default plaintext is NEVER shown in the browser.
+- **Unit override set** — `Anthropic credentials: set on unit` (green). No Override button — the operator edits per-unit secrets via the unit's Secrets tab.
+- **Not configured** — amber banner with an inline credential input, a show/hide password toggle, and a **"Save as tenant default"** checkbox. Checkbox unticked = the key is written as a unit-scoped secret (`<provider>-api-key`) after the unit is created; ticked = the key is written as a tenant default BEFORE the unit is created, so every future unit inherits it.
+
+The Create button is disabled with a targeted message (`Set the <Provider> API key to continue.`) whenever the selected tool requires a credential and the field is empty and the probe reports nothing resolvable at tenant/unit scope.
+
+**Security invariant.** The probe endpoint (`GET /api/v1/system/credentials/{provider}/status`) is read-only and **never returns the credential value** — only a boolean resolvable flag, the source tier (`unit` / `tenant` / `null`), and an operator-facing suggestion string. See `docs/architecture/security.md` § "Credential status endpoint" for the full argument.
+
+**Override flow (§3 of #626).** When a tenant default already exists and the operator clicks Override then ticks "Save as tenant default," the wizard **rotates** the tenant secret (`PUT /api/v1/tenant/secrets/{name}`) instead of creating a new one — so the keys a tenant uses as defaults can be rotated directly from the wizard without detouring through the Settings drawer.
 
 **CLI equivalent:**
 
@@ -118,6 +132,16 @@ spring unit create <name> \
 spring unit create <name> --tool dapr-agent \
   --provider <ollama|openai|google|anthropic|claude> \
   --model <model-id>
+
+# #626: inline credential entry. Pair --api-key / --api-key-from-file
+# with either --tool=<tool-with-fixed-provider> or --tool=dapr-agent
+# + --provider=<anthropic|openai|google>. Rejected on Ollama and
+# custom tools. Without --save-as-tenant-default the key is written
+# as a unit-scoped secret (POST /api/v1/units/{id}/secrets); with the
+# flag it is written as a tenant default first.
+spring unit create <name> --tool claude-code \
+  --api-key-from-file ~/.config/anthropic/api-key \
+  --save-as-tenant-default
 ```
 
 ### Step 2 — Mode

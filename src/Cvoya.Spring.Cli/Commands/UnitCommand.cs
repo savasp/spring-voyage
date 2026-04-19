@@ -178,6 +178,25 @@ public static class UnitCommand
         };
         hostingOption.AcceptOnlyFromAmong("ephemeral", "persistent");
 
+        // #626: inline credential entry. Pair these flags with --provider /
+        // --tool to supply the LLM API key at unit-create time. See
+        // `UnitCredentialOptions` for the full rejection matrix.
+        var apiKeyOption = new Option<string?>("--api-key")
+        {
+            Description =
+                "LLM API key for the derived provider (set inline). Rejected when the tool / provider has no key (ollama, custom). Mutually exclusive with --api-key-from-file.",
+        };
+        var apiKeyFromFileOption = new Option<string?>("--api-key-from-file")
+        {
+            Description =
+                "Path to a file containing the LLM API key. Trailing newlines are stripped. Mutually exclusive with --api-key.",
+        };
+        var saveAsTenantDefaultOption = new Option<bool>("--save-as-tenant-default")
+        {
+            Description =
+                "Pair with --api-key / --api-key-from-file to write the key as a tenant-default secret instead of a unit-scoped secret.",
+        };
+
         var command = new Command("create", "Create a new unit");
         command.Arguments.Add(nameArg);
         command.Options.Add(displayNameOption);
@@ -189,6 +208,9 @@ public static class UnitCommand
         command.Options.Add(toolOption);
         command.Options.Add(providerOption);
         command.Options.Add(hostingOption);
+        command.Options.Add(apiKeyOption);
+        command.Options.Add(apiKeyFromFileOption);
+        command.Options.Add(saveAsTenantDefaultOption);
 
         command.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
         {
@@ -202,6 +224,9 @@ public static class UnitCommand
             var tool = parseResult.GetValue(toolOption);
             var provider = parseResult.GetValue(providerOption);
             var hosting = parseResult.GetValue(hostingOption);
+            var apiKey = parseResult.GetValue(apiKeyOption);
+            var apiKeyFromFile = parseResult.GetValue(apiKeyFromFileOption);
+            var saveAsTenantDefault = parseResult.GetValue(saveAsTenantDefaultOption);
             var output = parseResult.GetValue(outputOption) ?? "table";
 
             // #598: reject --provider / --model on non-dapr-agent tools.
@@ -212,6 +237,23 @@ public static class UnitCommand
             if (providerModelError is not null)
             {
                 await Console.Error.WriteLineAsync(providerModelError);
+                Environment.Exit(1);
+                return;
+            }
+
+            // #626: resolve + validate --api-key / --api-key-from-file /
+            // --save-as-tenant-default. Rejection surfaces here so callers
+            // find out before we POST the unit-create request.
+            var credentialResolution = await ResolveCredentialOptionsAsync(
+                tool,
+                provider,
+                apiKey,
+                apiKeyFromFile,
+                saveAsTenantDefault,
+                ct);
+            if (credentialResolution.ErrorMessage is not null)
+            {
+                await Console.Error.WriteLineAsync(credentialResolution.ErrorMessage);
                 Environment.Exit(1);
                 return;
             }
@@ -247,6 +289,7 @@ public static class UnitCommand
                     provider,
                     hosting,
                     output,
+                    credentialResolution,
                     ct);
                 if (exitCode != 0)
                 {
@@ -265,6 +308,29 @@ public static class UnitCommand
             }
 
             var directClient = ClientFactory.Create();
+
+            // #626: when --save-as-tenant-default is set, write the
+            // tenant secret BEFORE the unit is created so a failure
+            // there doesn't leave an orphan actor behind.
+            if (credentialResolution is { Key.Length: > 0, SaveAsTenantDefault: true, SecretName: not null })
+            {
+                try
+                {
+                    await directClient.CreateTenantSecretAsync(
+                        credentialResolution.SecretName,
+                        credentialResolution.Key,
+                        externalStoreKey: null,
+                        ct);
+                }
+                catch (Exception ex)
+                {
+                    await Console.Error.WriteLineAsync(
+                        $"Failed to write tenant default '{credentialResolution.SecretName}': {ex.Message}");
+                    Environment.Exit(1);
+                    return;
+                }
+            }
+
             var result = await directClient.CreateUnitAsync(
                 positionalName!,
                 displayName,
@@ -275,6 +341,26 @@ public static class UnitCommand
                 provider: provider,
                 hosting: hosting,
                 ct: ct);
+
+            // #626: when --save-as-tenant-default is NOT set, write the
+            // unit-scoped override after the unit exists.
+            if (credentialResolution is { Key.Length: > 0, SaveAsTenantDefault: false, SecretName: not null })
+            {
+                try
+                {
+                    await directClient.CreateUnitSecretAsync(
+                        result.Name!,
+                        credentialResolution.SecretName,
+                        credentialResolution.Key,
+                        externalStoreKey: null,
+                        ct);
+                }
+                catch (Exception ex)
+                {
+                    await Console.Error.WriteLineAsync(
+                        $"warning: unit secret '{credentialResolution.SecretName}' not written: {ex.Message}");
+                }
+            }
 
             Console.WriteLine(output == "json"
                 ? OutputFormatter.FormatJson(result)
@@ -337,6 +423,23 @@ public static class UnitCommand
         };
         hostingOption.AcceptOnlyFromAmong("ephemeral", "persistent");
 
+        // #626: inline credential entry (same semantics as `unit create`).
+        var apiKeyOption = new Option<string?>("--api-key")
+        {
+            Description =
+                "LLM API key for the derived provider (set inline). Rejected when the tool / provider has no key (ollama, custom). Mutually exclusive with --api-key-from-file.",
+        };
+        var apiKeyFromFileOption = new Option<string?>("--api-key-from-file")
+        {
+            Description =
+                "Path to a file containing the LLM API key. Trailing newlines are stripped. Mutually exclusive with --api-key.",
+        };
+        var saveAsTenantDefaultOption = new Option<bool>("--save-as-tenant-default")
+        {
+            Description =
+                "Pair with --api-key / --api-key-from-file to write the key as a tenant-default secret instead of a unit-scoped secret.",
+        };
+
         var command = new Command(
             "create-from-template",
             "Instantiate a unit from a packaged template (#460). First-class verb equivalent to the " +
@@ -349,6 +452,9 @@ public static class UnitCommand
         command.Options.Add(toolOption);
         command.Options.Add(providerOption);
         command.Options.Add(hostingOption);
+        command.Options.Add(apiKeyOption);
+        command.Options.Add(apiKeyFromFileOption);
+        command.Options.Add(saveAsTenantDefaultOption);
 
         command.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
         {
@@ -360,6 +466,9 @@ public static class UnitCommand
             var tool = parseResult.GetValue(toolOption);
             var provider = parseResult.GetValue(providerOption);
             var hosting = parseResult.GetValue(hostingOption);
+            var apiKey = parseResult.GetValue(apiKeyOption);
+            var apiKeyFromFile = parseResult.GetValue(apiKeyFromFileOption);
+            var saveAsTenantDefault = parseResult.GetValue(saveAsTenantDefaultOption);
             var output = parseResult.GetValue(outputOption) ?? "table";
 
             // #598: same gate applies to the template path.
@@ -367,6 +476,20 @@ public static class UnitCommand
             if (providerModelError is not null)
             {
                 await Console.Error.WriteLineAsync(providerModelError);
+                Environment.Exit(1);
+                return;
+            }
+
+            var credentialResolution = await ResolveCredentialOptionsAsync(
+                tool,
+                provider,
+                apiKey,
+                apiKeyFromFile,
+                saveAsTenantDefault,
+                ct);
+            if (credentialResolution.ErrorMessage is not null)
+            {
+                await Console.Error.WriteLineAsync(credentialResolution.ErrorMessage);
                 Environment.Exit(1);
                 return;
             }
@@ -381,6 +504,7 @@ public static class UnitCommand
                 provider,
                 hosting,
                 output,
+                credentialResolution,
                 ct);
             if (exitCode != 0)
             {
@@ -409,6 +533,7 @@ public static class UnitCommand
         string? provider,
         string? hosting,
         string output,
+        UnitCredentialOptions credential,
         CancellationToken ct)
     {
         var slash = target.IndexOf('/');
@@ -423,6 +548,27 @@ public static class UnitCommand
         var templateName = target[(slash + 1)..];
 
         var client = ClientFactory.Create();
+
+        // #626: tenant-default secret is written BEFORE the unit exists.
+        // Fails the whole command if the tenant write fails.
+        if (credential is { Key.Length: > 0, SaveAsTenantDefault: true, SecretName: not null })
+        {
+            try
+            {
+                await client.CreateTenantSecretAsync(
+                    credential.SecretName,
+                    credential.Key,
+                    externalStoreKey: null,
+                    ct);
+            }
+            catch (Exception ex)
+            {
+                await Console.Error.WriteLineAsync(
+                    $"Failed to write tenant default '{credential.SecretName}': {ex.Message}");
+                return 1;
+            }
+        }
+
         var response = await client.CreateUnitFromTemplateAsync(
             package,
             templateName,
@@ -434,6 +580,29 @@ public static class UnitCommand
             provider: provider,
             hosting: hosting,
             ct: ct);
+
+        // #626: unit-scoped secret is written AFTER the unit exists.
+        // Failure here surfaces as a warning — the unit is already live
+        // and the operator can retry from the Secrets tab / CLI.
+        var createdUnitName = response.Unit?.Name;
+        if (credential is { Key.Length: > 0, SaveAsTenantDefault: false, SecretName: not null }
+            && !string.IsNullOrWhiteSpace(createdUnitName))
+        {
+            try
+            {
+                await client.CreateUnitSecretAsync(
+                    createdUnitName!,
+                    credential.SecretName,
+                    credential.Key,
+                    externalStoreKey: null,
+                    ct);
+            }
+            catch (Exception ex)
+            {
+                await Console.Error.WriteLineAsync(
+                    $"warning: unit secret '{credential.SecretName}' not written: {ex.Message}");
+            }
+        }
 
         // Surface server-side warnings (unresolved bundle tools, binding
         // previews) on both output paths so callers never miss them.
@@ -1049,4 +1218,172 @@ public static class UnitCommand
         return "--provider and --model are only meaningful for --tool=dapr-agent; " +
             "other tools (claude-code, codex, gemini) have their provider hardcoded in the tool CLI.";
     }
+
+    /// <summary>
+    /// #626: derive the provider whose API key is needed, given the
+    /// currently-selected tool + provider. Returns <c>null</c> when no
+    /// key is required (Ollama / custom). Mirrors the portal-side
+    /// `deriveRequiredCredentialProvider` in
+    /// `src/Cvoya.Spring.Web/src/app/units/create/page.tsx`.
+    /// </summary>
+    public static string? DeriveRequiredCredentialProvider(
+        string? tool,
+        string? provider)
+    {
+        var normalizedTool = (tool ?? string.Empty).Trim().ToLowerInvariant();
+        var normalizedProvider = (provider ?? string.Empty).Trim().ToLowerInvariant();
+        return normalizedTool switch
+        {
+            "claude-code" => "anthropic",
+            "codex" => "openai",
+            "gemini" => "google",
+            "dapr-agent" => normalizedProvider switch
+            {
+                "claude" or "anthropic" => "anthropic",
+                "openai" => "openai",
+                "google" or "gemini" or "googleai" => "google",
+                // ollama + unknown fall through — no key required.
+                _ => null,
+            },
+            // custom / unspecified → no declared credential contract.
+            _ => null,
+        };
+    }
+
+    /// <summary>
+    /// #626: resolve the inline-credential flags into a validated
+    /// payload. Handles mutual exclusion between <c>--api-key</c> and
+    /// <c>--api-key-from-file</c>, rejects keys on tool/provider
+    /// combinations that have no credential contract, and loads the
+    /// file contents when the <c>--api-key-from-file</c> path is used.
+    /// </summary>
+    /// <remarks>
+    /// The method is <c>internal</c> (+ <see cref="System.Runtime.CompilerServices.InternalsVisibleToAttribute"/>
+    /// in the .csproj) so tests can cover the rejection matrix without
+    /// crossing the process-exit boundary.
+    /// </remarks>
+    public static async Task<UnitCredentialOptions> ResolveCredentialOptionsAsync(
+        string? tool,
+        string? provider,
+        string? apiKey,
+        string? apiKeyFromFile,
+        bool saveAsTenantDefault,
+        CancellationToken ct)
+    {
+        var hasKeyFlag = !string.IsNullOrEmpty(apiKey);
+        var hasKeyFileFlag = !string.IsNullOrEmpty(apiKeyFromFile);
+
+        // --save-as-tenant-default is only meaningful with a key.
+        if (saveAsTenantDefault && !hasKeyFlag && !hasKeyFileFlag)
+        {
+            return UnitCredentialOptions.Rejected(
+                "--save-as-tenant-default requires --api-key or --api-key-from-file.");
+        }
+
+        if (!hasKeyFlag && !hasKeyFileFlag)
+        {
+            return UnitCredentialOptions.None();
+        }
+
+        if (hasKeyFlag && hasKeyFileFlag)
+        {
+            return UnitCredentialOptions.Rejected(
+                "--api-key and --api-key-from-file are mutually exclusive. Pass exactly one.");
+        }
+
+        var derivedProvider = DeriveRequiredCredentialProvider(tool, provider);
+        if (derivedProvider is null)
+        {
+            return UnitCredentialOptions.Rejected(
+                "--api-key / --api-key-from-file is only valid for tools that need an LLM API key " +
+                "(claude-code, codex, gemini, or dapr-agent with provider anthropic/openai/google). " +
+                "Ollama is local (no key) and custom tools have no declared credential contract.");
+        }
+
+        string? resolvedKey;
+        if (hasKeyFlag)
+        {
+            resolvedKey = apiKey;
+        }
+        else
+        {
+            try
+            {
+                resolvedKey = await File.ReadAllTextAsync(apiKeyFromFile!, ct);
+                resolvedKey = resolvedKey.TrimEnd('\r', '\n');
+            }
+            catch (Exception ex)
+            {
+                return UnitCredentialOptions.Rejected(
+                    $"Failed to read --api-key-from-file '{apiKeyFromFile}': {ex.Message}");
+            }
+        }
+
+        if (string.IsNullOrEmpty(resolvedKey))
+        {
+            return UnitCredentialOptions.Rejected(
+                "Supplied API key is empty. Pass a non-empty value via --api-key or a file that contains one.");
+        }
+
+        var secretName = SecretNameForProvider(derivedProvider);
+        return new UnitCredentialOptions(
+            Key: resolvedKey,
+            SecretName: secretName,
+            SaveAsTenantDefault: saveAsTenantDefault,
+            ErrorMessage: null);
+    }
+
+    /// <summary>
+    /// The canonical secret name per provider, kept in lock-step with
+    /// <c>src/Cvoya.Spring.Dapr/Execution/LlmCredentialResolver.cs</c>.
+    /// </summary>
+    public static string SecretNameForProvider(string provider) => provider switch
+    {
+        "anthropic" => "anthropic-api-key",
+        "openai" => "openai-api-key",
+        "google" => "google-api-key",
+        _ => throw new InvalidOperationException(
+            $"No secret-name mapping for provider '{provider}'."),
+    };
+}
+
+/// <summary>
+/// #626: validated result of the <c>--api-key</c> /
+/// <c>--api-key-from-file</c> / <c>--save-as-tenant-default</c> flag
+/// triple. Produced by <see cref="UnitCommand.ResolveCredentialOptionsAsync"/>
+/// and threaded through the unit-create executors so the tenant /
+/// unit secret writes happen with the right scope at the right time.
+/// </summary>
+/// <param name="Key">
+/// The resolved key value (from <c>--api-key</c> or the file named by
+/// <c>--api-key-from-file</c>). Empty when no key was supplied — the
+/// executors check <see cref="SecretName"/> for null to detect that.
+/// </param>
+/// <param name="SecretName">
+/// The canonical secret name (<c>anthropic-api-key</c>,
+/// <c>openai-api-key</c>, or <c>google-api-key</c>) derived from the
+/// tool/provider. Null when no key was supplied.
+/// </param>
+/// <param name="SaveAsTenantDefault">
+/// Whether the key should be written as a tenant-scoped secret
+/// (<c>true</c>) or a unit-scoped override (<c>false</c>). Meaningful
+/// only when <see cref="SecretName"/> is non-null.
+/// </param>
+/// <param name="ErrorMessage">
+/// Non-null when the flag combination was rejected. Callers surface
+/// this verbatim on stderr and exit 1.
+/// </param>
+public sealed record UnitCredentialOptions(
+    string Key,
+    string? SecretName,
+    bool SaveAsTenantDefault,
+    string? ErrorMessage)
+{
+    /// <summary>No credential flags supplied — no secret write planned.</summary>
+    public static UnitCredentialOptions None() =>
+        new(string.Empty, SecretName: null, SaveAsTenantDefault: false, ErrorMessage: null);
+
+    /// <summary>Flag combination rejected; the caller must surface the message and exit.</summary>
+    public static UnitCredentialOptions Rejected(string message) =>
+        new(string.Empty, SecretName: null, SaveAsTenantDefault: false, ErrorMessage: message);
 }

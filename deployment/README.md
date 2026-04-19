@@ -161,11 +161,24 @@ spring secret create --scope tenant google-api-key    --value "AIza..."
 # Or open the portal, click Settings, and set the keys in the
 # "Tenant defaults" panel. Values are encrypted at rest (AES-GCM envelope)
 # and never returned to the browser.
+#
+# Or, when creating the very first unit, supply the key inline (#626):
+# the wizard at `/units/create` and the `spring unit create` verb both
+# accept `--api-key-from-file` + `--save-as-tenant-default` (CLI) or
+# the "Save as tenant default" checkbox (portal) to write the tenant
+# default in the same step.
+spring unit create first-team \
+  --tool claude-code \
+  --api-key-from-file ./anthropic.txt \
+  --save-as-tenant-default
 ```
 
 Individual units can override the tenant default by registering a
 same-name secret at unit scope (Secrets tab on the unit detail page, or
 `spring secret create --scope unit --unit <name> <key> --value "..."`).
+From the unit-creation wizard / CLI verb, the same effect is achieved by
+supplying `--api-key(-from-file)` **without** `--save-as-tenant-default` —
+the key is written as a per-unit secret after the unit exists.
 
 If you are upgrading a deployment that had `ANTHROPIC_API_KEY` /
 `OPENAI_API_KEY` in `spring.env`, move the keys to tenant defaults with

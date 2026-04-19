@@ -131,17 +131,27 @@ docker compose --env-file spring.env up -d
 
 You can skip the build step entirely if you point `SPRING_PLATFORM_IMAGE` / `SPRING_AGENT_IMAGE` in `spring.env` at pre-published images in a registry; the runtime pulls them on first `up`. For remote VPS deployments, `deploy-remote.sh` wraps SSH + rsync and supports the same registry flow via `SPRING_SKIP_SOURCE_SYNC=1`.
 
-**First-run follow-up: set LLM credentials.** LLM provider API keys are **tier-2 tenant-default credentials**, not deployment config — they do NOT live in `spring.env`. After the stack is up, set them from the CLI or portal:
+**First-run follow-up: set LLM credentials.** LLM provider API keys are **tier-2 tenant-default credentials**, not deployment config — they do NOT live in `spring.env`. Three paths, pick whichever fits:
 
 ```bash
-# CLI (recommended for scripts / CI)
+# 1) CLI (recommended for scripts / CI)
 spring secret create --scope tenant anthropic-api-key --value "sk-ant-..."
 spring secret create --scope tenant openai-api-key    --value "sk-..."
 
-# or via the portal: open Settings → "Tenant defaults" panel → paste + Set
+# 2) Portal: open Settings → "Tenant defaults" panel → paste + Set
+
+# 3) Inline on unit creation (#626) — pair with `--save-as-tenant-default`
+#    to write the key as a tenant default while spinning up the unit:
+spring unit create first-team \
+  --tool claude-code \
+  --api-key-from-file ~/.secrets/anthropic.txt \
+  --save-as-tenant-default
+#    Or accept the key in the unit-creation wizard's inline input at
+#    `/units/create` — the "Save as tenant default" checkbox decides
+#    whether the key lands at tenant or unit scope.
 ```
 
-Units inherit these automatically. Override per unit via the Secrets tab on a unit detail page or `spring secret create --scope unit --unit <name> anthropic-api-key --value "..."`. The platform does not read LLM provider keys from environment variables — credentials must be set at tenant or unit scope. See [`docs/guide/secrets.md`](docs/guide/secrets.md) for the full three-tier model and resolution order.
+Units inherit tenant defaults automatically. Override per unit via the Secrets tab on a unit detail page or `spring secret create --scope unit --unit <name> anthropic-api-key --value "..."`. The platform does not read LLM provider keys from environment variables — credentials must be set at tenant or unit scope. See [`docs/guide/secrets.md`](docs/guide/secrets.md) for the full three-tier model and resolution order.
 
 The canonical operator guide is [docs/guide/deployment.md](docs/guide/deployment.md) — it covers the zero-to-running walkthrough, container topology, Dapr components, Postgres/Redis configuration, Caddy + Let's Encrypt, secrets bootstrap, health checks, updates, and troubleshooting. The script-level reference (commands, environment variables, webhook relay, per-user agent networks) lives in [`deployment/README.md`](deployment/README.md).
 

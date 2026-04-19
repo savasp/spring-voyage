@@ -99,4 +99,187 @@ public class UnitCommandTests
             model: "gpt-4o")
             .ShouldBeNull();
     }
+
+    // -----------------------------------------------------------------
+    // #626: inline credential flag resolution
+    // -----------------------------------------------------------------
+
+    [Theory]
+    [InlineData("claude-code", null, "anthropic")]
+    [InlineData("codex", null, "openai")]
+    [InlineData("gemini", null, "google")]
+    [InlineData("dapr-agent", "anthropic", "anthropic")]
+    [InlineData("dapr-agent", "claude", "anthropic")]
+    [InlineData("dapr-agent", "openai", "openai")]
+    [InlineData("dapr-agent", "google", "google")]
+    [InlineData("dapr-agent", "gemini", "google")]
+    [InlineData("dapr-agent", "ollama", null)]
+    [InlineData("custom", "openai", null)]
+    [InlineData(null, null, null)]
+    public void DeriveRequiredCredentialProvider_MatchesMatrix(
+        string? tool,
+        string? provider,
+        string? expected)
+    {
+        UnitCommand.DeriveRequiredCredentialProvider(tool, provider)
+            .ShouldBe(expected);
+    }
+
+    [Fact]
+    public async Task ResolveCredentialOptionsAsync_NoFlags_ReturnsNone()
+    {
+        var result = await UnitCommand.ResolveCredentialOptionsAsync(
+            tool: "claude-code",
+            provider: null,
+            apiKey: null,
+            apiKeyFromFile: null,
+            saveAsTenantDefault: false,
+            CancellationToken.None);
+        result.ErrorMessage.ShouldBeNull();
+        result.SecretName.ShouldBeNull();
+        result.Key.ShouldBe(string.Empty);
+    }
+
+    [Fact]
+    public async Task ResolveCredentialOptionsAsync_RejectsBothKeyFlagsTogether()
+    {
+        var result = await UnitCommand.ResolveCredentialOptionsAsync(
+            tool: "claude-code",
+            provider: null,
+            apiKey: "sk-test",
+            apiKeyFromFile: "some-path",
+            saveAsTenantDefault: false,
+            CancellationToken.None);
+        result.ErrorMessage!.ShouldContain("mutually exclusive");
+    }
+
+    [Fact]
+    public async Task ResolveCredentialOptionsAsync_RejectsSaveFlagWithoutKey()
+    {
+        var result = await UnitCommand.ResolveCredentialOptionsAsync(
+            tool: "claude-code",
+            provider: null,
+            apiKey: null,
+            apiKeyFromFile: null,
+            saveAsTenantDefault: true,
+            CancellationToken.None);
+        result.ErrorMessage!.ShouldContain("--save-as-tenant-default requires");
+    }
+
+    [Fact]
+    public async Task ResolveCredentialOptionsAsync_RejectsKeyOnOllamaProvider()
+    {
+        var result = await UnitCommand.ResolveCredentialOptionsAsync(
+            tool: "dapr-agent",
+            provider: "ollama",
+            apiKey: "sk-test",
+            apiKeyFromFile: null,
+            saveAsTenantDefault: false,
+            CancellationToken.None);
+        result.ErrorMessage!.ShouldContain("Ollama");
+    }
+
+    [Fact]
+    public async Task ResolveCredentialOptionsAsync_RejectsKeyOnCustomTool()
+    {
+        var result = await UnitCommand.ResolveCredentialOptionsAsync(
+            tool: "custom",
+            provider: null,
+            apiKey: "sk-test",
+            apiKeyFromFile: null,
+            saveAsTenantDefault: false,
+            CancellationToken.None);
+        result.ErrorMessage!.ShouldContain("custom");
+    }
+
+    [Fact]
+    public async Task ResolveCredentialOptionsAsync_AcceptsInlineKey_ClaudeCode()
+    {
+        var result = await UnitCommand.ResolveCredentialOptionsAsync(
+            tool: "claude-code",
+            provider: null,
+            apiKey: "sk-ant-xyz",
+            apiKeyFromFile: null,
+            saveAsTenantDefault: false,
+            CancellationToken.None);
+        result.ErrorMessage.ShouldBeNull();
+        result.Key.ShouldBe("sk-ant-xyz");
+        result.SecretName.ShouldBe("anthropic-api-key");
+        result.SaveAsTenantDefault.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task ResolveCredentialOptionsAsync_AcceptsSaveAsTenantDefaultToggle()
+    {
+        var result = await UnitCommand.ResolveCredentialOptionsAsync(
+            tool: "codex",
+            provider: null,
+            apiKey: "sk-openai",
+            apiKeyFromFile: null,
+            saveAsTenantDefault: true,
+            CancellationToken.None);
+        result.ErrorMessage.ShouldBeNull();
+        result.Key.ShouldBe("sk-openai");
+        result.SecretName.ShouldBe("openai-api-key");
+        result.SaveAsTenantDefault.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task ResolveCredentialOptionsAsync_ReadsKeyFromFile_StripsTrailingNewline()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllTextAsync(path, "sk-file-key\n", TestContext.Current.CancellationToken);
+            var result = await UnitCommand.ResolveCredentialOptionsAsync(
+                tool: "gemini",
+                provider: null,
+                apiKey: null,
+                apiKeyFromFile: path,
+                saveAsTenantDefault: false,
+                TestContext.Current.CancellationToken);
+            result.ErrorMessage.ShouldBeNull();
+            result.Key.ShouldBe("sk-file-key");
+            result.SecretName.ShouldBe("google-api-key");
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public async Task ResolveCredentialOptionsAsync_RejectsMissingFile()
+    {
+        var result = await UnitCommand.ResolveCredentialOptionsAsync(
+            tool: "claude-code",
+            provider: null,
+            apiKey: null,
+            apiKeyFromFile: "/tmp/does-not-exist-please-really",
+            saveAsTenantDefault: false,
+            CancellationToken.None);
+        result.ErrorMessage!.ShouldContain("Failed to read");
+    }
+
+    [Fact]
+    public async Task ResolveCredentialOptionsAsync_RejectsEmptyKey()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllTextAsync(path, "\n\n", TestContext.Current.CancellationToken);
+            var result = await UnitCommand.ResolveCredentialOptionsAsync(
+                tool: "claude-code",
+                provider: null,
+                apiKey: null,
+                apiKeyFromFile: path,
+                saveAsTenantDefault: false,
+                TestContext.Current.CancellationToken);
+            result.ErrorMessage!.ShouldContain("empty");
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
 }

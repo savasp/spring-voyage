@@ -161,6 +161,18 @@ There is **no environment-variable fallback**. Credentials must be set at tenant
 
 The resolver **never throws** on a missing credential. Consumers that require a value surface a fail-clean operator error whose text names the exact secret the resolver looked for and points at both the unit and tenant surfaces — e.g. *"no LLM credentials configured for this unit; set via `spring secret --scope unit` or configure tenant defaults at `spring secret --scope tenant create anthropic-api-key …` / the portal's Tenant defaults panel."*
 
+### Credential status endpoint — key-free by design
+
+`GET /api/v1/system/credentials/{provider}/status` (PR #627) powers both the PR #627 status banner and the #626 inline credential flow in the unit-creation wizard. The response shape is intentionally narrow:
+
+```
+{ "provider": "anthropic", "resolvable": true, "source": "tenant", "suggestion": null }
+```
+
+**The browser never receives the tenant-default plaintext.** The endpoint evaluates the resolver chain server-side and drops the plaintext on the floor before writing the response. Even when a tenant default is resolvable, the portal only sees `resolvable: true` + `source: "tenant"`. This is load-bearing for the wizard's override flow (#626 §3): the **Override** button clears the input and asks the operator for a fresh value rather than rendering the existing key — there is no portal surface that can read a tenant-default value back, full stop. The only path plaintext leaves the server is via the server-side `ISecretResolver.ResolveAsync` seam at dispatch time, which is reached by the agent runtime, not the browser.
+
+When a deployment needs to read a tenant-default value back (for instance, to port it to a new tenant), operators use the CLI's secret-management verbs against the registry directly — subject to `ISecretAccessPolicy`, which in the cloud host is tenant-admin-gated. The portal never offers a "reveal" button.
+
 ## Secrets Stack
 
 Spring Voyage ships a three-layer secrets stack — **registry**, **store**, and **resolver** — plus an access-policy seam. All three layers are defined in `Cvoya.Spring.Core/Secrets/` so a private-cloud host can substitute any layer (e.g. routing writes to Azure Key Vault) without touching call sites.

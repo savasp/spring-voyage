@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   Check,
   CheckCircle2,
+  Eye,
+  EyeOff,
   FileCode,
   FileText,
   KeyRound,
@@ -115,6 +116,85 @@ interface FormState {
   connectorSlug: string | null;
   connectorTypeId: string | null;
   connectorConfig: Record<string, unknown> | null;
+  // #626: inline LLM credential entry. Derived from the selected
+  // tool+provider at render time (see `deriveRequiredCredentialProvider`).
+  // `credentialKey` is the raw key typed by the operator — it lives in
+  // component state just long enough to be POSTed to the server during
+  // submission and is never echoed back or persisted client-side. When
+  // `saveAsTenantDefault` is true the key is written as a tenant-scoped
+  // secret before the unit is created; otherwise it is written as a
+  // unit-scoped secret after the unit exists.
+  credentialKey: string;
+  saveAsTenantDefault: boolean;
+  // "override" = the operator clicked the Override link on a
+  // tenant-resolvable credential to supply a new value. This is
+  // separate from the ON/OFF checkbox so we can tell apart "no override
+  // entered" from "override entered but left blank".
+  credentialOverrideOpen: boolean;
+}
+
+/**
+ * #626: the canonical secret name used by the `ILlmCredentialResolver`
+ * for each tier-2 provider. The server reads these same names when
+ * resolving credentials at dispatch time. Kept in lock-step with
+ * `src/Cvoya.Spring.Dapr/Execution/LlmCredentialResolver.cs` — the
+ * mapping is small, fixed, and has no reason to live on the wire.
+ */
+const PROVIDER_SECRET_NAMES: Readonly<Record<string, string>> = {
+  anthropic: "anthropic-api-key",
+  openai: "openai-api-key",
+  google: "google-api-key",
+};
+
+/**
+ * #626: derive the provider that actually needs an LLM credential,
+ * given the currently-selected tool and (for dapr-agent) provider
+ * dropdown. The mapping is intentionally terse:
+ *
+ *   - claude-code → anthropic   (Claude Code talks to Anthropic)
+ *   - codex       → openai
+ *   - gemini      → google
+ *   - dapr-agent  → the selected provider, mapped to its canonical id
+ *     (anthropic / openai / google); "ollama" returns null (no secret
+ *     — Ollama is tier-1 reachability) and an unrecognised provider
+ *     returns null as a safe default.
+ *   - custom      → null (contract undefined; the custom launcher
+ *     declares its own secrets if any)
+ *
+ * Returns `null` when no API-key is required for the selection. That
+ * is the signal the wizard uses to hide the inline credential surface
+ * altogether (Ollama/custom paths).
+ */
+export function deriveRequiredCredentialProvider(
+  tool: ExecutionTool,
+  provider: string,
+): "anthropic" | "openai" | "google" | null {
+  switch (tool) {
+    case "claude-code":
+      return "anthropic";
+    case "codex":
+      return "openai";
+    case "gemini":
+      return "google";
+    case "dapr-agent":
+      switch (provider) {
+        case "claude":
+        case "anthropic":
+          return "anthropic";
+        case "openai":
+          return "openai";
+        case "google":
+        case "gemini":
+        case "googleai":
+          return "google";
+        default:
+          // ollama (tier-1, reachability only) + unknowns fall through.
+          return null;
+      }
+    case "custom":
+    default:
+      return null;
+  }
 }
 
 const INITIAL_FORM: FormState = {
@@ -136,6 +216,9 @@ const INITIAL_FORM: FormState = {
   connectorSlug: null,
   connectorTypeId: null,
   connectorConfig: null,
+  credentialKey: "",
+  saveAsTenantDefault: false,
+  credentialOverrideOpen: false,
 };
 
 function StepIndicator({ current }: { current: Step }) {
@@ -230,6 +313,36 @@ export default function CreateUnitPage() {
     enabled: providerModelsEnabled,
   });
   const providerModels = providerModelsQuery.data ?? null;
+
+  // #626: derive the provider that actually needs an API key, given
+  // the currently-selected tool+provider. For Claude Code / Codex /
+  // Gemini the provider is fixed regardless of what the Provider
+  // dropdown shows (the dropdown only renders for dapr-agent anyway);
+  // for dapr-agent we thread the current dropdown value through. A
+  // `null` return means "no key required for this selection" (custom
+  // tool, ollama) and hides the credential surface entirely.
+  const requiredCredentialProvider = deriveRequiredCredentialProvider(
+    form.tool,
+    form.provider,
+  );
+
+  // Status probe runs whenever a provider needs a key. For the
+  // dapr-agent+ollama case it still runs so the existing reachability
+  // banner stays visible; when the derivation returns null (custom
+  // tool) the query is disabled entirely.
+  const credentialProbeProvider =
+    requiredCredentialProvider ??
+    // When tool=dapr-agent + provider=ollama we still want the banner
+    // because the operator expects a reachability read-out. Any other
+    // `null` (custom, tool mismatch) skips the probe.
+    (form.tool === "dapr-agent" && form.provider === "ollama"
+      ? "ollama"
+      : null);
+  const credentialStatusQuery = useProviderCredentialStatus(
+    credentialProbeProvider ?? "",
+    { enabled: credentialProbeProvider !== null },
+  );
+  const credentialStatus = credentialStatusQuery.data ?? null;
 
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -365,6 +478,49 @@ export default function CreateUnitPage() {
       const hostingField =
         form.hosting !== DEFAULT_HOSTING_MODE ? form.hosting : undefined;
 
+      // #626: if the operator supplied an API key AND chose "save as
+      // tenant default", write the tenant secret BEFORE the unit is
+      // created. A tenant-scope write can fail (permissions, backing
+      // store) — we want to know about it before we persist an actor.
+      // When the toggle is off the write happens after the unit exists
+      // (further down), because the unit id is part of the secret path.
+      const providerForKey = deriveRequiredCredentialProvider(
+        form.tool,
+        form.provider,
+      );
+      const trimmedKey = form.credentialKey.trim();
+      const tenantWritePlanned =
+        providerForKey !== null &&
+        trimmedKey.length > 0 &&
+        form.saveAsTenantDefault;
+      if (tenantWritePlanned && providerForKey) {
+        const secretName = PROVIDER_SECRET_NAMES[providerForKey];
+        const tenantSecretExists =
+          credentialStatus?.resolvable === true &&
+          credentialStatus.source === "tenant";
+        try {
+          if (tenantSecretExists) {
+            // Override flow (§3 of #626): the tenant default already
+            // holds a value — rotate the slot to the new key. This is
+            // the only "update a tenant default from the wizard" path.
+            await api.rotateTenantSecret(secretName, {
+              name: secretName,
+              value: trimmedKey,
+            });
+          } else {
+            await api.createTenantSecret({
+              name: secretName,
+              value: trimmedKey,
+            });
+          }
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          throw new Error(
+            `Saving tenant default '${secretName}' failed: ${message}`,
+          );
+        }
+      }
+
       if (form.mode === "yaml") {
         const resp = await api.createUnitFromYaml({
           yaml: form.yamlText,
@@ -452,6 +608,31 @@ export default function CreateUnitPage() {
         }
       }
 
+      // #626: when the operator supplied a key with "save as tenant
+      // default" off, write the unit-scoped override after the unit
+      // exists (the secret path requires the unit id). Failure is
+      // surfaced as a warning so the caller can retry from the Secrets
+      // tab rather than losing the freshly-created unit.
+      if (
+        createdName &&
+        providerForKey !== null &&
+        trimmedKey.length > 0 &&
+        !form.saveAsTenantDefault
+      ) {
+        const secretName = PROVIDER_SECRET_NAMES[providerForKey];
+        try {
+          await api.createUnitSecret(createdName, {
+            name: secretName,
+            value: trimmedKey,
+          });
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          warnings.push(
+            `Unit secret '${secretName}' not written: ${message}`,
+          );
+        }
+      }
+
       return { createdName, warnings };
     },
     onMutate: () => {
@@ -481,6 +662,36 @@ export default function CreateUnitPage() {
   });
 
   const submitting = createUnit.isPending;
+
+  // #626: gate the Create button when the selected tool requires an
+  // LLM credential AND no key has been typed AND the probe says
+  // nothing is resolvable at tenant/unit scope. "Nothing resolvable"
+  // is the only state that actually blocks dispatch — when a tenant
+  // default exists we let the operator proceed without supplying a
+  // key, because the unit resolves from tenant at dispatch time.
+  const missingCredential = useMemo(() => {
+    if (requiredCredentialProvider === null) return false;
+    if (form.credentialKey.trim().length > 0) return false;
+    // Still loading the probe — don't block; the probe is best-effort
+    // and we don't want a flaky network to jam the wizard.
+    if (credentialStatusQuery.isPending) return false;
+    if (credentialStatusQuery.isError) return false;
+    // Resolvable at unit/tenant scope = dispatch will succeed without
+    // a freshly-typed key.
+    if (credentialStatus?.resolvable === true) return false;
+    return true;
+  }, [
+    requiredCredentialProvider,
+    form.credentialKey,
+    credentialStatus?.resolvable,
+    credentialStatusQuery.isPending,
+    credentialStatusQuery.isError,
+  ]);
+
+  const missingCredentialMessage =
+    requiredCredentialProvider !== null
+      ? `Set the ${providerLabel(requiredCredentialProvider)} API key to continue.`
+      : null;
 
   const handleCreate = () => {
     createUnit.mutate();
@@ -754,9 +965,67 @@ export default function CreateUnitPage() {
                   </label>
                 </div>
 
-                <CredentialStatusBadge providerId={form.provider} />
+                <CredentialSection
+                  requiredProvider={requiredCredentialProvider}
+                  status={credentialStatus}
+                  statusPending={credentialStatusQuery.isPending}
+                  statusError={credentialStatusQuery.isError}
+                  credentialKey={form.credentialKey}
+                  saveAsTenantDefault={form.saveAsTenantDefault}
+                  overrideOpen={form.credentialOverrideOpen}
+                  ollamaProbe={
+                    form.provider === "ollama" ? credentialStatus : null
+                  }
+                  onKeyChange={(v) => update("credentialKey", v)}
+                  onToggleSaveAsTenantDefault={(v) =>
+                    update("saveAsTenantDefault", v)
+                  }
+                  onToggleOverride={(v) => {
+                    setForm((prev) => ({
+                      ...prev,
+                      credentialOverrideOpen: v,
+                      // Toggling the override off clears any typed value so
+                      // it doesn't silently apply after the operator thinks
+                      // they cancelled.
+                      credentialKey: v ? prev.credentialKey : "",
+                      saveAsTenantDefault: v ? prev.saveAsTenantDefault : false,
+                    }));
+                  }}
+                />
               </>
             )}
+            {/*
+              #626: tools that hard-code their provider (Claude Code, Codex,
+              Gemini) still need the inline credential surface even though
+              the Provider dropdown stays hidden. We render it outside the
+              dapr-agent branch for those cases so the operator can supply
+              the API key without flipping the tool to Dapr Agent.
+            */}
+            {form.tool !== "dapr-agent" &&
+              requiredCredentialProvider !== null && (
+                <CredentialSection
+                  requiredProvider={requiredCredentialProvider}
+                  status={credentialStatus}
+                  statusPending={credentialStatusQuery.isPending}
+                  statusError={credentialStatusQuery.isError}
+                  credentialKey={form.credentialKey}
+                  saveAsTenantDefault={form.saveAsTenantDefault}
+                  overrideOpen={form.credentialOverrideOpen}
+                  ollamaProbe={null}
+                  onKeyChange={(v) => update("credentialKey", v)}
+                  onToggleSaveAsTenantDefault={(v) =>
+                    update("saveAsTenantDefault", v)
+                  }
+                  onToggleOverride={(v) => {
+                    setForm((prev) => ({
+                      ...prev,
+                      credentialOverrideOpen: v,
+                      credentialKey: v ? prev.credentialKey : "",
+                      saveAsTenantDefault: v ? prev.saveAsTenantDefault : false,
+                    }));
+                  }}
+                />
+              )}
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <label className="block space-y-1">
@@ -1260,7 +1529,21 @@ export default function CreateUnitPage() {
               </div>
             )}
 
-            <Button onClick={handleCreate} disabled={submitting}>
+            {missingCredential && missingCredentialMessage && (
+              <p
+                role="alert"
+                data-testid="missing-credential-message"
+                className="rounded-md border border-warning/50 bg-warning/15 px-3 py-2 text-sm text-foreground"
+              >
+                {missingCredentialMessage}
+              </p>
+            )}
+
+            <Button
+              onClick={handleCreate}
+              disabled={submitting || missingCredential}
+              data-testid="create-unit-button"
+            >
               {submitting ? "Creating…" : "Create unit"}
             </Button>
           </CardContent>
@@ -1347,101 +1630,299 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
 }
 
 /**
- * Credential-status indicator rendered below the Provider + Model fields
- * when Tool = Dapr Agent (#598). Mirrors the GitHub install-link banner
- * pattern (PR #610 — `warning/50` border, `warning/15` fill) so the page
- * stays consistent with the wizard's other "needs operator attention"
- * surfaces and inherits PR #599's axe-clean palette.
+ * #626: inline credential flow. Replaces the PR #627 "status badge +
+ * deep link" card with a richer surface that lets the operator supply
+ * an LLM API key from inside the wizard — either as a unit-scoped
+ * secret (toggle off) or as a new tenant default (toggle on).
  *
- * Contract:
- *   - anthropic / openai / google → reports whether a unit- or tenant-
- *     scoped secret is configured. When not, links to the Settings
- *     drawer's Tenant defaults panel via the `?drawer=settings` deep
- *     link established by PR #567.
- *   - ollama → reports the health of the configured base URL. There's
- *     no secret for Ollama; the backend probes `/api/tags` on demand.
+ * Rendered states:
+ *   - `requiredProvider === null` → nothing (Ollama/custom paths).
+ *   - probe pending → nothing (the Provider dropdown already paints a
+ *     loading state; a flashing "checking…" line would add noise).
+ *   - Ollama (dapr-agent + provider=ollama) → reuses PR #627's
+ *     reachability banner verbatim. No inline input — Ollama doesn't
+ *     use API keys.
+ *   - probe error → muted "could not verify" line.
+ *   - resolvable (unit or tenant) → green confirmation badge. When the
+ *     source is `tenant` we show an "Override" button that opens the
+ *     same inline input as the "not configured" path; the operator
+ *     can then type a new value to save per-unit or overwrite the
+ *     tenant default.
+ *   - not resolvable → amber banner + inline credential input +
+ *     "Save as tenant default" checkbox.
  *
- * The hook throttles refetches via `useProviderCredentialStatus` (30s
- * stale time), so cycling through the provider dropdown while a key is
- * still being typed doesn't hammer the endpoint.
+ * Key material never round-trips: the typed value lives in React
+ * state just long enough to be POSTed. The probe endpoint is also
+ * key-free by design (PR #627), so we can re-render confidently from
+ * its response without ever seeing plaintext.
  */
-function CredentialStatusBadge({ providerId }: { providerId: string }) {
-  const { data, isPending, isError } = useProviderCredentialStatus(providerId);
+interface CredentialSectionProps {
+  requiredProvider: "anthropic" | "openai" | "google" | null;
+  status:
+    | import("@/lib/api/types").ProviderCredentialStatusResponse
+    | null;
+  statusPending: boolean;
+  statusError: boolean;
+  credentialKey: string;
+  saveAsTenantDefault: boolean;
+  overrideOpen: boolean;
+  ollamaProbe:
+    | import("@/lib/api/types").ProviderCredentialStatusResponse
+    | null;
+  onKeyChange: (value: string) => void;
+  onToggleSaveAsTenantDefault: (value: boolean) => void;
+  onToggleOverride: (value: boolean) => void;
+}
 
-  // While the probe is in flight we render nothing — the default state is
-  // "no banner" rather than a loading shimmer because the banner sits
-  // below a dropdown that has its own loading behaviour, and a flashing
-  // "checking credentials…" line would just add noise.
-  if (isPending) return null;
+function CredentialSection(props: CredentialSectionProps) {
+  const {
+    requiredProvider,
+    status,
+    statusPending,
+    statusError,
+    credentialKey,
+    saveAsTenantDefault,
+    overrideOpen,
+    ollamaProbe,
+    onKeyChange,
+    onToggleSaveAsTenantDefault,
+    onToggleOverride,
+  } = props;
 
-  // If the fetch itself collapsed (e.g. session expired, CORS), surface
-  // a single muted line so the operator knows credentials weren't
-  // verified. This mirrors the query hook's null fallback.
-  if (isError || !data) {
+  // Ollama reachability banner is still useful even when no API key is
+  // required. Render it standalone (same shape as PR #627) when the
+  // probe was run against Ollama.
+  if (requiredProvider === null) {
+    if (!ollamaProbe) return null;
+    return <OllamaReachabilityBanner data={ollamaProbe} />;
+  }
+
+  const displayName = providerLabel(requiredProvider);
+
+  if (statusPending) return null;
+
+  if (statusError || !status) {
     return (
       <p className="text-xs text-muted-foreground" role="status">
-        Could not verify {providerLabel(providerId)} credentials.
+        Could not verify {displayName} credentials.
       </p>
     );
   }
 
-  const displayName = providerLabel(providerId);
-
-  if (data.resolvable) {
-    const originHint =
-      data.source === "unit"
+  if (status.resolvable) {
+    const sourceText =
+      status.source === "unit"
         ? `${displayName} credentials: set on unit`
-        : data.source === "tenant"
+        : status.source === "tenant"
           ? `${displayName} credentials: inherited from tenant default`
-          : // Ollama returns resolvable:true with source:null
-            `${displayName} reachable`;
+          : // Defensive — shouldn't happen for Anthropic/OpenAI/Google.
+            `${displayName} credentials resolvable`;
     return (
-      <div
-        role="status"
-        data-testid="credential-status"
-        data-resolvable="true"
-        data-source={data.source ?? ""}
-        className="flex items-start gap-2 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-900 dark:text-emerald-200"
-      >
-        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-        <span>{originHint}</span>
+      <div className="space-y-2">
+        <div
+          role="status"
+          data-testid="credential-status"
+          data-resolvable="true"
+          data-source={status.source ?? ""}
+          className="flex items-start gap-2 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-900 dark:text-emerald-200"
+        >
+          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          <span className="flex-1">{sourceText}</span>
+          {status.source === "tenant" && !overrideOpen && (
+            <button
+              type="button"
+              data-testid="credential-override-link"
+              onClick={() => onToggleOverride(true)}
+              className="text-xs font-medium underline underline-offset-2 text-emerald-900 dark:text-emerald-100"
+            >
+              Override
+            </button>
+          )}
+        </div>
+        {overrideOpen && (
+          <>
+            <p className="text-xs text-muted-foreground">
+              The existing tenant default stays in place until you save a
+              new value. The current value is not shown — type a
+              replacement below, or click Cancel to keep the existing
+              default.
+            </p>
+            <CredentialInputControls
+              provider={requiredProvider}
+              credentialKey={credentialKey}
+              saveAsTenantDefault={saveAsTenantDefault}
+              onKeyChange={onKeyChange}
+              onToggleSaveAsTenantDefault={onToggleSaveAsTenantDefault}
+              tenantToggleLabel={`Overwrite the tenant default for all future units using ${displayName}.`}
+            />
+            <button
+              type="button"
+              data-testid="credential-override-cancel"
+              onClick={() => onToggleOverride(false)}
+              className="text-xs font-medium underline underline-offset-2 text-muted-foreground"
+            >
+              Cancel override
+            </button>
+          </>
+        )}
       </div>
     );
   }
 
+  // Not configured — show the inline input with the save-as-tenant-
+  // default checkbox. The banner itself uses PR #599/#610's axe-clean
+  // warning palette (warning/50 border + warning/15 fill).
   return (
     <div
       role="alert"
       data-testid="credential-status"
       data-resolvable="false"
-      className="flex items-start gap-2 rounded-md border border-warning/50 bg-warning/15 px-3 py-2 text-sm text-warning"
+      className="space-y-3 rounded-md border border-warning/50 bg-warning/15 px-3 py-3 text-sm text-foreground"
+    >
+      <div className="flex items-start gap-2">
+        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+        <p className="flex-1">
+          {displayName} credentials: not configured. Enter a key below to
+          save it as a unit-scoped secret, or tick the box to save it as
+          your tenant default.
+        </p>
+      </div>
+      <CredentialInputControls
+        provider={requiredProvider}
+        credentialKey={credentialKey}
+        saveAsTenantDefault={saveAsTenantDefault}
+        onKeyChange={onKeyChange}
+        onToggleSaveAsTenantDefault={onToggleSaveAsTenantDefault}
+        tenantToggleLabel={`Use this key as the default for all future units using ${displayName}.`}
+      />
+    </div>
+  );
+}
+
+/**
+ * The shared input + "show / hide" toggle + "Save as tenant default"
+ * checkbox used by both the "not configured" and "override" flows.
+ * Extracted so the two call sites cannot drift apart on labelling or
+ * accessibility attributes.
+ */
+function CredentialInputControls({
+  provider,
+  credentialKey,
+  saveAsTenantDefault,
+  onKeyChange,
+  onToggleSaveAsTenantDefault,
+  tenantToggleLabel,
+}: {
+  provider: "anthropic" | "openai" | "google";
+  credentialKey: string;
+  saveAsTenantDefault: boolean;
+  onKeyChange: (value: string) => void;
+  onToggleSaveAsTenantDefault: (value: boolean) => void;
+  tenantToggleLabel: string;
+}) {
+  const [show, setShow] = useState(false);
+  const inputId = `credential-key-${provider}`;
+  const toggleId = `credential-save-tenant-${provider}`;
+  const inputType = show ? "text" : "password";
+  const displayName = providerLabel(provider);
+
+  return (
+    <div className="space-y-2">
+      <label htmlFor={inputId} className="block space-y-1">
+        <span className="text-xs text-muted-foreground">
+          {displayName} API key
+        </span>
+        <div className="flex items-center gap-2">
+          <Input
+            id={inputId}
+            type={inputType}
+            value={credentialKey}
+            onChange={(e) => onKeyChange(e.target.value)}
+            placeholder={`Paste your ${displayName} API key`}
+            autoComplete="off"
+            spellCheck={false}
+            data-testid="credential-input"
+          />
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => setShow((s) => !s)}
+            aria-label={
+              show
+                ? `Hide ${displayName} API key`
+                : `Show ${displayName} API key`
+            }
+            aria-pressed={show}
+            data-testid="credential-visibility-toggle"
+          >
+            {show ? (
+              <>
+                <EyeOff className="mr-1 h-3.5 w-3.5" aria-hidden /> Hide
+              </>
+            ) : (
+              <>
+                <Eye className="mr-1 h-3.5 w-3.5" aria-hidden /> Show
+              </>
+            )}
+          </Button>
+        </div>
+      </label>
+
+      <label
+        htmlFor={toggleId}
+        className="flex items-start gap-2 text-xs text-muted-foreground"
+      >
+        <input
+          id={toggleId}
+          type="checkbox"
+          checked={saveAsTenantDefault}
+          onChange={(e) => onToggleSaveAsTenantDefault(e.target.checked)}
+          className="mt-0.5"
+          data-testid="credential-save-as-tenant-default"
+        />
+        <span>{tenantToggleLabel}</span>
+      </label>
+    </div>
+  );
+}
+
+/**
+ * Standalone Ollama reachability banner. PR #627 defined the shape;
+ * #626 just factors it out so the new `CredentialSection` can reuse
+ * it verbatim when the tool is `dapr-agent + provider=ollama`.
+ */
+function OllamaReachabilityBanner({
+  data,
+}: {
+  data: import("@/lib/api/types").ProviderCredentialStatusResponse;
+}) {
+  if (data.resolvable) {
+    return (
+      <div
+        role="status"
+        data-testid="credential-status"
+        data-resolvable="true"
+        data-source=""
+        className="flex items-start gap-2 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-900 dark:text-emerald-200"
+      >
+        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+        <span>Ollama reachable</span>
+      </div>
+    );
+  }
+  return (
+    <div
+      role="alert"
+      data-testid="credential-status"
+      data-resolvable="false"
+      className="flex items-start gap-2 rounded-md border border-warning/50 bg-warning/15 px-3 py-2 text-sm text-foreground"
     >
       <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-      <div className="flex-1 text-foreground">
-        {providerId === "ollama" ? (
-          <p>
-            {data.suggestion ??
-              `Ollama not reachable. Check that the Ollama server is running.`}
-          </p>
-        ) : (
-          <p>
-            {displayName} credentials: not configured.{" "}
-            {/*
-              Deep-link into the Settings drawer's Tenant defaults panel
-              (landed in PR #567). The server-side "suggestion" string is
-              deliberately NOT surfaced verbatim here — we render a
-              constant phrasing so the actionable link is always visible;
-              the backend string is kept for CLI / API consumers.
-            */}
-            <Link
-              href="/?drawer=settings"
-              className="font-medium underline underline-offset-2"
-            >
-              Configure in Settings → Tenant defaults
-            </Link>
-          </p>
-        )}
-      </div>
+      <p>
+        {data.suggestion ??
+          "Ollama not reachable. Check that the Ollama server is running."}
+      </p>
     </div>
   );
 }
