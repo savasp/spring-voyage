@@ -4,7 +4,6 @@
 namespace Cvoya.Spring.Dapr.Secrets;
 
 using System;
-using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -193,145 +192,43 @@ public partial class SecretsEncryptor : ISecretsEncryptor
 
     private static byte[] LoadKey(SecretsOptions options, ILogger logger)
     {
-        // 1) SPRING_SECRETS_AES_KEY environment variable takes priority.
-        var envValue = Environment.GetEnvironmentVariable(KeyEnvironmentVariable);
-        if (!string.IsNullOrWhiteSpace(envValue))
+        // Classification logic is shared with SecretsConfigurationRequirement
+        // via SecretsKeyClassifier so the requirement report and the
+        // encryptor self-check cannot drift. When the configuration
+        // validation framework is wired in, the requirement catches every
+        // non-happy-path case at host start — we still check here as
+        // defense in depth for hosts that bypass the validator.
+        var result = SecretsKeyClassifier.Classify(options);
+        switch (result.Kind)
         {
-            var key = DecodeKeyMaterial(envValue, $"environment variable {KeyEnvironmentVariable}");
-            ValidateKey(key, $"environment variable {KeyEnvironmentVariable}");
-            Log.UsingEnvKey(logger);
-            return key;
-        }
+            case SecretsKeySource.EnvironmentVariable:
+                Log.UsingEnvKey(logger);
+                return result.Key!;
 
-        // 2) Optional key file path from Secrets:AesKeyFile.
-        if (!string.IsNullOrWhiteSpace(options.AesKeyFile))
-        {
-            var path = options.AesKeyFile!;
-            if (!File.Exists(path))
-            {
+            case SecretsKeySource.File:
+                Log.UsingFileKey(logger, options.AesKeyFile!);
+                return result.Key!;
+
+            case SecretsKeySource.EphemeralDev:
+                Log.EphemeralDevKey(logger);
+                return RandomNumberGenerator.GetBytes(KeySize);
+
+            case SecretsKeySource.MissingFile:
                 throw new InvalidOperationException(
-                    $"Secrets:AesKeyFile is configured ({path}) but the file does not exist. " +
-                    BuildKeySourceHelp());
-            }
+                    result.Reason + " " + SecretsKeyClassifier.BuildKeySourceHelp());
 
-            var contents = File.ReadAllText(path).Trim();
-            var key = DecodeKeyMaterial(contents, $"file '{path}'");
-            ValidateKey(key, $"file '{path}'");
-            Log.UsingFileKey(logger, path);
-            return key;
-        }
+            case SecretsKeySource.Malformed:
+            case SecretsKeySource.WeakKey:
+                throw new InvalidOperationException(
+                    result.Reason + " Refusing to start.");
 
-        // 3) Ephemeral dev key — only if explicitly allowed.
-        if (options.AllowEphemeralDevKey)
-        {
-            var key = RandomNumberGenerator.GetBytes(KeySize);
-            Log.EphemeralDevKey(logger);
-            return key;
-        }
-
-        throw new InvalidOperationException(
-            "Spring secrets at-rest encryption is required but no key is configured. " +
-            BuildKeySourceHelp());
-    }
-
-    private static byte[] DecodeKeyMaterial(string encoded, string source)
-    {
-        try
-        {
-            return Convert.FromBase64String(encoded);
-        }
-        catch (FormatException ex)
-        {
-            throw new InvalidOperationException(
-                $"Spring secrets AES key from {source} is not valid base64. " +
-                "Provide a base64-encoded 32-byte (256-bit) key.",
-                ex);
+            case SecretsKeySource.NotConfigured:
+            default:
+                throw new InvalidOperationException(
+                    (result.Reason ?? "Spring secrets at-rest encryption is required but no key is configured.") +
+                    " " + SecretsKeyClassifier.BuildKeySourceHelp());
         }
     }
-
-    private static void ValidateKey(byte[] key, string source)
-    {
-        if (key.Length != KeySize)
-        {
-            throw new InvalidOperationException(
-                $"Spring secrets AES key from {source} is {key.Length} bytes; must be {KeySize} bytes (AES-256). " +
-                BuildKeySourceHelp());
-        }
-
-        if (IsAllSameByte(key, 0x00))
-        {
-            throw new InvalidOperationException(
-                $"Spring secrets AES key from {source} is all zeros. Refusing to start.");
-        }
-
-        if (IsAllSameByte(key, 0xFF))
-        {
-            throw new InvalidOperationException(
-                $"Spring secrets AES key from {source} is all 0xFF. Refusing to start.");
-        }
-
-        // Sentinel / test patterns: 0x01020304... repeated, or "test"/"changeme" ASCII.
-        if (IsSentinelPattern(key))
-        {
-            throw new InvalidOperationException(
-                $"Spring secrets AES key from {source} matches a known sentinel/test pattern. Refusing to start.");
-        }
-    }
-
-    private static bool IsAllSameByte(byte[] bytes, byte target)
-    {
-        for (var i = 0; i < bytes.Length; i++)
-        {
-            if (bytes[i] != target)
-            {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private static bool IsSentinelPattern(byte[] key)
-    {
-        // 0x00, 0x01, 0x02 ... ascending — commonly seen in copy-pasted examples.
-        var ascending = true;
-        for (var i = 0; i < key.Length; i++)
-        {
-            if (key[i] != (byte)i)
-            {
-                ascending = false;
-                break;
-            }
-        }
-        if (ascending)
-        {
-            return true;
-        }
-
-        // "changeme" / "test" repeated ASCII.
-        var ascii = Encoding.ASCII.GetString(key);
-        if (ascii.StartsWith("changeme", StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-        if (ascii.StartsWith("testtest", StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-        // All-ASCII-space or all-"A" is also obviously weak.
-        if (IsAllSameByte(key, 0x20) || IsAllSameByte(key, (byte)'A'))
-        {
-            return true;
-        }
-        return false;
-    }
-
-    private static string BuildKeySourceHelp() =>
-        "Configure one of: " +
-        $"(1) the {KeyEnvironmentVariable} environment variable with a base64-encoded 32-byte key, " +
-        "(2) Secrets:AesKeyFile pointing to a file whose contents are a base64-encoded 32-byte key, " +
-        "or (3) Secrets:AllowEphemeralDevKey=true for dev-only in-memory key generation (not persisted; " +
-        "restart loses all encrypted values). Production deployments should externalize key material " +
-        "via a KMS-backed ISecretStore implementation rather than relying on this at-rest layer alone.";
 
     private static partial class Log
     {

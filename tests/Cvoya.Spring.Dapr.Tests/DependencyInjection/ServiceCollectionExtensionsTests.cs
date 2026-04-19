@@ -3,6 +3,8 @@
 
 namespace Cvoya.Spring.Dapr.Tests.DependencyInjection;
 
+using System.Collections.Generic;
+
 using Cvoya.Spring.Core.Directory;
 using Cvoya.Spring.Core.Execution;
 using Cvoya.Spring.Core.Orchestration;
@@ -149,7 +151,17 @@ public class ServiceCollectionExtensionsTests
     {
         var services = new ServiceCollection();
         services.AddLogging();
-        var config = new ConfigurationBuilder().Build();
+        // #639 — the validator now runs every mandatory requirement at
+        // StartAsync. Give Secrets a legal-for-tests ephemeral-key config
+        // so the only failing mandatory requirement is the missing DB
+        // connection string. Without this, the assertion would have to
+        // untangle an AggregateException of multiple mandatory failures.
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Secrets:AllowEphemeralDevKey"] = "true",
+            })
+            .Build();
         // IConfiguration needs to be present in DI for the requirement's
         // constructor injection; AddCvoyaSpringDapr does not register it
         // itself (the host's WebApplicationBuilder does).

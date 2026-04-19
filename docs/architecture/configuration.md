@@ -66,13 +66,19 @@ services.TryAddEnumerable(
 
 `AddCvoyaSpringDapr` registers the validator itself (via `AddCvoyaSpringConfigurationValidator`) before any requirement, so the `IHostedService` slot belongs to the validator and every subsystem's `AddAll*` pulls the same instance via DI.
 
-## Reference implementations (PR 1)
+## Reference implementations
 
-Three shipped in PR 1 to cover the spectrum of validation patterns:
+The framework ships with seven reference implementations covering the spectrum
+of validation patterns. Three landed with the framework in PR 1 (#616 / #638);
+four joined in PR 2 (#639):
 
 1. **`DatabaseConfigurationRequirement`** (`Cvoya.Spring.Dapr`). `IsMandatory=true`. Validates `ConnectionStrings:SpringDb` is set and parseable as a Npgsql connection string. Replaces the hand-rolled throw that used to live inside `AddCvoyaSpringDapr`. Test harnesses that pre-register `DbContextOptions<SpringDbContext>` are detected via the `TestHarnessSignal` marker so they don't need a connection string.
 2. **`GitHubAppConfigurationRequirement`** (`Cvoya.Spring.Connector.GitHub`). `IsMandatory=false`. Validates `GITHUB_APP_ID` + `GITHUB_APP_PRIVATE_KEY` + `GITHUB_WEBHOOK_SECRET`. Missing → `Disabled` with a suggestion pointing at `spring github-app register` (issue #631) or manual env vars. Malformed PEM → `Invalid` with a fatal error (carried forward from PR #621's classification). Shares `GitHubAppCredentialsValidator` with the existing `PostConfigure` hook so classification lives in one place. The connector's endpoints consult `GitHubAppConfigurationRequirement.GetCurrentStatus()` instead of the pre-#616 `IGitHubConnectorAvailability` (interface deleted; one seam, not two).
 3. **`OllamaConfigurationRequirement`** (`Cvoya.Spring.Dapr`). `IsMandatory` mirrors `LanguageModel:Ollama:RequireHealthyAtStartup`. Probes `GET /api/tags` once at startup; unreachable is `Disabled` in dev (default) and `Invalid` in production (when the flag is on). Replaces the pre-#616 `OllamaHealthCheck` hosted service outright — the framework now owns the probe.
+4. **`DaprStateStoreConfigurationRequirement`** (`Cvoya.Spring.Dapr`, PR 2). `IsMandatory=true`. Validates `DaprStateStore:StoreName` is a non-empty component name. The OSS default is `"statestore"` so most deployments stay on the happy path; a blank value now fails at boot rather than at first Dapr call.
+5. **`SecretsConfigurationRequirement`** (`Cvoya.Spring.Dapr`, PR 2). `IsMandatory=true`. Lifts the `SecretsEncryptor` key-source classification (`SPRING_SECRETS_AES_KEY` → `Secrets:AesKeyFile` → ephemeral) into a declarative requirement. Ephemeral dev key (`Secrets:AllowEphemeralDevKey=true`) is the canonical `Met + Warning` case — the host boots, secrets work, but operators are reminded that restarts render existing envelopes unreadable. Weak-key / malformed / missing-file classifications surface as `Invalid` with a fatal error. Classification lives in `SecretsKeyClassifier`, shared with the encryptor's constructor self-check.
+6. **`DispatcherConfigurationRequirement`** (`Cvoya.Spring.Dapr`, PR 2). `IsMandatory=false`. Validates `Dispatcher:BaseUrl` is a well-shaped absolute HTTP(S) URI and warns when `Dispatcher:BearerToken` is empty. Missing `BaseUrl` → `Disabled` (dispatcher-dependent features declare themselves unavailable but the host still boots). Malformed URL → `Invalid`. Replaces the fail-at-first-use throw inside `DispatcherClientContainerRuntime.CreateClient`.
+7. **`ContainerRuntimeConfigurationRequirement`** (`Cvoya.Spring.Dapr`, PR 2). `IsMandatory=false`. Validates `ContainerRuntime:RuntimeType` against the supported set (`podman`, `docker`). Invalid values report `Invalid` without aborting boot so non-dispatcher hosts (Worker, API) keep running.
 
 ## Surfaces
 
@@ -101,6 +107,10 @@ Adding a requirement for a new subsystem:
 - **Tenant-aware validation.** The OSS framework is single-tenant. The private cloud host can substitute a tenant-scoped `IStartupConfigurationValidator` (or wrap the endpoint with tenant-filtering middleware) by pre-registering before `AddCvoyaSpringDapr`.
 - **Revalidation endpoint.** Out of scope for PR 1; file a follow-up if operator-initiated refresh is useful.
 
-## Follow-up: PR 2
+## Subsystems intentionally not migrated
 
-The remaining subsystems — Dapr state store, secrets encryption key, dispatcher, container runtime, Rx pipeline, etc. — migrate to the contract in a follow-up PR. The framework shape settles here first so the long tail of subsystems doesn't pile on before the contract is crisp.
+A handful of Spring Voyage options classes were evaluated during #639 and left outside the framework because the cost/benefit didn't land:
+
+- **Rx activity pipeline** (`StreamEventPublisherOptions`). The only knob is `PubSubName`, which defaults to `"pubsub"` and is resolved via Dapr pub/sub — Dapr surfaces the component-not-found error on first publish and a host-level validator would only duplicate that signal without adding value.
+- **AI provider (`AiProviderOptions.ApiKey`, base URL)**. Tenant-default LLM credentials are tier-2 concerns (`ILlmCredentialResolver`, #619) — surfacing them through the tier-1 framework would dilute the "is the platform deployed correctly?" question the framework is designed to answer.
+- **Workflow orchestration (`WorkflowOrchestrationOptions.ContainerImage`, timeouts)**. These are per-unit manifest values, not host-wide deployment config; they surface through the orchestration-strategy resolver when the relevant unit is run.

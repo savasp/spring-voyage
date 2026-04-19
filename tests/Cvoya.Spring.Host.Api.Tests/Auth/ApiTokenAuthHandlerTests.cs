@@ -55,6 +55,10 @@ public class ApiTokenAuthHandlerTests : IDisposable
                 // an in-memory provider. The value is never opened.
                 builder.UseSetting("ConnectionStrings:SpringDb",
                     "Host=test;Database=test;Username=test;Password=test");
+                // #639 SecretsConfigurationRequirement — use an ephemeral
+                // dev key so the validator reports Met+Warning instead of
+                // aborting on missing key material.
+                builder.UseSetting("Secrets:AllowEphemeralDevKey", "true");
 
                 builder.ConfigureServices(services =>
                 {

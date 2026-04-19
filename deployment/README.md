@@ -164,12 +164,19 @@ connection string. See deployment/README.md.
 
 PEM-parse failures for `GITHUB_APP_PRIVATE_KEY` fail-fast the same way
 (carried forward from PR #621); a garbage value won't defer the failure
-to the first `list-installations` call.
+to the first `list-installations` call. `SPRING_SECRETS_AES_KEY` fails
+the host the same way when it's unset and `Secrets:AllowEphemeralDevKey`
+is not enabled, or when it decodes to a weak / sentinel / wrong-length
+value (#639). `Secrets:AllowEphemeralDevKey=true` boots the host with
+a one-shot in-memory key and emits a `Met + Warning` entry in the
+report; restarts render existing envelopes unreadable, so leave it off
+in staging and production.
 
 **Optional** requirements (GitHub App credentials when you haven't run
 `spring github-app register` yet, Ollama when it's still warming up with
-`LanguageModel:Ollama:RequireHealthyAtStartup=false`) do NOT abort boot
-— they register the dependent features as disabled-with-reason and
+`LanguageModel:Ollama:RequireHealthyAtStartup=false`, the spring-dispatcher
+endpoint on hosts that don't drive delegated execution) do NOT abort
+boot — they register the dependent features as disabled-with-reason and
 surface the reason to operators.
 
 Inspect the result post-deploy:
