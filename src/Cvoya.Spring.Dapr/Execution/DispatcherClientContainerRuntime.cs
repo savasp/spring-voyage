@@ -120,10 +120,15 @@ public class DispatcherClientContainerRuntime(
         var client = httpClientFactory.CreateClient(HttpClientName);
         if (client.BaseAddress is null)
         {
+            // BaseUrl shape is validated at startup by
+            // DispatcherConfigurationRequirement (#639). We keep a defensive
+            // throw here so hosts that bypass the validator don't silently
+            // fall through to HttpClient with a null BaseAddress.
             if (string.IsNullOrWhiteSpace(_options.BaseUrl))
             {
                 throw new InvalidOperationException(
-                    "Dispatcher:BaseUrl is not configured. Set it to the spring-dispatcher HTTP endpoint (e.g. http://spring-dispatcher:8080/).");
+                    "Dispatcher:BaseUrl is not configured. Set it to the spring-dispatcher HTTP endpoint (e.g. http://spring-dispatcher:8080/). "
+                    + "Startup configuration validation should have surfaced this before first call — see the /system/configuration report.");
             }
             client.BaseAddress = new Uri(_options.BaseUrl.EndsWith('/') ? _options.BaseUrl : _options.BaseUrl + "/");
         }

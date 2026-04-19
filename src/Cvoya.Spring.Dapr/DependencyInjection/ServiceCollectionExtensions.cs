@@ -152,6 +152,13 @@ public static class ServiceCollectionExtensions
         // runs. Design-time tooling skips the validator entirely — the
         // build-time OpenAPI emitter never starts the host lifecycle, and
         // the validator would otherwise fail on a provider-less context.
+        //
+        // #639 adds the subsystem requirements (Dapr state store, secrets,
+        // dispatcher, container runtime) alongside the Database reference
+        // requirement shipped in #616. They are registered here (rather
+        // than next to each subsystem's own option binding below) so
+        // AddCvoyaSpringDapr remains the single entry point that wires the
+        // full validation set.
         if (!isDocGen)
         {
             services.AddCvoyaSpringConfigurationValidator();
@@ -162,6 +169,14 @@ public static class ServiceCollectionExtensions
             services.AddSingleton(new DatabaseConfigurationRequirement.TestHarnessSignal(alreadyRegistered));
             services.TryAddEnumerable(
                 ServiceDescriptor.Singleton<IConfigurationRequirement, DatabaseConfigurationRequirement>());
+            services.TryAddEnumerable(
+                ServiceDescriptor.Singleton<IConfigurationRequirement, DaprStateStoreConfigurationRequirement>());
+            services.TryAddEnumerable(
+                ServiceDescriptor.Singleton<IConfigurationRequirement, SecretsConfigurationRequirement>());
+            services.TryAddEnumerable(
+                ServiceDescriptor.Singleton<IConfigurationRequirement, DispatcherConfigurationRequirement>());
+            services.TryAddEnumerable(
+                ServiceDescriptor.Singleton<IConfigurationRequirement, ContainerRuntimeConfigurationRequirement>());
         }
 
         // Database options. Always bound — both API and Worker hosts (and
