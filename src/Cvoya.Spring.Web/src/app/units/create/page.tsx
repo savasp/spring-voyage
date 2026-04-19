@@ -37,6 +37,7 @@ import {
 } from "@/lib/api/queries";
 import { queryKeys } from "@/lib/api/query-keys";
 import type { UnitConnectorBindingRequest } from "@/lib/api/types";
+import { EXECUTION_RUNTIMES } from "@/lib/api/types";
 import {
   AI_PROVIDERS,
   DEFAULT_EXECUTION_TOOL,
@@ -93,6 +94,11 @@ interface FormState {
   // #350: execution tool, hosting mode
   tool: ExecutionTool;
   hosting: HostingMode;
+  // #601: unit-level image + runtime defaults inherited by member
+  // agents. Empty strings mean "don't declare"; the wizard only PUTs
+  // through the execution endpoint when at least one is filled.
+  image: string;
+  runtime: string;
   mode: Mode | null;
   // Template mode
   templateId: string | null; // "{package}/{name}"
@@ -120,6 +126,8 @@ const INITIAL_FORM: FormState = {
   color: DEFAULT_COLOR,
   tool: DEFAULT_EXECUTION_TOOL,
   hosting: DEFAULT_HOSTING_MODE,
+  image: "",
+  runtime: "",
   mode: null,
   templateId: null,
   yamlText: "",
@@ -418,6 +426,32 @@ export default function CreateUnitPage() {
         warnings.push(...secretWarnings);
       }
 
+      // #601 B-wide: persist the unit-level execution defaults
+      // (image / runtime) through the dedicated
+      // /api/v1/units/{id}/execution endpoint after creation. We only
+      // PUT when at least one field is filled so units that don't
+      // customise the launcher look identical on the wire to pre-#601
+      // units. A single failure here is collected as a warning rather
+      // than rolling the unit back — the operator can retry from the
+      // unit's Execution tab.
+      if (createdName) {
+        const image = form.image.trim();
+        const runtime = form.runtime.trim();
+        if (image || runtime) {
+          try {
+            await api.setUnitExecution(createdName, {
+              image: image || null,
+              runtime: runtime || null,
+            });
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            warnings.push(
+              `Execution defaults (image / runtime): ${message}. Retry from the unit's Execution tab.`,
+            );
+          }
+        }
+      }
+
       return { createdName, warnings };
     },
     onMutate: () => {
@@ -595,6 +629,55 @@ export default function CreateUnitPage() {
                     </option>
                   ))}
                 </select>
+              </label>
+            </div>
+
+            {/*
+              #601 B-wide: Unit-level image + runtime defaults inherited
+              by member agents. Positioned adjacent to the Tool field so
+              operators configure the full launcher recipe in one grid.
+              Always visible — no tool-based gating. Blank values are
+              skipped entirely; the wizard only PUTs through the
+              /api/v1/units/{id}/execution endpoint when at least one of
+              the two is filled in, so units created without them look
+              identical on the wire to pre-#601 units.
+            */}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <label className="block space-y-1">
+                <span className="text-sm text-muted-foreground">
+                  Image (default)
+                </span>
+                <Input
+                  value={form.image}
+                  onChange={(e) => update("image", e.target.value)}
+                  placeholder="ghcr.io/... or spring-agent:latest"
+                  aria-label="Execution image"
+                />
+                <span className="block text-xs text-muted-foreground">
+                  Default container image. Autocomplete is tracked as #622.
+                </span>
+              </label>
+
+              <label className="block space-y-1">
+                <span className="text-sm text-muted-foreground">
+                  Runtime (default)
+                </span>
+                <select
+                  value={form.runtime}
+                  onChange={(e) => update("runtime", e.target.value)}
+                  aria-label="Execution runtime"
+                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <option value="">(leave to default)</option>
+                  {EXECUTION_RUNTIMES.map((r) => (
+                    <option key={r} value={r}>
+                      {r}
+                    </option>
+                  ))}
+                </select>
+                <span className="block text-xs text-muted-foreground">
+                  Container runtime the launcher drives.
+                </span>
               </label>
             </div>
 
@@ -1126,6 +1209,8 @@ export default function CreateUnitPage() {
               )}
               <SummaryRow label="Model" value={form.model || DEFAULT_MODEL} />
               <SummaryRow label="Color" value={form.color || DEFAULT_COLOR} />
+              <SummaryRow label="Image" value={form.image || "(leave to default)"} />
+              <SummaryRow label="Runtime" value={form.runtime || "(leave to default)"} />
               <SummaryRow
                 label="Mode"
                 value={form.mode ? form.mode : "—"}

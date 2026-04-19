@@ -24,6 +24,7 @@ import type {
   ActivityQueryResult,
   AgentDashboardSummary,
   AgentDetailResponse,
+  AgentExecutionResponse,
   AgentResponse,
   AggregatedExpertiseResponse,
   BudgetResponse,
@@ -49,6 +50,7 @@ import type {
   UnitBoundaryResponse,
   UnitDashboardSummary,
   UnitDetailResponse,
+  UnitExecutionResponse,
   UnitOrchestrationResponse,
   UnitPolicyResponse,
   UnitReadinessResponse,
@@ -240,6 +242,48 @@ export function useUnitOrchestration(
   return useQuery({
     queryKey: queryKeys.units.orchestration(id),
     queryFn: () => api.getUnitOrchestration(id),
+    enabled: opts?.enabled ?? Boolean(id),
+    refetchInterval: opts?.refetchInterval,
+    staleTime: opts?.staleTime,
+  });
+}
+
+/**
+ * Read a unit's persisted execution defaults (#601 / #603 / #409
+ * B-wide, backend PR #628). The endpoint always returns the empty shape
+ * (every field null) when the unit has never had an execution block
+ * persisted, so callers never branch on 404 vs unset. The Execution tab
+ * on `/units/[id]` and the agent-side "inherited from unit" indicator
+ * both ride this hook.
+ */
+export function useUnitExecution(
+  id: string,
+  opts?: SliceOptions<UnitExecutionResponse>,
+): UseQueryResult<UnitExecutionResponse, Error> {
+  return useQuery({
+    queryKey: queryKeys.units.execution(id),
+    queryFn: () => api.getUnitExecution(id),
+    enabled: opts?.enabled ?? Boolean(id),
+    refetchInterval: opts?.refetchInterval,
+    staleTime: opts?.staleTime,
+  });
+}
+
+/**
+ * Read an agent's own declared execution block (#601 / #603 / #409
+ * B-wide, backend PR #628). The response carries only the agent's
+ * declared fields — inherited unit defaults are merged at dispatch
+ * time. The Execution panel on `/agents/[id]` overlays the owning
+ * unit's execution (via {@link useUnitExecution}) to render the
+ * "inherited from unit" indicator for fields the agent leaves blank.
+ */
+export function useAgentExecution(
+  id: string,
+  opts?: SliceOptions<AgentExecutionResponse>,
+): UseQueryResult<AgentExecutionResponse, Error> {
+  return useQuery({
+    queryKey: queryKeys.agents.execution(id),
+    queryFn: () => api.getAgentExecution(id),
     enabled: opts?.enabled ?? Boolean(id),
     refetchInterval: opts?.refetchInterval,
     staleTime: opts?.staleTime,

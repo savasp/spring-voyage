@@ -43,6 +43,7 @@ export const queryKeys = {
     logs: (id: string, tail: number) =>
       ["agents", "logs", id, tail] as const,
     expertise: (id: string) => ["agents", "expertise", id] as const,
+    execution: (id: string) => ["agents", "execution", id] as const,
   },
 
   units: {
@@ -62,6 +63,7 @@ export const queryKeys = {
     policy: (id: string) => ["units", "policy", id] as const,
     boundary: (id: string) => ["units", "boundary", id] as const,
     orchestration: (id: string) => ["units", "orchestration", id] as const,
+    execution: (id: string) => ["units", "execution", id] as const,
     ownExpertise: (id: string) => ["units", "ownExpertise", id] as const,
     aggregatedExpertise: (id: string) =>
       ["units", "aggregatedExpertise", id] as const,
