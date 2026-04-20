@@ -111,6 +111,9 @@ public class GoogleAgentRuntime : IAgentRuntime
         DisplayHint: "Google AI Studio API key — generate one at https://aistudio.google.com/apikey. Requires the Generative Language API.");
 
     /// <inheritdoc />
+    public string CredentialSecretName => "google-api-key";
+
+    /// <inheritdoc />
     public IReadOnlyList<ModelDescriptor> DefaultModels => _defaultModels.Value;
 
     /// <summary>

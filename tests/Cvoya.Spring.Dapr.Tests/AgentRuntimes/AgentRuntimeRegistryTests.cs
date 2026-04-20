@@ -110,6 +110,8 @@ public class AgentRuntimeRegistryTests
         public AgentRuntimeCredentialSchema CredentialSchema { get; } =
             new(AgentRuntimeCredentialKind.None);
 
+        public string CredentialSecretName => string.Empty;
+
         public IReadOnlyList<ModelDescriptor> DefaultModels { get; } = Array.Empty<ModelDescriptor>();
 
         public Task<CredentialValidationResult> ValidateCredentialAsync(

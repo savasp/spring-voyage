@@ -96,6 +96,9 @@ public class OpenAiAgentRuntime : IAgentRuntime
         DisplayHint: "OpenAI Platform API key — typically starts with 'sk-' (https://platform.openai.com/api-keys).");
 
     /// <inheritdoc />
+    public string CredentialSecretName => "openai-api-key";
+
+    /// <inheritdoc />
     public IReadOnlyList<ModelDescriptor> DefaultModels => _defaultModels.Value;
 
     /// <summary>

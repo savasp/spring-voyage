@@ -332,12 +332,13 @@ export type ExecutionToolKey = (typeof EXECUTION_TOOL_KEYS)[number];
 
 /**
  * Provider keys accepted by the unit/agent Execution surfaces when the
- * launcher is `dapr-agent`. The backend's canonical mapping lives in
- * <c>LlmCredentialResolver.DescriptorFor</c> — `anthropic`, `openai`,
- * `google`, `ollama` are the canonical spellings the credential probe
- * accepts. The resolver also accepts synonyms (`claude`, `gemini`,
- * `googleai`) but the portal dropdown standardises on the canonical
- * names so the value round-trips cleanly.
+ * launcher is `dapr-agent`. The backend's canonical mapping now lives on
+ * each runtime's <c>IAgentRuntime.CredentialSecretName</c>; the
+ * credential-status endpoint (<c>GET /system/credentials/&lcub;provider&rcub;/status</c>)
+ * accepts `anthropic`, `openai`, `google`, `ollama` and translates
+ * `anthropic` to the Claude runtime id before consulting the registry.
+ * The portal dropdown standardises on these canonical names so the
+ * value round-trips cleanly.
  */
 export const EXECUTION_PROVIDERS = [
   "anthropic",

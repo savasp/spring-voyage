@@ -113,6 +113,12 @@ public class ClaudeAgentRuntime : IAgentRuntime
         DisplayHint: "Anthropic API key (sk-ant-api…) or Claude.ai OAuth token (sk-ant-oat…) from `claude setup-token`.");
 
     /// <inheritdoc />
+    // Secret is branded after the Anthropic Platform (the key-issuing
+    // authority) rather than the runtime id to match the tenant-defaults
+    // portal labels and `docs/guide/secrets.md`.
+    public string CredentialSecretName => "anthropic-api-key";
+
+    /// <inheritdoc />
     public IReadOnlyList<ModelDescriptor> DefaultModels => _defaultModels;
 
     /// <summary>
