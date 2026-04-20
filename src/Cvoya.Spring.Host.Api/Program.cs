@@ -3,14 +3,21 @@
 
 using System.Text.Json.Serialization;
 
+using Cvoya.Spring.AgentRuntimes.Claude;
 using Cvoya.Spring.AgentRuntimes.Claude.DependencyInjection;
+using Cvoya.Spring.AgentRuntimes.Google;
 using Cvoya.Spring.AgentRuntimes.Google.DependencyInjection;
+using Cvoya.Spring.AgentRuntimes.Ollama;
 using Cvoya.Spring.AgentRuntimes.Ollama.DependencyInjection;
+using Cvoya.Spring.AgentRuntimes.OpenAI;
 using Cvoya.Spring.AgentRuntimes.OpenAI.DependencyInjection;
 using Cvoya.Spring.Connector.Arxiv.DependencyInjection;
+using Cvoya.Spring.Connector.GitHub.Auth.OAuth;
 using Cvoya.Spring.Connector.GitHub.DependencyInjection;
 using Cvoya.Spring.Connector.WebSearch.DependencyInjection;
+using Cvoya.Spring.Core.CredentialHealth;
 using Cvoya.Spring.Dapr.Auth;
+using Cvoya.Spring.Dapr.CredentialHealth;
 using Cvoya.Spring.Dapr.DependencyInjection;
 using Cvoya.Spring.Host.Api.Auth;
 using Cvoya.Spring.Host.Api.Endpoints;
@@ -47,6 +54,51 @@ try
         .AddCvoyaSpringConnectorArxiv(builder.Configuration)
         .AddCvoyaSpringConnectorWebSearch(builder.Configuration)
         .AddCvoyaSpringApiServices(builder.Configuration);
+
+    // Attach the credential-health watchdog to every plugin-owned named
+    // HttpClient that authenticates against a remote service (per
+    // CONVENTIONS.md § 16). The wiring lives here rather than inside each
+    // plugin's DI extension because the watchdog extension lives in
+    // Cvoya.Spring.Dapr (it depends on ICredentialHealthStore + the
+    // handler), and plugin projects are constrained by CONVENTIONS.md § 17
+    // / AGENTS.md to reference Cvoya.Spring.Core only. The host is the
+    // one composition point that knows about every plugin and Dapr, so
+    // the fan-out happens here. AddHttpClient(name) is idempotent on the
+    // named options entry but accumulates handlers across repeat builders,
+    // so re-registering the named client here only attaches the watchdog —
+    // it does not reset any configuration the plugin already applied.
+    builder.Services.AddHttpClient(ClaudeAgentRuntime.HttpClientName)
+        .AddCredentialHealthWatchdog(
+            CredentialHealthKind.AgentRuntime,
+            subjectId: ClaudeAgentRuntime.RuntimeId,
+            secretName: "api-key");
+    builder.Services.AddHttpClient(GoogleAgentRuntime.HttpClientName)
+        .AddCredentialHealthWatchdog(
+            CredentialHealthKind.AgentRuntime,
+            subjectId: "google",
+            secretName: "api-key");
+    builder.Services.AddHttpClient(OpenAiAgentRuntime.HttpClientName)
+        .AddCredentialHealthWatchdog(
+            CredentialHealthKind.AgentRuntime,
+            subjectId: "openai",
+            secretName: "api-key");
+    // Ollama is typically deployed locally without auth, so the watchdog
+    // normally never flips the row. Wiring it anyway covers the reverse-
+    // proxy-with-auth deployment shape flagged in ProbeTagsEndpointAsync.
+    builder.Services.AddHttpClient(OllamaAgentRuntime.HttpClientName)
+        .AddCredentialHealthWatchdog(
+            CredentialHealthKind.AgentRuntime,
+            subjectId: OllamaAgentRuntime.RuntimeId,
+            secretName: "api-key");
+    // GitHub: only the OAuth named client routes through IHttpClientFactory
+    // today. The App-auth + Octokit surface bypasses the factory (direct
+    // HttpClient and Octokit's own handler chain respectively), so those
+    // paths do not participate in the watchdog yet. Tracked as #730.
+    builder.Services.AddHttpClient(GitHubOAuthHttpClient.HttpClientName)
+        .AddCredentialHealthWatchdog(
+            CredentialHealthKind.Connector,
+            subjectId: "github",
+            secretName: "client-secret");
 
     // DataProtection tries to persist/load keys from disk and logs a warning when
     // no stable key directory is configured. During build-time OpenAPI generation
