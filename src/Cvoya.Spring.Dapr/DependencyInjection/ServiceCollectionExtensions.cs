@@ -276,16 +276,6 @@ public static class ServiceCollectionExtensions
         services.TryAddEnumerable(ServiceDescriptor.Singleton<ISkillRegistry, DirectorySearchSkillRegistry>(
             sp => sp.GetRequiredService<DirectorySearchSkillRegistry>()));
 
-        // Unit-membership backfill hosted service (#160 / C2b-1).
-        // Gated by Database:BackfillMemberships; idempotent; short-lived.
-        // Also gated by doc-gen mode — the service depends on SpringDbContext
-        // which may not have a configured provider during build-time OpenAPI
-        // generation. See #370.
-        if (!isDocGen)
-        {
-            services.AddHostedService<UnitMembershipBackfillService>();
-        }
-
         // Options
         services.AddOptions<AiProviderOptions>().BindConfiguration(AiProviderOptions.SectionName);
         services.AddOptions<ContainerRuntimeOptions>().BindConfiguration("ContainerRuntime");

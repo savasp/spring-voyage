@@ -173,7 +173,8 @@ public static class UnitEndpoints
             .WithName("UnassignUnitAgent")
             .WithSummary("Unassign an agent from this unit. Deletes the membership row and removes the agent from the unit's members list; other memberships the agent holds are unaffected.")
             .Produces(StatusCodes.Status204NoContent)
-            .ProducesProblem(StatusCodes.Status404NotFound);
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         return group;
     }
@@ -1322,8 +1323,26 @@ public static class UnitEndpoints
         }
 
         // Delete the membership row. Other units the agent still belongs to
-        // are unaffected — this is the point of M:N.
-        await membershipRepository.DeleteAsync(id, agentId, cancellationToken);
+        // are unaffected — this is the point of M:N. Per #744 the repo
+        // rejects removal when this is the agent's last membership; we
+        // surface that as 409 so the caller either assigns the agent to
+        // another unit first or deletes the agent via DELETE /agents/{id}.
+        try
+        {
+            await membershipRepository.DeleteAsync(id, agentId, cancellationToken);
+        }
+        catch (AgentMembershipRequiredException ex)
+        {
+            return Results.Problem(
+                title: "Agent must belong to at least one unit",
+                detail: ex.Message,
+                statusCode: StatusCodes.Status409Conflict,
+                extensions: new Dictionary<string, object?>
+                {
+                    ["agentAddress"] = ex.AgentAddress,
+                    ["unitId"] = ex.UnitId,
+                });
+        }
 
         var unitProxy = actorProxyFactory.CreateActorProxy<IUnitActor>(
             new ActorId(unitEntry.ActorId), nameof(UnitActor));

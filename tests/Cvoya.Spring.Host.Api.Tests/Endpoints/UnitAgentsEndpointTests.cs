@@ -255,21 +255,47 @@ public class UnitAgentsEndpointTests : IClassFixture<CustomWebApplicationFactory
         var ct = TestContext.Current.CancellationToken;
         ClearAllMocks();
 
+        // #744: removing the last membership is no longer allowed — the
+        // "other membership" case is the only one that still returns 204.
+        // The solo-membership case is covered by
+        // UnassignUnitAgent_LastMembership_Returns409 below.
         var unitProxy = ArrangeUnit();
+        ArrangeUnit("marketing", "actor-marketing");
         var agentProxy = ArrangeAgent("ada", "actor-ada", new AgentMetadata());
         await UpsertMembershipAsync(UnitName, "ada");
+        await UpsertMembershipAsync("marketing", "ada");
 
         var response = await _client.DeleteAsync(
             $"/api/v1/units/{UnitName}/agents/ada", ct);
 
         response.StatusCode.ShouldBe(HttpStatusCode.NoContent);
         (await GetMembershipAsync(UnitName, "ada")).ShouldBeNull();
+        (await GetMembershipAsync("marketing", "ada")).ShouldNotBeNull();
 
         await unitProxy.Received(1).RemoveMemberAsync(
             Arg.Is<Address>(a => a.Scheme == "agent" && a.Path == "ada"),
             Arg.Any<CancellationToken>());
-        // Cached pointer is cleared because this was the agent's only membership.
-        await agentProxy.Received(1).ClearParentUnitAsync(Arg.Any<CancellationToken>());
+        // Cached pointer tracks the surviving membership now — it must NOT
+        // have been cleared, since the agent still belongs to marketing.
+        await agentProxy.DidNotReceive().ClearParentUnitAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task UnassignUnitAgent_LastMembership_Returns409()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        ClearAllMocks();
+
+        ArrangeUnit();
+        ArrangeAgent("ada", "actor-ada", new AgentMetadata());
+        await UpsertMembershipAsync(UnitName, "ada");
+
+        var response = await _client.DeleteAsync(
+            $"/api/v1/units/{UnitName}/agents/ada", ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        // Row must still exist — the invariant is enforced transactionally.
+        (await GetMembershipAsync(UnitName, "ada")).ShouldNotBeNull();
     }
 
     [Fact]
@@ -461,6 +487,9 @@ public class UnitAgentsEndpointTests : IClassFixture<CustomWebApplicationFactory
 
         public Task DeleteAsync(string unitId, string agentAddress, CancellationToken cancellationToken = default)
             => _inner.DeleteAsync(unitId, agentAddress, cancellationToken);
+
+        public Task DeleteAllForAgentAsync(string agentAddress, CancellationToken cancellationToken = default)
+            => _inner.DeleteAllForAgentAsync(agentAddress, cancellationToken);
 
         public Task<UnitMembership?> GetAsync(string unitId, string agentAddress, CancellationToken cancellationToken = default)
             => _inner.GetAsync(unitId, agentAddress, cancellationToken);

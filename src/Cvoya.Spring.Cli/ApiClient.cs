@@ -53,6 +53,8 @@ public class SpringApiClient
     /// server's <c>Name</c> field (the unique identifier on the wire), while
     /// <paramref name="displayName"/> maps to <c>DisplayName</c>. Server requires both,
     /// so when no display name is supplied we fall back to <paramref name="id"/>.
+    /// <paramref name="unitIds"/> carries the mandatory unit memberships (#744) —
+    /// the server rejects the request with 400 when the list is empty.
     /// <paramref name="definitionJson"/> is the optional agent-definition JSON document
     /// (e.g. the execution block that selects <c>tool</c> / <c>image</c> / <c>provider</c>
     /// / <c>model</c>). When non-null the server persists it to
@@ -62,6 +64,7 @@ public class SpringApiClient
         string id,
         string? displayName,
         string? role,
+        IReadOnlyList<string> unitIds,
         string? definitionJson = null,
         CancellationToken ct = default)
     {
@@ -71,6 +74,7 @@ public class SpringApiClient
             DisplayName = string.IsNullOrWhiteSpace(displayName) ? id : displayName,
             Description = string.Empty,
             Role = role,
+            UnitIds = unitIds?.ToList() ?? new List<string>(),
             DefinitionJson = string.IsNullOrWhiteSpace(definitionJson) ? null : definitionJson,
         };
 
