@@ -3,6 +3,7 @@
 
 using System.Text.Json.Serialization;
 
+using Cvoya.Spring.AgentRuntimes.Claude.DependencyInjection;
 using Cvoya.Spring.AgentRuntimes.Google.DependencyInjection;
 using Cvoya.Spring.Connector.Arxiv.DependencyInjection;
 using Cvoya.Spring.Connector.GitHub.DependencyInjection;
@@ -37,6 +38,7 @@ try
         .AddCvoyaSpringCore()
         .AddCvoyaSpringDapr(builder.Configuration)
         .AddCvoyaSpringOllamaLlm(builder.Configuration)
+        .AddCvoyaSpringAgentRuntimeClaude()
         .AddCvoyaSpringAgentRuntimeGoogle()
         .AddCvoyaSpringConnectorGitHub(builder.Configuration)
         .AddCvoyaSpringConnectorArxiv(builder.Configuration)
