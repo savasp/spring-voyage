@@ -45,7 +45,7 @@ The private repo extends the OSS platform through dependency injection:
 - **Tenant-scoped wrappers** around OSS repositories and services (the OSS codebase has no concept of tenants or `TenantId`)
 - **DI overrides** — the cloud host replaces OSS service registrations with tenant-aware implementations
 - **Additional actors, strategies, and connectors** that compose OSS building blocks
-- **Plugin contracts** — implement `IAgentRuntime` (LLM backend + execution tool + credential schema + model catalog) or `IConnectorType` (external-system binding) and register with `TryAdd*`; the host picks new implementations up via DI without any core code change. Each agent runtime ships as its own `Cvoya.Spring.AgentRuntimes.<Name>` project that references `Cvoya.Spring.Core` only, exposes a single `AddCvoyaSpringAgentRuntime<Name>()` DI extension, and bundles a seed catalogue at `agent-runtimes/<id>/seed.json`. Built-in implementations: `Cvoya.Spring.AgentRuntimes.Claude` (`AddCvoyaSpringAgentRuntimeClaude()` — id `claude`, tool kind `claude-code-cli`), `Cvoya.Spring.AgentRuntimes.Google` (`AddCvoyaSpringAgentRuntimeGoogle()` — id `google`, tool kind `dapr-agent`)
+- **Plugin contracts** — implement `IAgentRuntime` (LLM backend + execution tool + credential schema + model catalog) or `IConnectorType` (external-system binding) and register with `TryAdd*`; the host picks new implementations up via DI without any core code change. Each agent runtime ships as its own `Cvoya.Spring.AgentRuntimes.<Name>` project that references `Cvoya.Spring.Core` only, exposes a single `AddCvoyaSpringAgentRuntime<Name>()` DI extension, and bundles a seed catalogue at `agent-runtimes/<id>/seed.json` (see the built-in runtimes table below)
 - **Cloud API host** that layers middleware (auth, tenant context) on top of the OSS API host
 
 ### Design Principles for Extensibility
@@ -67,6 +67,18 @@ The private repo extends the OSS platform through dependency injection:
 - **Don't reference tenant concepts.** No `TenantId`, no multi-tenancy awareness. The private repo layers that on.
 - **Don't make services static or use singletons outside DI.** Everything must go through the container so the private repo can control lifetime and scoping.
 - **Don't create internal types that the private repo would need to access.** If a type is part of the extension contract, make it `public`. Use `internal` only for true implementation details.
+
+### Built-in agent runtimes
+
+The OSS core ships per-runtime `IAgentRuntime` plugins as sibling projects under `src/Cvoya.Spring.AgentRuntimes.*`. Each one is wired into the host via its own `AddCvoyaSpringAgentRuntime<Name>()` extension and the `IAgentRuntimeRegistry` (in `Cvoya.Spring.Dapr`) picks them up automatically.
+
+| Runtime id | Project | Tool kind | DI extension |
+|------------|---------|-----------|--------------|
+| `claude` | `Cvoya.Spring.AgentRuntimes.Claude` | `claude-code-cli` | `AddCvoyaSpringAgentRuntimeClaude()` |
+| `google` | `Cvoya.Spring.AgentRuntimes.Google` | `dapr-agent` | `AddCvoyaSpringAgentRuntimeGoogle()` |
+| `openai` | `Cvoya.Spring.AgentRuntimes.OpenAI` | `dapr-agent` | `AddCvoyaSpringAgentRuntimeOpenAI()` |
+
+To add a new runtime, follow the contract in [`src/Cvoya.Spring.Core/AgentRuntimes/README.md`](src/Cvoya.Spring.Core/AgentRuntimes/README.md) and append a row above. Per-runtime READMEs live next to their projects.
 
 ## Key Rules
 
