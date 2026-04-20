@@ -310,6 +310,7 @@ Multiple agents work on v2 simultaneously. Follow these rules:
 - **Coordinate on shared types.** `Cvoya.Spring.Core` types are defined in Issue #3. If you need to add a type, check that no other agent is adding the same thing.
 - **Append, don't reorder.** When adding to `StateKeys`, DI registrations, or enum values — append to the end.
 - **Interface-first.** Define the interface in `Cvoya.Spring.Core`, implement in `Cvoya.Spring.Dapr`. This allows parallel work on different implementations.
+- **File follow-up issues before the PR lands, and reference concrete numbers.** When a PR body mentions deferred work ("follow-up to come", "the X path is out of scope"), file the issue first and substitute the real `#N` into the PR body. GitHub does not auto-link prose-only references to non-existent issues, and the "we'll file it later" form routinely drops follow-ups on the floor — by the time the PR merges, the context is gone. Filing first also proves the deferral is tracked, not hand-waved.
 
 ## 12. Build Configuration
 
@@ -348,7 +349,7 @@ Every user-facing feature must ship through BOTH the web portal UI and the `spri
 
 **Exceptions:** admin/ops operations that are genuinely dev-only (e.g., `dotnet ef migrations add`) don't need a UI counterpart. Internal test affordances are also out of scope.
 
-**Admin/operator carve-out (OSS only, per #674):** agent-runtime config (`spring agent-runtime …`), connector config (`spring connector …`), credential health, tenant seeds, and skill-bundle bindings are CLI-only in the OSS core by design. The portal MAY expose read-only views for visibility, but mutations are via the CLI. This carve-out is ADDITIVE to the parity rule — user-facing features remain parity-bound.
+**Admin/operator carve-out (OSS only, per #693 / #674).** A set of operational surfaces — agent-runtime config, connector config, credential health, tenant seeds, skill-bundle bindings — are CLI-only by design. See [`AGENTS.md` § "Admin surfaces (CLI-only) — relaxation of the parity rule"](AGENTS.md#admin-surfaces-cli-only--relaxation-of-the-parity-rule) for the authoritative roster; the list there is the one to update when a new admin surface lands. User-facing features remain strictly parity-bound.
 
 ## 15. Skill-Bundle Tenant Binding
 
