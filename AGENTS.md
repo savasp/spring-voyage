@@ -81,9 +81,9 @@ The OSS core ships per-runtime `IAgentRuntime` plugins as sibling projects under
 
 To add a new runtime, follow the contract in [`src/Cvoya.Spring.Core/AgentRuntimes/README.md`](src/Cvoya.Spring.Core/AgentRuntimes/README.md) and append a row above. Per-runtime READMEs live next to their projects.
 
-### Admin surfaces (CLI-only)
+### Admin surfaces (CLI-only) — relaxation of the parity rule
 
-Per the #674 carve-out, operational surfaces for the OSS core are **CLI-only**. The portal MAY expose **read-only** views for visibility, but every mutation goes through the `spring` CLI:
+The UI / CLI parity rule (`CONVENTIONS.md` § 14) requires every **user-facing** feature to ship on both surfaces. This section declares the **relaxation** introduced by #693 under the #674 refactor: operational surfaces for the OSS core are **CLI-only** by design. The portal MAY expose **read-only** views for visibility, but every mutation goes through the `spring` CLI.
 
 - **Agent-runtime config** (`spring agent-runtime …`) — tenant install / uninstall, model list, base-URL overrides, credential validation.
 - **Connector config** (`spring connector …`) — tenant install / uninstall, per-tenant configuration, credential validation.
@@ -91,7 +91,8 @@ Per the #674 carve-out, operational surfaces for the OSS core are **CLI-only**. 
 - **Tenant seeds** — default-tenant bootstrap runs once per deployment start in the Worker host; there is no HTTP or CLI surface to trigger re-seeding in V2.
 - **Skill-bundle bindings** — bootstrap binds every discovered package to the default tenant; mutation CLI (`spring skill-bundle …`) is deferred to V2.1.
 
-This carve-out is **additive** to the UI / CLI parity rule (`CONVENTIONS.md` § 14): user-facing features remain parity-bound; admin surfaces are intentionally CLI-only. The corresponding user-memory rule is recorded as `feedback_ui_cli_parity` — update it alongside this list when a new admin surface lands.
+When a new admin surface lands, append a bullet to this list — **this section is the authoritative carve-out roster**, not `CONVENTIONS.md` § 14 (which defers here). User-facing features remain strictly parity-bound.
+
 
 ## Key Rules
 

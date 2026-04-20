@@ -4,7 +4,13 @@
 
 ## Related Issues
 
-<!-- Reference related issues: Closes #N, Fixes #N -->
+<!--
+  Repeat the closing keyword before every issue number. GitHub's parser
+  reliably auto-closes only when each number has its own keyword:
+    Good:       Closes #64, closes #65, closes #66.
+    Good:       one per line — `- Closes #64`
+    Unreliable: Closes #64, #65, #66  (silently leaves #65/#66 open)
+-->
 
 ## Changes
 
