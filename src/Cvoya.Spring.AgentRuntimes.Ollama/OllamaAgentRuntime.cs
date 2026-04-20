@@ -119,6 +119,12 @@ public class OllamaAgentRuntime : IAgentRuntime
         DisplayHint: "Local Ollama installs require no credential. Set the base URL via the install's config_json.");
 
     /// <inheritdoc />
+    // Ollama runs without a credential — the tier-2 resolver treats the
+    // empty string as "no credential to look up" and returns NotFound
+    // without consulting the secret store.
+    public string CredentialSecretName => string.Empty;
+
+    /// <inheritdoc />
     public IReadOnlyList<ModelDescriptor> DefaultModels => _defaultModels.Value;
 
     /// <inheritdoc />

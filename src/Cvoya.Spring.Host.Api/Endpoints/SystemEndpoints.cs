@@ -82,11 +82,18 @@ public static class SystemEndpoints
             case ProviderOpenAi:
             case ProviderGoogle:
                 {
+                    // Translate the endpoint's external provider token to
+                    // the runtime id the registry-backed resolver expects.
+                    // The portal's URL still uses the provider spelling
+                    // (`anthropic`) that operators recognise, but the
+                    // resolver looks runtimes up by id (`claude`).
+                    var runtimeId = MapProviderToRuntimeId(normalized);
+
                     // No unit context — the wizard runs before the unit
                     // exists. Resolver will fall through to the tenant-
                     // scope secret, which is what the wizard cares about.
                     var resolution = await credentialResolver.ResolveAsync(
-                        normalized,
+                        runtimeId,
                         unitName: null,
                         cancellationToken);
 
@@ -143,6 +150,16 @@ public static class SystemEndpoints
         LlmCredentialSource.Unit => "unit",
         LlmCredentialSource.Tenant => "tenant",
         _ => null,
+    };
+
+    private static string MapProviderToRuntimeId(string provider) => provider switch
+    {
+        // The `anthropic` token in the endpoint's URL maps to the Claude
+        // runtime id (the runtime is the plugin; `anthropic` is the
+        // credential-issuing authority). Other supported providers use
+        // matching spellings.
+        ProviderAnthropic => "claude",
+        _ => provider,
     };
 
     private static string BuildCredentialSuggestion(string provider, string secretName)

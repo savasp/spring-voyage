@@ -77,6 +77,33 @@ public interface IAgentRuntime
     AgentRuntimeCredentialSchema CredentialSchema { get; }
 
     /// <summary>
+    /// The canonical secret name under which this runtime's credential is
+    /// stored (for example, <c>anthropic-api-key</c>, <c>openai-api-key</c>,
+    /// <c>google-api-key</c>). The tier-2
+    /// <see cref="Cvoya.Spring.Core.Execution.ILlmCredentialResolver"/>
+    /// reads this value from the registry so the provider-id → secret-name
+    /// mapping lives with the runtime plugin rather than on a host-side
+    /// switch, and the tenant-defaults portal surface the same string
+    /// everywhere.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Runtimes whose <see cref="CredentialSchema"/> is
+    /// <see cref="AgentRuntimeCredentialKind.None"/> (for example Ollama)
+    /// MUST return <see cref="string.Empty"/> — the resolver treats an
+    /// empty name as "no credential to look up" and returns
+    /// <see cref="Cvoya.Spring.Core.Execution.LlmCredentialSource.NotFound"/>
+    /// without consulting the secret store.
+    /// </para>
+    /// <para>
+    /// The value is stable: it is persisted in tenant/unit-scoped secret
+    /// rows and documented in <c>docs/guide/secrets.md</c>. Renaming it
+    /// would orphan every existing secret, so treat it as immutable.
+    /// </para>
+    /// </remarks>
+    string CredentialSecretName { get; }
+
+    /// <summary>
     /// Validates a candidate credential against the runtime's backing
     /// service. Used at wizard accept-time and by the credential-health
     /// store. Implementations should surface transport-level failures as

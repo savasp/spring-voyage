@@ -3,6 +3,7 @@
 
 namespace Cvoya.Spring.Dapr.Execution;
 
+using Cvoya.Spring.Core.AgentRuntimes;
 using Cvoya.Spring.Core.Execution;
 using Cvoya.Spring.Core.Secrets;
 using Cvoya.Spring.Core.Tenancy;
@@ -18,13 +19,14 @@ using Microsoft.Extensions.Logging;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The canonical secret name is derived from the provider id:
-/// <c>claude</c> → <c>anthropic-api-key</c>, <c>openai</c> →
-/// <c>openai-api-key</c>, <c>google</c> → <c>google-api-key</c>. The
-/// names were chosen to match the documentation in
-/// <c>docs/guide/secrets.md</c> and the tenant-defaults portal panel's
-/// labels so operators see the same string everywhere. Unknown provider
-/// ids return <see cref="LlmCredentialSource.NotFound"/>.
+/// The canonical secret name is read from the runtime's
+/// <see cref="IAgentRuntime.CredentialSecretName"/> via
+/// <see cref="IAgentRuntimeRegistry"/>. That keeps the mapping next to the
+/// runtime plugin (where it is declared) instead of duplicated on a
+/// host-side switch. Unknown provider ids — and runtimes whose
+/// <see cref="AgentRuntimeCredentialSchema"/> declares no credential — return
+/// <see cref="LlmCredentialSource.NotFound"/> without consulting the secret
+/// store.
 /// </para>
 /// <para>
 /// <b>Why ID-based lookup.</b> Using a deterministic name keeps the
@@ -35,6 +37,7 @@ using Microsoft.Extensions.Logging;
 /// </remarks>
 public sealed class LlmCredentialResolver : ILlmCredentialResolver
 {
+    private readonly IAgentRuntimeRegistry _registry;
     private readonly ISecretResolver _secretResolver;
     private readonly ITenantContext _tenantContext;
     private readonly ILogger<LlmCredentialResolver> _logger;
@@ -43,10 +46,17 @@ public sealed class LlmCredentialResolver : ILlmCredentialResolver
     /// Creates a new <see cref="LlmCredentialResolver"/>.
     /// </summary>
     public LlmCredentialResolver(
+        IAgentRuntimeRegistry registry,
         ISecretResolver secretResolver,
         ITenantContext tenantContext,
         ILogger<LlmCredentialResolver> logger)
     {
+        ArgumentNullException.ThrowIfNull(registry);
+        ArgumentNullException.ThrowIfNull(secretResolver);
+        ArgumentNullException.ThrowIfNull(tenantContext);
+        ArgumentNullException.ThrowIfNull(logger);
+
+        _registry = registry;
         _secretResolver = secretResolver;
         _tenantContext = tenantContext;
         _logger = logger;
@@ -58,8 +68,8 @@ public sealed class LlmCredentialResolver : ILlmCredentialResolver
         string? unitName,
         CancellationToken cancellationToken = default)
     {
-        var descriptor = DescriptorFor(providerId);
-        if (descriptor is null)
+        var secretName = ResolveSecretName(providerId);
+        if (string.IsNullOrEmpty(secretName))
         {
             return new LlmCredentialResolution(null, LlmCredentialSource.NotFound, string.Empty);
         }
@@ -71,14 +81,14 @@ public sealed class LlmCredentialResolver : ILlmCredentialResolver
         // unit is supplied we go straight to tenant scope.
         if (!string.IsNullOrWhiteSpace(unitName))
         {
-            var unitRef = new SecretRef(SecretScope.Unit, unitName!, descriptor.SecretName);
+            var unitRef = new SecretRef(SecretScope.Unit, unitName!, secretName);
             var resolution = await _secretResolver.ResolveWithPathAsync(unitRef, cancellationToken);
             if (resolution.Value is { Length: > 0 } unitValue)
             {
                 var source = resolution.Path == SecretResolvePath.InheritedFromTenant
                     ? LlmCredentialSource.Tenant
                     : LlmCredentialSource.Unit;
-                return new LlmCredentialResolution(unitValue, source, descriptor.SecretName);
+                return new LlmCredentialResolution(unitValue, source, secretName);
             }
         }
         else
@@ -87,43 +97,34 @@ public sealed class LlmCredentialResolver : ILlmCredentialResolver
             var tenantRef = new SecretRef(
                 SecretScope.Tenant,
                 _tenantContext.CurrentTenantId,
-                descriptor.SecretName);
+                secretName);
             var resolution = await _secretResolver.ResolveWithPathAsync(tenantRef, cancellationToken);
             if (resolution.Value is { Length: > 0 } tenantValue)
             {
-                return new LlmCredentialResolution(tenantValue, LlmCredentialSource.Tenant, descriptor.SecretName);
+                return new LlmCredentialResolution(tenantValue, LlmCredentialSource.Tenant, secretName);
             }
         }
 
         _logger.LogDebug(
             "LLM credential for provider {Provider} not configured at unit or tenant scope; returning NotFound.",
             providerId);
-        return new LlmCredentialResolution(null, LlmCredentialSource.NotFound, descriptor.SecretName);
+        return new LlmCredentialResolution(null, LlmCredentialSource.NotFound, secretName);
     }
 
-    /// <summary>
-    /// The canonical provider → secret-name mapping. Exposed internally
-    /// for tests and the portal documentation so the Tenant defaults
-    /// panel can show operators the expected names.
-    /// </summary>
-    internal static ProviderDescriptor? DescriptorFor(string providerId)
+    private string? ResolveSecretName(string providerId)
     {
         if (string.IsNullOrWhiteSpace(providerId))
         {
             return null;
         }
 
-        return providerId.Trim().ToLowerInvariant() switch
+        var runtime = _registry.Get(providerId);
+        if (runtime is null)
         {
-            "claude" or "anthropic" => new ProviderDescriptor("anthropic-api-key"),
-            "openai" => new ProviderDescriptor("openai-api-key"),
-            "google" or "gemini" or "googleai" => new ProviderDescriptor("google-api-key"),
-            _ => null,
-        };
-    }
+            return null;
+        }
 
-    /// <summary>
-    /// Describes a provider's canonical secret name.
-    /// </summary>
-    internal sealed record ProviderDescriptor(string SecretName);
+        var secretName = runtime.CredentialSecretName;
+        return string.IsNullOrEmpty(secretName) ? null : secretName;
+    }
 }

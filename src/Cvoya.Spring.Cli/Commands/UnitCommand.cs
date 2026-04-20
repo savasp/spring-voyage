@@ -1367,7 +1367,10 @@ public static class UnitCommand
 
     /// <summary>
     /// The canonical secret name per provider, kept in lock-step with
-    /// <c>src/Cvoya.Spring.Dapr/Execution/LlmCredentialResolver.cs</c>.
+    /// each runtime's <c>IAgentRuntime.CredentialSecretName</c> — the CLI
+    /// wizard runs client-side without DI to the runtime registry, so the
+    /// mapping is duplicated here. Keep it in lock-step with the plugin
+    /// implementations under <c>src/Cvoya.Spring.AgentRuntimes.*/</c>.
     /// </summary>
     public static string SecretNameForProvider(string provider) => provider switch
     {
