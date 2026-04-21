@@ -58,7 +58,7 @@ Walked `src/Cvoya.Spring.Web/src/app/`:
 - `components/sidebar.tsx`: left nav (Dashboard, Units, Activity, Initiative, Budgets) with a mobile drawer and light/dark theme toggle. No user chip, no tenant switcher, no search.
 - `components/app-shell.tsx`: thin wrapper that composes the sidebar and main content pane.
 - `components/ui/*`: card, button, badge, table, tabs, dialog, confirm-dialog, skeleton, input, toast. Modest shadcn-style primitives.
-- `hooks/use-activity-stream.ts`: SSE subscription to `/activity/stream`.
+- `lib/stream/use-activity-stream.ts`: SSE subscription to `/activity/stream`.
 
 ### What's **missing** from the portal today (confirmed by walking the tree)
 

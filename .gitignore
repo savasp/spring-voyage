@@ -54,3 +54,15 @@ node_modules/
 ## invoked there. The per-workspace cache is already ignored by the
 ## workspace's own .gitignore.
 .eslintcache
+
+## Playwright artifacts (e2e smoke tests under src/Cvoya.Spring.Web/e2e).
+## `playwright-report/` is the HTML reporter output, `test-results/` is
+## per-test traces/screenshots/videos retained on failure.
+playwright-report/
+test-results/
+
+## Lighthouse CI artifacts (web-lighthouse job in CI).
+.lighthouseci/
+
+## Claude Code working dirs (parallel subagent worktrees, agent state).
+.claude/worktrees/

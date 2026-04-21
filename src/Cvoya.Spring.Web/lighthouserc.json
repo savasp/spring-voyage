@@ -1,0 +1,51 @@
+{
+  "ci": {
+    "collect": {
+      "startServerCommand": "npm start",
+      "startServerReadyPattern": "Ready on|Local:|started server on",
+      "startServerReadyTimeout": 120000,
+      "url": [
+        "http://127.0.0.1:3100/",
+        "http://127.0.0.1:3100/units",
+        "http://127.0.0.1:3100/inbox"
+      ],
+      "numberOfRuns": 1,
+      "settings": {
+        "preset": "desktop",
+        "chromeFlags": "--no-sandbox --headless=new",
+        "skipAudits": [
+          "uses-http2",
+          "is-on-https",
+          "redirects-http"
+        ]
+      }
+    },
+    "assert": {
+      "preset": "lighthouse:no-pwa",
+      "assertions": {
+        "categories:performance": ["warn", { "minScore": 0.6 }],
+        "categories:accessibility": ["error", { "minScore": 0.9 }],
+        "categories:best-practices": ["warn", { "minScore": 0.8 }],
+        "categories:seo": ["warn", { "minScore": 0.8 }],
+        "color-contrast": "off",
+        "tap-targets": "off",
+        "csp-xss": "off",
+        "errors-in-console": "off",
+        "uses-text-compression": "off",
+        "unused-javascript": "off",
+        "unused-css-rules": "off",
+        "render-blocking-insight": "off",
+        "lcp-discovery-insight": "off",
+        "render-blocking-resources": "off",
+        "modern-image-formats": "off",
+        "unminified-javascript": "off",
+        "uses-long-cache-ttl": "off",
+        "third-party-cookies": "off",
+        "viewport-insight": "off"
+      }
+    },
+    "upload": {
+      "target": "temporary-public-storage"
+    }
+  }
+}

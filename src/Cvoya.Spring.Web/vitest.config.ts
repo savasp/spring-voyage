@@ -28,5 +28,38 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
+    // Playwright specs in e2e/ have their own runner — keep vitest from
+    // discovering them (its default include glob would otherwise pick up
+    // anything under the project that ends in .test.ts(x), but we also
+    // want to exclude any future *.spec.ts files which are Playwright
+    // convention).
+    exclude: ["node_modules/**", ".next/**", "e2e/**"],
+    coverage: {
+      provider: "v8",
+      reporter: ["text-summary", "lcov", "html"],
+      reportsDirectory: "./coverage",
+      // Match the same source roots vitest discovers tests for. We exclude
+      // generated/contract files (openapi-typescript output, Next.js's
+      // auto-generated `.next/types`), the test setup itself, and pure
+      // markup-only registry/exports files where coverage is meaningless.
+      include: ["src/**/*.{ts,tsx}"],
+      exclude: [
+        "src/lib/api/schema.d.ts",
+        "src/test/**",
+        "src/**/*.test.{ts,tsx}",
+        "src/**/*.d.ts",
+        "src/connectors/registry.ts",
+        ".next/**",
+      ],
+      // Floor — chosen below the current measured baseline (lines ≈ 70%,
+      // functions ≈ 56%, branches ≈ 78%, statements ≈ 70% as of 2026-04-21)
+      // so coverage erosion fails CI. Ratchet upward as the suite grows.
+      thresholds: {
+        lines: 65,
+        functions: 50,
+        branches: 70,
+        statements: 65,
+      },
+    },
   },
 });

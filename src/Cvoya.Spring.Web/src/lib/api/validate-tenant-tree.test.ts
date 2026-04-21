@@ -64,7 +64,7 @@ describe("validateTenantTreeResponse", () => {
           {
             id: "mystery",
             name: "Mystery",
-            // @ts-expect-error — simulating a drifted server payload.
+            // Simulating a drifted server payload.
             kind: "Swarm",
             status: "running",
           },
@@ -85,7 +85,7 @@ describe("validateTenantTreeResponse", () => {
         id: "root",
         name: "Root",
         kind: "Tenant",
-        // @ts-expect-error — unknown status.
+        // Unknown status.
         status: "mystery",
       },
     } as TenantTreeResponse;
@@ -142,7 +142,7 @@ describe("validateTenantTreeResponse", () => {
               {
                 id: "deep",
                 name: "Deep",
-                // @ts-expect-error — drifted value deep in the tree.
+                // Drifted value deep in the tree.
                 kind: "Mystery",
                 status: "running",
               },

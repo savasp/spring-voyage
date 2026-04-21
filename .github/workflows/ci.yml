@@ -71,6 +71,7 @@ jobs:
             web:
               - 'src/Cvoya.Spring.Web/**'
               - 'src/Cvoya.Spring.Connector.*/web/**'
+              - 'src/Cvoya.Spring.Host.Api/openapi.json'
               - 'eslint.config.mjs'
               - 'package.json'
               - 'package-lock.json'
@@ -327,6 +328,66 @@ jobs:
       - name: Lint
         run: npm run lint
 
+  web-knip:
+    name: Dead-code check (knip)
+    runs-on: ubuntu-latest
+    needs: changes
+    # Skipped in the merge queue: knip is a static-input check of the
+    # PR's own sources. Catches unused files, unlisted dependencies, and
+    # unresolved imports that ESLint and tsc don't surface (see
+    # src/Cvoya.Spring.Web/knip.json for the rule scope - we deliberately
+    # gate only on `files`, `unlisted`, `unresolved`, `duplicates`; unused
+    # exports/types are reported but don't fail because the API surface
+    # is intentionally broad).
+    if: >
+      github.event_name != 'merge_group' &&
+      (needs.changes.outputs.web == 'true' || needs.changes.outputs.workflows == 'true')
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install workspace dependencies
+        run: npm ci
+
+      - name: Knip (dead code, unlisted deps, unresolved imports)
+        run: npm --workspace=spring-voyage-dashboard run knip
+
+  web-typecheck:
+    name: Typecheck web (tsc)
+    runs-on: ubuntu-latest
+    needs: changes
+    # Skipped in the merge queue: tsc --noEmit is a static-input check of
+    # the PR's own sources. Catches type regressions in test files
+    # (`*.test.ts(x)`) and other code paths Next.js's build excludes from
+    # type-checking.
+    if: >
+      github.event_name != 'merge_group' &&
+      (needs.changes.outputs.web == 'true' || needs.changes.outputs.workflows == 'true')
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install workspace dependencies
+        run: npm ci
+
+      # pretypecheck runs openapi-typescript against the committed
+      # src/Cvoya.Spring.Host.Api/openapi.json - no dotnet build needed
+      # here; openapi-drift covers contract freshness separately.
+      - name: Typecheck
+        run: npm --workspace=spring-voyage-dashboard run typecheck
+
   web-build:
     name: Build web (Next.js)
     runs-on: ubuntu-latest
@@ -359,6 +420,27 @@ jobs:
         working-directory: src/Cvoya.Spring.Web
         run: npm run build
 
+      # Enforce bundle-size budget against the freshly built artifact.
+      # Script reads `.next/static/chunks/*.js`, sums raw + gzipped, and
+      # picks out the largest single chunk. Budgets and rationale live
+      # in src/Cvoya.Spring.Web/scripts/check-bundle-size.mjs.
+      - name: Bundle-size budget
+        working-directory: src/Cvoya.Spring.Web
+        run: npm run check-bundle-size
+
+      # Persist the build artifact so downstream e2e + lighthouse jobs
+      # don't have to repeat `npm run build`. Saves ~30s per dependent
+      # job on cold cache.
+      - name: Upload Next.js build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-next-build
+          path: |
+            src/Cvoya.Spring.Web/.next
+            !src/Cvoya.Spring.Web/.next/cache
+          retention-days: 1
+          if-no-files-found: error
+
   web-test:
     name: Test web (vitest)
     runs-on: ubuntu-latest
@@ -386,8 +468,150 @@ jobs:
       # pretest runs openapi-typescript against the committed
       # src/Cvoya.Spring.Host.Api/openapi.json - no dotnet build needed
       # here; openapi-drift covers contract freshness separately.
-      - name: Run vitest
-        run: npm --workspace=spring-voyage-dashboard run test
+      # Use `test:coverage` (vitest --coverage) so the configured
+      # thresholds in vitest.config.ts gate the run; see that file for
+      # the rationale on threshold floors.
+      - name: Run vitest with coverage
+        run: npm --workspace=spring-voyage-dashboard run test:coverage
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-coverage
+          path: src/Cvoya.Spring.Web/coverage
+          retention-days: 7
+          if-no-files-found: ignore
+
+  web-e2e:
+    name: E2E web (Playwright smoke)
+    runs-on: ubuntu-latest
+    needs: [changes, web-build]
+    # Skipped in the merge queue: smoke tests run against the artifact
+    # produced by web-build. Their pass/fail is a function of the PR's
+    # own sources, so it stays valid through the queue.
+    if: >
+      github.event_name != 'merge_group' &&
+      (needs.changes.outputs.web == 'true' || needs.changes.outputs.workflows == 'true')
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install workspace dependencies
+        run: npm ci
+
+      # Reuse the artifact from web-build to avoid rebuilding (~30s).
+      - name: Download Next.js build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: web-next-build
+          path: src/Cvoya.Spring.Web/.next
+
+      # Cache Playwright browsers so cold-cache cost is bounded - the
+      # cache key is pinned to the Playwright version so a bump
+      # invalidates and re-downloads cleanly.
+      - name: Resolve Playwright version
+        id: playwright-version
+        working-directory: src/Cvoya.Spring.Web
+        run: |
+          version="$(node -p "require('@playwright/test/package.json').version")"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers (~/.cache/ms-playwright)
+        id: playwright-cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
+
+      - name: Install Playwright browser (Chromium + system deps)
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        working-directory: src/Cvoya.Spring.Web
+        run: npx playwright install --with-deps chromium
+
+      # On a cache hit we still need OS-level deps that aren't cached
+      # by the browser cache key (libnss3, libatk1.0-0, etc.).
+      - name: Install Playwright system deps (cache-hit path)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        working-directory: src/Cvoya.Spring.Web
+        run: npx playwright install-deps chromium
+
+      - name: Run Playwright smoke tests
+        working-directory: src/Cvoya.Spring.Web
+        run: npm run test:e2e
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            src/Cvoya.Spring.Web/playwright-report
+            src/Cvoya.Spring.Web/test-results
+          retention-days: 7
+          if-no-files-found: ignore
+
+  web-lighthouse:
+    name: Lighthouse CI (web)
+    runs-on: ubuntu-latest
+    needs: [changes, web-build]
+    # Skipped in the merge queue: Lighthouse runs against the same
+    # PR-built artifact and is bounded by the assertion thresholds in
+    # src/Cvoya.Spring.Web/lighthouserc.json. Performance runs are
+    # noisy, so the perf threshold is set as a `warn` (informational)
+    # while accessibility stays an `error` gate.
+    if: >
+      github.event_name != 'merge_group' &&
+      (needs.changes.outputs.web == 'true' || needs.changes.outputs.workflows == 'true')
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install workspace dependencies
+        run: npm ci
+
+      - name: Download Next.js build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: web-next-build
+          path: src/Cvoya.Spring.Web/.next
+
+      - name: Install Lighthouse CI
+        run: npm install -g @lhci/cli@^0.15.0
+
+      # Lighthouse spins up `next start` itself (configured in
+      # lighthouserc.json's `startServerCommand`). Pin the API target
+      # to a non-routable host so the dashboard renders shell + skeletons
+      # without depending on a backend (matches the Playwright smoke
+      # contract).
+      - name: Run Lighthouse CI
+        working-directory: src/Cvoya.Spring.Web
+        env:
+          PORT: "3100"
+          SPRING_API_URL: "http://127.0.0.1:65535"
+          NEXT_PUBLIC_API_URL: "http://127.0.0.1:65535"
+        run: lhci autorun --config=lighthouserc.json
+
+      - name: Upload Lighthouse reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-report
+          path: src/Cvoya.Spring.Web/.lighthouseci
+          retention-days: 7
+          if-no-files-found: ignore
 
   python-lint:
     name: Lint Python agents
@@ -509,8 +733,12 @@ jobs:
       - agent-definitions-lint
       - connector-web-lint
       - web-lint
+      - web-knip
+      - web-typecheck
       - web-build
       - web-test
+      - web-e2e
+      - web-lighthouse
       - openapi-drift
       - python-lint
       - python-test
@@ -530,8 +758,12 @@ jobs:
           LINT_RESULT: ${{ needs.agent-definitions-lint.result }}
           CONNECTOR_WEB_RESULT: ${{ needs.connector-web-lint.result }}
           WEB_LINT_RESULT: ${{ needs.web-lint.result }}
+          WEB_KNIP_RESULT: ${{ needs.web-knip.result }}
+          WEB_TYPECHECK_RESULT: ${{ needs.web-typecheck.result }}
           WEB_BUILD_RESULT: ${{ needs.web-build.result }}
           WEB_TEST_RESULT: ${{ needs.web-test.result }}
+          WEB_E2E_RESULT: ${{ needs.web-e2e.result }}
+          WEB_LIGHTHOUSE_RESULT: ${{ needs.web-lighthouse.result }}
           OPENAPI_RESULT: ${{ needs.openapi-drift.result }}
           PYTHON_LINT_RESULT: ${{ needs.python-lint.result }}
           PYTHON_TEST_RESULT: ${{ needs.python-test.result }}
@@ -544,8 +776,12 @@ jobs:
           echo "agent-definitions-lint=$LINT_RESULT"
           echo "connector-web-lint=$CONNECTOR_WEB_RESULT"
           echo "web-lint=$WEB_LINT_RESULT"
+          echo "web-knip=$WEB_KNIP_RESULT"
+          echo "web-typecheck=$WEB_TYPECHECK_RESULT"
           echo "web-build=$WEB_BUILD_RESULT"
           echo "web-test=$WEB_TEST_RESULT"
+          echo "web-e2e=$WEB_E2E_RESULT"
+          echo "web-lighthouse=$WEB_LIGHTHOUSE_RESULT"
           echo "openapi-drift=$OPENAPI_RESULT"
           echo "python-lint=$PYTHON_LINT_RESULT"
           echo "python-test=$PYTHON_TEST_RESULT"
@@ -568,8 +804,12 @@ jobs:
           ok "$LINT_RESULT"            || { echo "::error::agent-definitions-lint failed"; exit 1; }
           ok "$CONNECTOR_WEB_RESULT"   || { echo "::error::connector-web-lint failed"; exit 1; }
           ok "$WEB_LINT_RESULT"        || { echo "::error::web-lint failed"; exit 1; }
+          ok "$WEB_KNIP_RESULT"        || { echo "::error::web-knip failed"; exit 1; }
+          ok "$WEB_TYPECHECK_RESULT"   || { echo "::error::web-typecheck failed"; exit 1; }
           ok "$WEB_BUILD_RESULT"       || { echo "::error::web-build failed"; exit 1; }
           ok "$WEB_TEST_RESULT"        || { echo "::error::web-test failed"; exit 1; }
+          ok "$WEB_E2E_RESULT"         || { echo "::error::web-e2e failed"; exit 1; }
+          ok "$WEB_LIGHTHOUSE_RESULT"  || { echo "::error::web-lighthouse failed"; exit 1; }
           ok "$OPENAPI_RESULT"         || { echo "::error::openapi-drift failed"; exit 1; }
           ok "$PYTHON_LINT_RESULT"    || { echo "::error::python-lint failed"; exit 1; }
           ok "$PYTHON_TEST_RESULT"    || { echo "::error::python-test failed"; exit 1; }

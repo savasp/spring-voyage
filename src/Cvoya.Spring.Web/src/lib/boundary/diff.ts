@@ -15,8 +15,6 @@ import type {
   UnitBoundaryResponse,
 } from "@/lib/api/types";
 
-export type RuleKind = "opacity" | "projection" | "synthesis";
-
 /** Single-line identity for one rule. Stable across null/"(any)" framing. */
 function opacityKey(rule: BoundaryOpacityRuleDto): string {
   return `domain=${rule.domainPattern ?? ""}|origin=${rule.originPattern ?? ""}`;

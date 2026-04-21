@@ -22,7 +22,6 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   createContext,
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -49,17 +48,6 @@ const CommandPaletteContext = createContext<CommandPaletteContextValue | null>(
   null,
 );
 
-/**
- * Hook for consumers (top-bar buttons, onboarding tours, tests) that
- * need to open the palette programmatically.
- */
-export function useCommandPalette(): CommandPaletteContextValue {
-  const ctx = useContext(CommandPaletteContext);
-  if (!ctx) {
-    throw new Error("useCommandPalette must be used within CommandPaletteProvider");
-  }
-  return ctx;
-}
 
 // ---------------------------------------------------------------------------
 // Provider + mounted palette
