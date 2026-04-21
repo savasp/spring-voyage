@@ -23,6 +23,30 @@ import type { NextConfig } from "next";
 // package's `web/` directory, so the registry imports stay symbolic.
 const monorepoRoot = path.resolve(__dirname, "..", "..");
 
+// Server-side proxy target for `/api/v1/*` and the activity SSE
+// stream when the dashboard is running standalone (e.g. `npm run dev`,
+// or the OSS Docker image). The browser keeps issuing same-origin
+// requests, and Next.js rewrites them to the platform API.
+//
+// Resolution order:
+//   1. SPRING_API_URL — server-side override, the same env var the
+//      activity SSE proxy already honours.
+//   2. NEXT_PUBLIC_API_URL — when the operator already pinned the
+//      browser-side base, use that as the rewrite target too so dev
+//      and prod stay consistent.
+//   3. http://localhost:5000 — the documented `dotnet run` default
+//      from the platform API host.
+//
+// Production deployments that put both the dashboard and the API
+// behind the same reverse proxy don't hit these rewrites — the proxy
+// terminates `/api/v1/*` before Next.js sees it. The fallback exists
+// so a fresh `npm run dev` against a locally running API "just works"
+// without requiring the operator to remember `NEXT_PUBLIC_API_URL`.
+const apiProxyTarget =
+  process.env.SPRING_API_URL ??
+  process.env.NEXT_PUBLIC_API_URL ??
+  "http://localhost:5000";
+
 const nextConfig: NextConfig = {
   output: "standalone",
   outputFileTracingRoot: monorepoRoot,
@@ -41,6 +65,15 @@ const nextConfig: NextConfig = {
         source: "/budgets",
         destination: "/analytics/costs",
         permanent: true,
+      },
+    ];
+  },
+
+  async rewrites() {
+    return [
+      {
+        source: "/api/v1/:path*",
+        destination: `${apiProxyTarget}/api/v1/:path*`,
       },
     ];
   },
