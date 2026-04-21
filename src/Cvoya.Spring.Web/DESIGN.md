@@ -483,6 +483,16 @@ Editors that resolve a blank value to a parent default at save time carry a reus
 
 The card header carries an `Inherits` outline badge when no own declarations exist, flipping to a solid `Configured` badge once any override is persisted.
 
+### 12.7 Validation panel — `src/components/units/detail/validation-panel.tsx`
+
+Lives on `/units/[name]` above the facts card and only renders when validation is the operator's current concern. The panel mirrors the backend's three observable outcomes (driven by `UnitValidationWorkflow` via `POST /api/v1/units/{name}/revalidate`); it is hidden for `Running` / `Starting` / `Stopping` / `Draft`.
+
+- **`Validating`** — `<Card>` with a four-step ordered checklist: `PullingImage → VerifyingTool → ValidatingCredential → ResolvingModel`. Each step carries one of three visual states — done (check glyph in an `emerald-500/40` bordered circle, the Success banner palette), active (spinner via `Loader2` with `animate-spin` on a `border-primary/50 bg-primary/10` circle), and future (muted, `border-border bg-muted text-muted-foreground`). The current step also renders an "in progress" label. Progression is driven by `ValidationProgress` SSE events that the panel taps via a filtered `useActivityStream`; the server only persists terminal state to the unit row, so the spinner advances from the stream rather than the query.
+- **`Error`** — a destructive-palette alert block (`rounded-md border border-destructive/50 bg-destructive/10 px-3 py-3 text-sm text-foreground`, `role="alert"`, `AlertTriangle` in `text-destructive`) with the failed step name, stable error `code`, and friendly operator copy from a per-code map — never the raw C# exception text. `lastValidationRunId` is shown as muted small text for log correlation. Two actions below: **Retry validation** (outline button + `RefreshCw`) and **Edit credential & retry** (outline button + `KeyRound`). Clicking Edit reveals an inline credential editor (`<Input type="password">` + Save / Cancel); Save runs the two-call sequence `createUnitSecret → revalidateUnit` — no combined endpoint, per T-00 topic 6.
+- **`Stopped`** — Success banner palette ("Last validation succeeded. The unit is ready to start.") plus a **Revalidate** outline button (`RefreshCw`). POSTs `/revalidate` (the endpoint accepts `Stopped` per T-05).
+
+Tokens: the panel reuses the Success (§12.4) and destructive palettes plus the step-circle colours already on the token list — it does not introduce any new ones. All copy lives in a single `VALIDATION_COPY` map so i18n is a localised change later.
+
 ---
 
 ## 13. Icons, layout primitives, and spacing

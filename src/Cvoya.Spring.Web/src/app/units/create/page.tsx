@@ -17,6 +17,12 @@ import {
   Rocket,
   Sparkles,
 } from "lucide-react";
+// Note: unit validation is now backend-side (T-02/T-04). The wizard no
+// longer tries to reach an LLM from the browser to check the key —
+// POST /api/v1/units returns 201 immediately and the backend workflow
+// drives `Draft → Validating → {Stopped | Error}`. The detail page's
+// Validation panel (T-07) surfaces progress + structured errors via
+// SSE. See GitHub issue #949.
 
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import { Button } from "@/components/ui/button";
@@ -378,8 +384,21 @@ export default function CreateUnitPage() {
     }
     return getToolRuntimeId(form.tool);
   }, [form.tool, form.provider]);
+  // Only query the runtime's model catalog when that runtime is
+  // actually installed on the tenant — otherwise the wizard surfaces
+  // the "no configured agent runtimes" banner, and firing the model
+  // fetch would return data for a runtime the platform can't dispatch
+  // to. T-07 (#949): with wizard-time credential validation gone, this
+  // gate is what keeps the Model dropdown — and therefore Next —
+  // disabled when the platform has no matching runtime.
+  const activeRuntimeInstalled = useMemo<boolean>(() => {
+    if (activeRuntimeId === null) return false;
+    return agentRuntimes.some(
+      (r) => r.id.toLowerCase() === activeRuntimeId.toLowerCase(),
+    );
+  }, [activeRuntimeId, agentRuntimes]);
   const agentRuntimeModelsQuery = useAgentRuntimeModels(activeRuntimeId ?? "", {
-    enabled: activeRuntimeId !== null,
+    enabled: activeRuntimeId !== null && activeRuntimeInstalled,
   });
   const providerModels =
     agentRuntimeModelsQuery.data?.map((m) => m.id) ?? null;
@@ -463,186 +482,25 @@ export default function CreateUnitPage() {
   );
   const credentialStatus = credentialStatusQuery.data ?? null;
 
-  // #655: wizard-time credential validation. The operator types a key
-  // into the CredentialSection; clicking Validate POSTs it to the
-  // provider via the server-side validator. On success the returned
-  // model ids seed the Model dropdown so the operator picks from
-  // whatever their account actually supports, not a stale static list.
-  // `validatedKey` + `validatedProvider` pin the verdict to the exact
-  // input that produced it — any subsequent edit invalidates the
-  // verdict and re-shows the Validate button.
-  type CredentialValidationState = {
-    status: "idle" | "validating" | "valid" | "invalid";
-    error: string | null;
-    models: string[] | null;
-    validatedKey: string | null;
-    validatedProvider: string | null;
-  };
-  const [credentialValidation, setCredentialValidation] =
-    useState<CredentialValidationState>({
-      status: "idle",
-      error: null,
-      models: null,
-      validatedKey: null,
-      validatedProvider: null,
-    });
-
-  // Any edit to the key (or switching tool/provider so a different
-  // credential is required) invalidates a prior verdict. Rather than
-  // sync it via a setState-in-effect (flagged by
-  // react-hooks/set-state-in-effect as a cascading-render smell), we
-  // derive the effective status/error below: when the stored verdict
-  // does not match the current inputs, treat it as `"idle"` and hide
-  // any stale error. The raw `credentialValidation` state is still the
-  // source of truth for the mutation callbacks.
-  const effectiveValidation = useMemo<{
-    status: "idle" | "validating" | "valid" | "invalid";
-    error: string | null;
-  }>(() => {
-    if (credentialValidation.status === "idle") {
-      return { status: "idle", error: null };
-    }
-    if (credentialValidation.status === "validating") {
-      return { status: "validating", error: null };
-    }
-    const trimmed = form.credentialKey.trim();
-    const matchesCurrent =
-      credentialValidation.validatedKey === trimmed &&
-      credentialValidation.validatedProvider === requiredCredentialProvider;
-    if (!matchesCurrent) {
-      return { status: "idle", error: null };
-    }
-    return {
-      status: credentialValidation.status,
-      error: credentialValidation.error,
-    };
-  }, [credentialValidation, form.credentialKey, requiredCredentialProvider]);
-
-  // Auto-validation is triggered from `handleNext` — there is no
-  // standalone Validate button on the wizard. We use `mutateAsync` so
-  // the Next handler can await the outcome and keep/advance the step
-  // based on the verdict. #690: validation routes through the
-  // per-runtime `/api/v1/agent-runtimes/{id}/validate-credential`
-  // endpoint rather than the legacy `/system/credentials/*` path.
-  const validateCredential = useMutation({
-    mutationFn: async () => {
-      if (requiredCredentialRuntime === null) {
-        throw new Error("No credential required for this selection.");
-      }
-      const trimmed = form.credentialKey.trim();
-      if (!trimmed) {
-        throw new Error("Enter an API key to validate.");
-      }
-      return await api.validateAgentRuntimeCredential(
-        requiredCredentialRuntime.id,
-        trimmed,
-      );
-    },
-    onMutate: () => {
-      setCredentialValidation((prev) => ({
-        ...prev,
-        status: "validating",
-        error: null,
-      }));
-    },
-    onSuccess: (result) => {
-      const trimmed = form.credentialKey.trim();
-      setCredentialValidation({
-        status: result.valid ? "valid" : "invalid",
-        error: result.valid ? null : (result.errorMessage ?? "Validation failed."),
-        // The new endpoint doesn't return a model list; the wizard
-        // reads models from GET /agent-runtimes/{id}/models instead.
-        models: null,
-        validatedKey: trimmed,
-        validatedProvider: requiredCredentialProvider,
-      });
-    },
-    onError: (err) => {
-      const message = err instanceof Error ? err.message : String(err);
-      setCredentialValidation((prev) => ({
-        ...prev,
-        status: "invalid",
-        error: message,
-      }));
-    },
-  });
-
-  // True when the currently-typed key has a fresh, successful verdict
-  // attached. The Model dropdown gate below reads this.
-  const credentialValidated = useMemo(() => {
-    if (credentialValidation.status !== "valid") return false;
-    const trimmed = form.credentialKey.trim();
-    return (
-      credentialValidation.validatedKey === trimmed &&
-      credentialValidation.validatedProvider === requiredCredentialProvider
-    );
-  }, [credentialValidation, form.credentialKey, requiredCredentialProvider]);
-
-  // #655: auto-validate on blur. The input's onBlur calls this; it
-  // deduplicates "same key already validated" and "validation in
-  // flight" so paste-then-click-next doesn't fire two requests. Parent-
-  // level so the CredentialSection stays unaware of the staleness
-  // rules.
-  const attemptValidateCredential = useCallback(() => {
-    if (requiredCredentialProvider === null) return;
-    const trimmed = form.credentialKey.trim();
-    if (trimmed.length === 0) return;
-    if (validateCredential.isPending) return;
-    if (
-      credentialValidation.status === "valid" &&
-      credentialValidation.validatedKey === trimmed &&
-      credentialValidation.validatedProvider === requiredCredentialProvider
-    ) {
-      return;
-    }
-    validateCredential.mutate();
-  }, [
-    requiredCredentialProvider,
-    form.credentialKey,
-    credentialValidation.status,
-    credentialValidation.validatedKey,
-    credentialValidation.validatedProvider,
-    validateCredential,
-  ]);
-
-  // Model dropdown visibility (#655 / #690). We only show the dropdown
-  // when there is a live model source:
-  //   - Ollama (dapr-agent + ollama) — rendered regardless (reachability
-  //     banner handles failures; the dropdown is populated from
-  //     ollamaModels or blank during discovery).
-  //   - Tenant/unit credential is resolvable — `providerModels` was
-  //     fetched with that credential, so the list is live.
-  //   - The operator just successfully validated a key against
-  //     /api/v1/agent-runtimes/{id}/validate-credential — the runtime's
-  //     configured model catalog is the live source.
+  // T-07 (#949): host-side credential validation in the wizard is gone
+  // — `POST /api/v1/units` returns 201 immediately and the backend
+  // workflow drives validation. The wizard only persists the key; the
+  // detail page's Validation panel reports whether the backend accepted
+  // it. The Model dropdown always renders against the agent-runtime
+  // catalog so Next is never gated on a live reach-out to the LLM.
   const isOllamaDapr =
     form.tool === "dapr-agent" && form.provider === "ollama";
-  const tenantOrUnitResolvable = credentialStatus?.resolvable === true;
   const activeModelList: readonly string[] | null = useMemo(() => {
     if (isOllamaDapr) return ollamaModels;
-    if (
-      (tenantOrUnitResolvable || credentialValidated) &&
-      providerModels &&
-      providerModels.length > 0
-    ) {
-      return providerModels;
-    }
+    if (providerModels && providerModels.length > 0) return providerModels;
     return null;
-  }, [
-    isOllamaDapr,
-    ollamaModels,
-    tenantOrUnitResolvable,
-    credentialValidated,
-    providerModels,
-  ]);
+  }, [isOllamaDapr, ollamaModels, providerModels]);
   const showModelDropdown = isOllamaDapr || activeModelList !== null;
 
   // Issue #661: Next on the Execution screen is disabled until a model
-  // is selected from a live source. When the Model dropdown is hidden
-  // (no resolvable credential, no fresh validation, not an Ollama-dapr
-  // path) nothing can be "selected" — so we force-fail the gate.
-  // `form.tool === "custom"` is handled as a separate escape hatch by
-  // `canGoNext` / `validateStep2`; they bypass this check entirely.
+  // is selected from the catalog. `form.tool === "custom"` is handled
+  // as a separate escape hatch by `canGoNext` / `validateStep2`; they
+  // bypass this check entirely.
   const modelIsSelected =
     activeModelList !== null &&
     form.model.trim().length > 0 &&
@@ -698,7 +556,7 @@ export default function CreateUnitPage() {
     return null;
   };
 
-  const handleNext = async () => {
+  const handleNext = () => {
     setStepError(null);
     if (step === 1) {
       const err = validateStep1();
@@ -708,42 +566,9 @@ export default function CreateUnitPage() {
       }
     }
     if (step === 2) {
-      // #655: when a credential has been typed we gate advance on its
-      // live-verified validity. Blur-driven validation typically kicks
-      // off on its own; the cases handleNext covers:
-      //   - validation is still in flight (operator pasted and
-      //     clicked Next before the blur's request returned) → stay
-      //     on Step 2; Next disables via canGoNext until the mutation
-      //     settles.
-      //   - validation already failed for this key → stay on Step 2
-      //     so the inline error is visible and the operator can edit.
-      //   - no verdict yet ("idle", e.g. the operator never blurred
-      //     the input) → fire the validation now and await the result.
-      //   - validation already succeeded for this exact key → fall
-      //     through and advance.
-      if (
-        requiredCredentialProvider !== null &&
-        form.credentialKey.trim().length > 0
-      ) {
-        if (validateCredential.isPending) return;
-        if (effectiveValidation.status === "invalid") return;
-        if (effectiveValidation.status === "idle") {
-          try {
-            const result = await validateCredential.mutateAsync();
-            if (!result.valid) return;
-            // Validation succeeded: the mutation's onSuccess has
-            // seeded the model from the server-returned catalog, but
-            // the state update hasn't propagated into this closure
-            // yet. Advancing directly is safe — we just confirmed the
-            // credential works and the model-seed happened on the
-            // react tree we're about to advance from.
-            if (step < 6) setStep((s) => (s + 1) as Step);
-            return;
-          } catch {
-            return;
-          }
-        }
-      }
+      // T-07 (#949): no host-side credential validation here — the
+      // backend validates during `Validating`. We only require a
+      // selected model (or a custom tool, which skips the gate).
       const err = validateStep2();
       if (err) {
         setStepError(err);
@@ -1086,12 +911,9 @@ export default function CreateUnitPage() {
       return true;
     }
     if (step === 2) {
-      // Execution step. #655: credential validation is kicked off from
-      // `handleNext` when the operator advances, not from a standalone
-      // button. Disable Next only while a validation is actually in
-      // flight so the user can't fire a second call on top of the
-      // first; the Next handler re-checks the verdict before advancing.
-      if (validateCredential.isPending) return false;
+      // Execution step. T-07 (#949): no wizard-time credential
+      // validation — the backend validates asynchronously after create
+      // and the detail page's Validation panel reports the result.
       // Issue #661: require a selected model before advancing (for
       // tools with a known catalog). Custom tools skip the check —
       // they have no declared model list.
@@ -1112,30 +934,19 @@ export default function CreateUnitPage() {
       return form.connectorConfig !== null;
     }
     return true;
-  }, [
-    step,
-    form,
-    validateCredential.isPending,
-    isOllamaDapr,
-    ollamaModelsLoading,
-    modelIsSelected,
-  ]);
+  }, [step, form, isOllamaDapr, ollamaModelsLoading, modelIsSelected]);
 
-  // Issue #927-followup: explain *why* Next is disabled on Step 2.
-  // Without this hint the wizard can dead-end silently — the
-  // CredentialSection / Model dropdown only render when the
-  // agent-runtimes catalog returns a matching runtime, so an
-  // unreachable platform API or an uninstalled runtime collapses the
-  // whole credential+model surface and leaves the operator staring at
-  // a disabled button with no way to diagnose. We surface the most
-  // specific actionable reason, in priority order, mirroring the gates
-  // that `canGoNext` and `validateStep2` consult.
+  // Issue #927-followup (post-T-07): explain *why* Next is disabled on
+  // Step 2. Without this hint the wizard can dead-end silently — the
+  // Model dropdown only renders when the agent-runtimes catalog returns
+  // a matching runtime, so an unreachable platform API or an
+  // uninstalled runtime collapses the model surface and leaves the
+  // operator staring at a disabled button with no way to diagnose. We
+  // surface the most specific actionable reason, in priority order,
+  // mirroring the gates `canGoNext` / `validateStep2` consult.
   const nextDisabledReason = useMemo<string | null>(() => {
     if (step !== 2) return null;
     if (canGoNext) return null;
-    if (validateCredential.isPending) {
-      return "Validating the API key with the provider…";
-    }
     if (form.tool === "custom") return null;
     if (agentRuntimesQuery.isPending) {
       return "Loading the agent-runtime catalog…";
@@ -1157,30 +968,8 @@ export default function CreateUnitPage() {
     if (isOllamaDapr && ollamaModelsLoading) {
       return "Loading the model list from the Ollama server…";
     }
-    if (requiredCredentialProvider !== null) {
-      const providerName = providerLabel(requiredCredentialProvider);
-      const trimmedKey = form.credentialKey.trim();
-      if (
-        trimmedKey.length === 0 &&
-        credentialStatus?.resolvable !== true
-      ) {
-        return `Enter a ${providerName} API key — the model list is loaded from your account once the key is validated.`;
-      }
-      if (effectiveValidation.status === "invalid") {
-        return (
-          effectiveValidation.error ??
-          `${providerName} rejected the API key. Edit the key and re-try.`
-        );
-      }
-      if (
-        trimmedKey.length > 0 &&
-        effectiveValidation.status === "idle"
-      ) {
-        return `Tab out of the ${providerName} API key field (or click Next) to validate it before continuing.`;
-      }
-    }
     if (!showModelDropdown) {
-      return "A live model list isn't available yet — provide a valid API key (or wait for the catalog probe to finish) so the Model dropdown can render.";
+      return "No model catalog is available yet — wait for the catalog to load, or pick a different execution tool.";
     }
     if (!modelIsSelected) {
       return "Select a model from the dropdown to continue.";
@@ -1189,18 +978,12 @@ export default function CreateUnitPage() {
   }, [
     step,
     canGoNext,
-    validateCredential.isPending,
     form.tool,
     form.provider,
-    form.credentialKey,
     agentRuntimesQuery.isPending,
     agentRuntimesQuery.isError,
     agentRuntimes.length,
     requiredCredentialRuntime,
-    requiredCredentialProvider,
-    credentialStatus?.resolvable,
-    effectiveValidation.status,
-    effectiveValidation.error,
     isOllamaDapr,
     ollamaModelsLoading,
     showModelDropdown,
@@ -1431,10 +1214,6 @@ export default function CreateUnitPage() {
                 saveAsTenantDefault={form.saveAsTenantDefault}
                 overrideOpen={form.credentialOverrideOpen}
                 ollamaProbe={null}
-                validationStatus={effectiveValidation.status}
-                validationError={effectiveValidation.error}
-                validationPassed={credentialValidated}
-                onValidate={attemptValidateCredential}
                 onKeyChange={(v) => update("credentialKey", v)}
                 onToggleSaveAsTenantDefault={(v) =>
                   update("saveAsTenantDefault", v)
@@ -2097,15 +1876,8 @@ export default function CreateUnitPage() {
                   {nextDisabledReason}
                 </p>
               )}
-              <Button
-                onClick={() => {
-                  void handleNext();
-                }}
-                disabled={!canGoNext}
-              >
-                {step === 2 && validateCredential.isPending
-                  ? "Validating…"
-                  : "Next"}
+              <Button onClick={handleNext} disabled={!canGoNext}>
+                Next
               </Button>
             </div>
           )}
@@ -2217,24 +1989,6 @@ interface CredentialSectionProps {
   ollamaProbe:
     | import("@/lib/api/types").ProviderCredentialStatusResponse
     | null;
-  // #655: wizard-time credential validation. The verdict is surfaced
-  // inline; validation itself fires from the input's `onBlur` (the
-  // operator types a key, tabs or clicks away, and the wizard posts
-  // the key to the provider). There is no manual Validate button.
-  //   - `validationStatus`: lifecycle of the validate mutation for the
-  //     current key. `"idle"` is the resting state; `"validating"` is
-  //     in flight; `"valid"` / `"invalid"` reflect the provider verdict.
-  //   - `validationError`: operator-facing message from the server on
-  //     failure. Rendered inline under the input.
-  //   - `validationPassed`: convenience flag that pins the "valid"
-  //     verdict to the exact typed key + provider pair; stale passes
-  //     (key edited after a previous validation) do not advance.
-  //   - `onValidate`: invoked from the input's `onBlur`. The parent is
-  //     responsible for skipping duplicate / in-flight requests.
-  validationStatus: "idle" | "validating" | "valid" | "invalid";
-  validationError: string | null;
-  validationPassed: boolean;
-  onValidate: () => void;
   onKeyChange: (value: string) => void;
   onToggleSaveAsTenantDefault: (value: boolean) => void;
   onToggleOverride: (value: boolean) => void;
@@ -2250,10 +2004,6 @@ function CredentialSection(props: CredentialSectionProps) {
     saveAsTenantDefault,
     overrideOpen,
     ollamaProbe,
-    validationStatus,
-    validationError,
-    validationPassed,
-    onValidate,
     onKeyChange,
     onToggleSaveAsTenantDefault,
     onToggleOverride,
@@ -2324,10 +2074,6 @@ function CredentialSection(props: CredentialSectionProps) {
               onKeyChange={onKeyChange}
               onToggleSaveAsTenantDefault={onToggleSaveAsTenantDefault}
               tenantToggleLabel={`Overwrite the tenant default for all future units using ${displayName}.`}
-              validationStatus={validationStatus}
-              validationError={validationError}
-              validationPassed={validationPassed}
-              onValidate={onValidate}
             />
             <button
               type="button"
@@ -2368,10 +2114,6 @@ function CredentialSection(props: CredentialSectionProps) {
         onKeyChange={onKeyChange}
         onToggleSaveAsTenantDefault={onToggleSaveAsTenantDefault}
         tenantToggleLabel={`Use this key as the default for all future units using ${displayName}.`}
-        validationStatus={validationStatus}
-        validationError={validationError}
-        validationPassed={validationPassed}
-        onValidate={onValidate}
       />
     </div>
   );
@@ -2397,10 +2139,6 @@ function CredentialInputControls({
   onKeyChange,
   onToggleSaveAsTenantDefault,
   tenantToggleLabel,
-  validationStatus,
-  validationError,
-  validationPassed,
-  onValidate,
 }: {
   provider: "anthropic" | "openai" | "google";
   credentialKey: string;
@@ -2408,10 +2146,6 @@ function CredentialInputControls({
   onKeyChange: (value: string) => void;
   onToggleSaveAsTenantDefault: (value: boolean) => void;
   tenantToggleLabel: string;
-  validationStatus: "idle" | "validating" | "valid" | "invalid";
-  validationError: string | null;
-  validationPassed: boolean;
-  onValidate: () => void;
 }) {
   const [show, setShow] = useState(false);
   const inputId = `credential-key-${provider}`;
@@ -2461,7 +2195,6 @@ function CredentialInputControls({
             type={inputType}
             value={credentialKey}
             onChange={(e) => onKeyChange(e.target.value)}
-            onBlur={onValidate}
             placeholder={fieldPlaceholder}
             autoComplete="off"
             spellCheck={false}
@@ -2503,43 +2236,12 @@ function CredentialInputControls({
       )}
 
       {/*
-        #655: validation runs automatically on input blur — no manual
-        button. We still surface the verdict inline so the wizard
-        explains why Next stayed on this step (failure) or why the
-        Model dropdown suddenly changed (success).
+        T-07 (#949): the wizard no longer validates the key against the
+        LLM. The backend runs validation after the unit is created and
+        the detail-page Validation panel reports the outcome. So this
+        section only collects + persists the key — there is no inline
+        verdict here anymore.
       */}
-      {validationStatus === "validating" && (
-        <p
-          role="status"
-          data-testid="credential-validation-in-flight"
-          className="text-xs text-muted-foreground"
-        >
-          Validating {displayName} API key…
-        </p>
-      )}
-      {validationPassed && (
-        <p
-          role="status"
-          data-testid="credential-validation-success"
-          className="flex items-start gap-1.5 text-xs text-emerald-700 dark:text-emerald-300"
-        >
-          <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
-          <span>
-            {displayName} accepted the key. Model list refreshed from your
-            account.
-          </span>
-        </p>
-      )}
-      {validationStatus === "invalid" && validationError && (
-        <p
-          role="alert"
-          data-testid="credential-validation-error"
-          className="flex items-start gap-1.5 text-xs text-destructive"
-        >
-          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
-          <span>{validationError}</span>
-        </p>
-      )}
 
       <label
         htmlFor={toggleId}

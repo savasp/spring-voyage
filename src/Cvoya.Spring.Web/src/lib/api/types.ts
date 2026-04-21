@@ -87,6 +87,23 @@ export type AgentSkillsResponse = Schemas["AgentSkillsResponse"];
 /** Matches Cvoya.Spring.Core.Units.UnitStatus enum. */
 export type UnitStatus = Schemas["UnitStatus"];
 
+/**
+ * Structured error surfaced on `UnitResponse.lastValidationError` after the
+ * backend UnitValidationWorkflow ends in `Error`. Carries the step that
+ * failed (`PullingImage` / `VerifyingTool` / `ValidatingCredential` /
+ * `ResolvingModel`), a stable code from `UnitValidationCodes`, an
+ * operator-facing message, and optional details. The T-07 Validation
+ * panel branches on `code` to render friendly remediation copy.
+ */
+export type UnitValidationError = Schemas["UnitValidationError"];
+
+/**
+ * One of four probe steps emitted by the backend UnitValidationWorkflow
+ * (T-04). Order mirrors the workflow: `PullingImage → VerifyingTool →
+ * ValidatingCredential → ResolvingModel`.
+ */
+export type UnitValidationStep = Schemas["UnitValidationStep"];
+
 /** GET /api/v1/units/{id} response envelope. */
 export type UnitResponse = Schemas["UnitResponse"];
 
@@ -572,7 +589,14 @@ export type ActivityEventType =
   | "ReflectionCompleted"
   | "WorkflowStepCompleted"
   | "CostIncurred"
-  | "TokenDelta";
+  | "TokenDelta"
+  // T-04 (#946): per-step lifecycle updates from the backend
+  // UnitValidationWorkflow. `source` is the unit's `unit://<name>`
+  // address; `details` carries `{ step, status, code? }` where `step`
+  // is one of `UnitValidationStep` and `status` is "Running" |
+  // "Succeeded" | "Failed". The T-07 Validation panel reads this live
+  // to animate the step checklist.
+  | "ValidationProgress";
 
 /** Severity ladder for an activity event; SSE-only. */
 export type ActivitySeverity = "Debug" | "Info" | "Warning" | "Error";

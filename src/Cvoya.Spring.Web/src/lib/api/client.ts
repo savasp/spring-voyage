@@ -1144,10 +1144,11 @@ export const api = {
   // Tenant-installed agent runtimes (#690). Feeds the unit-creation
   // wizard's provider + model dropdowns: the wizard reads the available
   // runtimes from this endpoint, then per-runtime models from
-  // `getAgentRuntimeModels`, and validates caller-supplied credentials
-  // via `validateAgentRuntimeCredential`. The old `listProviderModels` +
-  // `validateProviderCredential` endpoints were retired along with the
-  // hardcoded provider tables.
+  // `getAgentRuntimeModels`. Host-side credential validation was retired
+  // in T-03 (#945) and the transitional stub `validateAgentRuntimeCredential`
+  // was removed in T-07 (#949) — validation now runs as a backend Dapr
+  // workflow and the outcome is reported through the detail-page
+  // Validation panel via SSE + the unit's `lastValidationError`.
   listAgentRuntimes: async (): Promise<
     import("./types").InstalledAgentRuntimeResponse[]
   > =>
@@ -1162,22 +1163,19 @@ export const api = {
       }),
     ) as import("./types").AgentRuntimeModelResponse[],
 
-  // T-03 (#945) retired the host-side `/validate-credential` endpoint;
-  // per-unit validation now runs as a backend Dapr workflow against the
-  // unit's container image (see UnitValidationWorkflow). The wizard still
-  // has a blur-time "validate" affordance wired to this function — we
-  // short-circuit to a success verdict so the UI doesn't block accepting
-  // the key. T-07 will remove this call site entirely and redesign the
-  // wizard around the backend verdict.
-  validateAgentRuntimeCredential: async (
-    _id: string,
-    _credential: string,
-    _secretName = "api-key",
-  ): Promise<import("./types").CredentialValidateResponse> => ({
-    valid: true,
-    status: "Valid",
-    errorMessage: null,
-  }) as unknown as import("./types").CredentialValidateResponse,
+  // T-05 (#947): re-run backend validation for a unit that's in
+  // `Error` or `Stopped`. POST is fire-and-forget — the workflow
+  // transitions the unit into `Validating` and the detail page
+  // observes progress via `ValidationProgress` SSE events. Returns
+  // 202 on success; a 409 from `Running / Starting / Stopping / Draft`
+  // is bubbled as an ApiError by `assertOk`.
+  revalidateUnit: async (id: string): Promise<void> => {
+    assertOk(
+      await fetchClient.POST("/api/v1/units/{id}/revalidate", {
+        params: { path: { id } },
+      }),
+    );
+  },
 
   // Credential health (#691). Read-only inspection of the persistent
   // credential status the watchdog + accept-time validation write to. The

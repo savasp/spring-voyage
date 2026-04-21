@@ -15,10 +15,12 @@
  *     filter short-circuits anything else so unrelated events do not
  *     thrash this page's caches.
  *
- * Deliberately NOT in scope (deferred to T-07):
- *   - Validation panel rendering `LastValidationErrorJson`.
- *   - Retry / revalidate button.
- *   - Inline credential edit.
+ * T-07 (issue #949) layers the Validation panel on top: the panel
+ * reads the unit envelope + live `ValidationProgress` events to render
+ * the Validating checklist, the Error block with structured
+ * remediation copy, and the Stopped summary + Revalidate button. The
+ * panel renders above the facts card so validation is the first thing
+ * an operator sees when it's the current concern.
  *
  * Status badge: reuses the variant palette introduced by `UnitCard`
  * (`src/components/cards/unit-card.tsx`) inline — no shared status-badge
@@ -37,6 +39,7 @@ import { useUnit, useUnitExecution } from "@/lib/api/queries";
 import { useActivityStream } from "@/lib/stream/use-activity-stream";
 import type { UnitStatus } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
+import ValidationPanel from "./validation-panel";
 
 interface Props {
   name: string;
@@ -208,6 +211,8 @@ export default function UnitDetailClient({ name }: Props) {
           </p>
         </div>
       </header>
+
+      <ValidationPanel unit={unit} image={image} runtime={runtime} />
 
       <Card>
         <CardHeader>
