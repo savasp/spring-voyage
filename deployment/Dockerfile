@@ -86,8 +86,16 @@ COPY --from=dotnet-build /publish/cli/    /app/cli/
 # Copy Next.js standalone output. With outputFileTracingRoot pinned to the
 # monorepo root, the standalone tree mirrors the workspace layout — the
 # server entrypoint is at /app/web/src/Cvoya.Spring.Web/server.js.
+#
+# `next build` deliberately omits `public/` from the standalone tree
+# (see https://nextjs.org/docs/app/api-reference/config/next-config-js/output#automatically-copying-traced-files),
+# so without an explicit COPY the brand-mark PNGs under `public/brand/`
+# return 404 in containerized deploys and the sidebar header renders a
+# broken image. Mirror the workspace layout so `server.js` resolves
+# `public/` next to itself, the same way `next start` would.
 COPY --from=web-build /build/src/Cvoya.Spring.Web/.next/standalone /app/web/
 COPY --from=web-build /build/src/Cvoya.Spring.Web/.next/static     /app/web/src/Cvoya.Spring.Web/.next/static
+COPY --from=web-build /build/src/Cvoya.Spring.Web/public           /app/web/src/Cvoya.Spring.Web/public
 
 # Copy Dapr component YAML and Dapr Configuration for both the local and
 # production profiles. Sidecars select a profile via `--resources-path`
