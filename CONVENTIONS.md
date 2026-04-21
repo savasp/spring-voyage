@@ -349,7 +349,7 @@ Every user-facing feature must ship through BOTH the web portal UI and the `spri
 
 **Exceptions:** admin/ops operations that are genuinely dev-only (e.g., `dotnet ef migrations add`) don't need a UI counterpart. Internal test affordances are also out of scope.
 
-**Admin/operator carve-out (OSS only, per #693 / #674).** A set of operational surfaces — agent-runtime config, connector config, credential health, tenant seeds, skill-bundle bindings — are CLI-only by design. See [`AGENTS.md` § "Admin surfaces (CLI-only) — relaxation of the parity rule"](AGENTS.md#admin-surfaces-cli-only--relaxation-of-the-parity-rule) for the authoritative roster; the list there is the one to update when a new admin surface lands. User-facing features remain strictly parity-bound.
+**Admin/operator carve-out (OSS only, per #693 / #674).** A set of operational surfaces — agent-runtime config, connector config, credential health, tenant seeds, skill-bundle bindings — are CLI-only by design. Under the v2 IA (umbrella #815 § 2) the read-only portal views for these surfaces live inside the regular IA at `/settings/agent-runtimes` and `/connectors?tab=health`; the retired `/admin/*` top-level routes no longer exist. See [`AGENTS.md` § "Admin surfaces (CLI-only) — relaxation of the parity rule"](AGENTS.md#admin-surfaces-cli-only--relaxation-of-the-parity-rule) for the authoritative roster; the list there is the one to update when a new admin surface lands. User-facing features remain strictly parity-bound.
 
 ## 15. Skill-Bundle Tenant Binding
 
