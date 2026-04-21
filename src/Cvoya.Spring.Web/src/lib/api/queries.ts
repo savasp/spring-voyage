@@ -182,45 +182,6 @@ export function useTenantCostTimeseries(
 // Units
 // ---------------------------------------------------------------------------
 
-export function useUnit(
-  id: string,
-  opts?: SliceOptions<UnitResponse>,
-): UseQueryResult<UnitResponse, Error> {
-  return useQuery({
-    queryKey: queryKeys.units.detail(id),
-    queryFn: () => api.getUnit(id),
-    enabled: opts?.enabled ?? Boolean(id),
-    refetchInterval: opts?.refetchInterval,
-    staleTime: opts?.staleTime,
-  });
-}
-
-export function useUnitDetail(
-  id: string,
-  opts?: SliceOptions<UnitDetailResponse>,
-): UseQueryResult<UnitDetailResponse, Error> {
-  return useQuery({
-    queryKey: queryKeys.units.fullDetail(id),
-    queryFn: () => api.getUnitDetail(id),
-    enabled: opts?.enabled ?? Boolean(id),
-    refetchInterval: opts?.refetchInterval,
-    staleTime: opts?.staleTime,
-  });
-}
-
-export function useUnitReadiness(
-  id: string,
-  opts?: SliceOptions<UnitReadinessResponse>,
-): UseQueryResult<UnitReadinessResponse, Error> {
-  return useQuery({
-    queryKey: queryKeys.units.readiness(id),
-    queryFn: () => api.getUnitReadiness(id),
-    enabled: opts?.enabled ?? Boolean(id),
-    refetchInterval: opts?.refetchInterval,
-    staleTime: opts?.staleTime,
-  });
-}
-
 /**
  * Unified unit policy read covering all five dimensions (skill / model
  * / cost / executionMode / initiative) plus the forthcoming label
@@ -352,32 +313,6 @@ export function useUnitCost(
   });
 }
 
-/**
- * Windowed wrapper around `api.getUnitCost`. Keyed on `(id, from, to)`
- * so the Costs tab on `/units/[id]` (PR-R4, #394) can fan out one call
- * per window (24h / 7d / 30d) without colliding with the default-window
- * `useUnitCost` above.
- */
-export function useUnitCostWindowed(
-  id: string,
-  range: { from: string; to: string },
-  opts?: SliceOptions<CostSummaryResponse | null>,
-): UseQueryResult<CostSummaryResponse | null, Error> {
-  return useQuery({
-    queryKey: [...queryKeys.units.cost(id), range.from, range.to] as const,
-    queryFn: async () => {
-      try {
-        return await api.getUnitCost(id, range);
-      } catch {
-        return null;
-      }
-    },
-    enabled: opts?.enabled ?? Boolean(id),
-    refetchInterval: opts?.refetchInterval,
-    staleTime: opts?.staleTime,
-  });
-}
-
 // ---------------------------------------------------------------------------
 // Agents
 // ---------------------------------------------------------------------------
@@ -476,33 +411,6 @@ export function useAgentCost(
   });
 }
 
-/**
- * Windowed wrapper around `api.getAgentCost`. Keyed on `(id, from, to)`
- * so the cost-over-time card on `/agents/[id]` (PR-R4, #394) can fan
- * out one call per window (24h / 7d / 30d). The API does not expose a
- * time-series today (#569) — the card stacks per-window totals as a
- * best-available placeholder until that endpoint lands.
- */
-export function useAgentCostWindowed(
-  id: string,
-  range: { from: string; to: string },
-  opts?: SliceOptions<CostSummaryResponse | null>,
-): UseQueryResult<CostSummaryResponse | null, Error> {
-  return useQuery({
-    queryKey: [...queryKeys.agents.cost(id), range.from, range.to] as const,
-    queryFn: async () => {
-      try {
-        return await api.getAgentCost(id, range);
-      } catch {
-        return null;
-      }
-    },
-    enabled: opts?.enabled ?? Boolean(id),
-    refetchInterval: opts?.refetchInterval,
-    staleTime: opts?.staleTime,
-  });
-}
-
 export function useAgentClones(
   id: string,
   opts?: SliceOptions<CloneResponse[]>,
@@ -514,47 +422,6 @@ export function useAgentClones(
         return await api.getClones(id);
       } catch {
         return [];
-      }
-    },
-    enabled: opts?.enabled ?? Boolean(id),
-    refetchInterval: opts?.refetchInterval,
-    staleTime: opts?.staleTime,
-  });
-}
-
-export function useAgentBudget(
-  id: string,
-  opts?: SliceOptions<BudgetResponse | null>,
-): UseQueryResult<BudgetResponse | null, Error> {
-  return useQuery({
-    queryKey: queryKeys.agents.budget(id),
-    queryFn: async () => {
-      try {
-        return await api.getAgentBudget(id);
-      } catch {
-        // No budget set yet — surface null instead of an error.
-        return null;
-      }
-    },
-    enabled: opts?.enabled ?? Boolean(id),
-    refetchInterval: opts?.refetchInterval,
-    staleTime: opts?.staleTime,
-  });
-}
-
-export function useAgentInitiativeLevel(
-  id: string,
-  opts?: SliceOptions<InitiativeLevelResponse | null>,
-): UseQueryResult<InitiativeLevelResponse | null, Error> {
-  return useQuery({
-    queryKey: queryKeys.agents.initiativeLevel(id),
-    // Surface null for "level not yet known" so callers don't have to
-    // special-case the first-load failure.
-    queryFn: async () => {
-      try {
-        return await api.getAgentInitiativeLevel(id);
-      } catch {
-        return null;
       }
     },
     enabled: opts?.enabled ?? Boolean(id),
@@ -615,27 +482,6 @@ export function useAgentLogs(
         // Agent exists but no container deployment — the server returns
         // 404 for "not deployed". Surface null so the UI can render a
         // clean "deploy first" state instead of the error boundary.
-        return null;
-      }
-    },
-    enabled: opts?.enabled ?? Boolean(id),
-    refetchInterval: opts?.refetchInterval,
-    staleTime: opts?.staleTime,
-  });
-}
-
-export function useAgentInitiativePolicy(
-  id: string,
-  opts?: SliceOptions<InitiativePolicy | null>,
-): UseQueryResult<InitiativePolicy | null, Error> {
-  return useQuery({
-    queryKey: queryKeys.agents.initiativePolicy(id),
-    queryFn: async () => {
-      try {
-        return (await api.getAgentInitiativePolicy(id)) as InitiativePolicy;
-      } catch {
-        // No policy set yet — surface null rather than throwing so the
-        // UI can render the "use defaults" empty state.
         return null;
       }
     },
@@ -739,33 +585,6 @@ export function useConversations(
     ),
     queryFn: () => api.listConversations(filters),
     ...opts,
-  });
-}
-
-export function useConversation(
-  id: string,
-  opts?: SliceOptions<ConversationDetail | null>,
-): UseQueryResult<ConversationDetail | null, Error> {
-  return useQuery({
-    queryKey: queryKeys.conversations.detail(id),
-    // Surface 404 as `null` so the detail page can render a clean "not
-    // found" state instead of bubbling an ApiError up to the boundary.
-    queryFn: async () => {
-      try {
-        return await api.getConversation(id);
-      } catch (err) {
-        if (
-          err instanceof Error &&
-          /API error 404/.test(err.message)
-        ) {
-          return null;
-        }
-        throw err;
-      }
-    },
-    enabled: opts?.enabled ?? Boolean(id),
-    refetchInterval: opts?.refetchInterval,
-    staleTime: opts?.staleTime,
   });
 }
 
@@ -972,37 +791,12 @@ export function useConnectorBindings(
 }
 
 // ---------------------------------------------------------------------------
-// Lightweight list queries (used by the expertise directory surface, which
-// fans out reads over every agent/unit the tenant can see).
-// ---------------------------------------------------------------------------
-
-export function useAgents(
-  opts?: SliceOptions<AgentResponse[]>,
-): UseQueryResult<AgentResponse[], Error> {
-  return useQuery({
-    queryKey: queryKeys.agents.list(),
-    queryFn: () => api.listAgents(),
-    ...opts,
-  });
-}
-
-export function useUnits(
-  opts?: SliceOptions<UnitResponse[]>,
-): UseQueryResult<UnitResponse[], Error> {
-  return useQuery({
-    queryKey: queryKeys.units.list(),
-    queryFn: () => api.listUnits(),
-    ...opts,
-  });
-}
-
-// ---------------------------------------------------------------------------
 // Expertise directory (#412 / #486)
 // ---------------------------------------------------------------------------
 //
-// Read hooks only; writes flow through `api.setAgentExpertise` /
-// `api.setUnitOwnExpertise` and hand-seed + invalidate the cache from
-// the component so the aggregated view on every ancestor also refetches.
+// Read hook only; writes flow through `api.setAgentExpertise` and
+// hand-seed + invalidate the cache from the component so the aggregated
+// view on every ancestor also refetches.
 
 export function useAgentExpertise(
   id: string,
@@ -1011,32 +805,6 @@ export function useAgentExpertise(
   return useQuery({
     queryKey: queryKeys.agents.expertise(id),
     queryFn: () => api.getAgentExpertise(id),
-    enabled: opts?.enabled ?? Boolean(id),
-    refetchInterval: opts?.refetchInterval,
-    staleTime: opts?.staleTime,
-  });
-}
-
-export function useUnitOwnExpertise(
-  id: string,
-  opts?: SliceOptions<ExpertiseDomainDto[]>,
-): UseQueryResult<ExpertiseDomainDto[], Error> {
-  return useQuery({
-    queryKey: queryKeys.units.ownExpertise(id),
-    queryFn: () => api.getUnitOwnExpertise(id),
-    enabled: opts?.enabled ?? Boolean(id),
-    refetchInterval: opts?.refetchInterval,
-    staleTime: opts?.staleTime,
-  });
-}
-
-export function useUnitAggregatedExpertise(
-  id: string,
-  opts?: SliceOptions<AggregatedExpertiseResponse>,
-): UseQueryResult<AggregatedExpertiseResponse, Error> {
-  return useQuery({
-    queryKey: queryKeys.units.aggregatedExpertise(id),
-    queryFn: () => api.getUnitAggregatedExpertise(id),
     enabled: opts?.enabled ?? Boolean(id),
     refetchInterval: opts?.refetchInterval,
     staleTime: opts?.staleTime,

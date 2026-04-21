@@ -96,6 +96,7 @@ function makeMembership(
     executionMode: "Auto",
     createdAt: now,
     updatedAt: now,
+    isPrimary: false,
     ...overrides,
   };
 }

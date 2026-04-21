@@ -1,0 +1,38 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "src/app/**/{page,layout,loading,error,not-found,template,default,route,opengraph-image,twitter-image,icon,apple-icon,sitemap,robots,manifest}.{ts,tsx}",
+    "src/app/**/*.test.{ts,tsx}",
+    "src/components/**/*.test.{ts,tsx}",
+    "src/lib/**/*.test.{ts,tsx}",
+    "src/connectors/**/*.test.{ts,tsx}",
+    "src/test/**/*.{ts,tsx}",
+    "e2e/**/*.{ts,tsx}",
+    "scripts/**/*.{mjs,js,ts}",
+    "../Cvoya.Spring.Connector.*/web/**/*.{ts,tsx}"
+  ],
+  "project": [
+    "src/**/*.{ts,tsx}",
+    "../Cvoya.Spring.Connector.*/web/**/*.{ts,tsx}",
+    "!**/*.d.ts"
+  ],
+  "ignoreDependencies": [
+    "postcss"
+  ],
+  "ignoreExportsUsedInFile": true,
+  "tags": ["-public"],
+  "rules": {
+    "files": "error",
+    "dependencies": "off",
+    "devDependencies": "off",
+    "unlisted": "error",
+    "unresolved": "error",
+    "binaries": "off",
+    "exports": "error",
+    "types": "error",
+    "nsExports": "error",
+    "nsTypes": "error",
+    "duplicates": "error",
+    "enumMembers": "off"
+  }
+}

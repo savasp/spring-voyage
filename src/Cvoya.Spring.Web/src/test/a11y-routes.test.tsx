@@ -37,13 +37,6 @@ vi.mock("@/lib/stream/use-activity-stream", () => ({
   useActivityStream: () => ({ events: [], connected: false }),
 }));
 
-// Some pages import the hook from its legacy path at `@/hooks/…`
-// (the two point at the same implementation at runtime). Mock both so
-// the test environment never opens a real EventSource.
-vi.mock("@/hooks/use-activity-stream", () => ({
-  useActivityStream: () => ({ events: [], connected: false }),
-}));
-
 vi.mock("next/link", () => ({
   default: ({
     href,

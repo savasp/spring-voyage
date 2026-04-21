@@ -46,20 +46,17 @@ describe("SettingsSkillsPage", () => {
         name: "search",
         registry: "builtin",
         description: "Search the web",
-        hasTools: false,
-      } as SkillCatalogEntry,
+      } satisfies SkillCatalogEntry,
       {
         name: "summarize",
         registry: "builtin",
-        description: null,
-        hasTools: false,
-      } as SkillCatalogEntry,
+        description: "",
+      } satisfies SkillCatalogEntry,
       {
         name: "slack.post",
         registry: "connectors",
         description: "Post to Slack",
-        hasTools: true,
-      } as SkillCatalogEntry,
+      } satisfies SkillCatalogEntry,
     ]);
 
     renderPage();

@@ -28,9 +28,6 @@ export type AgentDashboardSummary = Schemas["AgentDashboardSummary"];
 /** GET /api/v1/dashboard/units response item. */
 export type UnitDashboardSummary = Schemas["UnitDashboardSummary"];
 
-/** Cost broken down by source (part of CostDashboardSummary). */
-export type CostBySource = Schemas["CostBySource"];
-
 /** GET /api/v1/dashboard/costs response. */
 export type CostDashboardSummary = Schemas["CostDashboardSummary"];
 
@@ -96,9 +93,6 @@ export type UnitResponse = Schemas["UnitResponse"];
 /** GET /api/v1/units/{id} full response with details. */
 export type UnitDetailResponse = Schemas["UnitDetailResponse"];
 
-/** Response body from /api/v1/units/from-yaml and /from-template. */
-export type UnitCreationResponse = Schemas["UnitCreationResponse"];
-
 /** POST /api/v1/units/from-yaml request body. */
 export type CreateUnitFromYamlRequest = Schemas["CreateUnitFromYamlRequest"];
 
@@ -118,29 +112,8 @@ export type PackageSummary = Schemas["PackageSummary"];
 /** Full package detail (GET /api/v1/packages/{name}). */
 export type PackageDetail = Schemas["PackageDetail"];
 
-/** Agent template entry inside a package detail. */
-export type AgentTemplateSummary = Schemas["AgentTemplateSummary"];
-
-/** Skill bundle entry inside a package detail. */
-export type SkillSummary = Schemas["SkillSummary"];
-
-/** Connector asset entry inside a package detail. */
-export type PackageConnectorSummary = Schemas["ConnectorSummary"];
-
-/** Workflow bundle entry inside a package detail. */
-export type WorkflowSummary = Schemas["WorkflowSummary"];
-
 /** GET /api/v1/costs/agents/{id} or /units/{id} response. */
 export type CostSummaryResponse = Schemas["CostSummaryResponse"];
-
-/**
- * One bucket inside a tenant cost time-series
- * (<c>GET /api/v1/tenant/cost/timeseries</c>, #916). `t` is the UTC start
- * of the bucket; `cost` the total USD accrued inside `[t, t + bucket)`.
- * Emitted for every bucket — empty buckets carry <c>cost: 0</c> so
- * consumers render a connected line.
- */
-export type CostTimeseriesBucketResponse = Schemas["CostTimeseriesBucketResponse"];
 
 /**
  * GET /api/v1/tenant/cost/timeseries response (V21-tenant-cost-timeseries,
@@ -211,14 +184,8 @@ export type ConversationSummary = Schemas["ConversationSummary"];
 /** Conversation thread payload (`GET /api/v1/conversations/{id}`). */
 export type ConversationDetail = Schemas["ConversationDetail"];
 
-/** One event on a conversation thread. */
-export type ConversationEvent = Schemas["ConversationEvent"];
-
 /** Request body for `POST /api/v1/conversations/{id}/messages`. */
 export type ConversationMessageRequest = Schemas["ConversationMessageRequest"];
-
-/** Response body for `POST /api/v1/conversations/{id}/messages`. */
-export type ConversationMessageResponse = Schemas["ConversationMessageResponse"];
 
 /** Row in the awaiting-me queue (`GET /api/v1/inbox`). */
 export type InboxItem = Schemas["InboxItem"];
@@ -330,7 +297,6 @@ export type AgentExecutionResponse = Schemas["AgentExecutionResponse"];
  * extension but a generic dropdown can't describe them.
  */
 export const EXECUTION_RUNTIMES = ["docker", "podman"] as const;
-export type ExecutionRuntime = (typeof EXECUTION_RUNTIMES)[number];
 
 /**
  * Launcher keys the reference dispatcher ships with (#601). Mirrors the
@@ -345,7 +311,6 @@ export const EXECUTION_TOOL_KEYS = [
   "dapr-agent",
   "custom",
 ] as const;
-export type ExecutionToolKey = (typeof EXECUTION_TOOL_KEYS)[number];
 
 /**
  * Provider keys accepted by the unit/agent Execution surfaces when the
@@ -363,7 +328,6 @@ export const EXECUTION_PROVIDERS = [
   "google",
   "ollama",
 ] as const;
-export type ExecutionProvider = (typeof EXECUTION_PROVIDERS)[number];
 
 /**
  * Hosting modes the backend accepts on an agent's execution block. The
@@ -371,13 +335,6 @@ export type ExecutionProvider = (typeof EXECUTION_PROVIDERS)[number];
  * persistent launcher paths.
  */
 export const EXECUTION_HOSTING_MODES = ["ephemeral", "persistent"] as const;
-export type ExecutionHostingMode = (typeof EXECUTION_HOSTING_MODES)[number];
-
-/** Tier 1 (screening) model configuration. */
-export type Tier1Config = Schemas["Tier1Config"];
-
-/** Tier 2 (primary LLM) budget/rate-limit configuration. */
-export type Tier2Config = Schemas["Tier2Config"];
 
 /** Matches Cvoya.Spring.Core.Initiative.InitiativePolicy record. */
 export type InitiativePolicy = Schemas["InitiativePolicy"];
@@ -385,29 +342,14 @@ export type InitiativePolicy = Schemas["InitiativePolicy"];
 /** GET /api/v1/agents/{id}/initiative/level response. */
 export type InitiativeLevelResponse = Schemas["InitiativeLevelResponse"];
 
-/** Matches Cvoya.Spring.Core.Secrets.SecretScope enum. */
-export type SecretScope = Schemas["SecretScope"];
-
 /** Entry in the unit-scoped secrets list. */
 export type SecretMetadata = Schemas["SecretMetadata"];
-
-/** GET /api/v1/units/{id}/secrets response body. */
-export type UnitSecretsListResponse = Schemas["UnitSecretsListResponse"];
-
-/** GET /api/v1/tenant/secrets and /api/v1/platform/secrets response body. */
-export type SecretsListResponse = Schemas["SecretsListResponse"];
 
 /** POST /api/v1/units/{id}/secrets request body. */
 export type CreateSecretRequest = Schemas["CreateSecretRequest"];
 
-/** POST /api/v1/units/{id}/secrets response body. */
-export type CreateSecretResponse = Schemas["CreateSecretResponse"];
-
 /** Per-unit/per-agent membership record (GET/PUT /api/v1/units/{unitId}/memberships/{agentAddress}). */
 export type UnitMembershipResponse = Schemas["UnitMembershipResponse"];
-
-/** Request body for PUT /api/v1/units/{unitId}/memberships/{agentAddress}. */
-export type UpsertMembershipRequest = Schemas["UpsertMembershipRequest"];
 
 // ---------------------------------------------------------------------------
 // Connectors (generic + GitHub)
@@ -441,13 +383,18 @@ export type InstalledConnectorResponse = Schemas["InstalledConnectorResponse"];
 export type InstalledAgentRuntimeResponse =
   Schemas["InstalledAgentRuntimeResponse"];
 
-/** One entry in GET /api/v1/agent-runtimes/{id}/models. */
+/**
+ * One entry in GET /api/v1/agent-runtimes/{id}/models.
+ * @public Re-export consumed via the namespaced `types.*` import in
+ * `client.ts` / `queries.ts` (knip can't trace namespace re-exports).
+ */
 export type AgentRuntimeModelResponse = Schemas["AgentRuntimeModelResponse"];
 
-/** Credential-kind enum string set (`None`, `ApiKey`, `OAuthToken`). */
-export type AgentRuntimeCredentialKind = Schemas["AgentRuntimeCredentialKind"];
-
-/** Response body for POST /api/v1/agent-runtimes/{id}/validate-credential. */
+/**
+ * Response body for POST /api/v1/agent-runtimes/{id}/validate-credential.
+ * @public Re-export consumed via the namespaced `types.*` import in
+ * `client.ts` (knip can't trace namespace re-exports).
+ */
 export type CredentialValidateResponse = Schemas["CredentialValidateResponse"];
 
 /**
@@ -490,14 +437,19 @@ export type UnitConnectorBindingRequest =
 /** PUT /api/v1/connectors/github/units/{unitId}/config request body. */
 export type UnitGitHubConfigRequest = Schemas["UnitGitHubConfigRequest"];
 
-/** GET / PUT response body for the GitHub per-unit config. */
+/**
+ * GET / PUT response body for the GitHub per-unit config.
+ * @public Consumed by `Cvoya.Spring.Connector.GitHub/web/connector-tab.tsx`
+ * (cross-workspace; knip's path-alias resolver doesn't follow `@/*`
+ * from outside this workspace).
+ */
 export type UnitGitHubConfigResponse = Schemas["UnitGitHubConfigResponse"];
 
-/** GET /api/v1/connectors/github/actions/list-installations item. */
+/**
+ * GET /api/v1/connectors/github/actions/list-installations item.
+ * @public Consumed by `Cvoya.Spring.Connector.GitHub/web/*` cross-workspace.
+ */
 export type GitHubInstallationResponse = Schemas["GitHubInstallationResponse"];
-
-/** GET /api/v1/connectors/github/actions/install-url response. */
-export type GitHubInstallUrlResponse = Schemas["GitHubInstallUrlResponse"];
 
 /** GET /api/v1/units/{id}/readiness response. */
 export type UnitReadinessResponse = Schemas["UnitReadinessResponse"];
@@ -524,16 +476,6 @@ export type BoundarySynthesisRuleDto = Schemas["BoundarySynthesisRuleDto"];
 
 /** A single expertise domain on an agent or unit. */
 export type ExpertiseDomainDto = Schemas["ExpertiseDomainDto"];
-
-/** GET/PUT response for agent and unit "own" expertise. */
-export type ExpertiseResponse = Schemas["ExpertiseResponse"];
-
-/** PUT request body for agent/unit own expertise. */
-export type SetExpertiseRequest = Schemas["SetExpertiseRequest"];
-
-/** One entry in the unit's recursively-aggregated expertise list. */
-export type AggregatedExpertiseEntryDto =
-  Schemas["AggregatedExpertiseEntryDto"];
 
 /** GET /api/v1/units/{id}/expertise response body. */
 export type AggregatedExpertiseResponse = Schemas["AggregatedExpertiseResponse"];
@@ -641,18 +583,6 @@ export interface ActivityEvent {
   correlationId?: string;
   cost?: number;
 }
-
-/**
- * Clone lifecycle type. Re-export of the server's CloningPolicy enum
- * under the legacy name `CloneType` used throughout the web code (#183).
- * Schema defines `"none"` too but the web UI only exposes the ephemeral
- * variants — narrow the type here so call sites can't accidentally
- * widen.
- */
-export type CloneType = Exclude<Schemas["CloningPolicy"], "none">;
-
-/** Clone attachment mode relative to its parent. */
-export type CloneAttachmentMode = Schemas["AttachmentMode"];
 
 // ---------------------------------------------------------------------------
 // Tenant tree (SVR-tenant-tree, umbrella #815).
