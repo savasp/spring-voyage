@@ -12,6 +12,12 @@
 // links are honest and shareable; this mirrors the CLI's one-liner
 // shape. Reading / writing the URL is behind `useAnalyticsFilters`
 // below, so each page can keep its render code free of the router.
+//
+// v2 reskin (SURF-reskin-analytics, #860): the raw `<select>` +
+// `<input>` controls are wrapped in the filter-chip primitive from the
+// design kit — each chip carries its own label, and active chips tint
+// with the brand hue so the applied filter set is legible from the
+// page's header strip.
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useMemo } from "react";
@@ -172,13 +178,15 @@ export function AnalyticsFiltersBar({
     <div
       role="group"
       aria-label="Analytics filters"
+      data-testid="analytics-filters-bar"
       className="flex flex-col gap-3 rounded-lg border border-border bg-card p-3 sm:flex-row sm:items-center sm:justify-between"
     >
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-2">
+        {/* Window chip: a 3-way radiogroup rendered as a pill strip. */}
         <div
           role="radiogroup"
           aria-label="Window"
-          className="inline-flex items-center gap-1 rounded-md border border-border bg-muted p-0.5"
+          className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/60 p-0.5"
         >
           {ANALYTICS_WINDOWS.map((w) => {
             const active = w === windowValue;
@@ -190,9 +198,9 @@ export function AnalyticsFiltersBar({
                 aria-checked={active}
                 onClick={() => onWindowChange(w)}
                 className={cn(
-                  "rounded px-2.5 py-1 text-xs font-medium transition-colors",
+                  "rounded-full px-3 py-1 text-xs font-medium transition-colors",
                   active
-                    ? "bg-background text-foreground shadow-sm"
+                    ? "bg-primary/15 text-primary shadow-sm"
                     : "text-muted-foreground hover:text-foreground",
                 )}
               >
@@ -202,10 +210,18 @@ export function AnalyticsFiltersBar({
           })}
         </div>
 
-        <div className="flex items-center gap-2">
-          <label htmlFor="analytics-scope-kind" className="text-xs text-muted-foreground">
+        {/* Scope chip: chip-style pill containing the scope kind + name. */}
+        <label
+          className={cn(
+            "inline-flex min-w-0 items-center gap-2 rounded-full border px-3 py-1 transition-colors",
+            scope.kind !== "all"
+              ? "border-primary/40 bg-primary/10"
+              : "border-border bg-muted/40",
+          )}
+        >
+          <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
             Scope
-          </label>
+          </span>
           <select
             id="analytics-scope-kind"
             aria-label="Scope kind"
@@ -215,7 +231,7 @@ export function AnalyticsFiltersBar({
               if (kind === "all") onScopeChange({ kind: "all" });
               else onScopeChange({ kind, name: scope.kind === "all" ? "" : scope.name });
             }}
-            className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+            className="h-7 rounded-full border-0 bg-transparent text-xs focus-visible:outline-none"
           >
             <option value="all">All sources</option>
             <option value="unit">Unit</option>
@@ -232,10 +248,10 @@ export function AnalyticsFiltersBar({
               placeholder={scope.kind === "unit" ? "eng-team" : "ada"}
               // Fluid width on mobile so the input never overflows the
               // 375px card, fixed 10rem (w-40) strip on sm+.
-              className="h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-2 font-mono text-xs sm:w-40 sm:flex-none"
+              className="h-7 min-w-0 flex-1 rounded-md border-0 bg-transparent font-mono text-xs placeholder:text-muted-foreground focus-visible:outline-none sm:w-40 sm:flex-none"
             />
           )}
-        </div>
+        </label>
       </div>
 
       {hint && (

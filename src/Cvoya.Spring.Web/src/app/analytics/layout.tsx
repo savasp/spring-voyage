@@ -37,7 +37,7 @@ export default function AnalyticsLayout({
     <div className="space-y-6">
       <nav
         aria-label="Analytics sections"
-        className="flex flex-wrap items-center gap-1 rounded-lg border border-border bg-muted p-1"
+        className="flex flex-wrap items-center gap-1 rounded-full border border-border bg-muted/60 p-1"
       >
         {ANALYTICS_TABS.map((tab) => {
           const active = pathname === tab.href;
@@ -48,9 +48,9 @@ export default function AnalyticsLayout({
               href={tab.href}
               aria-current={active ? "page" : undefined}
               className={cn(
-                "inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-sm font-medium transition-colors",
+                "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium transition-colors",
                 active
-                  ? "bg-background text-foreground shadow-sm"
+                  ? "bg-primary/15 text-primary shadow-sm"
                   : "text-muted-foreground hover:text-foreground",
               )}
             >

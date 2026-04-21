@@ -22,7 +22,7 @@ import type {
   ActivityQueryResult,
   ActivitySeverity,
 } from "@/lib/api/types";
-import { timeAgo } from "@/lib/utils";
+import { cn, timeAgo } from "@/lib/utils";
 
 // Map a `scheme://path` source string onto the matching detail route.
 // Returns null when the scheme doesn't have a portal page yet. Mirrors
@@ -43,12 +43,22 @@ function sourceHref(source: string): string | null {
 
 const severityVariant: Record<
   ActivitySeverity,
-  "default" | "success" | "warning" | "destructive"
+  "default" | "success" | "warning" | "destructive" | "outline"
 > = {
-  Debug: "default",
-  Info: "success",
+  Debug: "outline",
+  Info: "default",
   Warning: "warning",
   Error: "destructive",
+};
+
+// Severity -> status-dot colour. Mirrors the `<DetailPane>` pattern in
+// `components/units/unit-detail-pane.tsx` so every surface in v2 grades
+// severity with the same swatch.
+const severityDot: Record<ActivitySeverity, string> = {
+  Debug: "bg-debug",
+  Info: "bg-info",
+  Warning: "bg-warning",
+  Error: "bg-destructive",
 };
 
 const eventTypes: ActivityEventType[] = [
@@ -76,6 +86,39 @@ interface Filters {
 
 const PAGE_SIZE = 20;
 
+/**
+ * Filter chip — the v2 filter-bar primitive. Each chip collapses the
+ * raw `<select>` / `<input>` into a pill-styled control that matches
+ * the brand-extension utilities (mono identifier, blossom accents on
+ * active filters). Kept local because the analytics surface ships its
+ * own chip variant — the two diverge on behaviour, not on styling.
+ */
+function FilterChip({
+  label,
+  active,
+  children,
+}: {
+  label: string;
+  active: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <label
+      className={cn(
+        "inline-flex min-w-0 items-center gap-2 rounded-full border px-3 py-1 text-xs transition-colors",
+        active
+          ? "border-primary/40 bg-primary/10 text-foreground"
+          : "border-border bg-muted/40 text-muted-foreground hover:text-foreground",
+      )}
+    >
+      <span className="shrink-0 font-medium uppercase tracking-wide text-[10px] text-muted-foreground">
+        {label}
+      </span>
+      {children}
+    </label>
+  );
+}
+
 function EventRow({
   event,
   expanded,
@@ -85,17 +128,29 @@ function EventRow({
   expanded: boolean;
   onToggle: () => void;
 }) {
+  const severity = event.severity as ActivitySeverity;
   return (
     <div className="border-b border-border last:border-0">
       <button
         type="button"
         onClick={onToggle}
-        className="flex w-full items-start gap-2 py-3 text-left hover:bg-accent/50 px-2 rounded-md transition-colors"
+        className="flex w-full items-start gap-3 rounded-md px-2 py-3 text-left transition-colors hover:bg-accent/50"
       >
+        {/* Status dot — severity-coded. Mirrors the Explorer DetailPane
+            pattern so every surface reads the same. */}
+        <span
+          aria-hidden="true"
+          data-testid={`activity-severity-dot-${event.id}`}
+          data-severity={severity}
+          className={cn(
+            "mt-1.5 h-2 w-2 shrink-0 rounded-full",
+            severityDot[severity] ?? "bg-muted-foreground",
+          )}
+        />
         {expanded ? (
-          <ChevronDown className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+          <ChevronDown className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" />
         ) : (
-          <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+          <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" />
         )}
         {/* Row reflow at narrow widths: summary on top, metadata
             (time, source, event type, severity) wraps beneath. sm+
@@ -106,22 +161,27 @@ function EventRow({
             <span className="tabular-nums">
               {timeAgo(event.timestamp)}
             </span>
-            <Badge variant="outline" className="max-w-full truncate text-xs">
+            {/* Mono-badge: scheme://name identifiers read as code. */}
+            <Badge
+              variant="outline"
+              className="max-w-full truncate font-mono text-xs"
+            >
               {event.source}
             </Badge>
-            <span>{event.eventType}</span>
-            <Badge
-              variant={
-                severityVariant[event.severity as ActivitySeverity] ?? "default"
-              }
-            >
+            {/* Brand pill: the event-type label sits in the brand/action
+                hue so operators can scan a long feed for a specific
+                event kind without reading the text. */}
+            <Badge variant="secondary" className="text-[11px]">
+              {event.eventType}
+            </Badge>
+            <Badge variant={severityVariant[severity] ?? "default"}>
               {event.severity}
             </Badge>
           </div>
         </div>
       </button>
       {expanded && (
-        <div className="ml-10 mb-3 rounded-md border border-border bg-muted/30 p-3 text-sm space-y-1">
+        <div className="mb-3 ml-10 space-y-1 rounded-md border border-border bg-muted/30 p-3 text-sm">
           <div className="flex gap-2">
             <span className="text-muted-foreground">ID:</span>
             <span className="font-mono text-xs">{event.id}</span>
@@ -169,6 +229,87 @@ function EventRow({
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Compact SVG sparkline rendering the count of events per severity across
+ * the visible window. Decorative — the numbers are also rendered as chips
+ * beside it so screen readers get the same signal.
+ *
+ * Matches the `UnitSparkline` helper in `components/cards/unit-card.tsx`
+ * (§12 of the umbrella plan), keeping a single shape across every surface
+ * that grades severity over time.
+ */
+function SeveritySparkline({ items }: { items: ActivityQueryResult["items"] }) {
+  const series = useMemo(() => {
+    if (items.length === 0) return [] as number[];
+    // Bucket into 12 equal-count slots so a small page (20 events) still
+    // renders a coherent line. For larger windows the buckets grow, for
+    // smaller ones they shrink — either way 12 is the resolution.
+    const buckets = 12;
+    const size = Math.max(1, Math.ceil(items.length / buckets));
+    const slots: number[] = [];
+    for (let i = 0; i < items.length; i += size) {
+      const slice = items.slice(i, i + size);
+      // Severity score: Error = 3, Warning = 2, Info = 1, Debug = 0.5.
+      // Aggregating into a weighted count produces a stable line instead
+      // of a binary error/not-error flash.
+      const weight = slice.reduce((acc, e) => {
+        const s = e.severity as ActivitySeverity;
+        return (
+          acc +
+          (s === "Error" ? 3 : s === "Warning" ? 2 : s === "Info" ? 1 : 0.5)
+        );
+      }, 0);
+      slots.push(weight);
+    }
+    return slots;
+  }, [items]);
+
+  if (series.length === 0) {
+    return (
+      <span
+        aria-hidden="true"
+        data-testid="activity-sparkline-placeholder"
+        className="inline-block h-4 w-20 rounded-sm bg-muted"
+      />
+    );
+  }
+
+  const max = Math.max(1, ...series);
+  const width = 80;
+  const height = 16;
+  const step = series.length > 1 ? width / (series.length - 1) : 0;
+  const points = series
+    .map(
+      (v, i) =>
+        `${(i * step).toFixed(1)},${(
+          height -
+          (v / max) * height
+        ).toFixed(1)}`,
+    )
+    .join(" ");
+
+  return (
+    <svg
+      role="img"
+      aria-label="Recent event severity trend"
+      data-testid="activity-sparkline"
+      width={width}
+      height={height}
+      viewBox={`0 0 ${width} ${height}`}
+      className="text-primary/80"
+    >
+      <polyline
+        points={points}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={1.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 
@@ -228,10 +369,19 @@ export default function ActivityPage() {
   // initial load or a manual refresh — `isFetching` captures both.
   const loading = isFetching;
 
+  const anyFilter = Boolean(
+    filters.source || filters.eventType || filters.severity,
+  );
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-2xl font-bold">Activity</h1>
+        <div>
+          <h1 className="text-2xl font-bold">Activity</h1>
+          <p className="text-xs text-muted-foreground">
+            Tenant-wide event stream. Filter by source, type, or severity.
+          </p>
+        </div>
         <Button
           variant="outline"
           size="sm"
@@ -246,29 +396,28 @@ export default function ActivityPage() {
         </Button>
       </div>
 
-      {/* Filters — each input spans the full card width on mobile so
-          the inputs never clip at 375px. sm+ snaps back to the
-          intrinsic widths so the bar reads as a compact strip. */}
+      {/* Filters — filter-chip pattern per the v2 kit. Each chip is a
+          self-contained label + control pair; the active chips pick up
+          the brand tint so the active filter set is legible at a glance. */}
       <Card>
         <CardContent className="pt-4">
-          <div className="flex flex-wrap gap-3">
-            <label className="block w-full space-y-1 sm:w-auto">
-              <span className="text-xs text-muted-foreground">Source</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <FilterChip label="Source" active={filters.source.length > 0}>
               <Input
                 placeholder="e.g. unit:my-unit"
                 value={filters.source}
                 onChange={(e) => handleFilterChange("source", e.target.value)}
-                className="w-full sm:w-48"
+                className="h-7 w-40 border-0 bg-transparent px-0 font-mono shadow-none focus-visible:ring-0"
               />
-            </label>
-            <label className="block w-full space-y-1 sm:w-auto">
-              <span className="text-xs text-muted-foreground">Event Type</span>
+            </FilterChip>
+            <FilterChip label="Type" active={filters.eventType.length > 0}>
               <select
+                aria-label="Event Type"
                 value={filters.eventType}
                 onChange={(e) =>
                   handleFilterChange("eventType", e.target.value)
                 }
-                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring sm:w-48"
+                className="h-7 w-36 rounded-full border-0 bg-transparent text-xs focus-visible:outline-none"
               >
                 <option value="">All types</option>
                 {eventTypes.map((t) => (
@@ -277,15 +426,15 @@ export default function ActivityPage() {
                   </option>
                 ))}
               </select>
-            </label>
-            <label className="block w-full space-y-1 sm:w-auto">
-              <span className="text-xs text-muted-foreground">Severity</span>
+            </FilterChip>
+            <FilterChip label="Severity" active={filters.severity.length > 0}>
               <select
+                aria-label="Severity"
                 value={filters.severity}
                 onChange={(e) =>
                   handleFilterChange("severity", e.target.value)
                 }
-                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring sm:w-36"
+                className="h-7 w-24 rounded-full border-0 bg-transparent text-xs focus-visible:outline-none"
               >
                 <option value="">All</option>
                 {severities.map((s) => (
@@ -294,7 +443,18 @@ export default function ActivityPage() {
                   </option>
                 ))}
               </select>
-            </label>
+            </FilterChip>
+            {anyFilter && (
+              <button
+                type="button"
+                onClick={() =>
+                  setFilters({ source: "", eventType: "", severity: "" })
+                }
+                className="ml-auto text-xs text-muted-foreground hover:text-foreground"
+              >
+                Clear filters
+              </button>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -305,6 +465,9 @@ export default function ActivityPage() {
           <CardTitle className="flex items-center gap-2">
             <Activity className="h-4 w-4" />
             Events
+            {result && result.items.length > 0 && (
+              <SeveritySparkline items={result.items} />
+            )}
             {result && (
               <span className="ml-auto text-sm font-normal text-muted-foreground">
                 {result.totalCount} total
@@ -314,7 +477,7 @@ export default function ActivityPage() {
         </CardHeader>
         <CardContent>
           {isError && (
-            <p className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive mb-3">
+            <p className="mb-3 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
               {error instanceof Error ? error.message : String(error)}
             </p>
           )}
@@ -339,7 +502,7 @@ export default function ActivityPage() {
 
           {/* Pagination */}
           {result && totalPages > 1 && (
-            <div className="flex items-center justify-between mt-4 pt-3 border-t border-border">
+            <div className="mt-4 flex items-center justify-between border-t border-border pt-3">
               <Button
                 variant="outline"
                 size="sm"

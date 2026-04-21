@@ -6,12 +6,18 @@
 // Durations are computed from paired StateChanged lifecycle transitions
 // (#476, Rx activity pipeline PR #484). Every control maps 1:1 to a CLI
 // flag per CONVENTIONS.md § 14.
+//
+// v2 reskin (SURF-reskin-analytics, #860): KPI strip uses `<StatCard>`;
+// the stacked idle/busy/waiting bar adopts semantic status tokens
+// (success / warning / destructive) so the colour travels through
+// theming instead of reaching for raw Tailwind hex utilities.
 
-import { Suspense } from "react";
+import { Suspense, useMemo } from "react";
 import Link from "next/link";
-import { ArrowRight, Clock } from "lucide-react";
+import { ArrowRight, Clock, Pause, Play, UserCheck } from "lucide-react";
 
 import { Breadcrumbs } from "@/components/breadcrumbs";
+import { StatCard } from "@/components/stat-card";
 import {
   Card,
   CardContent,
@@ -73,12 +79,28 @@ function AnalyticsWaitsContent() {
     to: filters.to,
   });
 
-  const entries = query.data?.entries ?? [];
-  const sortedEntries = [...entries].sort(
-    (a, b) => totalSeconds(b) - totalSeconds(a),
-  );
+  const sortedEntries = useMemo(() => {
+    const entries = query.data?.entries ?? [];
+    return [...entries].sort((a, b) => totalSeconds(b) - totalSeconds(a));
+  }, [query.data]);
   const maxTotal =
     sortedEntries.length > 0 ? totalSeconds(sortedEntries[0]) : 0;
+
+  // KPI totals across every row in the window. Mirrors the CLI's
+  // `spring analytics waits --summary` aggregate.
+  const kpis = useMemo(
+    () =>
+      sortedEntries.reduce(
+        (acc, e) => ({
+          idle: acc.idle + n(e.idleSeconds),
+          busy: acc.busy + n(e.busySeconds),
+          waiting: acc.waiting + n(e.waitingForHumanSeconds),
+          transitions: acc.transitions + n(e.stateTransitions),
+        }),
+        { idle: 0, busy: 0, waiting: 0, transitions: 0 },
+      ),
+    [sortedEntries],
+  );
 
   const scopeHint = (() => {
     if (filters.scope.kind === "unit") {
@@ -117,6 +139,30 @@ function AnalyticsWaitsContent() {
           </>
         }
       />
+
+      {/* KPI strip — one StatCard per aggregated duration / counter. */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <StatCard
+          label="Idle"
+          value={formatDuration(kpis.idle)}
+          icon={<Pause className="h-4 w-4" />}
+        />
+        <StatCard
+          label="Busy"
+          value={formatDuration(kpis.busy)}
+          icon={<Play className="h-4 w-4" />}
+        />
+        <StatCard
+          label="Waiting for human"
+          value={formatDuration(kpis.waiting)}
+          icon={<UserCheck className="h-4 w-4" />}
+        />
+        <StatCard
+          label="Transitions"
+          value={kpis.transitions.toLocaleString()}
+          icon={<Clock className="h-4 w-4" />}
+        />
+      </div>
 
       <Card>
         <CardHeader>
@@ -201,17 +247,17 @@ function AnalyticsWaitsContent() {
                           style={{ width: `${barPct}%` }}
                         >
                           <div
-                            className="h-full bg-emerald-500/70"
+                            className="h-full bg-success"
                             title={`Idle ${formatDuration(idle)}`}
                             style={{ width: `${idlePct}%` }}
                           />
                           <div
-                            className="h-full bg-amber-500/70"
+                            className="h-full bg-warning"
                             title={`Busy ${formatDuration(busy)}`}
                             style={{ width: `${busyPct}%` }}
                           />
                           <div
-                            className="h-full bg-rose-500/70"
+                            className="h-full bg-destructive"
                             title={`Waiting for human ${formatDuration(waiting)}`}
                             style={{ width: `${waitPct}%` }}
                           />
@@ -267,21 +313,21 @@ function AnalyticsWaitsContent() {
       <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
         <div className="flex items-center gap-1">
           <span
-            className="inline-block h-2 w-2 rounded-full bg-emerald-500/70"
+            className="inline-block h-2 w-2 rounded-full bg-success"
             aria-hidden="true"
           />
           Idle
         </div>
         <div className="flex items-center gap-1">
           <span
-            className="inline-block h-2 w-2 rounded-full bg-amber-500/70"
+            className="inline-block h-2 w-2 rounded-full bg-warning"
             aria-hidden="true"
           />
           Busy
         </div>
         <div className="flex items-center gap-1">
           <span
-            className="inline-block h-2 w-2 rounded-full bg-rose-500/70"
+            className="inline-block h-2 w-2 rounded-full bg-destructive"
             aria-hidden="true"
           />
           Waiting for human
