@@ -4,12 +4,18 @@
 // Backed by `GET /api/v1/analytics/throughput`; CLI mirror is
 // `spring analytics throughput --window <w> [--unit|--agent]` (PR #474).
 // Every control on this page maps 1:1 to a CLI flag, per CONVENTIONS.md § 14.
+//
+// v2 reskin (SURF-reskin-analytics, #860): the KPI strip adopts
+// `<StatCard>`; the per-source bar picks up a cycling brand-extension
+// hue (voyage / blossom) so the visual weight of the list is legible
+// at a glance; the table shell mirrors the Explorer `TabTraces` layout.
 
-import { Suspense } from "react";
+import { Suspense, useMemo } from "react";
 import Link from "next/link";
-import { BarChart3, ArrowRight } from "lucide-react";
+import { ArrowRight, BarChart3, Gauge } from "lucide-react";
 
 import { Breadcrumbs } from "@/components/breadcrumbs";
+import { StatCard } from "@/components/stat-card";
 import {
   Card,
   CardContent,
@@ -50,6 +56,15 @@ function parseSource(source: string): { scheme: string; name: string } | null {
   return { scheme: source.slice(0, idx), name: source.slice(idx + 3) };
 }
 
+/** Rotating hue palette — same set as the Costs breakdown bars. */
+const ROW_HUES = [
+  "bg-voyage",
+  "bg-blossom-deep",
+  "bg-primary",
+  "bg-voyage-soft",
+  "bg-blossom",
+] as const;
+
 function AnalyticsThroughputContent() {
   const filters = useAnalyticsFilters();
   const query = useAnalyticsThroughput({
@@ -58,11 +73,27 @@ function AnalyticsThroughputContent() {
     to: filters.to,
   });
 
-  const entries = query.data?.entries ?? [];
-  const sortedEntries = [...entries].sort(
-    (a, b) => entryTotal(b) - entryTotal(a),
-  );
+  const sortedEntries = useMemo(() => {
+    const entries = query.data?.entries ?? [];
+    return [...entries].sort((a, b) => entryTotal(b) - entryTotal(a));
+  }, [query.data]);
   const maxTotal = sortedEntries.length > 0 ? entryTotal(sortedEntries[0]) : 0;
+
+  // KPI totals summed across every row in the visible window. Mirrors
+  // the CLI's aggregate line `spring analytics throughput --summary`.
+  const kpis = useMemo(
+    () =>
+      sortedEntries.reduce(
+        (acc, e) => ({
+          received: acc.received + n(e.messagesReceived),
+          sent: acc.sent + n(e.messagesSent),
+          turns: acc.turns + n(e.turns),
+          toolCalls: acc.toolCalls + n(e.toolCalls),
+        }),
+        { received: 0, sent: 0, turns: 0, toolCalls: 0 },
+      ),
+    [sortedEntries],
+  );
 
   const scopeHint = (() => {
     if (filters.scope.kind === "unit") {
@@ -100,6 +131,30 @@ function AnalyticsThroughputContent() {
         }
       />
 
+      {/* KPI strip — one StatCard per aggregated counter. */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <StatCard
+          label="Messages received"
+          value={kpis.received.toLocaleString()}
+          icon={<BarChart3 className="h-4 w-4" />}
+        />
+        <StatCard
+          label="Messages sent"
+          value={kpis.sent.toLocaleString()}
+          icon={<BarChart3 className="h-4 w-4" />}
+        />
+        <StatCard
+          label="Turns"
+          value={kpis.turns.toLocaleString()}
+          icon={<Gauge className="h-4 w-4" />}
+        />
+        <StatCard
+          label="Tool calls"
+          value={kpis.toolCalls.toLocaleString()}
+          icon={<Gauge className="h-4 w-4" />}
+        />
+      </div>
+
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
@@ -127,7 +182,10 @@ function AnalyticsThroughputContent() {
             // a 2×2 (plus total) metrics grid below. On sm+ we restore
             // the original grid so the wide layout reads as a compact
             // table.
-            <ul className="divide-y divide-border" data-testid="throughput-list">
+            <ul
+              className="divide-y divide-border"
+              data-testid="throughput-list"
+            >
               <li
                 className="hidden items-center gap-3 pb-2 text-xs font-medium text-muted-foreground sm:grid sm:grid-cols-[1fr_repeat(5,auto)]"
                 aria-hidden="true"
@@ -139,7 +197,7 @@ function AnalyticsThroughputContent() {
                 <span className="w-20 text-right">Tool calls</span>
                 <span className="w-14 text-right">Total</span>
               </li>
-              {sortedEntries.map((entry) => {
+              {sortedEntries.map((entry, i) => {
                 const total = entryTotal(entry);
                 const width = maxTotal > 0 ? (total / maxTotal) * 100 : 0;
                 const parsed = parseSource(entry.source);
@@ -150,6 +208,7 @@ function AnalyticsThroughputContent() {
                       ? `/agents/${encodeURIComponent(parsed.name)}`
                       : null
                   : null;
+                const hue = ROW_HUES[i % ROW_HUES.length];
                 return (
                   <li
                     key={entry.source}
@@ -173,7 +232,7 @@ function AnalyticsThroughputContent() {
                         aria-hidden="true"
                       >
                         <div
-                          className="h-full bg-primary/70"
+                          className={`h-full ${hue}`}
                           style={{ width: `${width}%` }}
                         />
                       </div>

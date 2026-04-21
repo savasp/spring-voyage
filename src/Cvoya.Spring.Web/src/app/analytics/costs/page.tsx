@@ -16,6 +16,10 @@
 //     `/budgets` page; `spring cost set-budget` is the CLI mirror (PR #474).
 //
 // Old `/budgets` deep links 308-redirect here via `next.config.ts`.
+//
+// v2 reskin (SURF-reskin-analytics, #860): KPIs adopt `<StatCard>`;
+// the per-source breakdown uses the brand + blossom palette for its
+// bars; the per-agent table follows the `TabTraces` styling.
 
 import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -28,6 +32,7 @@ import {
 import { DollarSign, TrendingUp, Wallet } from "lucide-react";
 
 import { Breadcrumbs } from "@/components/breadcrumbs";
+import { StatCard } from "@/components/stat-card";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -56,6 +61,21 @@ import {
   AnalyticsFiltersBar,
   useAnalyticsFilters,
 } from "../analytics-filters";
+
+/**
+ * Rotates a per-row accent colour through the brand-extension palette
+ * so the breakdown bars pick up the voyage / blossom hues instead of
+ * the single `bg-primary/70` strip the v1 surface shipped. The palette
+ * is intentionally short — the eye can only carry three / four
+ * distinct hues; a longer set would read as noise.
+ */
+const BREAKDOWN_HUES = [
+  "bg-voyage",
+  "bg-blossom-deep",
+  "bg-primary",
+  "bg-voyage-soft",
+  "bg-blossom",
+] as const;
 
 function AnalyticsCostsContent() {
   const { toast } = useToast();
@@ -251,6 +271,26 @@ function AnalyticsCostsContent() {
         }
       />
 
+      {/* KPI strip — StatCard foundation primitive so the costs surface
+          reads as a peer of the Dashboard tiles. */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <StatCard
+          label="Spend to date"
+          value={formatCost(totalCost)}
+          icon={<TrendingUp className="h-4 w-4" />}
+        />
+        <StatCard
+          label="Tenant daily budget"
+          value={tenantBudget ? formatCost(tenantBudget.dailyBudget) : "—"}
+          icon={<Wallet className="h-4 w-4" />}
+        />
+        <StatCard
+          label="Agents tracked"
+          value={agentRows.length}
+          icon={<DollarSign className="h-4 w-4" />}
+        />
+      </div>
+
       {filters.scope.kind !== "all" && filters.scope.name.trim().length > 0 && (
         <Card>
           <CardHeader>
@@ -325,7 +365,7 @@ function AnalyticsCostsContent() {
             </p>
           ) : (
             <ul className="space-y-2 text-sm">
-              {breakdownRows.map((row) => {
+              {breakdownRows.map((row, i) => {
                 const idx = row.source.indexOf("://");
                 const scheme = idx >= 0 ? row.source.slice(0, idx) : null;
                 const name = idx >= 0 ? row.source.slice(idx + 3) : row.source;
@@ -337,6 +377,7 @@ function AnalyticsCostsContent() {
                       : null;
                 const width =
                   breakdownMax > 0 ? (row.totalCost / breakdownMax) * 100 : 0;
+                const hue = BREAKDOWN_HUES[i % BREAKDOWN_HUES.length];
                 return (
                   <li key={row.source} className="space-y-1">
                     <div className="flex items-center justify-between gap-3">
@@ -361,7 +402,7 @@ function AnalyticsCostsContent() {
                       aria-hidden="true"
                     >
                       <div
-                        className="h-full bg-primary/70"
+                        className={`h-full ${hue}`}
                         style={{ width: `${width}%` }}
                       />
                     </div>
@@ -420,7 +461,7 @@ function AnalyticsCostsContent() {
               </div>
               <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-muted">
                 <div
-                  className="h-full bg-primary"
+                  className="h-full bg-voyage"
                   style={{ width: `${utilization}%` }}
                 />
               </div>
@@ -453,22 +494,25 @@ function AnalyticsCostsContent() {
               No agents registered.
             </p>
           ) : (
-            <div className="space-y-2">
+            // Table styling borrowed from the Explorer `TabTraces` pattern:
+            // mono identifiers, right-aligned numeric columns, a thin row
+            // divider instead of card-per-row.
+            <ul className="divide-y divide-border text-sm">
               {agentRows.map(({ agent, budget }) => (
-                <div
+                <li
                   key={agent.name}
-                  className="flex flex-col gap-2 rounded-md border border-border p-3 text-sm sm:flex-row sm:items-center sm:justify-between"
+                  className="flex flex-col gap-2 py-2 sm:flex-row sm:items-center sm:justify-between"
                 >
                   <div className="min-w-0">
                     <div className="truncate font-medium">
                       {agent.displayName}
                     </div>
-                    <div className="truncate text-xs text-muted-foreground">
+                    <div className="truncate font-mono text-xs text-muted-foreground">
                       {agent.name}
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="text-xs text-muted-foreground">
+                    <span className="tabular-nums text-xs text-muted-foreground">
                       {budget
                         ? `${formatCost(budget.dailyBudget)}/day`
                         : "Not set"}
@@ -479,9 +523,9 @@ function AnalyticsCostsContent() {
                       </Button>
                     </Link>
                   </div>
-                </div>
+                </li>
               ))}
-            </div>
+            </ul>
           )}
         </CardContent>
       </Card>
