@@ -46,7 +46,11 @@ RUN apt-get update \
         ca-certificates \
         curl \
         podman-remote \
- && rm -rf /var/lib/apt/lists/*
+ && rm -rf /var/lib/apt/lists/* \
+ # Symlink so PodmanRuntime's `podman` spawn resolves on PATH — the apt package
+ # installs only `/usr/bin/podman-remote` and the runtime shells out to the
+ # literal binary name "podman".
+ && ln -sf /usr/bin/podman-remote /usr/local/bin/podman
 
 WORKDIR /app
 COPY --from=dotnet-build /publish/dispatcher/ /app/

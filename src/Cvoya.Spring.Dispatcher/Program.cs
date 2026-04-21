@@ -1,12 +1,16 @@
 // Copyright CVOYA LLC. Licensed under the Business Source License 1.1.
 // See LICENSE.md in the project root for full license terms.
 
+using Cvoya.Spring.Core.Configuration;
 using Cvoya.Spring.Core.Execution;
+using Cvoya.Spring.Dapr.Configuration;
+using Cvoya.Spring.Dapr.DependencyInjection;
 using Cvoya.Spring.Dapr.Execution;
 using Cvoya.Spring.Dispatcher;
 
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -24,6 +28,15 @@ builder.Services.AddOptions<ContainerRuntimeOptions>()
 // Workers never hold a ProcessContainerRuntime binding — they bind a
 // DispatcherClientContainerRuntime instead (registered in the Dapr DI layer).
 builder.Services.AddSingleton<IContainerRuntime, PodmanRuntime>();
+
+// Startup probe: the configured container runtime binary must resolve on PATH
+// before the dispatcher accepts requests. Without this, a misconfigured image
+// (e.g. one that ships `podman-remote` but not `podman`) comes up healthy and
+// then 500s on every dispatch with "No such file or directory". See #984.
+builder.Services.TryAddSingleton<IContainerRuntimeBinaryProbe, ContainerRuntimeBinaryProbe>();
+builder.Services.AddCvoyaSpringConfigurationValidator();
+builder.Services.TryAddEnumerable(
+    ServiceDescriptor.Singleton<IConfigurationRequirement, ContainerRuntimeBinaryConfigurationRequirement>());
 
 // Bearer-token auth over DispatcherOptions.Tokens. Keeping the scheme minimal
 // — a downstream host that targets multi-tenant K8s deployments can swap in a

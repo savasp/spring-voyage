@@ -4,6 +4,7 @@
 namespace Cvoya.Spring.Dispatcher.Tests;
 
 using Cvoya.Spring.Core.Execution;
+using Cvoya.Spring.Dapr.Configuration;
 
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -48,6 +49,26 @@ public class DispatcherWebApplicationFactory : WebApplicationFactory<Program>
             }
 
             services.AddSingleton(ContainerRuntime);
+
+            // The real ContainerRuntimeBinaryConfigurationRequirement probes
+            // PATH for the configured binary and aborts host boot when it
+            // isn't there. Test machines rarely have podman installed — swap
+            // in a stubbed probe that always resolves so the dispatcher boots
+            // for endpoint tests.
+            var probeDescriptors = services
+                .Where(d => d.ServiceType == typeof(IContainerRuntimeBinaryProbe))
+                .ToList();
+            foreach (var descriptor in probeDescriptors)
+            {
+                services.Remove(descriptor);
+            }
+            services.AddSingleton<IContainerRuntimeBinaryProbe>(new StubContainerRuntimeBinaryProbe());
         });
+    }
+
+    private sealed class StubContainerRuntimeBinaryProbe : IContainerRuntimeBinaryProbe
+    {
+        public string? TryResolveBinary(string binaryName, System.Threading.CancellationToken cancellationToken) =>
+            $"/stub/{binaryName}";
     }
 }
