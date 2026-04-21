@@ -1,23 +1,50 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 
 import type { DashboardSummary } from "@/lib/api/types";
 
-const getDashboardSummary =
-  vi.fn<() => Promise<DashboardSummary>>();
+// ---------------------------------------------------------------------------
+// Mocks — the dashboard now reads three queries (summary, tenant-tree,
+// tenant-cost) and one list (installed connectors). The SSE stream and
+// router are stubbed so the page renders synchronously.
+// ---------------------------------------------------------------------------
+
+const getDashboardSummary = vi.fn<() => Promise<DashboardSummary>>();
+const getTenantTree = vi.fn<() => Promise<unknown>>();
+const getTenantCost =
+  vi.fn<() => Promise<{ totalCost: number; breakdowns: unknown[] }>>();
+const listConnectors = vi.fn<() => Promise<unknown[]>>();
 
 vi.mock("@/lib/api/client", () => ({
   api: {
     getDashboardSummary: () => getDashboardSummary(),
+    getTenantTree: () => getTenantTree(),
+    getTenantCost: () => getTenantCost(),
+    listConnectors: () => listConnectors(),
   },
 }));
 
-// The dashboard now subscribes to the activity stream for live
-// refreshes. Stub the hook so tests don't open a real EventSource.
+// Stub the activity stream hook so the test environment never opens a
+// real EventSource.
 vi.mock("@/lib/stream/use-activity-stream", () => ({
   useActivityStream: () => ({ events: [], connected: false }),
+}));
+
+// Router stub — the dashboard calls `router.push` for "Open explorer"
+// and every tab-chip click. The spy lets the chip test assert the URL.
+const routerPush = vi.fn();
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: routerPush,
+    replace: vi.fn(),
+    refresh: vi.fn(),
+    back: vi.fn(),
+    prefetch: vi.fn(),
+  }),
+  usePathname: () => "/",
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 vi.mock("next/link", () => ({
@@ -96,94 +123,137 @@ function makeSummary(
   };
 }
 
+/**
+ * Canonical tenant-tree shape the dashboard reads. Root is a Tenant
+ * with two top-level units; Unit Alpha contains an agent so the
+ * widget's "kind === 'Unit'" filter is exercised.
+ */
+function makeTenantTree() {
+  return {
+    tree: {
+      id: "tenant://acme",
+      name: "Acme",
+      kind: "Tenant",
+      status: "running",
+      children: [
+        {
+          id: "unit-alpha",
+          name: "Unit Alpha",
+          kind: "Unit",
+          status: "running",
+          children: [
+            {
+              id: "unit-alpha/agent-1",
+              name: "Agent One",
+              kind: "Agent",
+              status: "running",
+              role: "backend",
+            },
+          ],
+        },
+        {
+          id: "unit-beta",
+          name: "Unit Beta",
+          kind: "Unit",
+          status: "stopped",
+        },
+      ],
+    },
+  };
+}
+
 describe("DashboardPage", () => {
   beforeEach(() => {
     getDashboardSummary.mockReset();
+    getTenantTree.mockReset();
+    getTenantCost.mockReset();
+    listConnectors.mockReset();
+    routerPush.mockReset();
+    // Sensible defaults so each test only restates what it exercises.
+    getTenantTree.mockResolvedValue(makeTenantTree());
+    getTenantCost.mockResolvedValue({ totalCost: 12.34, breakdowns: [] });
+    listConnectors.mockResolvedValue([
+      { typeId: "github", displayName: "GitHub" },
+      { typeId: "slack", displayName: "Slack" },
+    ]);
   });
 
-  it("renders all three sections with cards when data is populated", async () => {
-    getDashboardSummary.mockResolvedValue(
-      makeSummary({
-        recentActivity: [
-          {
-            id: "evt-1",
-            source: "agent://unit-alpha/agent-1",
-            eventType: "MessageReceived",
-            severity: "Info",
-            summary: "Agent received a message",
-            timestamp: "2026-04-13T10:00:00Z",
-          },
-        ],
-      }),
-    );
+  it("renders the header with title, sub-caption, and both action buttons", async () => {
+    getDashboardSummary.mockResolvedValue(makeSummary());
 
     renderDashboard();
 
-    // All three sections render
+    await screen.findByRole("heading", { level: 1, name: /dashboard/i });
+    // Sub-caption shape: "N units · M agents · K connectors healthy".
     await waitFor(() => {
-      expect(screen.getByText("Unit Alpha")).toBeInTheDocument();
+      expect(screen.getByTestId("dashboard-subcaption")).toHaveTextContent(
+        /2 units .* 3 agents .* 2 connectors healthy/,
+      );
     });
-    expect(screen.getByText("Agent One")).toBeInTheDocument();
-    // Activity text appears in both the activity feed and the agent card preview
-    const activityTexts = screen.getAllByText("Agent received a message");
-    expect(activityTexts.length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByTestId("dashboard-copy-address")).toBeInTheDocument();
+    expect(screen.getByTestId("dashboard-new-unit")).toHaveAttribute(
+      "href",
+      "/units/create",
+    );
   });
 
-  it("renders stats header with correct breakdown", async () => {
+  it("renders the 4-stat grid (Units / Agents / Running / Cost · 24h)", async () => {
     getDashboardSummary.mockResolvedValue(
       makeSummary({
-        unitsByStatus: { Running: 1, Draft: 1, Error: 1 },
-        unitCount: 3,
+        unitCount: 4,
+        agentCount: 7,
+        unitsByStatus: { Running: 3, Draft: 1 },
       }),
     );
+    getTenantCost.mockResolvedValue({ totalCost: 8.5, breakdowns: [] });
 
     renderDashboard();
 
     await waitFor(() => {
       expect(screen.getByTestId("stats-header")).toBeInTheDocument();
     });
-
-    // Unit count (also matches agentCount which defaults to 3)
-    const threes = screen.getAllByText("3");
-    expect(threes.length).toBeGreaterThanOrEqual(1);
-
-    // Status breakdown badges
-    expect(screen.getByTestId("units-running-badge")).toHaveTextContent(
-      "1 running",
-    );
-    expect(screen.getByTestId("units-stopped-badge")).toHaveTextContent(
-      "1 stopped",
-    );
-    expect(screen.getByTestId("units-error-badge")).toHaveTextContent(
-      "1 error",
-    );
-
-    // Agent count label appears in both the stats header and section heading
-    const agentLabels = screen.getAllByText("Agents");
-    expect(agentLabels.length).toBeGreaterThanOrEqual(1);
-
-    // Total cost
-    expect(screen.getByText("$42.50")).toBeInTheDocument();
-
-    // Health should be degraded (error units)
-    expect(screen.getByTestId("health-label")).toHaveTextContent("Degraded");
+    const stats = screen.getByTestId("stats-header");
+    expect(stats).toHaveTextContent("Units");
+    expect(stats).toHaveTextContent("Agents");
+    expect(stats).toHaveTextContent("Running");
+    expect(stats).toHaveTextContent("Cost · 24h");
+    // Numeric values.
+    expect(stats).toHaveTextContent("4");
+    expect(stats).toHaveTextContent("7");
+    expect(stats).toHaveTextContent("3");
+    await waitFor(() => {
+      expect(stats).toHaveTextContent("$8.50");
+    });
   });
 
-  it("shows healthy system health when all units are running", async () => {
-    getDashboardSummary.mockResolvedValue(
-      makeSummary({
-        unitsByStatus: { Running: 2 },
-      }),
-    );
+  it("renders one UnitCard per top-level unit from the tenant tree", async () => {
+    getDashboardSummary.mockResolvedValue(makeSummary());
 
     renderDashboard();
 
     await waitFor(() => {
-      expect(screen.getByTestId("health-label")).toHaveTextContent("Healthy");
+      expect(screen.getByTestId("top-level-units-grid")).toBeInTheDocument();
     });
+    // The two top-level units under the tenant render as cards; nested
+    // agents under Unit Alpha do NOT render at the top level.
+    expect(screen.getByTestId("unit-card-unit-alpha")).toBeInTheDocument();
+    expect(screen.getByTestId("unit-card-unit-beta")).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("unit-card-unit-alpha/agent-1"),
+    ).not.toBeInTheDocument();
   });
 
-  it("unit card click navigates to unit detail page", async () => {
+  it("pushes /units when 'Open explorer' is clicked", async () => {
+    getDashboardSummary.mockResolvedValue(makeSummary());
+
+    renderDashboard();
+
+    const openExplorer = await screen.findByTestId("open-explorer-button");
+    openExplorer.click();
+    expect(routerPush).toHaveBeenCalledWith("/units");
+  });
+
+  it("pushes /units?node=<id>&tab=<Tab> when a unit-card TabChip is clicked", async () => {
     getDashboardSummary.mockResolvedValue(makeSummary());
 
     renderDashboard();
@@ -191,177 +261,47 @@ describe("DashboardPage", () => {
     await waitFor(() => {
       expect(screen.getByTestId("unit-card-unit-alpha")).toBeInTheDocument();
     });
-    // The primary "open" affordance lives inside the card.
-    const open = screen.getByTestId("unit-open-unit-alpha");
-    expect(open).toHaveAttribute("href", "/units/unit-alpha");
+    // Grab the Activity tab chip from Unit Alpha's card. The chip lives
+    // inside the card's CardTabRow footer; multiple cards render the
+    // same chip name, so scope the query to a single card.
+    const alpha = screen.getByTestId("unit-card-tabrow-unit-alpha");
+    const activityChip = alpha.querySelector(
+      '[data-testid="card-tab-chip-activity"]',
+    ) as HTMLElement | null;
+    expect(activityChip).not.toBeNull();
+    activityChip!.click();
+    expect(routerPush).toHaveBeenCalledWith(
+      "/units?node=unit-alpha&tab=Activity",
+    );
   });
 
-  it("unit cards display status badge and status dot", async () => {
+  it("copies the tenant address to the clipboard when Copy is clicked", async () => {
     getDashboardSummary.mockResolvedValue(makeSummary());
+
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
 
     renderDashboard();
 
-    await waitFor(() => {
-      expect(screen.getByText("Unit Alpha")).toBeInTheDocument();
+    const button = await screen.findByTestId("dashboard-copy-address");
+    await act(async () => {
+      button.click();
+      // flush the awaited writeText promise.
+      await Promise.resolve();
     });
-    expect(screen.getByText("Running")).toBeInTheDocument();
-    expect(screen.getByText("Draft")).toBeInTheDocument();
-
-    // Status dot elements
-    expect(
-      screen.getByTestId("unit-status-dot-unit-alpha"),
-    ).toBeInTheDocument();
+    expect(writeText).toHaveBeenCalledWith("tenant://acme");
   });
 
-  it("agent card shows parent-unit badge when agent is nested", async () => {
-    getDashboardSummary.mockResolvedValue(makeSummary());
-
-    renderDashboard();
-
-    await waitFor(() => {
-      expect(screen.getByText("Agent One")).toBeInTheDocument();
-    });
-
-    // Agent One (unit-alpha/agent-1) should show parent unit badge
-    const parentBadges = screen.getAllByTestId("agent-parent-unit");
-    expect(parentBadges.length).toBeGreaterThan(0);
-    expect(parentBadges[0]).toHaveTextContent("unit-alpha");
-  });
-
-  it("agent card shows role badge", async () => {
-    getDashboardSummary.mockResolvedValue(makeSummary());
-
-    renderDashboard();
-
-    await waitFor(() => {
-      expect(screen.getByText("Agent One")).toBeInTheDocument();
-    });
-    expect(screen.getByText("backend")).toBeInTheDocument();
-    expect(screen.getByText("frontend")).toBeInTheDocument();
-  });
-
-  it("agent card shows last activity preview", async () => {
+  it("renders the activity feed with items from the summary", async () => {
     getDashboardSummary.mockResolvedValue(
       makeSummary({
         recentActivity: [
           {
             id: "evt-1",
             source: "agent://unit-alpha/agent-1",
-            eventType: "MessageReceived",
-            severity: "Info",
-            summary: "Processed PR review",
-            timestamp: "2026-04-13T10:00:00Z",
-          },
-        ],
-      }),
-    );
-
-    renderDashboard();
-
-    await waitFor(() => {
-      expect(screen.getByText("Agent One")).toBeInTheDocument();
-    });
-
-    const activityEl = screen.getByTestId(
-      "agent-card-unit-alpha/agent-1",
-    );
-    expect(activityEl).toHaveTextContent("Processed PR review");
-  });
-
-  it("shows empty-state messages when data is empty", async () => {
-    getDashboardSummary.mockResolvedValue(
-      makeSummary({
-        unitCount: 0,
-        unitsByStatus: {},
-        agentCount: 0,
-        recentActivity: [],
-        totalCost: 0,
-        units: [],
-        agents: [],
-      }),
-    );
-
-    renderDashboard();
-
-    await waitFor(() => {
-      // Text appears as both a heading and a CTA link
-      const ctaElements = screen.getAllByText("Create your first unit");
-      expect(ctaElements.length).toBeGreaterThanOrEqual(1);
-    });
-    expect(
-      screen.getByText(
-        "Agents appear when you create a unit from a template.",
-      ),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("Start a unit to see activity here."),
-    ).toBeInTheDocument();
-  });
-
-  it("shows create-unit CTA link in empty units state", async () => {
-    getDashboardSummary.mockResolvedValue(
-      makeSummary({
-        unitCount: 0,
-        units: [],
-      }),
-    );
-
-    renderDashboard();
-
-    await waitFor(() => {
-      expect(screen.getByTestId("create-unit-cta")).toBeInTheDocument();
-    });
-    expect(screen.getByTestId("create-unit-cta")).toHaveAttribute(
-      "href",
-      "/units/create",
-    );
-  });
-
-  it("shows 'View all' link for units when units exist", async () => {
-    getDashboardSummary.mockResolvedValue(makeSummary());
-
-    renderDashboard();
-
-    await waitFor(() => {
-      expect(screen.getByText("View all")).toBeInTheDocument();
-    });
-    expect(screen.getByText("View all")).toHaveAttribute("href", "/units");
-  });
-
-  it("shows 'View all' link for activity when activity exists", async () => {
-    getDashboardSummary.mockResolvedValue(
-      makeSummary({
-        recentActivity: [
-          {
-            id: "evt-1",
-            source: "agent://agent-1",
-            eventType: "MessageReceived",
-            severity: "Info",
-            summary: "Test event",
-            timestamp: "2026-04-13T10:00:00Z",
-          },
-        ],
-      }),
-    );
-
-    renderDashboard();
-
-    await waitFor(() => {
-      // There will be two "View all" links - one for units, one for activity
-      const viewAllLinks = screen.getAllByText("View all");
-      expect(viewAllLinks.length).toBe(2);
-    });
-    const viewAllLinks = screen.getAllByText("View all");
-    expect(viewAllLinks[1]).toHaveAttribute("href", "/activity");
-  });
-
-  it("activity feed shows source badges and severity colors", async () => {
-    getDashboardSummary.mockResolvedValue(
-      makeSummary({
-        recentActivity: [
-          {
-            id: "evt-1",
-            source: "agent://agent-1",
             eventType: "MessageReceived",
             severity: "Info",
             summary: "Agent received a message",
@@ -382,18 +322,25 @@ describe("DashboardPage", () => {
     renderDashboard();
 
     await waitFor(() => {
-      expect(
-        screen.getByText("Agent received a message"),
-      ).toBeInTheDocument();
+      expect(screen.getByTestId("dashboard-activity")).toBeInTheDocument();
     });
-    expect(screen.getByText("Unit state changed")).toBeInTheDocument();
-
-    // Activity items render with test IDs
     expect(screen.getByTestId("activity-item-evt-1")).toBeInTheDocument();
     expect(screen.getByTestId("activity-item-evt-2")).toBeInTheDocument();
+    // "View all" link appears only when we have at least one item.
+    expect(screen.getByText("View all")).toHaveAttribute("href", "/activity");
   });
 
-  it("shows 'No units' health indicator when no units exist", async () => {
+  it("renders the bottom CostSummaryCard", async () => {
+    getDashboardSummary.mockResolvedValue(makeSummary());
+
+    renderDashboard();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("cost-summary-card")).toBeInTheDocument();
+    });
+  });
+
+  it("shows the empty-state CTA when there are no top-level units", async () => {
     getDashboardSummary.mockResolvedValue(
       makeSummary({
         unitCount: 0,
@@ -401,11 +348,74 @@ describe("DashboardPage", () => {
         units: [],
       }),
     );
+    getTenantTree.mockResolvedValue({
+      tree: {
+        id: "tenant://acme",
+        name: "Acme",
+        kind: "Tenant",
+        status: "running",
+      },
+    });
 
     renderDashboard();
 
     await waitFor(() => {
-      expect(screen.getByTestId("health-label")).toHaveTextContent("No units");
+      expect(screen.getByTestId("create-unit-cta")).toBeInTheDocument();
     });
+    expect(screen.getByTestId("create-unit-cta")).toHaveAttribute(
+      "href",
+      "/units/create",
+    );
+  });
+
+  it("shows the activity empty state when there is no recent activity", async () => {
+    getDashboardSummary.mockResolvedValue(makeSummary());
+
+    renderDashboard();
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Start a unit to see activity here."),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("ignores tenant-tree children that are agents for the top-level widget", async () => {
+    // When the tenant root carries agents directly (rare but legal —
+    // tenant-wide shared agents), they must NOT paint as top-level
+    // "unit" cards. The filter in the dashboard keys on kind === "Unit".
+    getDashboardSummary.mockResolvedValue(makeSummary());
+    getTenantTree.mockResolvedValue({
+      tree: {
+        id: "tenant://acme",
+        name: "Acme",
+        kind: "Tenant",
+        status: "running",
+        children: [
+          {
+            id: "unit-alpha",
+            name: "Unit Alpha",
+            kind: "Unit",
+            status: "running",
+          },
+          {
+            id: "shared-agent",
+            name: "Shared Agent",
+            kind: "Agent",
+            status: "running",
+            role: "utility",
+          },
+        ],
+      },
+    });
+
+    renderDashboard();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("unit-card-unit-alpha")).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByTestId("unit-card-shared-agent"),
+    ).not.toBeInTheDocument();
   });
 });
