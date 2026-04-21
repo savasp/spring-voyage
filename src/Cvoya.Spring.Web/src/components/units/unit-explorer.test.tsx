@@ -85,4 +85,22 @@ describe("UnitExplorer (foundation scaffold)", () => {
     );
     expect(screen.getByTestId("tab-placeholder-activity")).toBeInTheDocument();
   });
+
+  it("wires the selected tab to its panel via aria-controls / aria-labelledby", () => {
+    render(<UnitExplorer tree={tree} />);
+    const selectedTab = screen.getByTestId("detail-tab-overview");
+    expect(selectedTab).toHaveAttribute("aria-selected", "true");
+    expect(selectedTab).toHaveAttribute("tabindex", "0");
+    const panelId = selectedTab.getAttribute("aria-controls");
+    expect(panelId).toBeTruthy();
+    const panel = document.getElementById(panelId!);
+    expect(panel).not.toBeNull();
+    expect(panel).toHaveAttribute("role", "tabpanel");
+    expect(panel).toHaveAttribute("aria-labelledby", selectedTab.id);
+    // Inactive tabs are removed from the tab order (roving tabIndex prep).
+    expect(screen.getByTestId("detail-tab-activity")).toHaveAttribute(
+      "tabindex",
+      "-1",
+    );
+  });
 });

@@ -17,24 +17,9 @@ interface BrandMarkProps {
 }
 
 /**
- * Theme-aware Spring Voyage sailboat mark.
- *
- * Renders one of two PNGs from `public/brand/` so the mark always paints
- * with sufficient contrast against the active surface:
- *
- *   - `/brand/sailboat-dark.png` — white-on-transparent; used in dark mode.
- *   - `/brand/sailboat-light.png` — black-on-transparent; used in light mode.
- *
- * The component reads the live theme from `useTheme()` and re-renders the
- * matching asset. Both files are emitted from the design source bundle in
- * `~/tmp/SpringVoyageDesign/logos/`.
- *
- * Both assets ship to the client at build time (Next.js bundles `public/`)
- * so the swap is instant — no FOUC, no extra network round-trip.
- *
- * The mark is `aria-hidden` when the surrounding chrome already labels the
- * brand (the sidebar wordmark sits next to it). Pass an explicit `label`
- * when the mark stands alone.
+ * Theme-aware Spring Voyage sailboat mark. Paints white-on-transparent in
+ * dark mode and black-on-transparent in light mode; both PNGs ship from
+ * `public/brand/` at build time so the swap is instant.
  */
 export function BrandMark({
   size = 24,

@@ -1,25 +1,3 @@
-/**
- * Tree-node shape used across the Explorer surface (`<UnitExplorer>`,
- * `<UnitTree>`, `<DetailPane>`, the per-tab content components, and the
- * dashboard `<UnitCard>` / `<AgentCard>` once they pick up tab chips).
- *
- * Three node kinds live in the same tree:
- *
- *   - `Tenant` — the synthesized root node. The plan §3 defines this as a
- *     UI-only construct: there is no "root unit" entity on the server. The
- *     Explorer presents it so multi-top-level-unit tenants still get a
- *     single navigation entry point.
- *   - `Unit` — a unit. Units may contain other units AND agents.
- *   - `Agent` — an agent. Every agent has ≥1 parent unit (per `SVR-membership`);
- *     agents that belong to multiple units appear as alias children under
- *     each parent. The `primaryParentId` field on the source payload picks
- *     which appearance owns the agent's "canonical" surface; the others
- *     render as deduplicated alias rows.
- *
- * The `status` set matches the design kit (`Explorer.jsx`) and is the same
- * vocabulary used by the dashboard cards. `aggregate()` ranks them when
- * rolling worst-status up the subtree.
- */
 export type NodeKind = "Tenant" | "Unit" | "Agent";
 
 export type NodeStatus =
@@ -29,37 +7,60 @@ export type NodeStatus =
   | "stopped"
   | "error";
 
-export interface TreeNode {
-  /**
-   * Stable identifier — slug for units/tenants, address for agents. Used
-   * as the React `key`, the URL `?node=` parameter, the Cmd-K teleport
-   * target, and the `aggregate()` cache key.
-   */
+interface BaseNode {
+  /** Stable identifier — used as React `key`, URL `?node=`, and index key. */
   id: string;
   /** Human-readable name shown in the tree row + detail pane title. */
   name: string;
-  kind: NodeKind;
   status: NodeStatus;
-  /**
-   * Optional one-line description rendered above the stat tiles on the
-   * Overview tab. Tenants and units typically supply one; most agents do
-   * not — the UI silently omits the description when it's missing.
-   */
+  /** Optional one-line description rendered above the Overview stat tiles. */
   desc?: string;
-  /** Self cost in USD over the last 24 h. Subtree totals come from {@link aggregate}. */
-  cost24h?: number;
-  /** Self message volume over the last 24 h. Subtree totals come from {@link aggregate}. */
-  msgs24h?: number;
-  /** Agent role (e.g. "tech-lead", "reviewer"). Only set on agent nodes. */
-  role?: string;
-  /** Number of skills equipped on an agent. Drives the Skills count tile. */
-  skills?: number;
+}
+
+export interface TenantNode extends BaseNode {
+  kind: "Tenant";
   /**
-   * Direct children — units and/or agents under this node. Undefined
-   * means "leaf"; an empty array means "branch with no children right now"
-   * (which the tree renders without a twisty).
+   * Top-level units under the tenant. Tenant carries no self cost/msgs —
+   * those are derived by walking children via {@link aggregate}.
    */
   children?: TreeNode[];
+}
+
+export interface UnitNode extends BaseNode {
+  kind: "Unit";
+  /** Self cost in USD over the last 24 h. Subtree totals via {@link aggregate}. */
+  cost24h?: number;
+  /** Self message volume over the last 24 h. Subtree totals via {@link aggregate}. */
+  msgs24h?: number;
+  /** Direct children — nested units and/or agents. */
+  children?: TreeNode[];
+}
+
+export interface AgentNode extends BaseNode {
+  kind: "Agent";
+  /** Agent role (e.g. "tech-lead", "reviewer"). */
+  role?: string;
+  /** Number of skills equipped — drives the Skills count tile. */
+  skills?: number;
+  /** Self cost in USD over the last 24 h. */
+  cost24h?: number;
+  /** Self message volume over the last 24 h. */
+  msgs24h?: number;
+  /**
+   * For multi-parent agents: the id of the parent that owns the canonical
+   * surface. Aliases (agent under a non-primary parent) render deduplicated.
+   */
+  primaryParentId?: string;
+}
+
+export type TreeNode = TenantNode | UnitNode | AgentNode;
+
+/**
+ * Returns the node's children, or an empty readonly array for kinds that
+ * can't have children (Agent). Lets callers iterate without re-narrowing.
+ */
+export function childrenOf(node: TreeNode): readonly TreeNode[] {
+  return node.kind === "Agent" ? [] : node.children ?? [];
 }
 
 /**
@@ -94,18 +95,15 @@ const STATUS_RANK: Record<NodeStatus, number> = {
  * Recursively roll up cost, message volume, agent count, unit count, and
  * the worst-status-in-subtree for a node. Pure function — given the same
  * tree it returns the same result, so memoise around it freely.
- *
- * Direct port of `aggregate()` from `~/tmp/SpringVoyageDesign/project/ui_kits/portal/Explorer.jsx`,
- * tightened with TypeScript types.
  */
 export function aggregate(node: TreeNode): SubtreeAggregate {
-  let cost = node.cost24h ?? 0;
-  let msgs = node.msgs24h ?? 0;
+  let cost = node.kind === "Tenant" ? 0 : node.cost24h ?? 0;
+  let msgs = node.kind === "Tenant" ? 0 : node.msgs24h ?? 0;
   let agents = node.kind === "Agent" ? 1 : 0;
   let units = node.kind === "Unit" ? 1 : 0;
   let worst: NodeStatus = node.status;
 
-  for (const child of node.children ?? []) {
+  for (const child of childrenOf(node)) {
     const sub = aggregate(child);
     cost += sub.cost;
     msgs += sub.msgs;
@@ -121,10 +119,7 @@ export function aggregate(node: TreeNode): SubtreeAggregate {
 
 /**
  * Flatten a tree into a depth-first list of `{ node, path }` records.
- *
- * `path` is the chain of ancestors from the root down to and including
- * `node`. Used by the detail pane's breadcrumb and by `findIndex()` for
- * O(1) selection lookup keyed on node id.
+ * `path` is the chain of ancestors from the root down to and including `node`.
  */
 export function flattenTree(
   node: TreeNode,
@@ -133,7 +128,7 @@ export function flattenTree(
 ): Array<{ node: TreeNode; path: TreeNode[] }> {
   const here = [...path, node];
   out.push({ node, path: here });
-  for (const child of node.children ?? []) {
+  for (const child of childrenOf(node)) {
     flattenTree(child, here, out);
   }
   return out;
@@ -141,10 +136,6 @@ export function flattenTree(
 
 /**
  * Build an `id → { node, path }` index for fast selection lookup.
- *
- * The Explorer uses this every render to translate the URL-driven
- * `?node=…` parameter into the right tree node + breadcrumb path
- * without re-walking the tree on every selection change.
  */
 export function findIndex(tree: TreeNode): {
   byId: Record<string, { node: TreeNode; path: TreeNode[] }>;
@@ -158,10 +149,8 @@ export function findIndex(tree: TreeNode): {
 }
 
 /**
- * Tab catalogs by node kind. Mirrors the locked v2.0 disposition table from
- * the plan (§3): Unit gets 8 visible tabs (Overview through Config); Agent
- * gets 8 visible tabs; Tenant gets 5. The order here is the order the tab
- * strip renders.
+ * Tab catalogs by node kind. The order here is the order the tab strip
+ * renders.
  */
 export const UNIT_TABS = [
   "Overview",
@@ -198,14 +187,27 @@ export type AgentTabName = (typeof AGENT_TABS)[number];
 export type TenantTabName = (typeof TENANT_TABS)[number];
 export type TabName = UnitTabName | AgentTabName | TenantTabName;
 
-export function tabsFor(kind: NodeKind): readonly TabName[] {
+/**
+ * Conditional type linking a node kind to its tab catalog. Lets generic
+ * registry APIs (`registerTab`, `lookupTab`, `tabKey`) reject nonsense
+ * `(kind, tab)` pairs like `("Tenant", "Skills")` at compile time.
+ */
+export type TabsFor<K extends NodeKind> = K extends "Tenant"
+  ? TenantTabName
+  : K extends "Unit"
+    ? UnitTabName
+    : K extends "Agent"
+      ? AgentTabName
+      : never;
+
+export function tabsFor<K extends NodeKind>(kind: K): readonly TabsFor<K>[] {
   switch (kind) {
     case "Agent":
-      return AGENT_TABS;
+      return AGENT_TABS as unknown as readonly TabsFor<K>[];
     case "Tenant":
-      return TENANT_TABS;
+      return TENANT_TABS as unknown as readonly TabsFor<K>[];
     case "Unit":
     default:
-      return UNIT_TABS;
+      return UNIT_TABS as unknown as readonly TabsFor<K>[];
   }
 }

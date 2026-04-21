@@ -5,12 +5,19 @@ import { useCallback, useMemo, useState } from "react";
 
 import { cn } from "@/lib/utils";
 
-import { aggregate, type NodeKind, type NodeStatus, type TreeNode } from "./aggregate";
+import {
+  aggregate,
+  childrenOf,
+  type NodeKind,
+  type NodeStatus,
+  type TreeNode,
+} from "./aggregate";
 
 interface UnitTreeProps {
   /**
-   * Root of the tree. `<UnitExplorer>` synthesizes a tenant-root node so
-   * multi-top-level-unit tenants get a single navigable entry point.
+   * Root of the tree to render. For the portal this is the synthesized
+   * tenant root served by `GET /api/v1/tenant/tree`; the tree is rendered
+   * verbatim with no frontend-side synthesis.
    */
   tree: TreeNode;
   /** Currently-selected node id; controlled by the parent (URL-driven). */
@@ -92,7 +99,8 @@ function TreeRow({
   onSelect,
   selectedId,
 }: TreeRowProps) {
-  const hasChildren = (node.children?.length ?? 0) > 0;
+  const children = childrenOf(node);
+  const hasChildren = children.length > 0;
   const isOpen = !!expanded[node.id];
   const selected = selectedId === node.id;
   const subtree = useMemo(() => aggregate(node), [node]);
@@ -172,7 +180,7 @@ function TreeRow({
         ) : null}
       </div>
       {hasChildren && isOpen
-        ? node.children!.map((child) => (
+        ? children.map((child) => (
             <TreeRow
               key={child.id}
               node={child}

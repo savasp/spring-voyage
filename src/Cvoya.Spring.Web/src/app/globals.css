@@ -97,13 +97,11 @@
 /* ---------------------------------------------------------------------------
  * Spring Voyage `--sv-*` tokens — DARK theme (default).
  *
- * Mirrored from `~/tmp/SpringVoyageDesign/project/colors_and_type.css`. The
- * triple selector covers every theming convention the portal supports:
+ * The triple selector covers every theming convention the portal supports:
  *
- *   - `:root`                       — when no class/attribute has been set
- *                                     (matches the SSR default + design kit)
- *   - `.dark`                       — applied by the existing ThemeProvider
- *   - `[data-theme="dark"]`         — design-kit convention for marketing
+ *   - `:root`                — when no class/attribute has been set (SSR default)
+ *   - `.dark`                — applied by ThemeProvider
+ *   - `[data-theme="dark"]`  — design-kit convention for marketing surfaces
  *
  * The values are identical to the @theme palette above so any token can be
  * reached from either the Tailwind utility namespace or the `--sv-*`

@@ -19,34 +19,17 @@ import type { MouseEvent } from "react";
 
 import { cn } from "@/lib/utils";
 
+import type { TabName } from "@/components/units/aggregate";
+
 /**
- * The fixed set of tabs the chip-row knows how to render. Adding a tab
- * means adding it to this union AND to {@link TAB_ICON} — the mapping is
- * deliberately exhaustive so an unknown tab name fails type-checking
- * instead of silently rendering an iconless chip.
- *
- * The list is the union of the Unit-, Agent-, and Tenant-tab catalogs
- * defined in §3 of the design plan (Spring Voyage v2 Explorer):
- *
- *   Unit   — Overview, Agents, Orchestration, Activity, Messages, Memory,
- *            Policies, Config
- *   Agent  — Overview, Activity, Messages, Memory, Skills, Traces, Clones,
- *            Config
- *   Tenant — Overview, Activity, Policies, Budgets, Memory
+ * The chip-row renders the same tab names the Explorer surface exposes.
+ * Aliasing to `TabName` means adding a tab to any per-kind catalog
+ * (`UNIT_TABS`, `AGENT_TABS`, `TENANT_TABS`) forces a matching entry in
+ * {@link TAB_ICON} via the `Record<CardTabName, LucideIcon>` signature —
+ * an unknown tab name fails type-checking instead of silently rendering
+ * an iconless chip.
  */
-export type CardTabName =
-  | "Overview"
-  | "Agents"
-  | "Orchestration"
-  | "Activity"
-  | "Messages"
-  | "Memory"
-  | "Policies"
-  | "Skills"
-  | "Traces"
-  | "Clones"
-  | "Config"
-  | "Budgets";
+export type CardTabName = TabName;
 
 const TAB_ICON: Record<CardTabName, LucideIcon> = {
   Overview: LayoutDashboard,
@@ -159,9 +142,6 @@ export function CardTabRow({
     <div
       data-testid="card-tab-row"
       className={cn(
-        // 1px top border separates the chip row from the card body. The
-        // negative-margin `mx-` snaps the row to the card's edges so the
-        // border runs full-width even when the parent has internal padding.
         "flex items-center gap-1 border-t border-border px-3 py-2",
         className,
       )}

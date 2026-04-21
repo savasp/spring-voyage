@@ -16,8 +16,6 @@ const sampleTree: TreeNode = {
   name: "Acme",
   kind: "Tenant",
   status: "running",
-  cost24h: 0,
-  msgs24h: 0,
   children: [
     {
       id: "unit-eng",

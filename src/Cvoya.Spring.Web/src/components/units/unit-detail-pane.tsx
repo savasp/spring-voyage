@@ -1,7 +1,7 @@
 "use client";
 
 import { Bot, ChevronRight, Globe, Layers } from "lucide-react";
-import { createElement, useEffect } from "react";
+import { createElement, useEffect, useId } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -15,6 +15,10 @@ import {
 } from "./aggregate";
 import { TabPlaceholder } from "./tab-placeholder";
 import { lookupTab } from "./tabs";
+
+function tabSlug(tab: TabName): string {
+  return tab.toLowerCase();
+}
 
 interface DetailPaneProps {
   node: TreeNode;
@@ -49,12 +53,18 @@ export function DetailPane({
 }: DetailPaneProps) {
   const tabs = tabsFor(node.kind);
   const isValidTab = tabs.includes(tab);
+  // Stable, hydration-safe prefix per DetailPane mount. Combined with the
+  // tab slug it yields the unique `id`s the WAI-ARIA tabs pattern requires
+  // so a screen reader can tie the tab button to the panel it controls.
+  const idPrefix = useId();
 
   useEffect(() => {
     if (!isValidTab) onTabChange(tabs[0]);
   }, [isValidTab, tabs, onTabChange]);
 
-  const activeTab = isValidTab ? tab : tabs[0];
+  const activeTab: TabName = isValidTab ? tab : tabs[0];
+  const tabId = (t: TabName) => `${idPrefix}-tab-${tabSlug(t)}`;
+  const panelId = `${idPrefix}-panel-${tabSlug(activeTab)}`;
 
   // The registry returns `null` when no per-tab component has been
   // registered (the foundation PR ships zero registrations on purpose).
@@ -92,13 +102,25 @@ export function DetailPane({
           <Badge variant="outline" className="capitalize">
             {node.status}
           </Badge>
-          {node.role ? (
+          {node.kind === "Agent" && node.role ? (
             <Badge variant="secondary">{node.role}</Badge>
           ) : null}
         </div>
-        <TabStrip tabs={tabs} active={activeTab} onPick={onTabChange} />
+        <TabStrip
+          tabs={tabs}
+          active={activeTab}
+          onPick={onTabChange}
+          tabId={tabId}
+          panelId={panelId}
+        />
       </header>
-      <div className="flex-1 overflow-auto p-6">
+      <div
+        role="tabpanel"
+        id={panelId}
+        aria-labelledby={tabId(activeTab)}
+        tabIndex={0}
+        className="flex-1 overflow-auto p-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
         {tabComponent ? (
           createElement(tabComponent, { node, path })
         ) : (
@@ -153,10 +175,14 @@ function TabStrip({
   tabs,
   active,
   onPick,
+  tabId,
+  panelId,
 }: {
   tabs: readonly TabName[];
   active: TabName;
   onPick: (tab: TabName) => void;
+  tabId: (tab: TabName) => string;
+  panelId: string;
 }) {
   return (
     <div
@@ -170,8 +196,11 @@ function TabStrip({
         return (
           <button
             key={t}
+            id={tabId(t)}
             role="tab"
             aria-selected={selected}
+            aria-controls={selected ? panelId : undefined}
+            tabIndex={selected ? 0 : -1}
             type="button"
             data-testid={`detail-tab-${t.toLowerCase()}`}
             onClick={() => onPick(t)}

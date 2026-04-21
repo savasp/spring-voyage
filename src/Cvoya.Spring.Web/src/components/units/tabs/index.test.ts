@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   __resetTabRegistryForTesting,
@@ -43,11 +43,34 @@ describe("tabs registry (FOUND-tabscaffold)", () => {
     expect(lookupTab("Tenant", "Activity")).toBeNull();
   });
 
-  it("ignores duplicate registrations for the same key", () => {
+  it("overwrites on duplicate registration outside production (HMR-safe)", () => {
     const First = () => null;
     const Second = () => null;
-    registerTab("Unit", "Overview", First);
-    registerTab("Unit", "Overview", Second);
-    expect(lookupTab("Unit", "Overview")).toBe(First);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      registerTab("Unit", "Overview", First);
+      registerTab("Unit", "Overview", Second);
+      expect(lookupTab("Unit", "Overview")).toBe(Second);
+      expect(warn).toHaveBeenCalledTimes(1);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("throws on duplicate registration in production", () => {
+    const prev = process.env.NODE_ENV;
+    // vitest's env type disallows assignment, but we need to simulate a prod
+    // runtime just for this test; restore in the finally block.
+    (process.env as Record<string, string | undefined>).NODE_ENV = "production";
+    try {
+      const First = () => null;
+      const Second = () => null;
+      registerTab("Unit", "Overview", First);
+      expect(() => registerTab("Unit", "Overview", Second)).toThrow(
+        /duplicate registration/i,
+      );
+    } finally {
+      (process.env as Record<string, string | undefined>).NODE_ENV = prev;
+    }
   });
 });

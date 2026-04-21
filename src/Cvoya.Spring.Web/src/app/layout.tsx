@@ -23,20 +23,17 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  // Geist + Geist Mono are loaded via `next/font` so the binary payload is
-  // self-hosted, deduplicated, and FOUC-free. The two `.variable` strings
-  // expose the fonts as CSS custom properties — `--font-geist-sans` and
-  // `--font-geist-mono` — which `globals.css` then plugs into Tailwind 4's
-  // `--font-sans` and `--font-mono` `@theme` tokens. Components keep using
-  // the `font-sans` / `font-mono` Tailwind utilities and pick up Geist for
-  // free.
+  // The `dark` class is the SSR default so `--sv-*` and `--color-*` tokens
+  // paint consistently before hydration; the ThemeProvider flips it on the
+  // same `<html>` element post-mount so the cascade reaches `<body>` and
+  // its subtree in one place.
   return (
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${GeistSans.variable} ${GeistMono.variable}`}
+      className={`dark ${GeistSans.variable} ${GeistMono.variable}`}
     >
-      <body className="flex h-screen bg-background text-foreground font-sans antialiased dark">
+      <body className="flex h-screen bg-background text-foreground font-sans antialiased">
         <ThemeProvider>
           <QueryProvider>
             <ToastProvider>
