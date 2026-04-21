@@ -8,6 +8,8 @@ using System.CommandLine;
 using Cvoya.Spring.Cli.Generated.Models;
 using Cvoya.Spring.Cli.Output;
 
+using Microsoft.Kiota.Abstractions;
+
 /// <summary>
 /// Builds the "unit" command tree for unit management.
 /// </summary>
@@ -75,6 +77,11 @@ public static class UnitCommand
         unitCommand.Subcommands.Add(CreatePurgeCommand());
         unitCommand.Subcommands.Add(CreateStartCommand());
         unitCommand.Subcommands.Add(CreateStopCommand());
+        // T-08 / #950: `revalidate <name>` re-runs the backend validation
+        // workflow for a unit in Error/Stopped. Default behaviour is wait-
+        // until-terminal (same poll loop as `create`); `--no-wait` returns
+        // immediately after the 202.
+        unitCommand.Subcommands.Add(CreateRevalidateCommand());
         unitCommand.Subcommands.Add(CreateStatusCommand(outputOption));
         unitCommand.Subcommands.Add(CreateMembersCommand(outputOption));
         // #454 — humans add/remove/list.
@@ -218,7 +225,25 @@ public static class UnitCommand
                 + "Mutually exclusive with --parent-unit.",
         };
 
-        var command = new Command("create", "Create a new unit");
+        // T-08 / #950: backend validation is now the authoritative gate. The
+        // CLI defaults to wait-until-terminal (polling GET once per second)
+        // so operators see pass/fail inline; `--no-wait` returns as soon as
+        // the server has accepted the create and is in `Validating`.
+        var noWaitOption = new Option<bool>("--no-wait")
+        {
+            Description = "Do not wait for backend validation to finish. Return as soon as the server "
+                + "accepts the create and reports Validating (or Draft for partial configs).",
+        };
+
+        var command = new Command(
+            "create",
+            "Create a new unit.\n\n"
+            + "By default waits for backend validation to finish (polls GET /api/v1/units/{name} "
+            + "once per second until the unit reaches Stopped or Error). Pass --no-wait to return "
+            + "immediately after the create is accepted. Progress in the CLI is coarse — a single "
+            + "\"Validating...\" indicator until terminal; the web portal renders per-step progress "
+            + "via the SSE channel.\n\n"
+            + UnitValidationExitCodes.HelpTable);
         command.Arguments.Add(nameArg);
         command.Options.Add(displayNameOption);
         command.Options.Add(descriptionOption);
@@ -234,6 +259,7 @@ public static class UnitCommand
         command.Options.Add(saveAsTenantDefaultOption);
         command.Options.Add(parentUnitOption);
         command.Options.Add(topLevelOption);
+        command.Options.Add(noWaitOption);
 
         command.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
         {
@@ -255,6 +281,7 @@ public static class UnitCommand
                 .Select(p => p.Trim())
                 .ToArray();
             var topLevel = parseResult.GetValue(topLevelOption);
+            var noWait = parseResult.GetValue(noWaitOption);
             var output = parseResult.GetValue(outputOption) ?? "table";
 
             // Review feedback on #744: reject neither / both at parse time
@@ -419,12 +446,224 @@ public static class UnitCommand
                 }
             }
 
-            Console.WriteLine(output == "json"
-                ? OutputFormatter.FormatJson(result)
-                : OutputFormatter.FormatTable(result, UnitColumns));
+            // JSON mode stays script-compatible — scripts parsing stdout
+            // with jq don't want the human-facing wait-loop lines. We still
+            // honour --no-wait / the default wait in JSON mode by printing
+            // the JSON envelope once and returning; progress updates would
+            // break the "one JSON object per CLI call" contract.
+            if (output == "json")
+            {
+                Console.WriteLine(OutputFormatter.FormatJson(result));
+                return;
+            }
+
+            Console.WriteLine(OutputFormatter.FormatTable(result, UnitColumns));
+
+            // T-08 / #950: default is wait-until-terminal; --no-wait opts
+            // out. Snapshot the POST response then either print the hint or
+            // hand off to the shared polling loop.
+            var createdName = result.Name;
+            if (string.IsNullOrWhiteSpace(createdName))
+            {
+                // The server guarantees a name on 201, but be defensive —
+                // without it we can't poll, and falling back to exit 1
+                // beats an ArgumentException deep inside the loop.
+                return;
+            }
+
+            if (noWait)
+            {
+                Console.WriteLine(RenderNoWaitHint(createdName!, result.Status));
+                return;
+            }
+
+            var waitExitCode = await RunUnitValidationWaitAsync(directClient, createdName!, result, ct);
+            if (waitExitCode != 0)
+            {
+                Environment.Exit(waitExitCode);
+            }
         });
 
         return command;
+    }
+
+    /// <summary>
+    /// T-08 / #950: new <c>spring unit revalidate &lt;name&gt;</c> verb.
+    /// Posts <c>POST /api/v1/units/{name}/revalidate</c>, surfaces 409 as a
+    /// usage error (exit 2) with the server's current-status message, and
+    /// otherwise reuses the shared wait loop so the UX matches
+    /// <c>spring unit create</c>.
+    /// </summary>
+    private static Command CreateRevalidateCommand()
+    {
+        var nameArg = new Argument<string>("name")
+        {
+            Description = "The unit name to revalidate. Must currently be in Error or Stopped.",
+        };
+        var noWaitOption = new Option<bool>("--no-wait")
+        {
+            Description = "Do not wait for backend validation to finish. Return as soon as the server "
+                + "accepts the request (HTTP 202) and flips the unit back to Validating.",
+        };
+
+        var command = new Command(
+            "revalidate",
+            "Re-run backend validation for a unit currently in Error or Stopped.\n\n"
+            + "By default waits for validation to finish (polls GET /api/v1/units/{name} once per "
+            + "second until the unit reaches Stopped or Error). Pass --no-wait to return immediately "
+            + "after the 202 Accepted. Progress in the CLI is coarse — a single \"Validating...\" "
+            + "indicator until terminal; the web portal renders per-step progress via the SSE channel. "
+            + "Rejected with exit code 2 when the unit is in any other state (Running, Starting, ...).\n\n"
+            + UnitValidationExitCodes.HelpTable);
+        command.Arguments.Add(nameArg);
+        command.Options.Add(noWaitOption);
+
+        command.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
+        {
+            var name = parseResult.GetValue(nameArg)!;
+            var noWait = parseResult.GetValue(noWaitOption);
+            var client = ClientFactory.Create();
+
+            UnitResponse accepted;
+            try
+            {
+                accepted = await client.RevalidateUnitAsync(name, ct);
+            }
+            catch (ApiException ex) when (ex.ResponseStatusCode == 409)
+            {
+                // 409 is a contract-level rejection: the unit is in a
+                // status that doesn't support revalidate (Running,
+                // Starting, Validating, etc.). Exit 2 (usage error) per
+                // the T-08 code table.
+                await Console.Error.WriteLineAsync(
+                    $"Cannot revalidate unit '{name}': {ExtractServerDetail(ex)}");
+                Environment.Exit(UnitValidationExitCodes.UsageError);
+                return;
+            }
+            catch (ApiException ex)
+            {
+                await Console.Error.WriteLineAsync($"Failed to revalidate unit '{name}': {ex.Message}");
+                Environment.Exit(UnitValidationExitCodes.UnknownError);
+                return;
+            }
+
+            if (noWait)
+            {
+                Console.WriteLine(
+                    $"Unit '{name}' revalidation accepted. Status: {accepted.Status}. "
+                    + "Use 'spring unit get <name>' to check progress.");
+                return;
+            }
+
+            var exitCode = await RunUnitValidationWaitAsync(client, name, accepted, ct);
+            if (exitCode != 0)
+            {
+                Environment.Exit(exitCode);
+            }
+        });
+
+        return command;
+    }
+
+    /// <summary>
+    /// Shared wait-loop wiring for <c>create</c> and <c>revalidate</c>.
+    /// Converts the initial Kiota <see cref="UnitResponse"/> into a
+    /// <see cref="UnitValidationSnapshot"/>, then pumps the loop via
+    /// <c>SpringApiClient.GetUnitAsync</c> with the default 1-second poll
+    /// interval. The actual loop logic lives in
+    /// <see cref="UnitValidationWaitLoop"/>, which is testable in isolation
+    /// from the HTTP plumbing.
+    /// </summary>
+    private static Task<int> RunUnitValidationWaitAsync(
+        SpringApiClient client,
+        string unitName,
+        UnitResponse initial,
+        CancellationToken ct)
+    {
+        async Task<UnitValidationSnapshot> Fetch(CancellationToken token)
+        {
+            var detail = await client.GetUnitAsync(unitName, token);
+            return ToSnapshot(detail.Unit);
+        }
+
+        return UnitValidationWaitLoop.RunAsync(
+            unitName,
+            ToSnapshot(initial),
+            Fetch,
+            Console.Out,
+            Console.Error,
+            ct);
+    }
+
+    /// <summary>
+    /// Produces a <see cref="UnitValidationSnapshot"/> from a Kiota
+    /// <see cref="UnitResponse"/>, unwrapping the composed-type wrapper
+    /// around <c>lastValidationError</c>. Safe against null / partial
+    /// payloads — missing fields surface as null on the snapshot.
+    /// </summary>
+    internal static UnitValidationSnapshot ToSnapshot(UnitResponse? response)
+    {
+        if (response is null)
+        {
+            return new UnitValidationSnapshot(
+                Status: "Unknown",
+                ValidationRunId: null,
+                ErrorCode: null,
+                ErrorStep: null,
+                ErrorMessage: null,
+                ErrorDetails: null);
+        }
+
+        var status = response.Status?.ToString() ?? "Unknown";
+        var inner = response.LastValidationError?.UnitValidationError;
+        IReadOnlyDictionary<string, string>? details = null;
+        if (inner?.Details?.AdditionalData is { Count: > 0 } data)
+        {
+            var map = new Dictionary<string, string>(data.Count, StringComparer.Ordinal);
+            foreach (var (key, value) in data)
+            {
+                map[key] = value?.ToString() ?? string.Empty;
+            }
+            details = map;
+        }
+
+        return new UnitValidationSnapshot(
+            Status: status,
+            ValidationRunId: response.LastValidationRunId,
+            ErrorCode: inner?.Code,
+            ErrorStep: inner?.Step?.ToString(),
+            ErrorMessage: inner?.Message,
+            ErrorDetails: details);
+    }
+
+    /// <summary>
+    /// Renders the <c>--no-wait</c> hint line that replaces the wait
+    /// loop's terminal output on <c>spring unit create --no-wait</c>.
+    /// The server may return either <c>Validating</c> (full config — the
+    /// workflow is running) or <c>Draft</c> (partial config — nothing to
+    /// validate yet); we echo whichever came back so operators don't have
+    /// to re-run <c>unit get</c> just to learn which path they got.
+    /// </summary>
+    internal static string RenderNoWaitHint(string unitName, UnitStatus? status)
+    {
+        var statusString = status?.ToString() ?? "Unknown";
+        return $"Unit '{unitName}' created. Status: {statusString}. "
+            + "Use 'spring unit get <name>' to check progress.";
+    }
+
+    /// <summary>
+    /// Best-effort extraction of the server's problem-detail message from a
+    /// Kiota <see cref="ApiException"/>. Kiota doesn't offer a strongly-
+    /// typed reader without a generated schema for every error body, so
+    /// we fall back to the exception's message (which includes the body
+    /// text) when present.
+    /// </summary>
+    internal static string ExtractServerDetail(ApiException ex)
+    {
+        var message = ex.Message;
+        return string.IsNullOrWhiteSpace(message)
+            ? "server rejected the request."
+            : message;
     }
 
     /// <summary>

@@ -371,6 +371,24 @@ public class SpringApiClient
         return result ?? throw new InvalidOperationException($"Server returned an empty stop response for unit '{id}'.");
     }
 
+    /// <summary>
+    /// Re-runs backend validation for a unit sitting in <c>Error</c> or
+    /// <c>Stopped</c> (T-05 / #950). The server returns <c>202 Accepted</c>
+    /// with the unit flipped back to <c>Validating</c> and a fresh
+    /// workflow instance scheduled; it returns <c>409 Conflict</c> (wrapped
+    /// in a Kiota <see cref="Microsoft.Kiota.Abstractions.ApiException"/>
+    /// with <c>ResponseStatusCode == 409</c>) when the unit is in any other
+    /// state. Callers surface the conflict through
+    /// <c>UnitValidationExitCodes.UsageError</c> (exit 2) per the CLI
+    /// contract on T-08.
+    /// </summary>
+    public async Task<UnitResponse> RevalidateUnitAsync(string id, CancellationToken ct = default)
+    {
+        var result = await _client.Api.V1.Units[id].Revalidate.PostAsync(cancellationToken: ct);
+        return result ?? throw new InvalidOperationException(
+            $"Server returned an empty revalidate response for unit '{id}'.");
+    }
+
     /// <summary>Gets the readiness status of a unit.</summary>
     public async Task<UnitReadinessResponse> GetUnitReadinessAsync(string id, CancellationToken ct = default)
     {

@@ -332,6 +332,54 @@ public class SpringApiClientTests
         handler.WasCalled.ShouldBeTrue();
     }
 
+    // --- T-08 / #950: RevalidateUnitAsync --------------------------------
+
+    [Fact]
+    public async Task RevalidateUnitAsync_PostsRevalidateEndpoint_ParsesUnitResponse()
+    {
+        // Typical happy path: server returns 202 Accepted with the unit
+        // flipped to Validating + a fresh workflow instance id.
+        var handler = new MockHttpMessageHandler(
+            expectedPath: "/api/v1/units/eng-team/revalidate",
+            expectedMethod: HttpMethod.Post,
+            responseBody: """{"id":"actor-eng","name":"eng-team","displayName":"eng-team","description":"","registeredAt":"2026-04-01T00:00:00Z","status":"Validating","model":"claude-sonnet-4","color":"#6366f1","tool":"claude-code","lastValidationError":null,"lastValidationRunId":"run-42"}""",
+            returnStatusCode: HttpStatusCode.Accepted);
+
+        var httpClient = new HttpClient(handler);
+        var client = new SpringApiClient(httpClient, BaseUrl);
+
+        var result = await client.RevalidateUnitAsync(
+            "eng-team", TestContext.Current.CancellationToken);
+
+        result.Name.ShouldBe("eng-team");
+        result.Status.ShouldBe(Cvoya.Spring.Cli.Generated.Models.UnitStatus.Validating);
+        result.LastValidationRunId.ShouldBe("run-42");
+        handler.WasCalled.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task RevalidateUnitAsync_ConflictResponseSurfacesAsApiException()
+    {
+        // 409 = the unit is in a state where revalidation isn't allowed.
+        // The CLI `revalidate` verb catches this and exits 2 (usage error),
+        // so the wrapper must surface it as an ApiException the caller can
+        // branch on via ResponseStatusCode.
+        var handler = new MockHttpMessageHandler(
+            expectedPath: "/api/v1/units/eng-team/revalidate",
+            expectedMethod: HttpMethod.Post,
+            responseBody: """{"type":"about:blank","title":"Invalid state","detail":"Unit 'eng-team' is Running; revalidation is only allowed from Error or Stopped.","status":409,"code":"InvalidState","currentStatus":"Running"}""",
+            returnStatusCode: HttpStatusCode.Conflict);
+
+        var httpClient = new HttpClient(handler);
+        var client = new SpringApiClient(httpClient, BaseUrl);
+
+        var ex = await Should.ThrowAsync<Microsoft.Kiota.Abstractions.ApiException>(async () =>
+            await client.RevalidateUnitAsync(
+                "eng-team", TestContext.Current.CancellationToken));
+
+        ex.ResponseStatusCode.ShouldBe(409);
+    }
+
     // --- #316 + #325: CreateUnitFromTemplateAsync -------------------------
 
     [Fact]
