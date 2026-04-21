@@ -37,7 +37,7 @@ public class EmitValidationProgressActivityTests
     public async Task RunAsync_PublishesValidationProgressEvent_WithUnitAddress()
     {
         var input = new EmitValidationProgressActivityInput(
-            UnitId: "unit-1",
+            UnitName: "unit-1",
             Step: UnitValidationStep.VerifyingTool,
             Status: "Running",
             Code: null);

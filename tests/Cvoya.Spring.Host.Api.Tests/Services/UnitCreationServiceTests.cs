@@ -128,6 +128,8 @@ public class UnitCreationServiceTests
         public IUnitSkillBundleStore BundleStore { get; } = Substitute.For<IUnitSkillBundleStore>();
         public IUnitMembershipRepository MembershipRepository { get; } = Substitute.For<IUnitMembershipRepository>();
         public IUnitActor Proxy { get; } = Substitute.For<IUnitActor>();
+        public Cvoya.Spring.Core.Execution.ILlmCredentialResolver CredentialResolver { get; } =
+            Substitute.For<Cvoya.Spring.Core.Execution.ILlmCredentialResolver>();
         public UnitCreationService Service { get; }
 
         public Fixture()
@@ -164,7 +166,8 @@ public class UnitCreationServiceTests
                 BundleStore,
                 MembershipRepository,
                 scopeFactory,
-                NullLoggerFactory.Instance);
+                NullLoggerFactory.Instance,
+                credentialResolver: CredentialResolver);
         }
 
         public Task<UnitCreationResult> CreateAsync(string name)
@@ -377,30 +380,75 @@ public class UnitCreationServiceTests
             Arg.Any<CancellationToken>());
     }
 
-    // --- #368: differentiated creation states ---
+    // --- T-05 (#947): differentiated creation — Draft vs Validating ---
 
     [Fact]
-    public async Task CreateAsync_WithModel_StatusIsStopped()
+    public async Task CreateAsync_FullConfig_TransitionsToValidating()
     {
+        // Full execution config (model + provider) + a resolvable credential
+        // must send the unit straight into Validating so the Dapr
+        // UnitValidationWorkflow kicks off the in-container probe.
         var fixture = new Fixture();
         fixture.HttpContextAccessor.HttpContext.Returns((HttpContext?)null);
-        fixture.Proxy.TransitionAsync(UnitStatus.Stopped, Arg.Any<CancellationToken>())
-            .Returns(new TransitionResult(true, UnitStatus.Stopped, null));
+        fixture.CredentialResolver
+            .ResolveAsync(
+                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new Cvoya.Spring.Core.Execution.LlmCredentialResolution(
+                Value: "sk-live",
+                Source: Cvoya.Spring.Core.Execution.LlmCredentialSource.Tenant,
+                SecretName: "anthropic-api-key"));
+        fixture.Proxy.TransitionAsync(UnitStatus.Validating, Arg.Any<CancellationToken>())
+            .Returns(new TransitionResult(true, UnitStatus.Validating, null));
 
         var result = await fixture.Service.CreateAsync(
             new CreateUnitRequest(
-                Name: "model-unit",
-                DisplayName: "model-unit",
+                Name: "full-config-unit",
+                DisplayName: "full-config-unit",
                 Description: "test",
                 Model: "claude-sonnet-4-20250514",
                 Color: null,
                 Connector: null,
+                Tool: "claude-code-cli",
+                Provider: "claude",
                 IsTopLevel: true),
             CancellationToken.None);
 
-        result.Unit.Status.ShouldBe(UnitStatus.Stopped);
+        result.Unit.Status.ShouldBe(UnitStatus.Validating);
         await fixture.Proxy.Received(1).TransitionAsync(
-            UnitStatus.Stopped, Arg.Any<CancellationToken>());
+            UnitStatus.Validating, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task CreateAsync_PartialConfig_MissingCredential_StaysDraft()
+    {
+        // Model + provider supplied but no credential resolvable: the unit
+        // cannot be validated end-to-end yet, so it stays in Draft. The
+        // user finishes configuration and later calls /revalidate.
+        var fixture = new Fixture();
+        fixture.HttpContextAccessor.HttpContext.Returns((HttpContext?)null);
+        fixture.CredentialResolver
+            .ResolveAsync(
+                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new Cvoya.Spring.Core.Execution.LlmCredentialResolution(
+                Value: null,
+                Source: Cvoya.Spring.Core.Execution.LlmCredentialSource.NotFound,
+                SecretName: "anthropic-api-key"));
+
+        var result = await fixture.Service.CreateAsync(
+            new CreateUnitRequest(
+                Name: "missing-cred-unit",
+                DisplayName: "missing-cred-unit",
+                Description: "test",
+                Model: "claude-sonnet-4-20250514",
+                Color: null,
+                Connector: null,
+                Provider: "claude",
+                IsTopLevel: true),
+            CancellationToken.None);
+
+        result.Unit.Status.ShouldBe(UnitStatus.Draft);
+        await fixture.Proxy.DidNotReceive().TransitionAsync(
+            UnitStatus.Validating, Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -413,6 +461,6 @@ public class UnitCreationServiceTests
 
         result.Unit.Status.ShouldBe(UnitStatus.Draft);
         await fixture.Proxy.DidNotReceive().TransitionAsync(
-            UnitStatus.Stopped, Arg.Any<CancellationToken>());
+            UnitStatus.Validating, Arg.Any<CancellationToken>());
     }
 }

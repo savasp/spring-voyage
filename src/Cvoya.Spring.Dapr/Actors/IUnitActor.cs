@@ -110,6 +110,51 @@ public interface IUnitActor : IAgent
     Task<TransitionResult> TransitionAsync(UnitStatus target, CancellationToken ct = default);
 
     /// <summary>
+    /// Terminal callback the <c>UnitValidationWorkflow</c> invokes when its
+    /// probe run finishes. Drives the <see cref="UnitStatus.Validating"/>
+    /// → <see cref="UnitStatus.Stopped"/> or
+    /// <see cref="UnitStatus.Validating"/> → <see cref="UnitStatus.Error"/>
+    /// transition and persists the redacted failure payload on failure.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Two guards protect against re-entry:
+    /// </para>
+    /// <list type="bullet">
+    ///   <item>
+    ///   <b>Stale-run guard.</b> If
+    ///   <see cref="UnitValidationCompletion.WorkflowInstanceId"/> does not
+    ///   match the unit's current <c>LastValidationRunId</c>, the callback is
+    ///   a no-op: an older workflow arriving after a newer revalidation has
+    ///   already been scheduled must not rewrite the current state.
+    ///   </item>
+    ///   <item>
+    ///   <b>Terminal-status guard.</b> If the unit's current status is
+    ///   already <see cref="UnitStatus.Stopped"/> or
+    ///   <see cref="UnitStatus.Error"/> (e.g. a second workflow superseded
+    ///   this one), the callback is also a no-op.
+    ///   </item>
+    /// </list>
+    /// <para>
+    /// On success, <c>LastValidationErrorJson</c> is cleared and the unit
+    /// transitions to <see cref="UnitStatus.Stopped"/>. On failure, the
+    /// failure payload is serialized (System.Text.Json) into
+    /// <c>LastValidationErrorJson</c> and the unit transitions to
+    /// <see cref="UnitStatus.Error"/>. Both paths emit a
+    /// <c>StateChanged</c> activity event through the existing transition
+    /// write path.
+    /// </para>
+    /// </remarks>
+    /// <param name="completion">The workflow's terminal outcome.</param>
+    /// <param name="ct">A token to cancel the operation.</param>
+    /// <returns>
+    /// A <see cref="TransitionResult"/> describing the applied transition
+    /// (on a guard no-op, the result reports the unchanged current status
+    /// and a diagnostic rejection reason).
+    /// </returns>
+    Task<TransitionResult> CompleteValidationAsync(UnitValidationCompletion completion, CancellationToken ct = default);
+
+    /// <summary>
     /// Returns the actor-owned portion of the unit's metadata. Only
     /// <c>Model</c> and <c>Color</c> are persisted on the actor; DisplayName
     /// and Description live on the directory entity and are always returned

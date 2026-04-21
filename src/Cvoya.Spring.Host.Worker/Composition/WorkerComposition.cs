@@ -133,6 +133,7 @@ public static class WorkerComposition
             options.RegisterActivity<PullImageActivity>();
             options.RegisterActivity<RunContainerProbeActivity>();
             options.RegisterActivity<EmitValidationProgressActivity>();
+            options.RegisterActivity<CompleteUnitValidationActivity>();
         });
 
         // Register Dapr actors

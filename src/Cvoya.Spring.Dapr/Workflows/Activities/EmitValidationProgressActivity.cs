@@ -23,10 +23,11 @@ using Microsoft.Extensions.Logging;
 /// dependency lives where DI is actually available.
 /// </para>
 /// <para>
-/// Event source is <c>Address(scheme: "unit", path: UnitId)</c> — the T-06
-/// unit detail page filters the activity stream on this exact shape. The
-/// payload carries the minimum envelope the UI needs: <c>step</c>,
-/// <c>status</c>, and (on failure) <c>code</c>.
+/// Event source is <c>Address(scheme: "unit", path: UnitName)</c> — the T-06
+/// unit detail page filters the activity stream on this exact shape (keyed
+/// on the unit's user-facing name, not its actor Guid). The payload carries
+/// the minimum envelope the UI needs: <c>step</c>, <c>status</c>, and
+/// (on failure) <c>code</c>.
 /// </para>
 /// </remarks>
 public class EmitValidationProgressActivity(
@@ -54,7 +55,7 @@ public class EmitValidationProgressActivity(
             var activityEvent = new ActivityEvent(
                 Id: Guid.NewGuid(),
                 Timestamp: DateTimeOffset.UtcNow,
-                Source: new Address("unit", input.UnitId),
+                Source: new Address("unit", input.UnitName),
                 EventType: ActivityEventType.ValidationProgress,
                 Severity: severity,
                 Summary: summary,
@@ -74,8 +75,8 @@ public class EmitValidationProgressActivity(
             // fire-and-forget.
             _logger.LogWarning(
                 ex,
-                "Failed to emit ValidationProgress event for unit {UnitId} step {Step} status {Status}.",
-                input.UnitId, input.Step, input.Status);
+                "Failed to emit ValidationProgress event for unit {UnitName} step {Step} status {Status}.",
+                input.UnitName, input.Step, input.Status);
             return false;
         }
     }
