@@ -85,9 +85,11 @@ To add a new runtime, follow the contract in [`src/Cvoya.Spring.Core/AgentRuntim
 
 The UI / CLI parity rule (`CONVENTIONS.md` § 14) requires every **user-facing** feature to ship on both surfaces. This section declares the **relaxation** introduced by #693 under the #674 refactor: operational surfaces for the OSS core are **CLI-only** by design. The portal MAY expose **read-only** views for visibility, but every mutation goes through the `spring` CLI.
 
-- **Agent-runtime config** (`spring agent-runtime …`) — tenant install / uninstall, model list, base-URL overrides, credential validation.
-- **Connector config** (`spring connector …`) — tenant install / uninstall, per-tenant configuration, credential validation.
-- **Credential health** (`spring … credentials status`) — read-only status surfaced via both CLI and portal; writes come only from accept-time validation and the HTTP watchdog middleware.
+Under the v2 IA (umbrella #815 § 2), the legacy `/admin/*` top-level routes are retired. The read-only portal views for this carve-out now live inside the regular IA: agent-runtime config under the Settings hub at `/settings/agent-runtimes`, and connector health as a Health tab on the Connectors surface at `/connectors?tab=health`. There is no `/admin/*` route in v2.
+
+- **Agent-runtime config** (`spring agent-runtime …`) — tenant install / uninstall, model list, base-URL overrides, credential validation. Read-only portal view: `/settings/agent-runtimes`.
+- **Connector config** (`spring connector …`) — tenant install / uninstall, per-tenant configuration, credential validation. Read-only portal view: `/connectors?tab=health` (the Health tab on the Connectors surface).
+- **Credential health** (`spring … credentials status`) — read-only status surfaced via both CLI and portal; writes come only from accept-time validation and the HTTP watchdog middleware. Portal entry points: `/settings/agent-runtimes` for agent-runtime credentials, `/connectors?tab=health` for connector credentials.
 - **Tenant seeds** — default-tenant bootstrap runs once per deployment start in the Worker host; there is no HTTP or CLI surface to trigger re-seeding in V2.
 - **Skill-bundle bindings** — bootstrap binds every discovered package to the default tenant; mutation CLI (`spring skill-bundle …`) is deferred to V2.1.
 
