@@ -7,6 +7,7 @@ using System;
 using System.Security.Cryptography;
 using System.Text;
 
+using Cvoya.Spring.Core.Secrets;
 using Cvoya.Spring.Dapr.Tenancy;
 
 using Microsoft.Extensions.Logging;
@@ -143,9 +144,11 @@ public partial class SecretsEncryptor : ISecretsEncryptor
         }
         catch (CryptographicException ex)
         {
-            // Don't leak which AAD mismatched — caller only needs to
-            // know the envelope didn't authenticate.
-            throw new CryptographicException(
+            // Wrap in a domain exception so callers can distinguish
+            // "can't decrypt this slot" from generic infrastructure errors.
+            // Don't leak which AAD mismatched — the message only indicates
+            // that the envelope didn't authenticate.
+            throw new SecretUnreadableException(
                 "Failed to authenticate secrets envelope. " +
                 "Either the key material changed, the ciphertext was transplanted " +
                 "across a different (tenantId, storeKey) pair, or the envelope is corrupted.",

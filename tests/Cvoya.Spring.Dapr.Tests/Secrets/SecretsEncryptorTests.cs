@@ -7,6 +7,7 @@ using System;
 using System.IO;
 using System.Security.Cryptography;
 
+using Cvoya.Spring.Core.Secrets;
 using Cvoya.Spring.Dapr.Secrets;
 using Cvoya.Spring.Dapr.Tenancy;
 
@@ -144,7 +145,7 @@ public class SecretsEncryptorTests : IDisposable
             // decrypt the env-key envelope.
             Environment.SetEnvironmentVariable(EnvVar, null);
             var fileSut = new SecretsEncryptor(Opts(aesKeyFile: path), Log());
-            Should.Throw<CryptographicException>(
+            Should.Throw<SecretUnreadableException>(
                 () => fileSut.Decrypt(envelope, "acme", "k1", out _));
         }
         finally
@@ -183,23 +184,25 @@ public class SecretsEncryptorTests : IDisposable
     }
 
     [Fact]
-    public void Decrypt_WrongTenant_Throws()
+    public void Decrypt_WrongTenant_ThrowsSecretUnreadable()
     {
         var sut = CreateWithFreshKey();
         var envelope = sut.Encrypt("hunter2", "acme", "k1");
 
-        Should.Throw<CryptographicException>(
+        var ex = Should.Throw<SecretUnreadableException>(
             () => sut.Decrypt(envelope, "mallory", "k1", out _));
+        ex.InnerException.ShouldBeAssignableTo<CryptographicException>();
     }
 
     [Fact]
-    public void Decrypt_WrongStoreKey_Throws()
+    public void Decrypt_WrongStoreKey_ThrowsSecretUnreadable()
     {
         var sut = CreateWithFreshKey();
         var envelope = sut.Encrypt("hunter2", "acme", "k1");
 
-        Should.Throw<CryptographicException>(
+        var ex = Should.Throw<SecretUnreadableException>(
             () => sut.Decrypt(envelope, "acme", "k2", out _));
+        ex.InnerException.ShouldBeAssignableTo<CryptographicException>();
     }
 
     [Fact]
@@ -231,7 +234,7 @@ public class SecretsEncryptorTests : IDisposable
         var sut = CreateWithFreshKey();
         var envelope = sut.Encrypt("token", "platform", "k1");
         sut.Decrypt(envelope, "platform", "k1", out _).ShouldBe("token");
-        Should.Throw<CryptographicException>(
+        Should.Throw<SecretUnreadableException>(
             () => sut.Decrypt(envelope, "some-tenant", "k1", out _));
     }
 

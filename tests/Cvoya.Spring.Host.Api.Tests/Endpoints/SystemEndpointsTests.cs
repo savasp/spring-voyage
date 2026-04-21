@@ -75,6 +75,48 @@ public class SystemEndpointsTests : IClassFixture<CustomWebApplicationFactory>
         body.Source.ShouldBeNull();
         body.Suggestion.ShouldNotBeNullOrWhiteSpace();
         body.Suggestion!.ShouldContain("anthropic-api-key");
+        body.Reason.ShouldBe("not-configured");
+    }
+
+    [Fact]
+    public async Task Status_Anthropic_SlotPresentButCipherUnreadable_ReportsFalseWithUnreadableReason()
+    {
+        // Regression guard for #978 defect 1: when the stored ciphertext
+        // is present but its AES-GCM tag fails to authenticate (e.g. the
+        // at-rest key rotated between the write and the read) the probe
+        // used to bubble a raw CryptographicException and crash the
+        // endpoint with 500. The endpoint must now return 200 with a
+        // structured "unreadable" reason so the wizard can render a
+        // useful error and the operator knows to rotate the key.
+        //
+        // The test-harness substitutes the full ISecretStore, so we can't
+        // exercise the end-to-end encryptor failure here (that's covered
+        // in SecretsEncryptorTests + DaprStateBackedSecretStoreTests). The
+        // equivalent contract at this seam is: when the store surfaces a
+        // SecretUnreadableException, the endpoint maps it to
+        // resolvable:false + reason:"unreadable".
+        var ct = TestContext.Current.CancellationToken;
+        _ = await SeedRegistryOnlyAsync("anthropic-api-key", ct);
+        _factory.SecretStore
+            .ReadAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns<string?>(_ => throw new SecretUnreadableException());
+
+        var response = await _client.GetAsync(
+            "/api/v1/system/credentials/anthropic/status", ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        var body = await response.Content.ReadFromJsonAsync<ProviderCredentialStatusResponse>(ct);
+        body.ShouldNotBeNull();
+        body!.Provider.ShouldBe("anthropic");
+        body.Resolvable.ShouldBeFalse();
+        body.Source.ShouldBeNull();
+        body.Reason.ShouldBe("unreadable");
+        body.Suggestion.ShouldNotBeNullOrWhiteSpace();
+        // The unreadable-specific copy must point at the rotation path,
+        // not the "create it" path — otherwise the operator would re-save
+        // a value they already have and the slot would still be orphaned.
+        body.Suggestion!.ShouldContain("cannot decrypt");
     }
 
     [Fact]
@@ -99,6 +141,7 @@ public class SystemEndpointsTests : IClassFixture<CustomWebApplicationFactory>
         body.Resolvable.ShouldBeTrue();
         body.Source.ShouldBe("tenant");
         body.Suggestion.ShouldBeNull();
+        body.Reason.ShouldBeNull();
     }
 
     [Fact]
@@ -175,6 +218,41 @@ public class SystemEndpointsTests : IClassFixture<CustomWebApplicationFactory>
         // wire. (This keeps the wire surface tight and mirrors the
         // Settings → Tenant defaults panel labels.)
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+    }
+
+    /// <summary>
+    /// Seeds a tenant-scoped registry entry without configuring the
+    /// store's plaintext response. Returns the generated opaque store
+    /// key so callers can layer their own <c>ReadAsync</c> return (e.g.
+    /// a cipher-unreadable value) on top.
+    /// </summary>
+    private async Task<string> SeedRegistryOnlyAsync(string name, CancellationToken ct)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
+        db.SecretRegistryEntries.RemoveRange(db.SecretRegistryEntries);
+        await db.SaveChangesAsync(ct);
+
+        var tenantId = scope.ServiceProvider
+            .GetRequiredService<ITenantContext>().CurrentTenantId;
+        var storeKey = Guid.NewGuid().ToString("N");
+        db.SecretRegistryEntries.Add(new SecretRegistryEntry
+        {
+            TenantId = tenantId,
+            Scope = SecretScope.Tenant,
+            OwnerId = tenantId,
+            Name = name,
+            StoreKey = storeKey,
+            Origin = SecretOrigin.PlatformOwned,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow,
+        });
+        await db.SaveChangesAsync(ct);
+
+        _factory.SecretStore.ClearReceivedCalls();
+        _factory.SecretStore.ReadAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<string?>(null));
+        return storeKey;
     }
 
     /// <summary>

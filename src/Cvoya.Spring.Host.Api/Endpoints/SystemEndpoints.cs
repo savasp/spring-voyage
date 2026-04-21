@@ -50,6 +50,13 @@ public static class SystemEndpoints
     private const string ProviderGoogle = "google";
     private const string ProviderOllama = "ollama";
 
+    // Machine-readable values for ProviderCredentialStatusResponse.Reason.
+    // The portal switches on these to render the right banner copy; keep
+    // them kebab-cased and stable — adding a new reason is additive.
+    private const string ReasonNotConfigured = "not-configured";
+    private const string ReasonUnreadable = "unreadable";
+    private const string ReasonUnreachable = "unreachable";
+
     /// <summary>
     /// Registers the system-level endpoints on <paramref name="app"/>.
     /// </summary>
@@ -101,9 +108,10 @@ public static class SystemEndpoints
                     var source = resolvable
                         ? MapSource(resolution.Source)
                         : null;
+                    var reason = resolvable ? null : MapReason(resolution.Source);
                     var suggestion = resolvable
                         ? null
-                        : BuildCredentialSuggestion(normalized, resolution.SecretName);
+                        : BuildCredentialSuggestion(normalized, resolution.SecretName, resolution.Source);
 
                     // NEVER include `resolution.Value` in the response —
                     // the endpoint is read-by-anyone (within the tenant)
@@ -112,12 +120,13 @@ public static class SystemEndpoints
                         Provider: normalized,
                         Resolvable: resolvable,
                         Source: source,
-                        Suggestion: suggestion));
+                        Suggestion: suggestion,
+                        Reason: reason));
                 }
             case ProviderOllama:
                 {
                     var baseUrl = ollamaOptions.Value.BaseUrl.TrimEnd('/');
-                    var (reachable, reason) = await ProbeOllamaAsync(
+                    var (reachable, probeReason) = await ProbeOllamaAsync(
                         httpClientFactory,
                         baseUrl,
                         ollamaOptions.Value.HealthCheckTimeoutSeconds,
@@ -125,7 +134,7 @@ public static class SystemEndpoints
 
                     var suggestion = reachable
                         ? null
-                        : $"Ollama not reachable at {baseUrl}. Check that the Ollama server is running. ({reason})";
+                        : $"Ollama not reachable at {baseUrl}. Check that the Ollama server is running. ({probeReason})";
 
                     return Results.Ok(new ProviderCredentialStatusResponse(
                         Provider: normalized,
@@ -134,7 +143,8 @@ public static class SystemEndpoints
                         // of the configured endpoint is deployment config
                         // (tier-1), so Source is always null.
                         Source: null,
-                        Suggestion: suggestion));
+                        Suggestion: suggestion,
+                        Reason: reachable ? null : ReasonUnreachable));
                 }
             default:
                 return Results.BadRequest(new
@@ -152,6 +162,12 @@ public static class SystemEndpoints
         _ => null,
     };
 
+    private static string MapReason(LlmCredentialSource source) => source switch
+    {
+        LlmCredentialSource.Unreadable => ReasonUnreadable,
+        _ => ReasonNotConfigured,
+    };
+
     private static string MapProviderToRuntimeId(string provider) => provider switch
     {
         // The `anthropic` token in the endpoint's URL maps to the Claude
@@ -162,7 +178,7 @@ public static class SystemEndpoints
         _ => provider,
     };
 
-    private static string BuildCredentialSuggestion(string provider, string secretName)
+    private static string BuildCredentialSuggestion(string provider, string secretName, LlmCredentialSource source)
     {
         // Mirror the canonical suggestion phrasing from docs/guide/secrets.md
         // so the portal banner and the CLI's "not configured" error read
@@ -175,6 +191,19 @@ public static class SystemEndpoints
             ProviderGoogle => "Google",
             _ => provider,
         };
+
+        if (source == LlmCredentialSource.Unreadable)
+        {
+            // Slot exists but ciphertext didn't authenticate. This almost
+            // always means the at-rest AES key rotated between the write
+            // and the read — point the operator at the rotation playbook
+            // rather than at "create the secret", which won't help.
+            return $"{displayName} credentials are stored but the platform cannot decrypt the current value. " +
+                $"This typically means the at-rest encryption key rotated. " +
+                $"Re-save the tenant-default secret '{secretName}' from Settings → Tenant defaults, " +
+                $"or restore the previous AES key.";
+        }
+
         return $"{displayName} credentials are not configured. " +
             $"Set the tenant-default secret '{secretName}' from Settings → Tenant defaults, " +
             $"or create a unit-scoped override of the same name.";
@@ -219,8 +248,8 @@ public static class SystemEndpoints
 /// <param name="Resolvable">
 /// <c>true</c> when the platform can obtain the credential (for
 /// Anthropic/OpenAI/Google: a non-empty secret exists at unit or
-/// tenant scope). For Ollama: <c>true</c> when the configured base URL
-/// responded to a health probe.
+/// tenant scope AND its ciphertext authenticates). For Ollama:
+/// <c>true</c> when the configured base URL responded to a health probe.
 /// </param>
 /// <param name="Source">
 /// Which tier produced the credential — <c>"unit"</c> or <c>"tenant"</c>
@@ -232,8 +261,18 @@ public static class SystemEndpoints
 /// <c>null</c> when the credential is already resolvable. NEVER
 /// contains the credential value itself.
 /// </param>
+/// <param name="Reason">
+/// Machine-readable reason code when <see cref="Resolvable"/> is
+/// <c>false</c>. Stable values: <c>"not-configured"</c> (no slot
+/// exists), <c>"unreadable"</c> (slot exists but ciphertext did not
+/// decrypt — typically an at-rest key rotation), and <c>"unreachable"</c>
+/// (Ollama health probe failed). <c>null</c> when resolvable. The portal
+/// uses this to pick a specific banner copy; additional codes may be
+/// appended in later waves.
+/// </param>
 public record ProviderCredentialStatusResponse(
     [property: JsonPropertyName("provider")] string Provider,
     [property: JsonPropertyName("resolvable")] bool Resolvable,
     [property: JsonPropertyName("source")] string? Source,
-    [property: JsonPropertyName("suggestion")] string? Suggestion);
+    [property: JsonPropertyName("suggestion")] string? Suggestion,
+    [property: JsonPropertyName("reason")] string? Reason = null);
