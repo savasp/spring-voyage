@@ -580,19 +580,37 @@ describe("CreateUnitPage — Step 2 explains a disabled Next", () => {
     seedDefaultMocks();
   });
 
-  it("warns when no agent runtimes are installed and Claude Code is selected", async () => {
+  it("warns when the agent-runtime catalog is empty and Claude Code is selected", async () => {
     listAgentRuntimes.mockResolvedValue([]);
     renderPage();
     await advanceToExecution();
 
     const banner = await screen.findByTestId("agent-runtime-catalog-issue");
-    expect(banner.textContent).toMatch(/no agent runtimes are installed/i);
+    expect(banner.textContent).toMatch(/no configured agent runtimes/i);
 
     const next = screen.getByRole("button", { name: /^next$/i });
     expect(next).toBeDisabled();
 
     const reason = await screen.findByTestId("next-disabled-reason");
-    expect(reason.textContent).toMatch(/no agent runtimes are installed/i);
+    expect(reason.textContent).toMatch(/no configured agent runtimes/i);
+  });
+
+  it("warns when the agent-runtime catalog fetch fails", async () => {
+    listAgentRuntimes.mockRejectedValue(
+      new Error("API error 502: Bad Gateway"),
+    );
+    renderPage();
+    await advanceToExecution();
+
+    const banner = await screen.findByTestId("agent-runtime-catalog-issue");
+    expect(banner.textContent).toBe(
+      "Could not load the agent-runtime catalog.",
+    );
+
+    const reason = await screen.findByTestId("next-disabled-reason");
+    expect(reason.textContent).toBe(
+      "Could not load the agent-runtime catalog.",
+    );
   });
 
   it("explains the missing runtime when the selected tool's runtime isn't installed", async () => {

@@ -1138,15 +1138,15 @@ export default function CreateUnitPage() {
     }
     if (form.tool === "custom") return null;
     if (agentRuntimesQuery.isPending) {
-      return "Loading the agent-runtime catalog from the platform API…";
+      return "Loading the agent-runtime catalog…";
     }
     if (agentRuntimesQuery.isError) {
-      return "Could not load the agent-runtime catalog from the platform API. Check that the API host is reachable and reload the page.";
+      return "Could not load the agent-runtime catalog.";
     }
     const toolLabel =
       EXECUTION_TOOLS.find((t) => t.id === form.tool)?.label ?? form.tool;
     if (agentRuntimes.length === 0) {
-      return `No agent runtimes are installed on this server. Install at least one runtime (Claude, Codex, Gemini, or Dapr Agent) — or pick "Custom" — to continue.`;
+      return "No configured agent runtimes.";
     }
     if (form.tool === "dapr-agent" && form.provider.trim() === "") {
       return "Pick an LLM provider for the Dapr Agent runtime.";
@@ -1211,32 +1211,26 @@ export default function CreateUnitPage() {
   // empty Step 2 (no runtimes / fetch failure for a non-custom tool).
   // Drives the in-card banner above the form so the operator sees the
   // root cause, not just the "Next is disabled" symptom underneath.
+  // The fetch-error message is intentionally short — the platform API
+  // is supposed to always be reachable from the dashboard host (the
+  // OSS deployment proxies `/api/v1/*` to it; private cloud serves
+  // both off the same origin), so a failure here is an infrastructure
+  // problem the operator needs to debug from logs, not from a banner
+  // dump of the response body.
   const agentRuntimeCatalogIssue = useMemo<string | null>(() => {
     if (form.tool === "custom") return null;
     if (agentRuntimesQuery.isPending) return null;
     if (agentRuntimesQuery.isError) {
-      const message =
-        agentRuntimesQuery.error instanceof Error
-          ? agentRuntimesQuery.error.message
-          : String(agentRuntimesQuery.error);
-      // The API client surfaces non-2xx responses as
-      // `API error <code>: <body>` and the body can be a large HTML
-      // error page (e.g. when the platform API isn't running and the
-      // dev server returns its 404 chrome). Truncate to the status
-      // prefix so the banner stays scannable; the full body is still
-      // visible in the network panel.
-      const concise = summariseApiError(message, 240);
-      return `Could not load the agent-runtime catalog: ${concise}`;
+      return "Could not load the agent-runtime catalog.";
     }
     if (agentRuntimes.length === 0) {
-      return "No agent runtimes are installed on this server. Install one (Claude, Codex, Gemini, or Dapr Agent) — or switch the Execution tool to Custom — to populate the model and credential fields.";
+      return "No configured agent runtimes.";
     }
     return null;
   }, [
     form.tool,
     agentRuntimesQuery.isPending,
     agentRuntimesQuery.isError,
-    agentRuntimesQuery.error,
     agentRuntimes.length,
   ]);
 
@@ -2603,28 +2597,6 @@ function OllamaReachabilityBanner({
       </p>
     </div>
   );
-}
-
-/**
- * Trim an `API error <code>: <body>` message down to something that
- * fits in a banner. The API client returns the response body verbatim,
- * which for the dev server's 404 chrome is a multi-kilobyte HTML
- * document — useless for a status banner and visually overwhelming.
- *
- * Strategy: keep the `API error <code>: <reason>` prefix (everything
- * up to the first newline or the first `<`), strip any inline tags
- * from what remains, collapse whitespace, and clip to `maxChars`.
- * Non–API-error strings pass through with the same whitespace +
- * length normalisation.
- */
-export function summariseApiError(message: string, maxChars = 240): string {
-  const beforeBody = message.split(/\n|<\s*[a-z!]/i)[0] ?? message;
-  const stripped = beforeBody
-    .replace(/<[^>]*>/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (stripped.length <= maxChars) return stripped;
-  return `${stripped.slice(0, maxChars - 1).trimEnd()}…`;
 }
 
 function providerLabel(providerId: string): string {
