@@ -440,6 +440,11 @@ jobs:
             !src/Cvoya.Spring.Web/.next/cache
           retention-days: 1
           if-no-files-found: error
+          # `.next` starts with a dot, so without this flag v4 silently
+          # excludes the entire directory tree (`include-hidden-files`
+          # defaults to false). The artifact would upload as empty and the
+          # downstream e2e / lighthouse jobs would fail at extract time.
+          include-hidden-files: true
 
   web-test:
     name: Test web (vitest)
