@@ -15,13 +15,14 @@ import type {
   ProviderCredentialStatusResponse,
 } from "@/lib/api/types";
 
-// Mock the API client. Post-#690 the wizard reads the provider+model
-// catalog from `/api/v1/agent-runtimes` and validates credentials via
-// `/api/v1/agent-runtimes/{id}/validate-credential`.
+// Mock the API client. Post-T-07 (#949) the wizard no longer validates
+// the credential against the LLM at the host — validation runs as a
+// backend Dapr workflow after create. So there is no
+// `validateAgentRuntimeCredential` mock; the wizard just reads the
+// agent-runtime catalog + models + persists the credential.
 const listOllamaModels = vi.fn();
 const listAgentRuntimes = vi.fn();
 const getAgentRuntimeModels = vi.fn();
-const validateAgentRuntimeCredential = vi.fn();
 const getProviderCredentialStatus = vi.fn();
 const createUnit = vi.fn();
 const createUnitFromTemplate = vi.fn();
@@ -35,11 +36,6 @@ vi.mock("@/lib/api/client", () => ({
     listOllamaModels: () => listOllamaModels(),
     listAgentRuntimes: () => listAgentRuntimes(),
     getAgentRuntimeModels: (id: string) => getAgentRuntimeModels(id),
-    validateAgentRuntimeCredential: (
-      id: string,
-      k: string,
-      secretName?: string,
-    ) => validateAgentRuntimeCredential(id, k, secretName),
     getProviderCredentialStatus: (p: string) => getProviderCredentialStatus(p),
     getUnitTemplates: vi.fn().mockResolvedValue([]),
     getConnectorTypes: vi.fn().mockResolvedValue([]),
@@ -199,11 +195,6 @@ function seedDefaultMocks() {
       contextWindow: null,
     }));
   });
-  validateAgentRuntimeCredential.mockResolvedValue({
-    valid: true,
-    status: "Valid",
-    errorMessage: null,
-  });
   getProviderCredentialStatus.mockResolvedValue(
     makeStatus({ provider: "anthropic", resolvable: true, source: "tenant" }),
   );
@@ -294,35 +285,9 @@ describe("CreateUnitPage — wizard reads tenant-installed agent runtimes (#690)
     // The credential input is hidden on Ollama — no API key to validate.
     expect(screen.queryByTestId("credential-input")).not.toBeInTheDocument();
   });
-
-  it("routes validation through /api/v1/agent-runtimes/{id}/validate-credential", async () => {
-    getProviderCredentialStatus.mockResolvedValue(
-      makeStatus({ provider: "anthropic", resolvable: false, source: null }),
-    );
-    renderPage();
-    await advanceToExecution();
-
-    const input = (await screen.findByTestId(
-      "credential-input",
-    )) as HTMLInputElement;
-    await act(async () => {
-      fireEvent.change(input, { target: { value: "sk-ant-test" } });
-    });
-    await act(async () => {
-      fireEvent.blur(input);
-    });
-
-    await waitFor(() => {
-      expect(validateAgentRuntimeCredential).toHaveBeenCalledWith(
-        "claude",
-        "sk-ant-test",
-        undefined,
-      );
-    });
-  });
 });
 
-describe("CreateUnitPage — credential-status banner (#598, preserved post-#690)", () => {
+describe("CreateUnitPage — credential-status banner (#598, preserved post-T-07)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     seedDefaultMocks();
@@ -382,7 +347,12 @@ describe("CreateUnitPage — credential-status banner (#598, preserved post-#690
   });
 });
 
-describe("CreateUnitPage — inline credential flow (#626)", () => {
+// T-07 (#949): the Model dropdown now renders against the agent-runtime
+// catalog regardless of credential status — Next is never gated on a
+// live reach-out to the LLM. The backend validates the key after the
+// unit is created; the detail-page Validation panel surfaces the
+// outcome.
+describe("CreateUnitPage — T-07 wizard simplification (#949)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     seedDefaultMocks();
@@ -391,54 +361,31 @@ describe("CreateUnitPage — inline credential flow (#626)", () => {
       name: "anthropic-api-key",
       version: "v1",
     });
-    createTenantSecret.mockResolvedValue({
-      name: "anthropic-api-key",
-      version: "v1",
-    });
-    rotateTenantSecret.mockResolvedValue({
-      name: "anthropic-api-key",
-      version: "v2",
-    });
   });
 
-  async function fillName(value: string) {
-    const nameInput = screen.getByPlaceholderText(
-      /engineering-team/i,
-    ) as HTMLInputElement;
-    await act(async () => {
-      fireEvent.change(nameInput, { target: { value } });
-    });
-  }
-
-  async function clickNext() {
-    const next = screen.getByRole("button", { name: /^(next|validating…)$/i });
-    await act(async () => {
-      fireEvent.click(next);
-    });
-  }
-
-  it("writes a unit-scoped secret when the tenant-default toggle is off", async () => {
+  it("renders the Model dropdown even when credentials aren't resolvable", async () => {
     getProviderCredentialStatus.mockResolvedValue(
       makeStatus({ provider: "anthropic", resolvable: false, source: null }),
     );
     renderPage();
-    await fillName("acme");
     await advanceToExecution();
 
-    const input = (await screen.findByTestId(
-      "credential-input",
-    )) as HTMLInputElement;
-    await act(async () => {
-      fireEvent.change(input, { target: { value: "sk-ant-unit" } });
-    });
-    await act(async () => {
-      fireEvent.blur(input);
-    });
-    await waitFor(() => {
-      expect(validateAgentRuntimeCredential).toHaveBeenCalled();
-    });
-    // After a successful validate the Model dropdown renders from the
-    // agent-runtimes catalog; wait for the effect to snap a default.
+    // Model dropdown is visible without any key having been validated.
+    const modelSelect = (await screen.findByLabelText(
+      /^Model$/i,
+    )) as HTMLSelectElement;
+    const options = Array.from(modelSelect.options).map((o) => o.value);
+    expect(options).toContain("claude-sonnet-4-20250514");
+  });
+
+  it("advances Next without gating on credential validation", async () => {
+    getProviderCredentialStatus.mockResolvedValue(
+      makeStatus({ provider: "anthropic", resolvable: false, source: null }),
+    );
+    renderPage();
+    await advanceToExecution();
+
+    // Wait for the model dropdown to seed a default selection.
     await waitFor(async () => {
       const modelSelect = (await screen.findByLabelText(
         /^Model$/i,
@@ -446,66 +393,58 @@ describe("CreateUnitPage — inline credential flow (#626)", () => {
       expect(modelSelect.value).not.toBe("");
     });
 
-    // Drive Execution → Mode → Connector → Secrets → Finalize.
-    await clickNext();
-    const scratch = screen.getByRole("button", { name: /scratch/i });
-    await act(async () => {
-      fireEvent.click(scratch);
-    });
-    await clickNext();
-    await clickNext();
-    await clickNext();
-
-    const createBtn = screen.getByTestId("create-unit-button");
-    await act(async () => {
-      fireEvent.click(createBtn);
-    });
-
-    await waitFor(() => {
-      expect(createUnit).toHaveBeenCalled();
-    });
-    expect(createTenantSecret).not.toHaveBeenCalled();
-    expect(createUnitSecret).toHaveBeenCalledWith("acme", {
-      name: "anthropic-api-key",
-      value: "sk-ant-unit",
-    });
+    // Next is enabled immediately — no wizard-time validation request.
+    const next = screen.getByRole("button", { name: /^next$/i });
+    expect(next).not.toBeDisabled();
   });
 
-  it("writes a tenant-scoped secret when the toggle is on", async () => {
+  it("submits the wizard end-to-end, writing the unit secret and navigating", async () => {
     getProviderCredentialStatus.mockResolvedValue(
       makeStatus({ provider: "anthropic", resolvable: false, source: null }),
     );
     renderPage();
-    await fillName("acme");
-    await advanceToExecution();
 
+    // Identity
+    const nameInput = screen.getByPlaceholderText(
+      /engineering-team/i,
+    ) as HTMLInputElement;
+    await act(async () => {
+      fireEvent.change(nameInput, { target: { value: "acme" } });
+    });
+    const nextToExec = screen.getByRole("button", { name: /^next$/i });
+    await act(async () => {
+      fireEvent.click(nextToExec);
+    });
+
+    // Execution — paste a key and advance immediately (no validate call).
     const input = (await screen.findByTestId(
       "credential-input",
     )) as HTMLInputElement;
     await act(async () => {
-      fireEvent.change(input, { target: { value: "sk-ant-tenant" } });
+      fireEvent.change(input, { target: { value: "sk-ant-unit" } });
     });
-    await act(async () => {
-      fireEvent.blur(input);
-    });
-    await waitFor(() => {
-      expect(validateAgentRuntimeCredential).toHaveBeenCalled();
-    });
-    const toggle = screen.getByTestId(
-      "credential-save-as-tenant-default",
-    ) as HTMLInputElement;
-    await act(async () => {
-      fireEvent.click(toggle);
+    await waitFor(async () => {
+      const modelSelect = (await screen.findByLabelText(
+        /^Model$/i,
+      )) as HTMLSelectElement;
+      expect(modelSelect.value).not.toBe("");
     });
 
-    await clickNext();
+    const clickNext = async () => {
+      const next = screen.getByRole("button", { name: /^next$/i });
+      await act(async () => {
+        fireEvent.click(next);
+      });
+    };
+
+    await clickNext(); // Execution → Mode
     const scratch = screen.getByRole("button", { name: /scratch/i });
     await act(async () => {
       fireEvent.click(scratch);
     });
-    await clickNext();
-    await clickNext();
-    await clickNext();
+    await clickNext(); // Mode → Connector
+    await clickNext(); // Connector → Secrets
+    await clickNext(); // Secrets → Finalize
 
     const createBtn = screen.getByTestId("create-unit-button");
     await act(async () => {
@@ -513,12 +452,15 @@ describe("CreateUnitPage — inline credential flow (#626)", () => {
     });
 
     await waitFor(() => {
-      expect(createTenantSecret).toHaveBeenCalledWith({
-        name: "anthropic-api-key",
-        value: "sk-ant-tenant",
-      });
+      expect(createUnit).toHaveBeenCalledTimes(1);
     });
-    expect(createUnitSecret).not.toHaveBeenCalled();
+    expect(createUnitSecret).toHaveBeenCalledWith("acme", {
+      name: "anthropic-api-key",
+      value: "sk-ant-unit",
+    });
+    await waitFor(() => {
+      expect(pushMock).toHaveBeenCalledWith("/units/acme");
+    });
   });
 });
 
@@ -569,11 +511,7 @@ describe("CreateUnitPage — provider help links (#659)", () => {
 });
 
 // Regression: when Step 2 disables Next, the wizard must always
-// surface a human-readable reason. Previously an empty agent-runtime
-// catalog (e.g. platform API down, or no installed runtime matching
-// the selected tool) silently hid the credential + model surface and
-// the operator was stuck staring at a disabled Next button with no
-// clue what to do.
+// surface a human-readable reason.
 describe("CreateUnitPage — Step 2 explains a disabled Next", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -631,18 +569,6 @@ describe("CreateUnitPage — Step 2 explains a disabled Next", () => {
     expect(reason.textContent).toMatch(
       /Claude Code.*runtime is not installed/i,
     );
-    expect(screen.getByRole("button", { name: /^next$/i })).toBeDisabled();
-  });
-
-  it("prompts for an API key when the credential probe says nothing is resolvable", async () => {
-    getProviderCredentialStatus.mockResolvedValue(
-      makeStatus({ provider: "anthropic", resolvable: false, source: null }),
-    );
-    renderPage();
-    await advanceToExecution();
-
-    const reason = await screen.findByTestId("next-disabled-reason");
-    expect(reason.textContent).toMatch(/Anthropic API key/i);
     expect(screen.getByRole("button", { name: /^next$/i })).toBeDisabled();
   });
 });
