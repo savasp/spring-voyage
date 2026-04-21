@@ -4531,6 +4531,109 @@
         }
       }
     },
+    "/api/v1/tenant/tree": {
+      "get": {
+        "tags": [
+          "Tenant"
+        ],
+        "summary": "Synthesized tenant → units → agents tree with multi-parent alias edges",
+        "operationId": "GetTenantTree",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantTreeResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/units/{id}/memories": {
+      "get": {
+        "tags": [
+          "Units"
+        ],
+        "summary": "Read the unit's short-term and long-term memory entries (stub-empty in v2.0)",
+        "operationId": "GetUnitMemories",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoriesResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/agents/{id}/memories": {
+      "get": {
+        "tags": [
+          "Agents"
+        ],
+        "summary": "Read the agent's short-term and long-term memory entries (stub-empty in v2.0)",
+        "operationId": "GetAgentMemories",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoriesResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/skills": {
       "get": {
         "tags": [
@@ -9400,6 +9503,53 @@
           }
         }
       },
+      "MemoriesResponse": {
+        "required": [
+          "shortTerm",
+          "longTerm"
+        ],
+        "type": "object",
+        "properties": {
+          "shortTerm": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MemoryEntry"
+            }
+          },
+          "longTerm": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MemoryEntry"
+            }
+          }
+        }
+      },
+      "MemoryEntry": {
+        "required": [
+          "id",
+          "content",
+          "createdAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "source": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "MessageResponse": {
         "required": [
           "messageId",
@@ -10333,6 +10483,94 @@
           }
         }
       },
+      "TenantTreeNode": {
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "status"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "desc": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "cost24h": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "msgs24h": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "role": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "skills": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "primaryParentId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "children": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/TenantTreeNode"
+            }
+          }
+        }
+      },
+      "TenantTreeResponse": {
+        "required": [
+          "tree"
+        ],
+        "type": "object",
+        "properties": {
+          "tree": {
+            "$ref": "#/components/schemas/TenantTreeNode"
+          }
+        }
+      },
       "ThroughputEntryResponse": {
         "required": [
           "source",
@@ -10800,7 +11038,8 @@
           "enabled",
           "executionMode",
           "createdAt",
-          "updatedAt"
+          "updatedAt",
+          "isPrimary"
         ],
         "type": "object",
         "properties": {
@@ -10842,6 +11081,9 @@
           "updatedAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "isPrimary": {
+            "type": "boolean"
           }
         }
       },
@@ -11469,6 +11711,9 @@
     },
     {
       "name": "Dashboard"
+    },
+    {
+      "name": "Tenant"
     },
     {
       "name": "Skills"

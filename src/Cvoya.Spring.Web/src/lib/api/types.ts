@@ -637,6 +637,36 @@ export type CloneType = Exclude<Schemas["CloningPolicy"], "none">;
 /** Clone attachment mode relative to its parent. */
 export type CloneAttachmentMode = Schemas["AttachmentMode"];
 
+// ---------------------------------------------------------------------------
+// Tenant tree (SVR-tenant-tree, umbrella #815).
+// ---------------------------------------------------------------------------
+
+/**
+ * Response body for `GET /api/v1/tenant/tree`. Consumed by
+ * `<UnitExplorer>` via the `useTenantTree()` hook — which also runs a
+ * lenient-and-loud boundary validation pass before the payload reaches
+ * the Explorer, so stray server values do not paint as silent
+ * misrenders (see `FOUND-tree-boundary-validate`).
+ */
+export type TenantTreeResponse = Schemas["TenantTreeResponse"];
+
+/** One node in the tenant tree. See {@link TenantTreeResponse}. */
+export type TenantTreeNode = Schemas["TenantTreeNode"];
+
+// ---------------------------------------------------------------------------
+// Memories inspector (SVR-memories, umbrella #815).
+// ---------------------------------------------------------------------------
+
+/**
+ * Response body for `GET /api/v1/units/{id}/memories` and
+ * `GET /api/v1/agents/{id}/memories`. In v2.0 both lists are always
+ * empty — the real backing store ships in `V21-memory-write`.
+ */
+export type MemoriesResponse = Schemas["MemoriesResponse"];
+
+/** One memory entry. See {@link MemoriesResponse}. */
+export type MemoryEntry = Schemas["MemoryEntry"];
+
 /**
  * Response from `GET /api/v1/system/credentials/{provider}/status`
  * (#598). Reports whether an LLM provider's credentials (or endpoint,

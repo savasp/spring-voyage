@@ -20,6 +20,12 @@ using Cvoya.Spring.Core.Agents;
 /// <param name="ExecutionMode">Per-membership execution-mode override, or <c>null</c> to inherit.</param>
 /// <param name="CreatedAt">UTC timestamp when the membership was first created.</param>
 /// <param name="UpdatedAt">UTC timestamp when the membership was last updated.</param>
+/// <param name="IsPrimary">
+/// <c>true</c> when this membership is the agent's canonical parent unit.
+/// Exactly one membership per agent is primary at a time; the server
+/// auto-assigns on first insert and auto-promotes when the primary
+/// membership is deleted. Clients cannot write this flag.
+/// </param>
 public record UnitMembershipResponse(
     string UnitId,
     string AgentAddress,
@@ -28,7 +34,8 @@ public record UnitMembershipResponse(
     bool Enabled,
     AgentExecutionMode? ExecutionMode,
     DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    bool IsPrimary);
 
 /// <summary>
 /// Request body for <c>PUT /api/v1/units/{unitId}/memberships/{agentAddress}</c>.

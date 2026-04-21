@@ -32,6 +32,7 @@ internal class UnitMembershipEntityConfiguration : IEntityTypeConfiguration<Unit
         builder.Property(e => e.ExecutionMode).HasColumnName("execution_mode").HasConversion<int?>();
         builder.Property(e => e.CreatedAt).HasColumnName("created_at").IsRequired();
         builder.Property(e => e.UpdatedAt).HasColumnName("updated_at").IsRequired();
+        builder.Property(e => e.IsPrimary).HasColumnName("is_primary").IsRequired().HasDefaultValue(false);
 
         builder.HasIndex(e => new { e.TenantId, e.AgentAddress }).HasDatabaseName("ix_unit_memberships_tenant_agent_address");
         // (tenant_id, unit_id) is the PK prefix, so list-by-unit already

@@ -114,6 +114,7 @@ export const queryKeys = {
   },
 
   tenant: {
+    all: ["tenant"] as const,
     budget: () => ["tenant", "budget"] as const,
     /**
      * Per-window tenant cost rollup (PR-R4, #394). Each distinct
@@ -123,6 +124,18 @@ export const queryKeys = {
      */
     cost: (from: string, to: string) =>
       ["tenant", "cost", from, to] as const,
+    /**
+     * Tenant tree payload served by `GET /api/v1/tenant/tree`. Consumed
+     * by `<UnitExplorer>` — any unit/agent mutation should invalidate
+     * this slice so the Explorer re-renders with the new shape.
+     */
+    tree: () => ["tenant", "tree"] as const,
+  },
+
+  memories: {
+    all: ["memories"] as const,
+    unit: (id: string) => ["memories", "unit", id] as const,
+    agent: (id: string) => ["memories", "agent", id] as const,
   },
 
   connectors: {
