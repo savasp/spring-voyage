@@ -44,6 +44,7 @@ using Cvoya.Spring.Dapr.Secrets;
 using Cvoya.Spring.Dapr.Skills;
 using Cvoya.Spring.Dapr.State;
 using Cvoya.Spring.Dapr.Tenancy;
+using Cvoya.Spring.Dapr.Workflows;
 
 using global::Dapr.Actors.Client;
 using global::Dapr.Workflow;
@@ -540,6 +541,20 @@ public static class ServiceCollectionExtensions
         // validation. TryAdd so a hosted overlay can swap in a
         // tenant-scoped variant.
         services.TryAddSingleton<IUnitExecutionStore, DbUnitExecutionStore>();
+
+        // #947 / T-05: scheduler for UnitValidationWorkflow. Called by
+        // UnitActor whenever it enters Validating so the workflow can run
+        // the in-container probe. TryAdd so the private cloud repo can
+        // override with a tenant-routing scheduler (e.g. per-tenant Dapr
+        // app ids) without forking the OSS default.
+        services.TryAddSingleton<IUnitValidationWorkflowScheduler, UnitValidationWorkflowScheduler>();
+
+        // #947 / T-05: per-unit validation tracker — writes
+        // LastValidationRunId / LastValidationErrorJson onto
+        // UnitDefinitionEntity. Separate from the other Definition-JSON
+        // stores because the columns are dedicated and writes are
+        // single-field updates. TryAdd keeps the cloud-overlay hook open.
+        services.TryAddSingleton<IUnitValidationTracker, DbUnitValidationTracker>();
 
         // #601 B-wide: companion read/write seam for the agent's own
         // execution block on AgentDefinitions.Definition. Shared between

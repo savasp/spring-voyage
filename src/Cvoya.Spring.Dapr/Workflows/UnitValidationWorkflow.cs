@@ -84,10 +84,12 @@ public class UnitValidationWorkflow : Workflow<UnitValidationWorkflowInput, Unit
                 StatusFailed,
                 pullOutput.Failure?.Code);
 
-            return new UnitValidationWorkflowOutput(
+            var pullFailure = new UnitValidationWorkflowOutput(
                 Success: false,
                 Failure: pullOutput.Failure,
                 LiveModels: null);
+            await PostCompletionAsync(context, input, pullFailure);
+            return pullFailure;
         }
 
         await EmitProgressAsync(
@@ -113,10 +115,12 @@ public class UnitValidationWorkflow : Workflow<UnitValidationWorkflowInput, Unit
             {
                 await EmitProgressAsync(context, input, step, StatusFailed, probeOutput.Failure?.Code);
 
-                return new UnitValidationWorkflowOutput(
+                var probeFailure = new UnitValidationWorkflowOutput(
                     Success: false,
                     Failure: probeOutput.Failure,
                     LiveModels: null);
+                await PostCompletionAsync(context, input, probeFailure);
+                return probeFailure;
             }
 
             await EmitProgressAsync(context, input, step, StatusSucceeded, code: null);
@@ -127,11 +131,34 @@ public class UnitValidationWorkflow : Workflow<UnitValidationWorkflowInput, Unit
             }
         }
 
-        return new UnitValidationWorkflowOutput(
+        var success = new UnitValidationWorkflowOutput(
             Success: true,
             Failure: null,
             LiveModels: liveModels);
+        await PostCompletionAsync(context, input, success);
+        return success;
     }
+
+    /// <summary>
+    /// Posts the workflow's terminal outcome to the unit actor via
+    /// <see cref="CompleteUnitValidationActivity"/> so the actor can drive
+    /// the <see cref="UnitStatus.Validating"/> → <see cref="UnitStatus.Stopped"/>
+    /// or <see cref="UnitStatus.Validating"/> → <see cref="UnitStatus.Error"/>
+    /// transition and persist the redacted failure payload. The activity
+    /// is best-effort — a failure to notify the actor is logged and
+    /// swallowed so the workflow's own outcome is never masked.
+    /// </summary>
+    private static Task PostCompletionAsync(
+        WorkflowContext context,
+        UnitValidationWorkflowInput input,
+        UnitValidationWorkflowOutput output) =>
+        context.CallActivityAsync<bool>(
+            nameof(CompleteUnitValidationActivity),
+            new CompleteUnitValidationActivityInput(
+                UnitId: input.UnitId,
+                Success: output.Success,
+                Failure: output.Failure,
+                WorkflowInstanceId: context.InstanceId));
 
     private static Task EmitProgressAsync(
         WorkflowContext context,
@@ -142,7 +169,7 @@ public class UnitValidationWorkflow : Workflow<UnitValidationWorkflowInput, Unit
         context.CallActivityAsync<bool>(
             nameof(EmitValidationProgressActivity),
             new EmitValidationProgressActivityInput(
-                UnitId: input.UnitId,
+                UnitName: input.UnitName,
                 Step: step,
                 Status: status,
                 Code: code));

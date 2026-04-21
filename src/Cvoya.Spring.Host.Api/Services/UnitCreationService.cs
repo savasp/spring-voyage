@@ -66,6 +66,7 @@ public class UnitCreationService : IUnitCreationService
     private readonly IUnitOrchestrationStore? _orchestrationStore;
     private readonly IUnitExecutionStore? _executionStore;
     private readonly IUnitMembershipTenantGuard? _tenantGuard;
+    private readonly ILlmCredentialResolver? _credentialResolver;
     private readonly ILogger<UnitCreationService> _logger;
 
     /// <summary>
@@ -100,7 +101,8 @@ public class UnitCreationService : IUnitCreationService
         IOrchestrationStrategyCacheInvalidator? orchestrationCacheInvalidator = null,
         IUnitOrchestrationStore? orchestrationStore = null,
         IUnitExecutionStore? executionStore = null,
-        IUnitMembershipTenantGuard? tenantGuard = null)
+        IUnitMembershipTenantGuard? tenantGuard = null,
+        ILlmCredentialResolver? credentialResolver = null)
     {
         _directoryService = directoryService;
         _actorProxyFactory = actorProxyFactory;
@@ -118,6 +120,7 @@ public class UnitCreationService : IUnitCreationService
         _orchestrationStore = orchestrationStore;
         _executionStore = executionStore;
         _tenantGuard = tenantGuard;
+        _credentialResolver = credentialResolver;
         _logger = loggerFactory.CreateLogger<UnitCreationService>();
     }
 
@@ -861,35 +864,68 @@ public class UnitCreationService : IUnitCreationService
                 await _bundleStore.SetAsync(name, resolvedBundles, cancellationToken);
             }
 
-            // Fix #368: differentiated creation states. Manifest-created
-            // units (which always supply a model) start in Stopped. Bare-
-            // created units start in Draft when model is absent, Stopped
-            // when model is present. This lets the UI offer a clean
-            // "Start" button for ready units and keeps Draft for those
-            // still needing configuration.
-            var initialStatus = UnitStatus.Draft;
-            if (!string.IsNullOrWhiteSpace(model))
+            // #947 / T-05: backend-validated creation. Direct-create
+            // callers supply `model`/`provider`/`tool` on the request
+            // body; mirror them onto the unit's execution block so the
+            // scheduler can read back a consistent view of what to
+            // validate against. The manifest path already writes this
+            // through PersistUnitExecutionAsync.
+            if (_executionStore is not null &&
+                (!string.IsNullOrWhiteSpace(model)
+                    || !string.IsNullOrWhiteSpace(provider)
+                    || !string.IsNullOrWhiteSpace(tool)))
             {
                 try
                 {
-                    var transitionResult = await proxy.TransitionAsync(UnitStatus.Stopped, cancellationToken);
+                    await _executionStore.SetAsync(
+                        name,
+                        new UnitExecutionDefaults(
+                            Image: null,
+                            Runtime: provider,
+                            Tool: tool,
+                            Provider: provider,
+                            Model: model),
+                        cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex,
+                        "Unit '{UnitName}' failed to persist execution defaults on direct create; validation will not start.",
+                        name);
+                }
+            }
+
+            // When the request supplies a full execution config
+            // (model + provider + a resolvable credential), transition
+            // the unit straight into Validating so the Dapr
+            // UnitValidationWorkflow can run the in-container probe.
+            // Partial configs leave the unit in Draft — the user can
+            // finish configuration and then call /revalidate (or
+            // update + revalidate) to kick off validation.
+            var initialStatus = UnitStatus.Draft;
+            var fullyConfigured = await IsFullyConfiguredForValidationAsync(
+                name, model, provider, cancellationToken);
+            if (fullyConfigured)
+            {
+                try
+                {
+                    var transitionResult = await proxy.TransitionAsync(
+                        UnitStatus.Validating, cancellationToken);
                     if (transitionResult is { Success: true })
                     {
-                        initialStatus = UnitStatus.Stopped;
+                        initialStatus = UnitStatus.Validating;
                     }
                     else
                     {
                         _logger.LogWarning(
-                            "Unit '{UnitName}' failed to transition to Stopped on creation: {Reason}. Staying in Draft.",
+                            "Unit '{UnitName}' failed to transition to Validating on creation: {Reason}. Staying in Draft.",
                             name, transitionResult?.RejectionReason ?? "unknown");
                     }
                 }
                 catch (Exception ex)
                 {
-                    // Non-fatal: the unit remains in Draft. The user can
-                    // configure it further and start it later.
                     _logger.LogWarning(ex,
-                        "Unit '{UnitName}' transition to Stopped failed on creation. Staying in Draft.",
+                        "Unit '{UnitName}' transition to Validating failed on creation. Staying in Draft.",
                         name);
                 }
             }
@@ -936,6 +972,59 @@ public class UnitCreationService : IUnitCreationService
         {
             await TryRollbackAsync(address, name, cancellationToken);
             throw;
+        }
+    }
+
+    /// <summary>
+    /// Returns <c>true</c> when the unit has enough configuration to kick
+    /// off backend validation at creation time: a model, a provider /
+    /// runtime, and a resolvable credential (or a runtime that declares
+    /// no credential is needed). Partial configs leave the unit in
+    /// <see cref="UnitStatus.Draft"/> — the operator finishes
+    /// configuration and then calls <c>/revalidate</c>.
+    /// </summary>
+    private async Task<bool> IsFullyConfiguredForValidationAsync(
+        string unitName,
+        string? model,
+        string? provider,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(model) || string.IsNullOrWhiteSpace(provider))
+        {
+            return false;
+        }
+
+        // Credential resolution is the last gate. When no resolver is
+        // wired (legacy test harnesses), fall back to "model + provider
+        // supplied == ready" which matches the pre-T-05 behaviour.
+        if (_credentialResolver is null)
+        {
+            return true;
+        }
+
+        try
+        {
+            var resolution = await _credentialResolver.ResolveAsync(
+                providerId: provider,
+                unitName: unitName,
+                cancellationToken);
+
+            // A non-null value means we have a credential to hand to the
+            // workflow. The "no credential required" path (Ollama) is
+            // covered by the runtime-level filter inside the scheduler
+            // and probe activities — it still reports NotFound here
+            // because the secret resolver short-circuits on the empty
+            // secret name. Treat NotFound as "we don't yet have enough
+            // to probe" and leave the unit in Draft; users configure
+            // credentials explicitly for that path.
+            return !string.IsNullOrEmpty(resolution.Value);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Unit '{UnitName}' credential resolution threw during creation; leaving unit in Draft.",
+                unitName);
+            return false;
         }
     }
 

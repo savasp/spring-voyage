@@ -10,9 +10,14 @@ using Cvoya.Spring.Core.Directory;
 using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Core.Units;
 using Cvoya.Spring.Dapr.Actors;
+using Cvoya.Spring.Dapr.Data;
+using Cvoya.Spring.Dapr.Data.Entities;
 
 using global::Dapr.Actors;
 using global::Dapr.Actors.Client;
+
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 using NSubstitute;
 
@@ -162,6 +167,105 @@ public class UnitDetailsEndpointTests : IClassFixture<CustomWebApplicationFactor
         var body = await response.Content.ReadAsStringAsync(ct);
         using var doc = JsonDocument.Parse(body);
         doc.RootElement.GetProperty("details").ValueKind.ShouldBe(JsonValueKind.Null);
+    }
+
+    [Fact]
+    public async Task GetUnit_WithValidationTracking_ProjectsErrorAndRunIdOntoResponse()
+    {
+        // T-05 (#947): the top-level DTO gains LastValidationError /
+        // LastValidationRunId. The GET read-path reads the columns back
+        // from UnitDefinitionEntity and projects them into UnitResponse.
+        var ct = TestContext.Current.CancellationToken;
+        var proxy = Substitute.For<IUnitActor>();
+        proxy.GetStatusAsync(Arg.Any<CancellationToken>()).Returns(UnitStatus.Error);
+        proxy.GetMetadataAsync(Arg.Any<CancellationToken>())
+            .Returns(new UnitMetadata(null, null, null, null));
+        proxy.GetMembersAsync(Arg.Any<CancellationToken>())
+            .Returns(Array.Empty<Address>());
+
+        ArrangeResolved(proxy);
+
+        // Seed the UnitDefinitionEntity row with a validation failure so
+        // the GET endpoint's TryGetValidationTrackingAsync helper picks up
+        // both columns.
+        var error = new UnitValidationError(
+            UnitValidationStep.ValidatingCredential,
+            UnitValidationCodes.CredentialInvalid,
+            Message: "credential rejected",
+            Details: new Dictionary<string, string> { ["http_status"] = "401" });
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
+            db.UnitDefinitions.Add(new UnitDefinitionEntity
+            {
+                Id = Guid.NewGuid(),
+                TenantId = "default",
+                UnitId = UnitName,
+                ActorId = ActorId,
+                Name = UnitName,
+                Description = "test",
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow,
+                LastValidationErrorJson = JsonSerializer.Serialize(error),
+                LastValidationRunId = "run-17",
+            });
+            await db.SaveChangesAsync(ct);
+        }
+
+        var response = await _client.GetAsync($"/api/v1/units/{UnitName}", ct);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        var body = await response.Content.ReadAsStringAsync(ct);
+        using var doc = JsonDocument.Parse(body);
+
+        var unit = doc.RootElement.GetProperty("unit");
+        unit.GetProperty("lastValidationRunId").GetString().ShouldBe("run-17");
+
+        var lastError = unit.GetProperty("lastValidationError");
+        lastError.GetProperty("step").GetString().ShouldBe("ValidatingCredential");
+        lastError.GetProperty("code").GetString().ShouldBe(UnitValidationCodes.CredentialInvalid);
+        lastError.GetProperty("message").GetString().ShouldBe("credential rejected");
+        lastError.GetProperty("details").GetProperty("http_status").GetString().ShouldBe("401");
+
+        // Cleanup so later Theory rows don't see the seeded row. The
+        // in-memory provider's DB is per-fixture but rows persist across
+        // tests — clear our unit.
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
+            var row = await db.UnitDefinitions.FirstOrDefaultAsync(
+                u => u.UnitId == UnitName, ct);
+            if (row is not null)
+            {
+                db.UnitDefinitions.Remove(row);
+                await db.SaveChangesAsync(ct);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task GetUnit_NoValidationTracking_DtoFieldsAreNull()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var proxy = Substitute.For<IUnitActor>();
+        proxy.GetStatusAsync(Arg.Any<CancellationToken>()).Returns(UnitStatus.Draft);
+        proxy.GetMetadataAsync(Arg.Any<CancellationToken>())
+            .Returns(new UnitMetadata(null, null, null, null));
+        proxy.GetMembersAsync(Arg.Any<CancellationToken>())
+            .Returns(Array.Empty<Address>());
+
+        ArrangeResolved(proxy);
+
+        var response = await _client.GetAsync($"/api/v1/units/{UnitName}", ct);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        var body = await response.Content.ReadAsStringAsync(ct);
+        using var doc = JsonDocument.Parse(body);
+
+        var unit = doc.RootElement.GetProperty("unit");
+        unit.GetProperty("lastValidationError").ValueKind.ShouldBe(JsonValueKind.Null);
+        unit.GetProperty("lastValidationRunId").ValueKind.ShouldBe(JsonValueKind.Null);
     }
 
     private void ArrangeResolved(IUnitActor proxy)

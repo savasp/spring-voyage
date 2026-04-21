@@ -49,6 +49,7 @@ public class UnitValidationWorkflowTests
     private static UnitValidationWorkflowInput Input(string model = "gpt-4o") =>
         new(
             UnitId: "unit-1",
+            UnitName: "unit-1",
             Image: "ghcr.io/cvoya/test:1",
             RuntimeId: "test-runtime",
             Credential: "sk-test",

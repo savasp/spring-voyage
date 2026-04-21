@@ -1267,6 +1267,58 @@
         }
       }
     },
+    "/api/v1/units/{id}/revalidate": {
+      "post": {
+        "tags": [
+          "Units"
+        ],
+        "summary": "Re-run backend validation for a unit in Error or Stopped state",
+        "description": "Transitions the unit into Validating and kicks off a new UnitValidationWorkflow run. The handler returns immediately — progress is observable via SSE ValidationProgress events and the terminal state is written back by the workflow.",
+        "operationId": "RevalidateUnit",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnitResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/units/{id}/members": {
       "get": {
         "tags": [
@@ -11245,6 +11297,22 @@
               "null",
               "string"
             ]
+          },
+          "lastValidationError": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/UnitValidationError"
+              }
+            ]
+          },
+          "lastValidationRunId": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -11321,6 +11389,43 @@
             "type": "string"
           }
         }
+      },
+      "UnitValidationError": {
+        "required": [
+          "step",
+          "code",
+          "message",
+          "details"
+        ],
+        "type": "object",
+        "properties": {
+          "step": {
+            "$ref": "#/components/schemas/UnitValidationStep"
+          },
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "details": {
+            "type": [
+              "null",
+              "object"
+            ],
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "UnitValidationStep": {
+        "enum": [
+          "PullingImage",
+          "VerifyingTool",
+          "ValidatingCredential",
+          "ResolvingModel"
+        ]
       },
       "UnitWebSearchConfigRequest": {
         "required": [

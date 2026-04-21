@@ -11,10 +11,15 @@ namespace Cvoya.Spring.Dapr.Workflows;
 /// Workflow engine.
 /// </summary>
 /// <param name="UnitId">
-/// Stable id of the unit being validated. Used as the
-/// <see cref="Cvoya.Spring.Core.Messaging.Address.Path"/> of progress events
-/// (scheme <c>unit</c>) so the web detail page can filter the activity SSE
-/// stream to the unit the operator is watching.
+/// Dapr actor id of the unit being validated. Used for log correlation and
+/// as the callback target when <c>CompleteUnitValidationActivity</c> invokes
+/// the terminal <c>IUnitActor.CompleteValidationAsync</c> callback.
+/// </param>
+/// <param name="UnitName">
+/// User-facing name of the unit (<c>Address.Path</c> equivalent). Used as
+/// the <see cref="Cvoya.Spring.Core.Messaging.Address.Path"/> of progress
+/// events (scheme <c>unit</c>) so the web detail page's SSE filter — which
+/// keys on the unit's user-facing name, not its actor Guid — picks them up.
 /// </param>
 /// <param name="Image">
 /// Fully-qualified container image reference (e.g. <c>ghcr.io/cvoya/claude:1.2.3</c>)
@@ -42,6 +47,7 @@ namespace Cvoya.Spring.Dapr.Workflows;
 /// </param>
 public record UnitValidationWorkflowInput(
     string UnitId,
+    string UnitName,
     string Image,
     string RuntimeId,
     string Credential,

@@ -73,6 +73,11 @@ public record UpdateUnitRequest(
 /// <param name="Status">The current lifecycle status of the unit.</param>
 /// <param name="Model">An optional model identifier hint, if set.</param>
 /// <param name="Color">An optional UI color hint, if set.</param>
+/// <param name="Tool">Optional tool-kind identifier.</param>
+/// <param name="Provider">Optional provider identifier.</param>
+/// <param name="Hosting">Optional hosting hint.</param>
+/// <param name="LastValidationError">Structured outcome of the most recent failed validation run, or <c>null</c> when the most recent run succeeded or the unit has never been validated.</param>
+/// <param name="LastValidationRunId">Dapr workflow instance id of the most recent validation run. Null until the first run.</param>
 public record UnitResponse(
     string Id,
     string Name,
@@ -84,7 +89,9 @@ public record UnitResponse(
     string? Color,
     string? Tool = null,
     string? Provider = null,
-    string? Hosting = null);
+    string? Hosting = null,
+    UnitValidationError? LastValidationError = null,
+    string? LastValidationRunId = null);
 
 /// <summary>
 /// Request body for adding a member to a unit.

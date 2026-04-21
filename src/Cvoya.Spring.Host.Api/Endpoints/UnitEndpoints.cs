@@ -14,6 +14,7 @@ using Cvoya.Spring.Core.Skills;
 using Cvoya.Spring.Core.Units;
 using Cvoya.Spring.Dapr.Actors;
 using Cvoya.Spring.Dapr.Auth;
+using Cvoya.Spring.Dapr.Data;
 using Cvoya.Spring.Host.Api.Auth;
 using Cvoya.Spring.Host.Api.Models;
 using Cvoya.Spring.Host.Api.Services;
@@ -23,6 +24,8 @@ using global::Dapr.Actors;
 using global::Dapr.Actors.Client;
 
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 /// <summary>
@@ -101,6 +104,14 @@ public static class UnitEndpoints
             .WithName("StopUnit")
             .WithSummary("Stop the runtime container for a unit")
             .Produces<UnitLifecycleResponse>(StatusCodes.Status202Accepted)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
+
+        group.MapPost("/{id}/revalidate", RevalidateUnitAsync)
+            .WithName("RevalidateUnit")
+            .WithSummary("Re-run backend validation for a unit in Error or Stopped state")
+            .WithDescription("Transitions the unit into Validating and kicks off a new UnitValidationWorkflow run. The handler returns immediately — progress is observable via SSE ValidationProgress events and the terminal state is written back by the workflow.")
+            .Produces<UnitResponse>(StatusCodes.Status202Accepted)
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status409Conflict);
 
@@ -198,6 +209,7 @@ public static class UnitEndpoints
         string id,
         [FromServices] IDirectoryService directoryService,
         [FromServices] IActorProxyFactory actorProxyFactory,
+        [FromServices] IServiceScopeFactory scopeFactory,
         [FromServices] ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
@@ -213,6 +225,8 @@ public static class UnitEndpoints
 
         var status = await TryGetUnitStatusAsync(actorProxyFactory, entry.ActorId, logger, id, cancellationToken);
         var metadata = await TryGetUnitMetadataAsync(actorProxyFactory, entry.ActorId, logger, id, cancellationToken);
+        var validationTracking = await TryGetValidationTrackingAsync(
+            scopeFactory, entry.ActorId, logger, id, cancellationToken);
 
         // #339: Read the unit's status-query payload (status + member count)
         // by calling the actor proxy directly, bypassing the message router.
@@ -225,7 +239,7 @@ public static class UnitEndpoints
         var details = await TryGetUnitStatusPayloadAsync(
             actorProxyFactory, entry.ActorId, logger, id, cancellationToken);
 
-        var unitResponse = ToUnitResponse(entry, status, metadata);
+        var unitResponse = ToUnitResponse(entry, status, metadata, validationTracking);
         return Results.Ok(new UnitDetailResponse(unitResponse, details));
     }
 
@@ -909,6 +923,77 @@ public static class UnitEndpoints
             new UnitLifecycleResponse(id, stoppedTransition.CurrentStatus));
     }
 
+    /// <summary>
+    /// Handler for <c>POST /api/v1/units/{id}/revalidate</c>. Allowed only
+    /// from <see cref="UnitStatus.Error"/> or <see cref="UnitStatus.Stopped"/>
+    /// per the design approved on #942 — any other status returns 409 with a
+    /// structured <c>currentStatus</c> detail so the client can surface
+    /// guidance. The handler returns 202 immediately; the workflow's terminal
+    /// activity drives the follow-up <see cref="UnitStatus.Validating"/> →
+    /// <see cref="UnitStatus.Stopped"/> or <see cref="UnitStatus.Error"/>
+    /// transition via <see cref="IUnitActor.CompleteValidationAsync"/>.
+    /// </summary>
+    private static async Task<IResult> RevalidateUnitAsync(
+        string id,
+        [FromServices] IDirectoryService directoryService,
+        [FromServices] IActorProxyFactory actorProxyFactory,
+        [FromServices] IServiceScopeFactory scopeFactory,
+        [FromServices] ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken)
+    {
+        var logger = loggerFactory.CreateLogger("Cvoya.Spring.Host.Api.Endpoints.UnitEndpoints");
+
+        var address = new Address("unit", id);
+        var entry = await directoryService.ResolveAsync(address, cancellationToken);
+        if (entry is null)
+        {
+            return Results.Problem(detail: $"Unit '{id}' not found", statusCode: StatusCodes.Status404NotFound);
+        }
+
+        var status = await TryGetUnitStatusAsync(actorProxyFactory, entry.ActorId, logger, id, cancellationToken);
+        if (status != UnitStatus.Error && status != UnitStatus.Stopped)
+        {
+            return Results.Problem(
+                title: "Invalid state",
+                detail: $"Unit '{id}' is {status}; revalidation is only allowed from Error or Stopped.",
+                statusCode: StatusCodes.Status409Conflict,
+                extensions: new Dictionary<string, object?>
+                {
+                    ["code"] = "InvalidState",
+                    ["currentStatus"] = status.ToString(),
+                });
+        }
+
+        var proxy = actorProxyFactory.CreateActorProxy<IUnitActor>(
+            new ActorId(entry.ActorId), nameof(UnitActor));
+
+        var transition = await proxy.TransitionAsync(UnitStatus.Validating, cancellationToken);
+        if (!transition.Success)
+        {
+            return Results.Problem(
+                title: "Invalid state",
+                detail: transition.RejectionReason ?? "Unit could not enter Validating.",
+                statusCode: StatusCodes.Status409Conflict,
+                extensions: new Dictionary<string, object?>
+                {
+                    ["code"] = "InvalidState",
+                    ["currentStatus"] = transition.CurrentStatus.ToString(),
+                });
+        }
+
+        // The entity write (LastValidationRunId + cleared
+        // LastValidationErrorJson) happens inside the actor's transition
+        // path. Read metadata + tracking back to echo a consistent DTO on
+        // the 202 response.
+        var metadata = await TryGetUnitMetadataAsync(actorProxyFactory, entry.ActorId, logger, id, cancellationToken);
+        var validationTracking = await TryGetValidationTrackingAsync(
+            scopeFactory, entry.ActorId, logger, id, cancellationToken);
+
+        return Results.Accepted(
+            $"/api/v1/units/{id}",
+            ToUnitResponse(entry, transition.CurrentStatus, metadata, validationTracking));
+    }
+
     private static async Task<IResult> ListUnitMembersAsync(
         string id,
         [FromServices] IDirectoryService directoryService,
@@ -1248,7 +1333,8 @@ public static class UnitEndpoints
     private static UnitResponse ToUnitResponse(
         DirectoryEntry entry,
         UnitStatus status = UnitStatus.Draft,
-        UnitMetadata? metadata = null) =>
+        UnitMetadata? metadata = null,
+        UnitValidationTracking? validationTracking = null) =>
         new(
             entry.ActorId,
             entry.Address.Path,
@@ -1260,7 +1346,81 @@ public static class UnitEndpoints
             metadata?.Color,
             metadata?.Tool,
             metadata?.Provider,
-            metadata?.Hosting);
+            metadata?.Hosting,
+            validationTracking?.LastValidationError,
+            validationTracking?.LastValidationRunId);
+
+    /// <summary>
+    /// View of the per-unit validation-tracking columns projected into the
+    /// GET DTO. Parsed once per read via
+    /// <see cref="TryGetValidationTrackingAsync"/> so the endpoint does not
+    /// repeat the JSON parse in multiple code paths.
+    /// </summary>
+    private sealed record UnitValidationTracking(
+        UnitValidationError? LastValidationError,
+        string? LastValidationRunId);
+
+    /// <summary>
+    /// Reads the unit's <c>LastValidationErrorJson</c> / <c>LastValidationRunId</c>
+    /// columns via a scoped <see cref="SpringDbContext"/> and returns a
+    /// parsed view suitable for projection into <see cref="UnitResponse"/>.
+    /// Returns <c>null</c> when the row is missing or the context is not
+    /// registered (design-time / doc-gen path) so the DTO's null values
+    /// surface naturally.
+    /// </summary>
+    private static async Task<UnitValidationTracking?> TryGetValidationTrackingAsync(
+        IServiceScopeFactory scopeFactory,
+        string actorId,
+        ILogger logger,
+        string unitId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
+
+            var row = await db.UnitDefinitions
+                .AsNoTracking()
+                .Where(u => u.ActorId == actorId && u.DeletedAt == null)
+                .Select(u => new
+                {
+                    u.LastValidationErrorJson,
+                    u.LastValidationRunId,
+                })
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (row is null)
+            {
+                return null;
+            }
+
+            UnitValidationError? error = null;
+            if (!string.IsNullOrWhiteSpace(row.LastValidationErrorJson))
+            {
+                try
+                {
+                    error = JsonSerializer.Deserialize<UnitValidationError>(
+                        row.LastValidationErrorJson);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex,
+                        "Unit {UnitId}: failed to parse LastValidationErrorJson; omitting from response.",
+                        unitId);
+                }
+            }
+
+            return new UnitValidationTracking(error, row.LastValidationRunId);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex,
+                "Unit {UnitId}: failed to read validation tracking columns; omitting from response.",
+                unitId);
+            return null;
+        }
+    }
 
     private static async Task<IResult> ListUnitAgentsAsync(
         string id,
