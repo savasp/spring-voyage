@@ -49,4 +49,12 @@ public class UnitMembershipEntity : ITenantScopedEntity
 
     /// <summary>UTC timestamp when the membership was last updated.</summary>
     public DateTimeOffset UpdatedAt { get; set; }
+
+    /// <summary>
+    /// Marks this membership as the agent's primary parent unit. Exactly
+    /// one row per <c>(tenant_id, agent_address)</c> carries <c>true</c>;
+    /// the repository auto-assigns on first insert and auto-promotes when
+    /// the primary row is deleted.
+    /// </summary>
+    public bool IsPrimary { get; set; }
 }

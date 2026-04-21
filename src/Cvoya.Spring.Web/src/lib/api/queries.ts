@@ -20,6 +20,10 @@ import {
 
 import { api } from "./client";
 import { queryKeys } from "./query-keys";
+import {
+  validateTenantTreeResponse,
+  type ValidatedTenantTreeNode,
+} from "./validate-tenant-tree";
 import type {
   ActivityQueryResult,
   AgentDashboardSummary,
@@ -40,6 +44,7 @@ import type {
   InboxItem,
   InitiativeLevelResponse,
   InitiativePolicy,
+  MemoriesResponse,
   PackageDetail,
   PackageSummary,
   PersistentAgentDeploymentResponse,
@@ -1163,5 +1168,62 @@ export function useProviderCredentialStatus(
     staleTime: opts?.staleTime ?? 30 * 1000,
     refetchInterval: opts?.refetchInterval,
     enabled: opts?.enabled ?? Boolean(provider),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Tenant tree (SVR-tenant-tree, umbrella #815).
+// ---------------------------------------------------------------------------
+
+/**
+ * Single-payload tenant snapshot consumed by `<UnitExplorer>`.
+ *
+ * The raw response runs through `validateTenantTreeResponse` before
+ * reaching callers, so stray `kind`/`status` values from the server
+ * coerce to safe defaults and log via `console.error`
+ * (see `FOUND-tree-boundary-validate`). The Explorer always renders a
+ * well-formed tree.
+ *
+ * The endpoint caps at ≤500 nodes per tenant in v2.0 — see plan §3 of
+ * the umbrella. Larger tenants degrade gracefully; lazy expansion is
+ * tracked separately as `V21-tenant-tree-lazy`.
+ */
+export function useTenantTree(
+  opts?: SliceOptions<ValidatedTenantTreeNode>,
+): UseQueryResult<ValidatedTenantTreeNode, Error> {
+  return useQuery({
+    queryKey: queryKeys.tenant.tree(),
+    queryFn: async () => validateTenantTreeResponse(await api.getTenantTree()),
+    ...opts,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Memories inspector (SVR-memories, umbrella #815).
+// ---------------------------------------------------------------------------
+
+/**
+ * Read the short-term + long-term memory entries for a unit or agent.
+ *
+ * In v2.0 both lists always come back empty — the real backing store
+ * ships in `V21-memory-write`. The hook exists now so the Explorer's
+ * Memory tab can wire the empty-state render during the foundation
+ * rollout.
+ */
+export function useMemories(
+  scope: "unit" | "agent",
+  id: string,
+  opts?: SliceOptions<MemoriesResponse>,
+): UseQueryResult<MemoriesResponse, Error> {
+  return useQuery({
+    queryKey:
+      scope === "unit"
+        ? queryKeys.memories.unit(id)
+        : queryKeys.memories.agent(id),
+    queryFn: () =>
+      scope === "unit" ? api.getUnitMemories(id) : api.getAgentMemories(id),
+    enabled: opts?.enabled ?? Boolean(id),
+    staleTime: opts?.staleTime,
+    refetchInterval: opts?.refetchInterval,
   });
 }

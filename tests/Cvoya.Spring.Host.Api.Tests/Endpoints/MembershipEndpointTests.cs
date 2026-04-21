@@ -227,6 +227,26 @@ public class MembershipEndpointTests : IClassFixture<CustomWebApplicationFactory
         detail!.Agent.ParentUnit.ShouldBe("engineering");
     }
 
+    [Fact]
+    public async Task ListAgentMemberships_SurfacesIsPrimaryFlag()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        ClearMemberships();
+        ArrangeDirectoryHit("agent", "ada", "actor-ada");
+
+        await UpsertAsync("engineering", "ada");
+        await Task.Delay(10, ct);
+        await UpsertAsync("marketing", "ada");
+
+        var response = await _client.GetAsync("/api/v1/agents/ada/memberships", ct);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        var list = await response.Content.ReadFromJsonAsync<List<UnitMembershipResponse>>(JsonOptions, ct);
+        list.ShouldNotBeNull();
+        list!.Single(m => m.UnitId == "engineering").IsPrimary.ShouldBeTrue();
+        list.Single(m => m.UnitId == "marketing").IsPrimary.ShouldBeFalse();
+    }
+
     private void ClearMemberships()
     {
         _factory.DirectoryService.ClearReceivedCalls();

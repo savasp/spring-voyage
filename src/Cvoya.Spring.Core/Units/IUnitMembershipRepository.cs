@@ -71,4 +71,13 @@ public interface IUnitMembershipRepository
     /// <c>AgentResponse.ParentUnit</c>).
     /// </summary>
     Task<IReadOnlyList<UnitMembership>> ListByAgentAsync(string agentAddress, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns every membership visible in the current tenant scope. Used
+    /// by surfaces that need the full edge set at once — notably the
+    /// tenant-tree endpoint (<c>GET /api/v1/tenant/tree</c>) that renders
+    /// the Explorer. Rows are ordered by <c>(UnitId, CreatedAt)</c> so
+    /// callers that group by unit get a deterministic iteration order.
+    /// </summary>
+    Task<IReadOnlyList<UnitMembership>> ListAllAsync(CancellationToken cancellationToken = default);
 }

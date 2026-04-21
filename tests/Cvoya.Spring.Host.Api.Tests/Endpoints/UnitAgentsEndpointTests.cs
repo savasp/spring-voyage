@@ -574,6 +574,9 @@ public class UnitAgentsEndpointTests : IClassFixture<CustomWebApplicationFactory
         public Task<IReadOnlyList<UnitMembership>> ListByUnitAsync(string unitId, CancellationToken cancellationToken = default)
             => _inner.ListByUnitAsync(unitId, cancellationToken);
 
+        public Task<IReadOnlyList<UnitMembership>> ListAllAsync(CancellationToken cancellationToken = default)
+            => _inner.ListAllAsync(cancellationToken);
+
         public async Task<IReadOnlyList<UnitMembership>> ListByAgentAsync(string agentAddress, CancellationToken cancellationToken = default)
         {
             var current = Interlocked.Increment(ref s_inFlight);

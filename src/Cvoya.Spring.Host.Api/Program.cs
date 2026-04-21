@@ -251,6 +251,8 @@ try
     app.MapInboxEndpoints().RequireAuthorization();
     app.MapAnalyticsEndpoints().RequireAuthorization();
     app.MapDashboardEndpoints().RequireAuthorization();
+    app.MapTenantTreeEndpoints().RequireAuthorization();
+    app.MapMemoriesEndpoints().RequireAuthorization();
     app.MapSkillsEndpoints().RequireAuthorization();
     app.MapConnectorEndpoints();
     app.MapAgentRuntimeEndpoints().RequireAuthorization();

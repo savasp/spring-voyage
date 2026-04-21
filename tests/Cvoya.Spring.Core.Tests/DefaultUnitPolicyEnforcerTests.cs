@@ -533,6 +533,9 @@ public class DefaultUnitPolicyEnforcerTests
         public Task<IReadOnlyList<UnitMembership>> ListByAgentAsync(string agentAddress, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<UnitMembership>>(
                 _rows.Where(r => r.AgentAddress == agentAddress).ToList());
+
+        public Task<IReadOnlyList<UnitMembership>> ListAllAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<UnitMembership>>(_rows.ToList());
     }
 
     private sealed class FakePolicyRepository : IUnitPolicyRepository

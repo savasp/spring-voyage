@@ -26,6 +26,13 @@ using Cvoya.Spring.Core.Agents;
 /// <param name="ExecutionMode">Per-membership execution-mode override, or <c>null</c> to inherit.</param>
 /// <param name="CreatedAt">UTC timestamp when the membership was first created.</param>
 /// <param name="UpdatedAt">UTC timestamp when the membership was last updated.</param>
+/// <param name="IsPrimary">
+/// Marks this membership as the agent's primary parent unit. Exactly one
+/// membership per agent carries <c>IsPrimary = true</c> at any time; the
+/// repository auto-assigns on first insert and auto-promotes when the
+/// primary row is deleted. Consumed by the tenant-tree endpoint to flag
+/// the canonical surface for multi-parent agents (§3 of the v2 plan).
+/// </param>
 public record UnitMembership(
     string UnitId,
     string AgentAddress,
@@ -34,4 +41,5 @@ public record UnitMembership(
     bool Enabled = true,
     AgentExecutionMode? ExecutionMode = null,
     DateTimeOffset CreatedAt = default,
-    DateTimeOffset UpdatedAt = default);
+    DateTimeOffset UpdatedAt = default,
+    bool IsPrimary = false);

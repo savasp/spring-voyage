@@ -180,6 +180,112 @@ public class UnitMembershipRepositoryTests : IDisposable
         await _repository.DeleteAllForAgentAsync("ghost", ct);
     }
 
+    [Fact]
+    public async Task UpsertAsync_FirstMembershipForAgent_MarkedPrimary()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        await _repository.UpsertAsync(new UnitMembership("engineering", "ada"), ct);
+
+        var persisted = await _repository.GetAsync("engineering", "ada", ct);
+        persisted!.IsPrimary.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task UpsertAsync_SecondMembershipForAgent_NotPrimary()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        await _repository.UpsertAsync(new UnitMembership("engineering", "ada"), ct);
+        await _repository.UpsertAsync(new UnitMembership("marketing", "ada"), ct);
+
+        var first = await _repository.GetAsync("engineering", "ada", ct);
+        var second = await _repository.GetAsync("marketing", "ada", ct);
+        first!.IsPrimary.ShouldBeTrue();
+        second!.IsPrimary.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task UpsertAsync_UpdateExistingRow_PreservesIsPrimary()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        await _repository.UpsertAsync(new UnitMembership("engineering", "ada"), ct);
+        await _repository.UpsertAsync(
+            new UnitMembership("engineering", "ada", Model: "claude-opus"), ct);
+
+        var persisted = await _repository.GetAsync("engineering", "ada", ct);
+        persisted!.IsPrimary.ShouldBeTrue();
+        persisted.Model.ShouldBe("claude-opus");
+    }
+
+    [Fact]
+    public async Task DeleteAsync_PrimaryMembership_PromotesOldestSurvivor()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        // engineering is inserted first → becomes primary. marketing + sales
+        // are non-primary. Delete engineering → oldest survivor (marketing)
+        // should be promoted to primary; sales unchanged.
+        await _repository.UpsertAsync(new UnitMembership("engineering", "ada"), ct);
+        await Task.Delay(10, ct);
+        await _repository.UpsertAsync(new UnitMembership("marketing", "ada"), ct);
+        await Task.Delay(10, ct);
+        await _repository.UpsertAsync(new UnitMembership("sales", "ada"), ct);
+
+        await _repository.DeleteAsync("engineering", "ada", ct);
+
+        var marketing = await _repository.GetAsync("marketing", "ada", ct);
+        var sales = await _repository.GetAsync("sales", "ada", ct);
+        marketing!.IsPrimary.ShouldBeTrue();
+        sales!.IsPrimary.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task DeleteAsync_PrimaryMembership_TiebreaksByUnitIdLex()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        // Zeta (primary — first insert), then Marketing + Alpha created at the
+        // same logical time (no delay). When zeta is removed, the tiebreaker
+        // should pick alpha (lex < marketing), not marketing.
+        await _repository.UpsertAsync(new UnitMembership("zeta", "ada"), ct);
+        await _repository.UpsertAsync(new UnitMembership("marketing", "ada"), ct);
+        await _repository.UpsertAsync(new UnitMembership("alpha", "ada"), ct);
+
+        // Force identical CreatedAt on the two survivors so the unit-id
+        // tiebreaker is the only deciding signal.
+        var now = DateTimeOffset.UtcNow;
+        foreach (var row in await _context.UnitMemberships
+            .Where(m => m.AgentAddress == "ada" && m.UnitId != "zeta")
+            .ToListAsync(ct))
+        {
+            row.CreatedAt = now;
+        }
+        await _context.SaveChangesAsync(ct);
+
+        await _repository.DeleteAsync("zeta", "ada", ct);
+
+        var alpha = await _repository.GetAsync("alpha", "ada", ct);
+        var marketing = await _repository.GetAsync("marketing", "ada", ct);
+        alpha!.IsPrimary.ShouldBeTrue();
+        marketing!.IsPrimary.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task DeleteAsync_NonPrimaryMembership_PrimaryUnchanged()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        await _repository.UpsertAsync(new UnitMembership("engineering", "ada"), ct);
+        await _repository.UpsertAsync(new UnitMembership("marketing", "ada"), ct);
+
+        await _repository.DeleteAsync("marketing", "ada", ct);
+
+        var engineering = await _repository.GetAsync("engineering", "ada", ct);
+        engineering!.IsPrimary.ShouldBeTrue();
+    }
+
     public void Dispose()
     {
         _context.Dispose();

@@ -200,5 +200,6 @@ public static class MembershipEndpoints
             m.Enabled,
             m.ExecutionMode,
             m.CreatedAt,
-            m.UpdatedAt);
+            m.UpdatedAt,
+            m.IsPrimary);
 }

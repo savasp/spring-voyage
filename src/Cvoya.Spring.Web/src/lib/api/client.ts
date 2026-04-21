@@ -1194,4 +1194,24 @@ export const api = {
     }
     return unwrap(result) as import("./types").CredentialHealthResponse;
   },
+
+  // Tenant tree (SVR-tenant-tree, umbrella #815). Single-payload tenant
+  // snapshot for the Explorer surface at `/units`.
+  getTenantTree: async () =>
+    unwrap(await fetchClient.GET("/api/v1/tenant/tree", {})),
+
+  // Memories inspector (SVR-memories, umbrella #815). v2.0 stub —
+  // always returns empty short-term + long-term lists.
+  getUnitMemories: async (id: string) =>
+    unwrap(
+      await fetchClient.GET("/api/v1/units/{id}/memories", {
+        params: { path: { id } },
+      }),
+    ),
+  getAgentMemories: async (id: string) =>
+    unwrap(
+      await fetchClient.GET("/api/v1/agents/{id}/memories", {
+        params: { path: { id } },
+      }),
+    ),
 };

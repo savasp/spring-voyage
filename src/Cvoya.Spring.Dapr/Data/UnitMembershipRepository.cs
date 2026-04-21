@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore;
 /// <summary>
 /// EF Core-backed implementation of <see cref="IUnitMembershipRepository"/>.
 /// Stores rows in the <c>unit_memberships</c> table; composite primary key
-/// on <c>(unit_id, agent_address)</c>.
+/// on <c>(tenant_id, unit_id, agent_address)</c>.
 /// </summary>
 public class UnitMembershipRepository(SpringDbContext context) : IUnitMembershipRepository
 {
@@ -31,6 +31,15 @@ public class UnitMembershipRepository(SpringDbContext context) : IUnitMembership
 
         if (existing is null)
         {
+            // Auto-assign primary when this is the agent's first membership
+            // so every agent always has exactly one primary parent. Callers
+            // cannot set IsPrimary through the wire surface — the
+            // repository owns the invariant.
+            var hasPrimary = await context.UnitMemberships
+                .AnyAsync(
+                    m => m.AgentAddress == membership.AgentAddress && m.IsPrimary,
+                    cancellationToken);
+
             var entity = new UnitMembershipEntity
             {
                 UnitId = membership.UnitId,
@@ -39,6 +48,7 @@ public class UnitMembershipRepository(SpringDbContext context) : IUnitMembership
                 Specialty = membership.Specialty,
                 Enabled = membership.Enabled,
                 ExecutionMode = membership.ExecutionMode,
+                IsPrimary = !hasPrimary,
             };
             context.UnitMemberships.Add(entity);
         }
@@ -48,7 +58,7 @@ public class UnitMembershipRepository(SpringDbContext context) : IUnitMembership
             existing.Specialty = membership.Specialty;
             existing.Enabled = membership.Enabled;
             existing.ExecutionMode = membership.ExecutionMode;
-            // CreatedAt preserved; UpdatedAt stamped by SaveChangesAsync audit hook.
+            // CreatedAt + IsPrimary preserved; UpdatedAt stamped by SaveChangesAsync audit hook.
         }
 
         await context.SaveChangesAsync(cancellationToken);
@@ -82,7 +92,26 @@ public class UnitMembershipRepository(SpringDbContext context) : IUnitMembership
                 + "Assign the agent to another unit first, or delete the agent itself.");
         }
 
+        var wasPrimary = existing.IsPrimary;
         context.UnitMemberships.Remove(existing);
+
+        // Promote the oldest surviving membership when removing the primary.
+        // Tiebreaker (per plan §3, confirmed for v2.0): oldest CreatedAt,
+        // then lexicographic UnitId — stable under unit rename + deterministic.
+        if (wasPrimary)
+        {
+            var successor = await context.UnitMemberships
+                .Where(m => m.AgentAddress == agentAddress && m.UnitId != unitId)
+                .OrderBy(m => m.CreatedAt)
+                .ThenBy(m => m.UnitId)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (successor is not null)
+            {
+                successor.IsPrimary = true;
+            }
+        }
+
         await context.SaveChangesAsync(cancellationToken);
     }
 
@@ -138,6 +167,18 @@ public class UnitMembershipRepository(SpringDbContext context) : IUnitMembership
         return rows.Select(ToDto).ToList();
     }
 
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<UnitMembership>> ListAllAsync(CancellationToken cancellationToken = default)
+    {
+        var rows = await context.UnitMemberships
+            .AsNoTracking()
+            .OrderBy(m => m.UnitId)
+            .ThenBy(m => m.CreatedAt)
+            .ToListAsync(cancellationToken);
+
+        return rows.Select(ToDto).ToList();
+    }
+
     private static UnitMembership ToDto(UnitMembershipEntity e) =>
         new(
             e.UnitId,
@@ -147,5 +188,6 @@ public class UnitMembershipRepository(SpringDbContext context) : IUnitMembership
             e.Enabled,
             e.ExecutionMode,
             e.CreatedAt,
-            e.UpdatedAt);
+            e.UpdatedAt,
+            e.IsPrimary);
 }
