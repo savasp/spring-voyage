@@ -262,6 +262,51 @@ public class LlmCredentialResolverTests
     }
 
     [Fact]
+    public async Task ResolveAsync_TenantScope_UnreadableCipher_ReturnsUnreadable()
+    {
+        // A slot exists but the encryptor can't decrypt it (e.g. the
+        // at-rest AES key rotated). The resolver must not let the domain
+        // exception propagate past this seam — callers that only want
+        // status (the wizard probe) would otherwise crash with a 500.
+        var ct = TestContext.Current.CancellationToken;
+        var resolver = Substitute.For<ISecretResolver>();
+        resolver.ResolveWithPathAsync(
+                Arg.Is<SecretRef>(r => r.Scope == SecretScope.Tenant && r.Name == "anthropic-api-key"),
+                ct)
+            .Returns(Task.FromException<SecretResolution>(new SecretUnreadableException()));
+        var registry = BuildRegistry(("claude", "anthropic-api-key"));
+        var sut = CreateSut(resolver, registry);
+
+        var result = await sut.ResolveAsync("claude", unitName: null, ct);
+
+        result.Value.ShouldBeNull();
+        result.Source.ShouldBe(LlmCredentialSource.Unreadable);
+        result.SecretName.ShouldBe("anthropic-api-key");
+    }
+
+    [Fact]
+    public async Task ResolveAsync_UnitScope_UnreadableCipher_ReturnsUnreadable()
+    {
+        // Same contract at unit scope: the domain exception originating
+        // inside the unit (or tenant fall-through) lookup must be caught
+        // and surfaced as LlmCredentialSource.Unreadable.
+        var ct = TestContext.Current.CancellationToken;
+        var resolver = Substitute.For<ISecretResolver>();
+        resolver.ResolveWithPathAsync(
+                Arg.Is<SecretRef>(r => r.Scope == SecretScope.Unit && r.OwnerId == "u1"),
+                ct)
+            .Returns(Task.FromException<SecretResolution>(new SecretUnreadableException()));
+        var registry = BuildRegistry(("claude", "anthropic-api-key"));
+        var sut = CreateSut(resolver, registry);
+
+        var result = await sut.ResolveAsync("claude", unitName: "u1", ct);
+
+        result.Value.ShouldBeNull();
+        result.Source.ShouldBe(LlmCredentialSource.Unreadable);
+        result.SecretName.ShouldBe("anthropic-api-key");
+    }
+
+    [Fact]
     public async Task ResolveAsync_RegistryLookupIsCaseInsensitiveViaRegistry()
     {
         // The registry contract is case-insensitive on Id — the resolver

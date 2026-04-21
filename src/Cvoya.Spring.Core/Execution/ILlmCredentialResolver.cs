@@ -106,4 +106,13 @@ public enum LlmCredentialSource
 
     /// <summary>A tenant-scoped secret produced the value.</summary>
     Tenant = 2,
+
+    /// <summary>
+    /// A slot exists (unit or tenant scope) but its ciphertext could
+    /// not be decrypted — typically because the at-rest encryption key
+    /// rotated between the write and the read. Operationally distinct
+    /// from <see cref="NotFound"/>: the fix is "rotate the key or
+    /// re-seed the slot", not "create the slot".
+    /// </summary>
+    Unreadable = 3,
 }

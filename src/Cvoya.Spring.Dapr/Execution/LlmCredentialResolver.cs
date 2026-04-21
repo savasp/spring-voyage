@@ -74,35 +74,52 @@ public sealed class LlmCredentialResolver : ILlmCredentialResolver
             return new LlmCredentialResolution(null, LlmCredentialSource.NotFound, string.Empty);
         }
 
-        // Tier 1: unit-scoped secret (subject to the Unit → Tenant inheritance
-        // fall-through implemented by ComposedSecretResolver). We ask at unit
-        // scope when a unit name is supplied so the resolver transparently
-        // inherits from the tenant when the unit has no override; when no
-        // unit is supplied we go straight to tenant scope.
-        if (!string.IsNullOrWhiteSpace(unitName))
+        // A SecretUnreadableException here means a slot exists but its
+        // ciphertext did not authenticate — typically because the at-rest
+        // encryption key rotated between the write and the read. That's
+        // an operational state, not a crash: surface it as a distinct
+        // LlmCredentialSource so the status endpoint can render a
+        // well-formed "unreadable" response instead of returning 500.
+        try
         {
-            var unitRef = new SecretRef(SecretScope.Unit, unitName!, secretName);
-            var resolution = await _secretResolver.ResolveWithPathAsync(unitRef, cancellationToken);
-            if (resolution.Value is { Length: > 0 } unitValue)
+            // Tier 1: unit-scoped secret (subject to the Unit → Tenant inheritance
+            // fall-through implemented by ComposedSecretResolver). We ask at unit
+            // scope when a unit name is supplied so the resolver transparently
+            // inherits from the tenant when the unit has no override; when no
+            // unit is supplied we go straight to tenant scope.
+            if (!string.IsNullOrWhiteSpace(unitName))
             {
-                var source = resolution.Path == SecretResolvePath.InheritedFromTenant
-                    ? LlmCredentialSource.Tenant
-                    : LlmCredentialSource.Unit;
-                return new LlmCredentialResolution(unitValue, source, secretName);
+                var unitRef = new SecretRef(SecretScope.Unit, unitName!, secretName);
+                var resolution = await _secretResolver.ResolveWithPathAsync(unitRef, cancellationToken);
+                if (resolution.Value is { Length: > 0 } unitValue)
+                {
+                    var source = resolution.Path == SecretResolvePath.InheritedFromTenant
+                        ? LlmCredentialSource.Tenant
+                        : LlmCredentialSource.Unit;
+                    return new LlmCredentialResolution(unitValue, source, secretName);
+                }
+            }
+            else
+            {
+                // No unit in context — consult tenant-scoped secret directly.
+                var tenantRef = new SecretRef(
+                    SecretScope.Tenant,
+                    _tenantContext.CurrentTenantId,
+                    secretName);
+                var resolution = await _secretResolver.ResolveWithPathAsync(tenantRef, cancellationToken);
+                if (resolution.Value is { Length: > 0 } tenantValue)
+                {
+                    return new LlmCredentialResolution(tenantValue, LlmCredentialSource.Tenant, secretName);
+                }
             }
         }
-        else
+        catch (SecretUnreadableException ex)
         {
-            // No unit in context — consult tenant-scoped secret directly.
-            var tenantRef = new SecretRef(
-                SecretScope.Tenant,
-                _tenantContext.CurrentTenantId,
-                secretName);
-            var resolution = await _secretResolver.ResolveWithPathAsync(tenantRef, cancellationToken);
-            if (resolution.Value is { Length: > 0 } tenantValue)
-            {
-                return new LlmCredentialResolution(tenantValue, LlmCredentialSource.Tenant, secretName);
-            }
+            _logger.LogWarning(
+                ex,
+                "LLM credential for provider {Provider} is stored but could not be decrypted; returning Unreadable.",
+                providerId);
+            return new LlmCredentialResolution(null, LlmCredentialSource.Unreadable, secretName);
         }
 
         _logger.LogDebug(

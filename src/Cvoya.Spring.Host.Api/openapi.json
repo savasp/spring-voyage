@@ -10065,6 +10065,12 @@
               "null",
               "string"
             ]
+          },
+          "reason": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },

@@ -5,6 +5,7 @@ namespace Cvoya.Spring.Dapr.Tests.Secrets;
 
 using System.Collections.Generic;
 
+using Cvoya.Spring.Core.Secrets;
 using Cvoya.Spring.Core.Tenancy;
 using Cvoya.Spring.Dapr.Secrets;
 using Cvoya.Spring.Dapr.Tenancy;
@@ -176,7 +177,11 @@ public class DaprStateBackedSecretStoreTests
             .GetStateAsync<string?>(Component, "secrets/storekey123", cancellationToken: Arg.Any<CancellationToken>())
             .Returns(envelope);
 
-        await Should.ThrowAsync<System.Security.Cryptography.CryptographicException>(
+        // The encryptor wraps the underlying CryptographicException in
+        // a domain SecretUnreadableException so upstream callers (e.g.
+        // the credential-status endpoint) can distinguish "unreadable"
+        // from other infrastructure errors.
+        await Should.ThrowAsync<SecretUnreadableException>(
             async () => await sut.ReadAsync("storekey123", ct));
     }
 
