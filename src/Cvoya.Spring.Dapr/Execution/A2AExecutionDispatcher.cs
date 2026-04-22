@@ -146,7 +146,7 @@ public class A2AExecutionDispatcher(
                     "or switch the agent to hosting: persistent.");
             }
 
-            var config = BuildContainerConfig(definition.Execution.Image, spec);
+            var config = ContainerConfigBuilder.Build(definition.Execution.Image, spec);
 
             string? containerName = null;
             await using var cancellationRegistration = cancellationToken.Register(() =>
@@ -174,35 +174,6 @@ public class A2AExecutionDispatcher(
             // No CleanupAsync call — workspace materialisation/cleanup lives in
             // the dispatcher service now (issue #1042).
         }
-    }
-
-    /// <summary>
-    /// Translates a launcher's <see cref="AgentLaunchSpec"/> into a
-    /// <see cref="ContainerConfig"/>. The launcher describes the workspace as
-    /// pure data; the dispatcher service materialises it on its host
-    /// filesystem and synthesises the bind-mount at run time. See issue #1042.
-    /// </summary>
-    /// <remarks>
-    /// PR 1 of #1087 forwards <see cref="AgentLaunchSpec.Argv"/> to
-    /// <see cref="ContainerConfig.Command"/> only when the launcher set a
-    /// non-empty argv. Today's launchers all return an empty argv, so this
-    /// branch is dormant — the legacy "fall through to the image's
-    /// CMD ['sleep', 'infinity']" behaviour is preserved until PR 4 wires the
-    /// launchers to populate argv. PR 2 collapses this builder into a shared
-    /// <c>ContainerConfigBuilder</c> reused by the persistent path.
-    /// </remarks>
-    private static ContainerConfig BuildContainerConfig(string image, AgentLaunchSpec spec)
-    {
-        return new ContainerConfig(
-            Image: image,
-            Command: spec.Argv is { Count: > 0 } ? spec.Argv : null,
-            EnvironmentVariables: spec.EnvironmentVariables,
-            VolumeMounts: spec.ExtraVolumeMounts,
-            ExtraHosts: ["host.docker.internal:host-gateway"],
-            WorkingDirectory: spec.WorkingDirectory ?? spec.WorkspaceMountPath,
-            Workspace: new ContainerWorkspace(
-                MountPath: spec.WorkspaceMountPath,
-                Files: spec.WorkspaceFiles));
     }
 
     private async Task<SvMessage?> DispatchPersistentAsync(
@@ -286,7 +257,7 @@ public class A2AExecutionDispatcher(
             "Starting persistent agent {AgentId} with image {Image}",
             agentId, definition.Execution.Image);
 
-        var config = BuildContainerConfig(definition.Execution.Image, spec);
+        var config = ContainerConfigBuilder.Build(definition.Execution.Image, spec);
 
         var containerId = await containerRuntime.StartAsync(config, cancellationToken);
 

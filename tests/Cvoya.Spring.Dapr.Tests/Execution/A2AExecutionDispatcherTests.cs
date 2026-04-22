@@ -42,6 +42,11 @@ public class A2AExecutionDispatcherTests
     private const string AgentId = "my-agent";
     private const string Image = "spring-agent-claude:v1";
 
+    private static readonly AgentLaunchSpec DefaultSpec = new(
+        WorkspaceFiles: new Dictionary<string, string> { ["CLAUDE.md"] = "prepared" },
+        EnvironmentVariables: new Dictionary<string, string> { ["SPRING_SYSTEM_PROMPT"] = "prepared" },
+        WorkspaceMountPath: "/workspace");
+
     public A2AExecutionDispatcherTests()
     {
         _persistentRegistry = new PersistentAgentRegistry(
@@ -49,10 +54,7 @@ public class A2AExecutionDispatcherTests
         _loggerFactory.CreateLogger(Arg.Any<string>()).Returns(Substitute.For<ILogger>());
         _launcher.Tool.Returns("claude-code");
         _launcher.PrepareAsync(Arg.Any<AgentLaunchContext>(), Arg.Any<CancellationToken>())
-            .Returns(new AgentLaunchSpec(
-                WorkspaceFiles: new Dictionary<string, string> { ["CLAUDE.md"] = "prepared" },
-                EnvironmentVariables: new Dictionary<string, string> { ["SPRING_SYSTEM_PROMPT"] = "prepared" },
-                WorkspaceMountPath: "/workspace"));
+            .Returns(DefaultSpec);
 
         _mcpServer.Endpoint.Returns("http://host.docker.internal:12345/mcp/");
         _mcpServer.IssueSession(Arg.Any<string>(), Arg.Any<string>())
@@ -225,12 +227,18 @@ public class A2AExecutionDispatcherTests
 
         await _dispatcher.DispatchAsync(message, context: null, TestContext.Current.CancellationToken);
 
+        // Compare against ContainerConfigBuilder's output (PR 2 of #1087):
+        // the dispatcher must hand the runtime exactly what the shared
+        // builder would produce from the launcher's spec — no inline
+        // duplication of the construction, so the two sites cannot drift.
+        var expected = ContainerConfigBuilder.Build(Image, DefaultSpec);
         await _containerRuntime.Received(1).RunAsync(
             Arg.Is<ContainerConfig>(c =>
                 c.Workspace != null &&
-                c.Workspace.MountPath == "/workspace" &&
+                c.Workspace.MountPath == expected.Workspace!.MountPath &&
                 c.Workspace.Files.ContainsKey("CLAUDE.md") &&
-                c.WorkingDirectory == "/workspace"),
+                c.WorkingDirectory == expected.WorkingDirectory &&
+                c.Command == expected.Command),
             Arg.Any<CancellationToken>());
     }
 
