@@ -64,6 +64,16 @@ public static class AgentRuntimeEndpoints
             .Produces<InstalledAgentRuntimeResponse>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status404NotFound);
 
+        // #1066: read-only projection over the install row's config slot
+        // so `spring agent-runtime config get <id>` can render just the
+        // configurable fields (default-model / base-URL / models) without
+        // the noisy `agent-runtime show <id>` table.
+        group.MapGet("/{id}/config", GetConfigAsync)
+            .WithName("GetAgentRuntimeConfig")
+            .WithSummary("Get the tenant-scoped configuration slot for an installed runtime")
+            .Produces<AgentRuntimeConfigResponse>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
         group.MapGet("/{id}/credential-health", GetCredentialHealthAsync)
             .WithName("GetAgentRuntimeCredentialHealth")
             .WithSummary("Get the current credential-health row for a runtime on the current tenant")
@@ -71,10 +81,21 @@ public static class AgentRuntimeEndpoints
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         // T-03 (#945) removed POST /{id}/validate-credential and
-        // POST /{id}/verify-baseline. Per-unit validation now runs as a
-        // backend Dapr workflow against the unit's container image; the
-        // runtime no longer exposes a host-side credential / baseline
-        // probe for the wizard to call at accept-time.
+        // POST /{id}/verify-baseline as the wizard's accept-time probes —
+        // per-unit validation now runs as a backend Dapr workflow against
+        // the unit's container image. #1066 reintroduces a *separate*,
+        // operator-facing validate-credential surface that does NOT touch
+        // the model catalog: it primes / refreshes the credential-health
+        // row that `spring agent-runtime credentials status` reads from,
+        // so the prior workaround of forcing a `refresh-models` call (with
+        // its model-list rotation side-effect) for that purpose is no
+        // longer required.
+        group.MapPost("/{id}/validate-credential", ValidateCredentialAsync)
+            .WithName("ValidateAgentRuntimeCredential")
+            .WithSummary("Probe the runtime with the supplied credential and record the outcome in the credential-health store; does not touch the model catalog")
+            .Produces<AgentRuntimeValidateCredentialResponse>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
         group.MapPost("/{id}/refresh-models", RefreshModelsAsync)
             .WithName("RefreshAgentRuntimeModels")
             .WithSummary("Best-effort live-catalog lookup; replaces the tenant's configured model list on success")
@@ -343,6 +364,104 @@ public static class AgentRuntimeEndpoints
                 statusCode: StatusCodes.Status404NotFound);
         }
     }
+
+    private static async Task<IResult> GetConfigAsync(
+        string id,
+        [FromServices] ITenantAgentRuntimeInstallService installService,
+        [FromServices] IAgentRuntimeRegistry registry,
+        CancellationToken cancellationToken)
+    {
+        // Mirror the existing GetAsync 404 semantics — runtime registered
+        // but not installed -> 404; install row exists but the runtime
+        // package was uninstalled out from under it -> 404. Clients should
+        // be able to differentiate "fix the install" from "fix the runtime
+        // package" via the response detail string.
+        if (registry.Get(id) is null)
+        {
+            return Results.Problem(
+                detail: $"Agent runtime '{id}' is not registered with the host.",
+                statusCode: StatusCodes.Status404NotFound);
+        }
+        var install = await installService.GetAsync(id, cancellationToken);
+        if (install is null)
+        {
+            return Results.Problem(
+                detail: $"Agent runtime '{id}' is not installed on the current tenant.",
+                statusCode: StatusCodes.Status404NotFound);
+        }
+
+        return Results.Ok(new AgentRuntimeConfigResponse(
+            Id: install.RuntimeId,
+            Models: install.Config.Models,
+            DefaultModel: install.Config.DefaultModel,
+            BaseUrl: install.Config.BaseUrl));
+    }
+
+    private static async Task<IResult> ValidateCredentialAsync(
+        string id,
+        [FromBody] AgentRuntimeValidateCredentialRequest? body,
+        [FromServices] IAgentRuntimeRegistry registry,
+        [FromServices] ICredentialHealthStore credentialHealthStore,
+        CancellationToken cancellationToken)
+    {
+        var runtime = registry.Get(id);
+        if (runtime is null)
+        {
+            return Results.Problem(
+                detail: $"Agent runtime '{id}' is not registered with the host.",
+                statusCode: StatusCodes.Status404NotFound);
+        }
+
+        var secretName = string.IsNullOrWhiteSpace(body?.SecretName)
+            ? "default"
+            : body.SecretName;
+
+        // Runtimes that declare no credential schema (e.g. local Ollama)
+        // have nothing to probe — surface that as a friendly Unknown
+        // payload without persisting a credential-health row, matching
+        // the connector validate-credential behaviour for the same case.
+        if (runtime.CredentialSchema.Kind == AgentRuntimeCredentialKind.None)
+        {
+            return Results.Ok(new AgentRuntimeValidateCredentialResponse(
+                Ok: false,
+                Status: CredentialHealthStatus.Unknown,
+                Detail: $"Agent runtime '{runtime.Id}' does not require credentials.",
+                ValidatedAt: DateTimeOffset.UtcNow));
+        }
+
+        var credential = body?.Credential ?? string.Empty;
+        var result = await runtime.ValidateCredentialAsync(credential, cancellationToken);
+
+        var persistent = MapToHealth(result.Status);
+        // NetworkError doesn't flip persistent state — same rule the
+        // connector validate-credential endpoint and the use-time HTTP
+        // watchdog follow, so a transient blip never moves a Valid row
+        // to Unknown.
+        if (result.Status != CredentialValidationStatus.NetworkError)
+        {
+            await credentialHealthStore.RecordAsync(
+                CredentialHealthKind.AgentRuntime,
+                runtime.Id,
+                secretName,
+                persistent,
+                lastError: result.ErrorMessage,
+                cancellationToken);
+        }
+
+        return Results.Ok(new AgentRuntimeValidateCredentialResponse(
+            Ok: result.Valid,
+            Status: persistent,
+            Detail: result.ErrorMessage,
+            ValidatedAt: result.ValidatedAt ?? DateTimeOffset.UtcNow));
+    }
+
+    private static CredentialHealthStatus MapToHealth(CredentialValidationStatus status) => status switch
+    {
+        CredentialValidationStatus.Valid => CredentialHealthStatus.Valid,
+        CredentialValidationStatus.Invalid => CredentialHealthStatus.Invalid,
+        CredentialValidationStatus.NetworkError => CredentialHealthStatus.Unknown,
+        _ => CredentialHealthStatus.Unknown,
+    };
 
     private static InstalledAgentRuntimeResponse? ToResponse(
         InstalledAgentRuntime install,

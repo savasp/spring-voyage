@@ -87,6 +87,18 @@ $ spring agent-runtime config set ollama baseUrl=        # clears the field
 
 Supported keys: `defaultModel`, `baseUrl`. The model list is managed via `models` verbs; config-set for any other key rejects with a friendly error.
 
+To read back the config slot without the noisy `agent-runtime show <id>` table, use the symmetric `config get` verb:
+
+```
+$ spring agent-runtime config get claude
+id            claude
+defaultModel  claude-opus-4-7
+baseUrl       (none)
+models        claude-opus-4-7,claude-sonnet-4-6,claude-haiku-4-5
+```
+
+`config get` honours `--output json` for scripting and returns 404 (exit 1) when the runtime is not installed on the current tenant.
+
 ## Unit validation lifecycle
 
 > **Backend-side validation — [#941](https://github.com/cvoya-com/spring-voyage/issues/941) landed in V2.** The accept-time host-side probe was removed in #941. Credential / tool / model checks now run inside the chosen container image via `UnitValidationWorkflow`, a Dapr Workflow dispatched when a unit enters `Validating`. The operator-facing surface is the unit lifecycle and `spring unit revalidate` — not a per-runtime "validate credential" button.
@@ -148,6 +160,27 @@ openai / default → Revoked (last checked 2026-04-20 10:45:02Z)
 
 A 404 means no watchdog observation has landed yet — exercise the runtime once (create a unit, or run `spring unit revalidate <name>`) to prime the row. For runtimes with multi-credential setups, use `--secret-name <name>`.
 
+### Priming the credential-health row without rotating the catalog
+
+When you want to confirm a credential is live (or refresh the row after rotating a key) but **don't** want the side-effect of refreshing the model catalog, use the dedicated `validate-credential` verb (#1066):
+
+```
+$ spring agent-runtime validate-credential claude --credential sk-ant-api-…
+Credential for runtime 'claude' is valid (validated at 2026-04-22 10:15:00Z).
+
+$ spring agent-runtime validate-credential ollama
+# Ollama doesn't require credentials — exits 1 with a friendly message.
+```
+
+Behaviour:
+
+- Probes the runtime's backing service exactly like `refresh-models` does, but **does not** touch the tenant's stored model list — the catalog is only rotated by `refresh-models`.
+- Records the outcome in the credential-health store on `Valid` / `Invalid` outcomes; transient `NetworkError` results don't flip a previously `Valid` row (mirrors the use-time HTTP watchdog).
+- A `200 OK` from the host with `ok=false` (provider rejected the credential) still exits 1 so scripts can branch.
+- Honours `--output json` and `--secret-name <name>` for multi-credential layouts.
+
+This is the verb that `credentials status` recommends when no row exists yet.
+
 ## Refreshing the model catalog from the provider
 
 When an operator wants the tenant's list to match whatever the provider currently publishes (rather than curating it by hand), use `refresh-models`. The CLI hits the provider's `/v1/models` endpoint (or equivalent) and replaces the stored list with the returned ids.
@@ -187,7 +220,7 @@ Add `--force` to skip the prompt in scripts. Uninstall is soft-delete: re-instal
 - **Unit is in `Error` with `LastValidationError.Code == "ToolMissing"`.** The image does not carry the binary the probe needs (`curl`, `claude`, etc.). Rebuild the image per the runtime-image contract above.
 - **Unit is in `Error` with `LastValidationError.Code == "CredentialInvalid"`.** The provider rejected the credential (401 / 403). Update the secret (`spring secret …`) and run `spring unit revalidate <name>`.
 - **Unit is in `Error` with `LastValidationError.Code == "ModelNotFound"`.** The requested model id is not in the provider's live catalog. Refresh the catalog (`spring agent-runtime refresh-models <id>`) or switch the unit to a listed model via `spring unit patch <name> --model <id>` + `spring unit revalidate`.
-- **`credentials status` returns 404.** No watchdog observation has landed yet. Exercise the runtime (run a unit or `spring unit revalidate <name>`) to prime the row.
+- **`credentials status` returns 404.** No watchdog observation has landed yet. Exercise the runtime (run a unit or `spring unit revalidate <name>`) to prime the row, or run `spring agent-runtime validate-credential <id> --credential <key>` to prime it directly without rotating the catalog.
 - **`install` silently "succeeds" but `list` doesn't show the runtime.** Confirm the runtime package is registered in `src/Cvoya.Spring.Host.Api/Program.cs` (`AddCvoyaSpringAgentRuntime<Name>()` call); install writes to the current tenant only.
 - **A model you pinned is missing from the wizard dropdown.** Re-check `models list <id>`. If the model is present in the list but absent in the wizard, check that the portal is refreshed (the wizard caches the model list per session).
 
