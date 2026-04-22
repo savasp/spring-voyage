@@ -133,16 +133,10 @@ public class PersistentAgentLifecycle(
         // the override path only affects this single deployment — the stored
         // AgentExecutionConfig.Image is untouched. Workspace materialisation
         // lives in the dispatcher service (issue #1042); the launcher only
-        // describes the workspace files + mount path here.
-        var config = new ContainerConfig(
-            Image: image,
-            EnvironmentVariables: prep.EnvironmentVariables,
-            VolumeMounts: prep.ExtraVolumeMounts,
-            ExtraHosts: ["host.docker.internal:host-gateway"],
-            WorkingDirectory: prep.WorkingDirectory ?? prep.WorkspaceMountPath,
-            Workspace: new ContainerWorkspace(
-                MountPath: prep.WorkspaceMountPath,
-                Files: prep.WorkspaceFiles));
+        // describes the workspace files + mount path here. The shared
+        // ContainerConfigBuilder is the single seam that translates the
+        // launch spec into a container config across all dispatch paths.
+        var config = ContainerConfigBuilder.Build(image, prep);
 
         var containerId = await containerRuntime.StartAsync(config, cancellationToken);
         var endpoint = new Uri($"http://localhost:{A2AExecutionDispatcher.SidecarPort}/");
