@@ -146,7 +146,66 @@ public class UnitPolicyEndpointsAuthorizationTests : IClassFixture<CustomWebAppl
         response.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
     }
 
+    [Fact]
+    public async Task GetPolicy_UnitDoesNotExist_Returns404()
+    {
+        // #1029: the existence check must run ahead of the permission gate
+        // so an unknown unit surfaces 404, matching the flat /units/{id}
+        // response shape. Before the fix, the declarative
+        // RequireAuthorization(UnitViewer) ran first and the permission
+        // evaluator returned null for a missing unit — the authorisation
+        // handler then failed closed with 403, leaking existence.
+        var ct = TestContext.Current.CancellationToken;
+        var unitName = NewUnitName();
+        ArrangeNotFound(unitName);
+
+        // Explicitly arrange no permission too; the handler must still
+        // prefer 404 over 403 when the unit is missing.
+        _factory.PermissionService
+            .ResolveEffectivePermissionAsync(
+                AuthConstants.DefaultLocalUserId, unitName, Arg.Any<CancellationToken>())
+            .Returns((PermissionLevel?)null);
+
+        var response = await _client.GetAsync(
+            $"/api/v1/units/{unitName}/policy", ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task SetPolicy_UnitDoesNotExist_Returns404()
+    {
+        // Mirrors GetPolicy_UnitDoesNotExist_Returns404 for the PUT verb —
+        // the Owner-gated write path has the same ordering requirement
+        // (#1029). A missing unit is 404 even when the caller happens to
+        // hold no grant, because "not found" is the more specific signal.
+        var ct = TestContext.Current.CancellationToken;
+        var unitName = NewUnitName();
+        ArrangeNotFound(unitName);
+
+        _factory.PermissionService
+            .ResolveEffectivePermissionAsync(
+                AuthConstants.DefaultLocalUserId, unitName, Arg.Any<CancellationToken>())
+            .Returns((PermissionLevel?)null);
+
+        var response = await _client.PutAsJsonAsync(
+            $"/api/v1/units/{unitName}/policy",
+            new UnitPolicyResponse(new SkillPolicy(Blocked: new[] { "delete_repo" })),
+            ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+    }
+
     private static string NewUnitName() => $"policy-auth-{Guid.NewGuid():N}";
+
+    private void ArrangeNotFound(string unitName)
+    {
+        _factory.DirectoryService
+            .ResolveAsync(
+                Arg.Is<Address>(a => a.Scheme == "unit" && a.Path == unitName),
+                Arg.Any<CancellationToken>())
+            .Returns((DirectoryEntry?)null);
+    }
 
     private void ArrangeResolved(string unitName)
     {

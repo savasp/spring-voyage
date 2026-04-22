@@ -4,11 +4,13 @@
 namespace Cvoya.Spring.Host.Api.Endpoints;
 
 using Cvoya.Spring.Core.Directory;
-using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Core.Policies;
+using Cvoya.Spring.Dapr.Actors;
+using Cvoya.Spring.Dapr.Auth;
 using Cvoya.Spring.Host.Api.Auth;
 using Cvoya.Spring.Host.Api.Models;
 
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
 /// <summary>
@@ -20,6 +22,18 @@ using Microsoft.AspNetCore.Mvc;
 /// <c>/skill-policy</c>) are deliberately not split out: one endpoint per
 /// unit keeps the OpenAPI surface small and makes multi-dimension updates
 /// atomic from the client's perspective.
+///
+/// <para>
+/// <b>Authorisation ordering.</b> Permission checks run <em>after</em> the
+/// existence probe inside each handler (via
+/// <see cref="UnitPermissionCheck.AuthorizeAsync"/>) rather than through
+/// <c>RequireAuthorization(PermissionPolicies.Unit*)</c> on the route.
+/// The declarative gate evaluated authorisation before the handler ran
+/// and failed closed on an unknown unit — surfacing 403 instead of 404
+/// and leaking existence (#1029). Authentication still runs ahead of the
+/// handler via the group-level <c>RequireAuthorization()</c> call in
+/// <c>Program.cs</c>.
+/// </para>
 /// </summary>
 public static class UnitPolicyEndpoints
 {
@@ -36,16 +50,16 @@ public static class UnitPolicyEndpoints
         group.MapGet("/", GetPolicyAsync)
             .WithName("GetUnitPolicy")
             .WithSummary("Get the unit's governance policy")
-            .RequireAuthorization(PermissionPolicies.UnitViewer)
             .Produces<UnitPolicyResponse>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapPut("/", SetPolicyAsync)
             .WithName("SetUnitPolicy")
             .WithSummary("Upsert the unit's governance policy")
-            .RequireAuthorization(PermissionPolicies.UnitOwner)
             .Produces<UnitPolicyResponse>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         return group;
@@ -53,16 +67,22 @@ public static class UnitPolicyEndpoints
 
     private static async Task<IResult> GetPolicyAsync(
         string id,
+        HttpContext httpContext,
         [FromServices] IDirectoryService directoryService,
+        [FromServices] IPermissionService permissionService,
         [FromServices] IUnitPolicyRepository repository,
         CancellationToken cancellationToken)
     {
-        var entry = await directoryService.ResolveAsync(new Address("unit", id), cancellationToken);
-        if (entry is null)
+        var auth = await UnitPermissionCheck.AuthorizeAsync(
+            id,
+            PermissionLevel.Viewer,
+            directoryService,
+            permissionService,
+            httpContext,
+            cancellationToken);
+        if (!auth.Authorized)
         {
-            return Results.Problem(
-                detail: $"Unit '{id}' not found",
-                statusCode: StatusCodes.Status404NotFound);
+            return auth.ToErrorResult(id);
         }
 
         var policy = await repository.GetAsync(id, cancellationToken);
@@ -72,16 +92,22 @@ public static class UnitPolicyEndpoints
     private static async Task<IResult> SetPolicyAsync(
         string id,
         UnitPolicyResponse request,
+        HttpContext httpContext,
         [FromServices] IDirectoryService directoryService,
+        [FromServices] IPermissionService permissionService,
         [FromServices] IUnitPolicyRepository repository,
         CancellationToken cancellationToken)
     {
-        var entry = await directoryService.ResolveAsync(new Address("unit", id), cancellationToken);
-        if (entry is null)
+        var auth = await UnitPermissionCheck.AuthorizeAsync(
+            id,
+            PermissionLevel.Owner,
+            directoryService,
+            permissionService,
+            httpContext,
+            cancellationToken);
+        if (!auth.Authorized)
         {
-            return Results.Problem(
-                detail: $"Unit '{id}' not found",
-                statusCode: StatusCodes.Status404NotFound);
+            return auth.ToErrorResult(id);
         }
 
         var policy = request.ToCore();

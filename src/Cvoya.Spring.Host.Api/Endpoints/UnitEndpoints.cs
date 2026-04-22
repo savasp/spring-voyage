@@ -141,19 +141,27 @@ public static class UnitEndpoints
         // /api/v1/connectors/{slug}/units/{unitId}/config.
         group.MapUnitConnectorPointerEndpoints();
 
+        // Permission gates on the /humans sub-routes run *inside* the
+        // handler (via UnitPermissionCheck) rather than through a
+        // declarative RequireAuthorization(PermissionPolicies.Unit*) on
+        // the route. The declarative path evaluated authorisation before
+        // the handler and failed closed on an unknown unit — surfacing 403
+        // instead of 404 and leaking existence (#1029). Authentication
+        // still runs ahead of the handler via the group-level
+        // RequireAuthorization() call in Program.cs.
         group.MapPatch("/{id}/humans/{humanId}/permissions", SetHumanPermissionAsync)
             .WithName("SetHumanPermission")
             .WithSummary("Set permission level for a human within a unit")
-            .RequireAuthorization(PermissionPolicies.UnitOwner)
             .Produces<SetHumanPermissionResponse>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapGet("/{id}/humans", GetHumanPermissionsAsync)
             .WithName("GetHumanPermissions")
             .WithSummary("Get all human permissions for a unit")
-            .RequireAuthorization(PermissionPolicies.UnitViewer)
             .Produces<IReadOnlyList<UnitPermissionEntry>>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         // DELETE pairs with PATCH above so `spring unit humans remove` has a
@@ -164,8 +172,8 @@ public static class UnitEndpoints
         group.MapDelete("/{id}/humans/{humanId}/permissions", RemoveHumanPermissionAsync)
             .WithName("RemoveHumanPermission")
             .WithSummary("Remove a human's permission entry from a unit")
-            .RequireAuthorization(PermissionPolicies.UnitOwner)
             .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapGet("/{id}/agents", ListUnitAgentsAsync)
@@ -1155,16 +1163,22 @@ public static class UnitEndpoints
         string id,
         string humanId,
         SetHumanPermissionRequest request,
+        HttpContext httpContext,
         IDirectoryService directoryService,
+        IPermissionService permissionService,
         IActorProxyFactory actorProxyFactory,
         CancellationToken cancellationToken)
     {
-        var unitAddress = new Address("unit", id);
-        var entry = await directoryService.ResolveAsync(unitAddress, cancellationToken);
-
-        if (entry is null)
+        var auth = await UnitPermissionCheck.AuthorizeAsync(
+            id,
+            PermissionLevel.Owner,
+            directoryService,
+            permissionService,
+            httpContext,
+            cancellationToken);
+        if (!auth.Authorized)
         {
-            return Results.Problem(detail: $"Unit '{id}' not found", statusCode: StatusCodes.Status404NotFound);
+            return auth.ToErrorResult(id);
         }
 
         if (!Enum.TryParse<PermissionLevel>(request.Permission, ignoreCase: true, out var permissionLevel))
@@ -1179,7 +1193,7 @@ public static class UnitEndpoints
             request.Notifications ?? true);
 
         var unitProxy = actorProxyFactory.CreateActorProxy<IUnitActor>(
-            new ActorId(entry.ActorId), nameof(UnitActor));
+            new ActorId(auth.Entry!.ActorId), nameof(UnitActor));
 
         await unitProxy.SetHumanPermissionAsync(humanId, permissionEntry, cancellationToken);
 
@@ -1194,20 +1208,26 @@ public static class UnitEndpoints
 
     private static async Task<IResult> GetHumanPermissionsAsync(
         string id,
+        HttpContext httpContext,
         IDirectoryService directoryService,
+        IPermissionService permissionService,
         IActorProxyFactory actorProxyFactory,
         CancellationToken cancellationToken)
     {
-        var unitAddress = new Address("unit", id);
-        var entry = await directoryService.ResolveAsync(unitAddress, cancellationToken);
-
-        if (entry is null)
+        var auth = await UnitPermissionCheck.AuthorizeAsync(
+            id,
+            PermissionLevel.Viewer,
+            directoryService,
+            permissionService,
+            httpContext,
+            cancellationToken);
+        if (!auth.Authorized)
         {
-            return Results.Problem(detail: $"Unit '{id}' not found", statusCode: StatusCodes.Status404NotFound);
+            return auth.ToErrorResult(id);
         }
 
         var unitProxy = actorProxyFactory.CreateActorProxy<IUnitActor>(
-            new ActorId(entry.ActorId), nameof(UnitActor));
+            new ActorId(auth.Entry!.ActorId), nameof(UnitActor));
 
         var permissions = await unitProxy.GetHumanPermissionsAsync(cancellationToken);
 
@@ -1225,20 +1245,26 @@ public static class UnitEndpoints
     private static async Task<IResult> RemoveHumanPermissionAsync(
         string id,
         string humanId,
+        HttpContext httpContext,
         IDirectoryService directoryService,
+        IPermissionService permissionService,
         IActorProxyFactory actorProxyFactory,
         CancellationToken cancellationToken)
     {
-        var unitAddress = new Address("unit", id);
-        var entry = await directoryService.ResolveAsync(unitAddress, cancellationToken);
-
-        if (entry is null)
+        var auth = await UnitPermissionCheck.AuthorizeAsync(
+            id,
+            PermissionLevel.Owner,
+            directoryService,
+            permissionService,
+            httpContext,
+            cancellationToken);
+        if (!auth.Authorized)
         {
-            return Results.Problem(detail: $"Unit '{id}' not found", statusCode: StatusCodes.Status404NotFound);
+            return auth.ToErrorResult(id);
         }
 
         var unitProxy = actorProxyFactory.CreateActorProxy<IUnitActor>(
-            new ActorId(entry.ActorId), nameof(UnitActor));
+            new ActorId(auth.Entry!.ActorId), nameof(UnitActor));
 
         await unitProxy.RemoveHumanPermissionAsync(humanId, cancellationToken);
 
