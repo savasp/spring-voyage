@@ -22,6 +22,8 @@ using Microsoft.Kiota.Http.HttpClientLibrary;
 public class SpringApiClient
 {
     private readonly SpringApiKiotaClient _client;
+    private readonly HttpClient _httpClient;
+    private readonly string _baseUrl;
 
     /// <summary>
     /// Builds a client that issues requests through the supplied <paramref name="httpClient"/>.
@@ -30,6 +32,8 @@ public class SpringApiClient
     /// </summary>
     public SpringApiClient(HttpClient httpClient, string baseUrl)
     {
+        _httpClient = httpClient;
+        _baseUrl = baseUrl.TrimEnd('/');
         var adapter = new HttpClientRequestAdapter(
             new AnonymousAuthenticationProvider(),
             httpClient: httpClient)
@@ -522,45 +526,94 @@ public class SpringApiClient
     // never need a per-dimension endpoint. Per-dimension endpoints would
     // have doubled the OpenAPI surface without unlocking anything the
     // unified shape does not already do.
+    //
+    // The Kiota-generated client is bypassed for these two calls (#999):
+    // every dimension slot is a `oneOf [null, T]` which Kiota emits as an
+    // IComposedTypeWrapper whose CreateFromDiscriminatorValue reads an
+    // empty-string discriminator and leaves both branches null. That dropped
+    // fields on read and crashed on the subsequent PUT's Serialize. Raw HTTP
+    // + System.Text.Json against the plain UnitPolicyWire shape round-trips
+    // cleanly without touching any other surface.
 
     /// <summary>
-    /// Gets the unit's <see cref="UnitPolicyResponse"/>. Returns the canonical
+    /// Gets the unit's <see cref="UnitPolicyWire"/>. Returns the canonical
     /// empty shape (every dimension null) when the unit has never had a
     /// policy persisted — matches the server contract so callers never need
     /// to branch on 404 vs empty-policy.
     /// </summary>
-    public async Task<UnitPolicyResponse> GetUnitPolicyAsync(
+    public async Task<UnitPolicyWire> GetUnitPolicyAsync(
         string unitId,
         CancellationToken ct = default)
     {
-        var result = await _client.Api.V1.Units[unitId].Policy.GetAsync(cancellationToken: ct);
-        return result ?? new UnitPolicyResponse();
+        var url = $"{_baseUrl}/api/v1/units/{Uri.EscapeDataString(unitId)}/policy";
+        using var response = await _httpClient.GetAsync(url, ct).ConfigureAwait(false);
+        await ThrowIfNotSuccessAsync(response, ct).ConfigureAwait(false);
+
+        var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+        var wire = await System.Text.Json.JsonSerializer.DeserializeAsync<UnitPolicyWire>(
+            stream, UnitPolicyJsonOptions, ct).ConfigureAwait(false);
+        return wire ?? new UnitPolicyWire();
     }
 
     /// <summary>
-    /// Upserts the unit's <see cref="UnitPolicyResponse"/>. Sends the entire
+    /// Upserts the unit's <see cref="UnitPolicyWire"/>. Sends the entire
     /// policy body verbatim — per-dimension semantics live in the CLI layer
     /// (it is responsible for reading the current policy, mutating only the
     /// target slot, and calling this method with the merged result). The
     /// server echoes the canonical post-write shape; returning it lets
     /// callers surface the merged view without a separate GET.
     /// </summary>
-    public async Task<UnitPolicyResponse> SetUnitPolicyAsync(
+    public async Task<UnitPolicyWire> SetUnitPolicyAsync(
         string unitId,
-        UnitPolicyResponse policy,
+        UnitPolicyWire policy,
         CancellationToken ct = default)
     {
-        // The Kiota-generated PUT accepts a composed `oneOf` body. The OSS
-        // contract shape we care about is always the fully-typed
-        // UnitPolicyResponse branch — wrap it here so commands never have to
-        // spell out the Member1 discriminator.
-        var body = new Cvoya.Spring.Cli.Generated.Api.V1.Units.Item.Policy.PolicyRequestBuilder.PolicyPutRequestBody
-        {
-            UnitPolicyResponse = policy,
-        };
-        var result = await _client.Api.V1.Units[unitId].Policy.PutAsync(body, cancellationToken: ct);
-        return result ?? throw new InvalidOperationException(
+        var url = $"{_baseUrl}/api/v1/units/{Uri.EscapeDataString(unitId)}/policy";
+        var json = System.Text.Json.JsonSerializer.Serialize(policy, UnitPolicyJsonOptions);
+        using var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+        using var response = await _httpClient.PutAsync(url, content, ct).ConfigureAwait(false);
+        await ThrowIfNotSuccessAsync(response, ct).ConfigureAwait(false);
+
+        var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+        var wire = await System.Text.Json.JsonSerializer.DeserializeAsync<UnitPolicyWire>(
+            stream, UnitPolicyJsonOptions, ct).ConfigureAwait(false);
+        return wire ?? throw new InvalidOperationException(
             $"Server returned an empty policy response for unit '{unitId}'.");
+    }
+
+    /// <summary>
+    /// JSON options for the raw unit-policy calls. Null-valued slots are
+    /// omitted on the wire (server treats missing == cleared) to match the
+    /// server's canonical post-write shape on the read side.
+    /// </summary>
+    private static readonly System.Text.Json.JsonSerializerOptions UnitPolicyJsonOptions = new()
+    {
+        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+        PropertyNameCaseInsensitive = true,
+    };
+
+    /// <summary>
+    /// Wraps non-2xx HTTP responses as <see cref="HttpRequestException"/>
+    /// with the response body included so scenarios surface the server
+    /// error rather than a bare status code.
+    /// </summary>
+    private static async Task ThrowIfNotSuccessAsync(HttpResponseMessage response, CancellationToken ct)
+    {
+        if (response.IsSuccessStatusCode)
+        {
+            return;
+        }
+        string body;
+        try
+        {
+            body = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+        }
+        catch
+        {
+            body = string.Empty;
+        }
+        throw new HttpRequestException(
+            $"Request failed: {(int)response.StatusCode} {response.ReasonPhrase}. {body}");
     }
 
     // Unit boundary (#413). Single unified endpoint returns the declared

@@ -431,7 +431,7 @@ public class SpringApiClientTests
         var handler = new MockHttpMessageHandler(
             expectedPath: "/api/v1/units/eng-team/policy",
             expectedMethod: HttpMethod.Get,
-            responseBody: "{\"skill\":null,\"model\":null,\"cost\":null,\"executionMode\":null,\"initiative\":null}");
+            responseBody: "{\"skill\":null,\"model\":null,\"cost\":null,\"executionMode\":null,\"initiative\":null,\"labelRouting\":null}");
 
         var httpClient = new HttpClient(handler);
         var client = new SpringApiClient(httpClient, BaseUrl);
@@ -439,13 +439,42 @@ public class SpringApiClientTests
         var policy = await client.GetUnitPolicyAsync("eng-team", TestContext.Current.CancellationToken);
 
         policy.ShouldNotBeNull();
-        policy.Skill?.SkillPolicy.ShouldBeNull();
-        policy.Model?.ModelPolicy.ShouldBeNull();
+        policy.Skill.ShouldBeNull();
+        policy.Model.ShouldBeNull();
+        policy.Cost.ShouldBeNull();
+        policy.ExecutionMode.ShouldBeNull();
+        policy.Initiative.ShouldBeNull();
+        policy.LabelRouting.ShouldBeNull();
         handler.WasCalled.ShouldBeTrue();
     }
 
     [Fact]
-    public async Task SetUnitPolicyAsync_PutsMergedPolicyBodyAndDeserialisesResponse()
+    public async Task GetUnitPolicyAsync_PopulatesSlotFieldsFromWireResponse()
+    {
+        // Regression for #999: Kiota's oneOf [null, T] generator produced a
+        // composed-type wrapper whose CreateFromDiscriminatorValue read an
+        // empty-string discriminator and never populated the inner sub-record
+        // — so a populated `skill` slot came back with Allowed/Blocked both
+        // null. The raw HTTP path must surface the fields verbatim.
+        var handler = new MockHttpMessageHandler(
+            expectedPath: "/api/v1/units/eng-team/policy",
+            expectedMethod: HttpMethod.Get,
+            responseBody:
+                "{\"skill\":{\"allowed\":[\"github\",\"filesystem\"],\"blocked\":[\"shell\"]}," +
+                "\"model\":null,\"cost\":null,\"executionMode\":null,\"initiative\":null,\"labelRouting\":null}");
+
+        var httpClient = new HttpClient(handler);
+        var client = new SpringApiClient(httpClient, BaseUrl);
+
+        var policy = await client.GetUnitPolicyAsync("eng-team", TestContext.Current.CancellationToken);
+
+        policy.Skill.ShouldNotBeNull();
+        policy.Skill!.Allowed.ShouldBe(new[] { "github", "filesystem" });
+        policy.Skill.Blocked.ShouldBe(new[] { "shell" });
+    }
+
+    [Fact]
+    public async Task SetUnitPolicyAsync_PutsFullPolicyBodyAndDeserialisesResponse()
     {
         var handler = new MockHttpMessageHandler(
             expectedPath: "/api/v1/units/eng-team/policy",
@@ -453,10 +482,6 @@ public class SpringApiClientTests
             responseBody: "{\"skill\":{\"allowed\":[\"github\"],\"blocked\":[\"shell\"]}}",
             validateRequestBody: body =>
             {
-                // Kiota's oneOf-composed body serialises as the inner
-                // UnitPolicyResponse shape; the wire contract is the same
-                // JSON the server reads from the OSS `UnitPolicyResponse`
-                // record — verify skill fields round-trip verbatim.
                 var json = JsonSerializer.Deserialize<JsonElement>(body);
                 var skill = json.GetProperty("skill");
                 skill.GetProperty("allowed")[0].GetString().ShouldBe("github");
@@ -466,29 +491,65 @@ public class SpringApiClientTests
         var httpClient = new HttpClient(handler);
         var client = new SpringApiClient(httpClient, BaseUrl);
 
-        var policy = new Cvoya.Spring.Cli.Generated.Models.UnitPolicyResponse
+        var policy = new UnitPolicyWire
         {
-            Skill = new Cvoya.Spring.Cli.Generated.Models.UnitPolicyResponse.UnitPolicyResponse_skill
+            Skill = new SkillPolicyWire
             {
-                SkillPolicy = new Cvoya.Spring.Cli.Generated.Models.SkillPolicy
-                {
-                    Allowed = new List<string> { "github" },
-                    Blocked = new List<string> { "shell" },
-                },
+                Allowed = new List<string> { "github" },
+                Blocked = new List<string> { "shell" },
             },
         };
 
         var result = await client.SetUnitPolicyAsync("eng-team", policy, TestContext.Current.CancellationToken);
 
-        // Kiota emits each policy slot as an IComposedTypeWrapper. The
-        // request / response round-trip proves both halves are wired: the
-        // PUT body carries the skill rules verbatim (validated in the
-        // request-body hook above), and the 200 body deserialises into a
-        // non-null envelope regardless of which composed-type branch Kiota
-        // picks on the read side.
+        // The response round-trips cleanly — both the request body carries
+        // the skill rules verbatim (validated in the request-body hook) and
+        // the 200 body deserialises into a fully-populated UnitPolicyWire
+        // with the skill sub-record readable (regression for #999 where the
+        // Kiota composed-type wrapper dropped the inner fields).
         result.ShouldNotBeNull();
         result.Skill.ShouldNotBeNull();
+        result.Skill!.Allowed.ShouldBe(new[] { "github" });
+        result.Skill.Blocked.ShouldBe(new[] { "shell" });
         handler.WasCalled.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task SetUnitPolicyAsync_RoundTripAfterGet_SurvivesSubsequentSet()
+    {
+        // Regression for #999: after the first set, a second set on another
+        // dimension does a GET first, then a PUT with the merged result.
+        // With the Kiota wrappers, the second PUT crashed with
+        // `'}' is invalid following a property name` because the composed
+        // wrapper serialized as an empty object stuck in property-name mode.
+        // The plain-DTO path must round-trip cleanly end-to-end.
+        var getHandler = new MockHttpMessageHandler(
+            expectedPath: "/api/v1/units/eng-team/policy",
+            expectedMethod: HttpMethod.Get,
+            responseBody: "{\"skill\":{\"allowed\":[\"github\"],\"blocked\":null}}");
+
+        var getClient = new SpringApiClient(new HttpClient(getHandler), BaseUrl);
+        var current = await getClient.GetUnitPolicyAsync("eng-team", TestContext.Current.CancellationToken);
+
+        current.Model = new ModelPolicyWire { Allowed = new List<string> { "gpt-4o-mini" } };
+
+        var putHandler = new MockHttpMessageHandler(
+            expectedPath: "/api/v1/units/eng-team/policy",
+            expectedMethod: HttpMethod.Put,
+            responseBody:
+                "{\"skill\":{\"allowed\":[\"github\"]},\"model\":{\"allowed\":[\"gpt-4o-mini\"]}}",
+            validateRequestBody: body =>
+            {
+                var json = JsonSerializer.Deserialize<JsonElement>(body);
+                json.GetProperty("skill").GetProperty("allowed")[0].GetString().ShouldBe("github");
+                json.GetProperty("model").GetProperty("allowed")[0].GetString().ShouldBe("gpt-4o-mini");
+            });
+        var putClient = new SpringApiClient(new HttpClient(putHandler), BaseUrl);
+
+        var stored = await putClient.SetUnitPolicyAsync("eng-team", current, TestContext.Current.CancellationToken);
+
+        stored.Skill!.Allowed.ShouldBe(new[] { "github" });
+        stored.Model!.Allowed.ShouldBe(new[] { "gpt-4o-mini" });
     }
 
     // --- Humans endpoints --------------------------------------------------

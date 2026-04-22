@@ -9,7 +9,6 @@ using System.IO;
 using System.Linq;
 using System.Text;
 
-using Cvoya.Spring.Cli.Generated.Models;
 using Cvoya.Spring.Cli.Output;
 
 using YamlDotNet.Serialization;
@@ -415,33 +414,32 @@ public static class UnitPolicyCommand
 
     /// <summary>
     /// Extracts the wire slot for a given dimension from a
-    /// <see cref="UnitPolicyResponse"/>. The Kiota generator wraps each slot
-    /// in a composed-type container so we unwrap here and return the typed
-    /// sub-record (or <c>null</c> when absent).
+    /// <see cref="UnitPolicyWire"/>. Returns the typed sub-record (or
+    /// <c>null</c> when absent).
     /// </summary>
-    private static object? ExtractSlot(string dimension, UnitPolicyResponse policy) => dimension switch
+    private static object? ExtractSlot(string dimension, UnitPolicyWire policy) => dimension switch
     {
-        "skill" => policy.Skill?.SkillPolicy,
-        "model" => policy.Model?.ModelPolicy,
-        "cost" => policy.Cost?.CostPolicy,
-        "execution-mode" => policy.ExecutionMode?.ExecutionModePolicy,
-        "initiative" => policy.Initiative?.InitiativePolicy,
-        "label-routing" => policy.LabelRouting?.LabelRoutingPolicy,
+        "skill" => policy.Skill,
+        "model" => policy.Model,
+        "cost" => policy.Cost,
+        "execution-mode" => policy.ExecutionMode,
+        "initiative" => policy.Initiative,
+        "label-routing" => policy.LabelRouting,
         _ => null,
     };
 
     /// <summary>
-    /// Produces a new <see cref="UnitPolicyResponse"/> where <paramref name="slot"/>
+    /// Produces a new <see cref="UnitPolicyWire"/> where <paramref name="slot"/>
     /// replaces the target dimension and every other dimension is carried through
     /// from <paramref name="current"/> verbatim. Passing <c>null</c> clears the
     /// dimension.
     /// </summary>
-    private static UnitPolicyResponse MergeSlot(
+    private static UnitPolicyWire MergeSlot(
         string dimension,
-        UnitPolicyResponse current,
+        UnitPolicyWire current,
         object? slot)
     {
-        var merged = new UnitPolicyResponse
+        var merged = new UnitPolicyWire
         {
             Skill = current.Skill,
             Model = current.Model,
@@ -454,34 +452,22 @@ public static class UnitPolicyCommand
         switch (dimension)
         {
             case "skill":
-                merged.Skill = slot is null
-                    ? null
-                    : new UnitPolicyResponse.UnitPolicyResponse_skill { SkillPolicy = (SkillPolicy)slot };
+                merged.Skill = (SkillPolicyWire?)slot;
                 break;
             case "model":
-                merged.Model = slot is null
-                    ? null
-                    : new UnitPolicyResponse.UnitPolicyResponse_model { ModelPolicy = (ModelPolicy)slot };
+                merged.Model = (ModelPolicyWire?)slot;
                 break;
             case "cost":
-                merged.Cost = slot is null
-                    ? null
-                    : new UnitPolicyResponse.UnitPolicyResponse_cost { CostPolicy = (CostPolicy)slot };
+                merged.Cost = (CostPolicyWire?)slot;
                 break;
             case "execution-mode":
-                merged.ExecutionMode = slot is null
-                    ? null
-                    : new UnitPolicyResponse.UnitPolicyResponse_executionMode { ExecutionModePolicy = (ExecutionModePolicy)slot };
+                merged.ExecutionMode = (ExecutionModePolicyWire?)slot;
                 break;
             case "initiative":
-                merged.Initiative = slot is null
-                    ? null
-                    : new UnitPolicyResponse.UnitPolicyResponse_initiative { InitiativePolicy = (InitiativePolicy)slot };
+                merged.Initiative = (InitiativePolicyWire?)slot;
                 break;
             case "label-routing":
-                merged.LabelRouting = slot is null
-                    ? null
-                    : new UnitPolicyResponse.UnitPolicyResponse_labelRouting { LabelRoutingPolicy = (LabelRoutingPolicy)slot };
+                merged.LabelRouting = (LabelRoutingPolicyWire?)slot;
                 break;
         }
 
@@ -515,7 +501,7 @@ public static class UnitPolicyCommand
                 {
                     return null;
                 }
-                return new SkillPolicy
+                return new SkillPolicyWire
                 {
                     Allowed = NormaliseList(allowed),
                     Blocked = NormaliseList(blocked),
@@ -525,7 +511,7 @@ public static class UnitPolicyCommand
                 {
                     return null;
                 }
-                return new ModelPolicy
+                return new ModelPolicyWire
                 {
                     Allowed = NormaliseList(allowed),
                     Blocked = NormaliseList(blocked),
@@ -535,7 +521,7 @@ public static class UnitPolicyCommand
                 {
                     return null;
                 }
-                return new CostPolicy
+                return new CostPolicyWire
                 {
                     MaxCostPerInvocation = maxPerInvocation,
                     MaxCostPerHour = maxPerHour,
@@ -546,21 +532,14 @@ public static class UnitPolicyCommand
                 {
                     return null;
                 }
-                // Wire type for the allowed list is List<AgentExecutionMode?>,
-                // matching the Kiota enum-nullability idiom for `oneOf` sets.
                 var allowedModes = NormaliseList(allowed)
-                    ?.Select(value => ParseExecutionMode(value))
-                    .Where(m => m.HasValue)
-                    .Cast<AgentExecutionMode?>()
+                    ?.Select(value => NormaliseExecutionMode(value))
+                    .Where(m => m is not null)
+                    .Select(m => m!)
                     .ToList();
-                return new ExecutionModePolicy
+                return new ExecutionModePolicyWire
                 {
-                    Forced = string.IsNullOrEmpty(forced)
-                        ? null
-                        : new ExecutionModePolicy.ExecutionModePolicy_forced
-                        {
-                            AgentExecutionMode = ParseExecutionMode(forced!),
-                        },
+                    Forced = string.IsNullOrEmpty(forced) ? null : NormaliseExecutionMode(forced!),
                     Allowed = allowedModes is null || allowedModes.Count == 0 ? null : allowedModes,
                 };
             case "initiative":
@@ -569,13 +548,11 @@ public static class UnitPolicyCommand
                 {
                     return null;
                 }
-                return new InitiativePolicy
+                return new InitiativePolicyWire
                 {
                     AllowedActions = NormaliseList(allowed),
                     BlockedActions = NormaliseList(blocked),
-                    MaxLevel = string.IsNullOrEmpty(maxLevel)
-                        ? null
-                        : ParseInitiativeLevel(maxLevel!),
+                    MaxLevel = string.IsNullOrEmpty(maxLevel) ? null : NormaliseInitiativeLevel(maxLevel!),
                     RequireUnitApproval = requireUnitApproval,
                 };
             case "label-routing":
@@ -584,16 +561,9 @@ public static class UnitPolicyCommand
                     return null;
                 }
                 var triggerMap = ParseTriggerMap(trigger);
-                return new LabelRoutingPolicy
+                return new LabelRoutingPolicyWire
                 {
-                    TriggerLabels = triggerMap is null || triggerMap.Count == 0
-                        ? null
-                        : new LabelRoutingPolicy_triggerLabels
-                        {
-                            AdditionalData = triggerMap.ToDictionary(
-                                kvp => kvp.Key,
-                                kvp => (object)kvp.Value),
-                        },
+                    TriggerLabels = triggerMap is null || triggerMap.Count == 0 ? null : triggerMap,
                     AddOnAssign = NormaliseList(addOnAssign),
                     RemoveOnAssign = NormaliseList(removeOnAssign),
                 };
@@ -651,19 +621,19 @@ public static class UnitPolicyCommand
         return expanded.Count == 0 ? null : expanded;
     }
 
-    private static AgentExecutionMode? ParseExecutionMode(string value) => value switch
+    private static string? NormaliseExecutionMode(string value) => value switch
     {
-        "Auto" => AgentExecutionMode.Auto,
-        "OnDemand" => AgentExecutionMode.OnDemand,
+        "Auto" => "Auto",
+        "OnDemand" => "OnDemand",
         _ => null,
     };
 
-    private static InitiativeLevel? ParseInitiativeLevel(string value) => value switch
+    private static string? NormaliseInitiativeLevel(string value) => value switch
     {
-        "Passive" => InitiativeLevel.Passive,
-        "Attentive" => InitiativeLevel.Attentive,
-        "Proactive" => InitiativeLevel.Proactive,
-        "Autonomous" => InitiativeLevel.Autonomous,
+        "Passive" => "Passive",
+        "Attentive" => "Attentive",
+        "Proactive" => "Proactive",
+        "Autonomous" => "Autonomous",
         _ => null,
     };
 
@@ -710,17 +680,17 @@ public static class UnitPolicyCommand
 
         return dimension switch
         {
-            "skill" => new SkillPolicy
+            "skill" => new SkillPolicyWire
             {
                 Allowed = ReadList(root, "allowed"),
                 Blocked = ReadList(root, "blocked"),
             },
-            "model" => new ModelPolicy
+            "model" => new ModelPolicyWire
             {
                 Allowed = ReadList(root, "allowed"),
                 Blocked = ReadList(root, "blocked"),
             },
-            "cost" => new CostPolicy
+            "cost" => new CostPolicyWire
             {
                 MaxCostPerInvocation = ReadDouble(root, "maxCostPerInvocation")
                     ?? ReadDouble(root, "max_cost_per_invocation"),
@@ -729,26 +699,23 @@ public static class UnitPolicyCommand
                 MaxCostPerDay = ReadDouble(root, "maxCostPerDay")
                     ?? ReadDouble(root, "max_cost_per_day"),
             },
-            "execution-mode" => new ExecutionModePolicy
+            "execution-mode" => new ExecutionModePolicyWire
             {
                 Forced = ReadString(root, "forced") is { Length: > 0 } forced
-                    ? new ExecutionModePolicy.ExecutionModePolicy_forced
-                    {
-                        AgentExecutionMode = ParseExecutionMode(forced),
-                    }
+                    ? NormaliseExecutionMode(forced)
                     : null,
                 Allowed = ReadList(root, "allowed")
-                    ?.Select(value => ParseExecutionMode(value))
-                    .Where(m => m.HasValue)
-                    .Cast<AgentExecutionMode?>()
+                    ?.Select(value => NormaliseExecutionMode(value))
+                    .Where(m => m is not null)
+                    .Select(m => m!)
                     .ToList(),
             },
-            "initiative" => new InitiativePolicy
+            "initiative" => new InitiativePolicyWire
             {
                 AllowedActions = ReadList(root, "allowedActions") ?? ReadList(root, "allowed_actions"),
                 BlockedActions = ReadList(root, "blockedActions") ?? ReadList(root, "blocked_actions"),
                 MaxLevel = ReadString(root, "maxLevel") is { Length: > 0 } level
-                    ? ParseInitiativeLevel(level)
+                    ? NormaliseInitiativeLevel(level)
                     : null,
                 RequireUnitApproval = ReadBool(root, "requireUnitApproval")
                     ?? ReadBool(root, "require_unit_approval"),
@@ -759,27 +726,20 @@ public static class UnitPolicyCommand
     }
 
     /// <summary>
-    /// Builds a <see cref="LabelRoutingPolicy"/> from a parsed YAML map.
+    /// Builds a <see cref="LabelRoutingPolicyWire"/> from a parsed YAML map.
     /// Accepts both camelCase (<c>triggerLabels</c>, <c>addOnAssign</c>,
     /// <c>removeOnAssign</c>) and snake_case aliases for operator
     /// ergonomics.
     /// </summary>
-    private static LabelRoutingPolicy BuildLabelRoutingFromYaml(Dictionary<string, object?> root)
+    private static LabelRoutingPolicyWire BuildLabelRoutingFromYaml(Dictionary<string, object?> root)
     {
         var triggerMap = ReadStringMap(root, "triggerLabels") ?? ReadStringMap(root, "trigger_labels");
         var addOn = ReadList(root, "addOnAssign") ?? ReadList(root, "add_on_assign");
         var removeOn = ReadList(root, "removeOnAssign") ?? ReadList(root, "remove_on_assign");
 
-        return new LabelRoutingPolicy
+        return new LabelRoutingPolicyWire
         {
-            TriggerLabels = triggerMap is null || triggerMap.Count == 0
-                ? null
-                : new LabelRoutingPolicy_triggerLabels
-                {
-                    AdditionalData = triggerMap.ToDictionary(
-                        kvp => kvp.Key,
-                        kvp => (object)kvp.Value),
-                },
+            TriggerLabels = triggerMap is null || triggerMap.Count == 0 ? null : triggerMap,
             AddOnAssign = addOn,
             RemoveOnAssign = removeOn,
         };
@@ -869,30 +829,30 @@ public static class UnitPolicyCommand
         var sb = new StringBuilder();
         switch (slot)
         {
-            case SkillPolicy skill:
+            case SkillPolicyWire skill:
                 sb.AppendLine($"{indent}allowed: {FormatList(skill.Allowed)}");
                 sb.AppendLine($"{indent}blocked: {FormatList(skill.Blocked)}");
                 break;
-            case ModelPolicy model:
+            case ModelPolicyWire model:
                 sb.AppendLine($"{indent}allowed: {FormatList(model.Allowed)}");
                 sb.AppendLine($"{indent}blocked: {FormatList(model.Blocked)}");
                 break;
-            case CostPolicy cost:
+            case CostPolicyWire cost:
                 sb.AppendLine($"{indent}maxCostPerInvocation: {cost.MaxCostPerInvocation?.ToString() ?? "(unset)"}");
                 sb.AppendLine($"{indent}maxCostPerHour:       {cost.MaxCostPerHour?.ToString() ?? "(unset)"}");
                 sb.AppendLine($"{indent}maxCostPerDay:        {cost.MaxCostPerDay?.ToString() ?? "(unset)"}");
                 break;
-            case ExecutionModePolicy mode:
-                sb.AppendLine($"{indent}forced:  {mode.Forced?.AgentExecutionMode?.ToString() ?? "(none)"}");
-                sb.AppendLine($"{indent}allowed: {FormatEnumList(mode.Allowed)}");
+            case ExecutionModePolicyWire mode:
+                sb.AppendLine($"{indent}forced:  {mode.Forced ?? "(none)"}");
+                sb.AppendLine($"{indent}allowed: {FormatList(mode.Allowed)}");
                 break;
-            case InitiativePolicy init:
-                sb.AppendLine($"{indent}maxLevel:           {init.MaxLevel?.ToString() ?? "(unset)"}");
+            case InitiativePolicyWire init:
+                sb.AppendLine($"{indent}maxLevel:           {init.MaxLevel ?? "(unset)"}");
                 sb.AppendLine($"{indent}requireUnitApproval: {init.RequireUnitApproval?.ToString() ?? "(unset)"}");
                 sb.AppendLine($"{indent}allowedActions:     {FormatList(init.AllowedActions)}");
                 sb.AppendLine($"{indent}blockedActions:     {FormatList(init.BlockedActions)}");
                 break;
-            case LabelRoutingPolicy label:
+            case LabelRoutingPolicyWire label:
                 sb.AppendLine($"{indent}triggerLabels:   {FormatLabelMap(label.TriggerLabels)}");
                 sb.AppendLine($"{indent}addOnAssign:     {FormatList(label.AddOnAssign)}");
                 sb.AppendLine($"{indent}removeOnAssign:  {FormatList(label.RemoveOnAssign)}");
@@ -901,13 +861,13 @@ public static class UnitPolicyCommand
         return sb.ToString();
     }
 
-    private static string FormatLabelMap(LabelRoutingPolicy_triggerLabels? labels)
+    private static string FormatLabelMap(IReadOnlyDictionary<string, string>? labels)
     {
-        if (labels is null || labels.AdditionalData is null || labels.AdditionalData.Count == 0)
+        if (labels is null || labels.Count == 0)
         {
             return "(none)";
         }
-        var entries = labels.AdditionalData
+        var entries = labels
             .Select(kvp => $"{kvp.Key}={kvp.Value}")
             .ToList();
         return "{" + string.Join(", ", entries) + "}";
@@ -915,9 +875,4 @@ public static class UnitPolicyCommand
 
     private static string FormatList(IReadOnlyList<string>? values)
         => values is null || values.Count == 0 ? "(none)" : "[" + string.Join(", ", values) + "]";
-
-    private static string FormatEnumList(IReadOnlyList<AgentExecutionMode?>? values)
-        => values is null || values.Count == 0
-            ? "(none)"
-            : "[" + string.Join(", ", values.Where(v => v.HasValue).Select(v => v!.ToString())) + "]";
 }
