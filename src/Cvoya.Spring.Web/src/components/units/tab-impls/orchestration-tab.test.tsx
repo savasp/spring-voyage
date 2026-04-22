@@ -11,9 +11,7 @@ import type {
 
 const getUnitPolicy = vi.fn<(id: string) => Promise<UnitPolicyResponse>>();
 const setUnitPolicy =
-  vi.fn<
-    (id: string, p: UnitPolicyResponse | null) => Promise<UnitPolicyResponse>
-  >();
+  vi.fn<(id: string, p: UnitPolicyResponse) => Promise<UnitPolicyResponse>>();
 const getUnitOrchestration =
   vi.fn<(id: string) => Promise<UnitOrchestrationResponse>>();
 const setUnitOrchestration =
@@ -28,7 +26,7 @@ const clearUnitOrchestration = vi.fn<(id: string) => Promise<void>>();
 vi.mock("@/lib/api/client", () => ({
   api: {
     getUnitPolicy: (id: string) => getUnitPolicy(id),
-    setUnitPolicy: (id: string, p: UnitPolicyResponse | null) =>
+    setUnitPolicy: (id: string, p: UnitPolicyResponse) =>
       setUnitPolicy(id, p),
     getUnitOrchestration: (id: string) => getUnitOrchestration(id),
     setUnitOrchestration: (id: string, body: UnitOrchestrationResponse) =>

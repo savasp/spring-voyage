@@ -740,9 +740,9 @@ export const api = {
   // is also what `spring unit policy <dim> get|set|clear` (PR-C2 / #473)
   // calls under the hood, so both surfaces round-trip the same shape.
   //
-  // `PUT` accepts either a fully-populated `UnitPolicyResponse` (the
-  // merged shape where only the target dimension changes and the rest
-  // is carried through verbatim) or `null` (clear every dimension).
+  // `PUT` accepts a fully-populated `UnitPolicyResponse` (the merged
+  // shape where only the target dimension changes and the rest is
+  // carried through verbatim).
   getUnitPolicy: async (id: string): Promise<UnitPolicyResponse> =>
     unwrap(
       await fetchClient.GET("/api/v1/units/{id}/policy", {
@@ -751,7 +751,7 @@ export const api = {
     ),
   setUnitPolicy: async (
     id: string,
-    policy: UnitPolicyResponse | null,
+    policy: UnitPolicyResponse,
   ): Promise<UnitPolicyResponse> =>
     unwrap(
       await fetchClient.PUT("/api/v1/units/{id}/policy", {
