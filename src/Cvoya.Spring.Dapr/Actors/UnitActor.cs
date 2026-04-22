@@ -201,7 +201,9 @@ public class UnitActor : Actor, IUnitActor
                 MessageType.HealthCheck => HandleHealthCheck(message),
                 MessageType.PolicyUpdate => await HandlePolicyUpdateAsync(message, ct),
                 MessageType.Domain => await HandleDomainMessageAsync(message, ct),
-                _ => throw new SpringException($"Unknown message type: {message.Type}")
+                _ => throw new CallerValidationException(
+                    CallerValidationCodes.UnknownMessageType,
+                    $"Unknown message type: {message.Type}")
             };
         }
         catch (Exception ex) when (ex is not SpringException)

@@ -176,6 +176,51 @@ public class ConversationEndpointsTests : IClassFixture<ConversationEndpointsTes
     }
 
     [Fact]
+    public async Task PostConversationMessage_CallerValidation_Returns400WithCode()
+    {
+        // #993: CallerValidation routing errors thread through the
+        // conversation-messaging endpoint the same way they do on
+        // /api/v1/messages — 400 with the stable `code` extension.
+        var ct = TestContext.Current.CancellationToken;
+        _factory.MessageRouter.ClearSubstitute();
+        _factory.MessageRouter
+            .RouteAsync(Arg.Any<Message>(), Arg.Any<CancellationToken>())
+            .Returns(Result<Message?, RoutingError>.Failure(
+                RoutingError.CallerValidation(
+                    new Address("agent", "ada"),
+                    CallerValidationCodes.UnknownMessageType,
+                    "Unknown message type: Amendment")));
+
+        var body = new ConversationMessageRequest(new AddressDto("agent", "ada"), "hi");
+
+        var response = await _client.PostAsJsonAsync("/api/v1/conversations/c-1/messages", body, ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        var problem = await response.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>(ct);
+        problem.GetProperty("detail").GetString().ShouldBe("Unknown message type: Amendment");
+        problem.GetProperty("code").GetString().ShouldBe(CallerValidationCodes.UnknownMessageType);
+    }
+
+    [Fact]
+    public async Task PostConversationMessage_DeliveryFailed_Returns502()
+    {
+        // Regression guard: genuine downstream failures still map to 502,
+        // so the #993 recasting doesn't silently swallow real outages.
+        var ct = TestContext.Current.CancellationToken;
+        _factory.MessageRouter.ClearSubstitute();
+        _factory.MessageRouter
+            .RouteAsync(Arg.Any<Message>(), Arg.Any<CancellationToken>())
+            .Returns(Result<Message?, RoutingError>.Failure(
+                RoutingError.DeliveryFailed(new Address("agent", "ada"), "Actor unavailable")));
+
+        var body = new ConversationMessageRequest(new AddressDto("agent", "ada"), "hi");
+
+        var response = await _client.PostAsJsonAsync("/api/v1/conversations/c-1/messages", body, ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadGateway);
+    }
+
+    [Fact]
     public async Task ListInbox_ReturnsQueryServiceRows()
     {
         var ct = TestContext.Current.CancellationToken;

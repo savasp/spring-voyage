@@ -313,4 +313,186 @@ public class MessageEndpointsTests : IClassFixture<CustomWebApplicationFactory>
         observed.ShouldNotBeNull();
         observed!.ConversationId.ShouldBeNull();
     }
+
+    // #993: caller-side validation failures thrown inside the destination
+    // actor used to surface as 502 (via RoutingError.DeliveryFailed). They
+    // are now classified as 400 with a stable `code` extension so clients
+    // can switch on it without parsing the detail. Genuine downstream
+    // failures continue to map to 502.
+
+    [Fact]
+    public async Task SendMessage_WhenActorThrowsCallerValidation_Returns400WithCode()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        var entry = new DirectoryEntry(
+            new Address("agent", "validating-agent"),
+            "actor-validating",
+            "Validating Agent",
+            "A test agent",
+            null,
+            DateTimeOffset.UtcNow);
+        _factory.DirectoryService
+            .ResolveAsync(Arg.Is<Address>(a => a.Scheme == "agent" && a.Path == "validating-agent"),
+                Arg.Any<CancellationToken>())
+            .Returns(entry);
+
+        var agent = Substitute.For<IAgent>();
+        agent.ReceiveAsync(Arg.Any<Message>(), Arg.Any<CancellationToken>())
+            .Returns<Task<Message?>>(_ => throw new CallerValidationException(
+                CallerValidationCodes.MissingConversationId,
+                "Domain messages must have a ConversationId"));
+        _factory.AgentProxyResolver
+            .Resolve(Arg.Is<string>(s => string.Equals(s, "agent", StringComparison.OrdinalIgnoreCase)),
+                "actor-validating")
+            .Returns(agent);
+
+        // Bypass the #985 auto-gen by using a non-agent target is not
+        // needed — this agent would also be auto-populated; instead we
+        // use the HealthCheck type (no auto-gen) and let the stubbed
+        // actor throw for whatever reason. The endpoint must map 400.
+        var request = new SendMessageRequest(
+            new AddressDto("agent", "validating-agent"),
+            "HealthCheck",
+            null,
+            JsonSerializer.SerializeToElement(new { }));
+
+        var response = await _client.PostAsJsonAsync("/api/v1/messages", request, ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: ct);
+        problem.GetProperty("status").GetInt32().ShouldBe(400);
+        problem.GetProperty("detail").GetString().ShouldBe("Domain messages must have a ConversationId");
+        problem.GetProperty("code").GetString().ShouldBe(CallerValidationCodes.MissingConversationId);
+    }
+
+    [Fact]
+    public async Task SendMessage_WhenActorThrowsUnknownMessageType_Returns400WithUnknownTypeCode()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        var entry = new DirectoryEntry(
+            new Address("agent", "strict-agent"),
+            "actor-strict",
+            "Strict Agent",
+            "A test agent",
+            null,
+            DateTimeOffset.UtcNow);
+        _factory.DirectoryService
+            .ResolveAsync(Arg.Is<Address>(a => a.Scheme == "agent" && a.Path == "strict-agent"),
+                Arg.Any<CancellationToken>())
+            .Returns(entry);
+
+        var agent = Substitute.For<IAgent>();
+        agent.ReceiveAsync(Arg.Any<Message>(), Arg.Any<CancellationToken>())
+            .Returns<Task<Message?>>(_ => throw new CallerValidationException(
+                CallerValidationCodes.UnknownMessageType,
+                "Unknown message type: Amendment"));
+        _factory.AgentProxyResolver
+            .Resolve(Arg.Is<string>(s => string.Equals(s, "agent", StringComparison.OrdinalIgnoreCase)),
+                "actor-strict")
+            .Returns(agent);
+
+        var request = new SendMessageRequest(
+            new AddressDto("agent", "strict-agent"),
+            "Amendment",
+            "conv-x",
+            JsonSerializer.SerializeToElement(new { }));
+
+        var response = await _client.PostAsJsonAsync("/api/v1/messages", request, ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: ct);
+        problem.GetProperty("code").GetString().ShouldBe(CallerValidationCodes.UnknownMessageType);
+    }
+
+    [Fact]
+    public async Task SendMessage_WhenRemotingLosesExceptionType_StillReturns400()
+    {
+        // Dapr actor-remoting drops custom exception types — they arrive as
+        // a generic ActorInvokeException whose Message preserves the original
+        // text. CallerValidationException encodes its code into the message
+        // as [caller-validation:CODE] detail so the router can reconstruct
+        // the classification on the other side of the remoting hop.
+        // Simulate that by throwing a generic Exception whose message carries
+        // the encoded prefix.
+        var ct = TestContext.Current.CancellationToken;
+
+        var entry = new DirectoryEntry(
+            new Address("agent", "remoted-agent"),
+            "actor-remoted",
+            "Remoted Agent",
+            "A test agent",
+            null,
+            DateTimeOffset.UtcNow);
+        _factory.DirectoryService
+            .ResolveAsync(Arg.Is<Address>(a => a.Scheme == "agent" && a.Path == "remoted-agent"),
+                Arg.Any<CancellationToken>())
+            .Returns(entry);
+
+        var encodedMessage = new CallerValidationException(
+            CallerValidationCodes.MissingConversationId,
+            "Domain messages must have a ConversationId").Message;
+
+        var agent = Substitute.For<IAgent>();
+        agent.ReceiveAsync(Arg.Any<Message>(), Arg.Any<CancellationToken>())
+            .Returns<Task<Message?>>(_ => throw new InvalidOperationException(encodedMessage));
+        _factory.AgentProxyResolver
+            .Resolve(Arg.Is<string>(s => string.Equals(s, "agent", StringComparison.OrdinalIgnoreCase)),
+                "actor-remoted")
+            .Returns(agent);
+
+        var request = new SendMessageRequest(
+            new AddressDto("agent", "remoted-agent"),
+            "HealthCheck",
+            null,
+            JsonSerializer.SerializeToElement(new { }));
+
+        var response = await _client.PostAsJsonAsync("/api/v1/messages", request, ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: ct);
+        problem.GetProperty("detail").GetString().ShouldBe("Domain messages must have a ConversationId");
+        problem.GetProperty("code").GetString().ShouldBe(CallerValidationCodes.MissingConversationId);
+    }
+
+    [Fact]
+    public async Task SendMessage_WhenActorThrowsGenericException_Still502()
+    {
+        // Regression guard: genuine downstream/infra failures must NOT be
+        // reclassified as 400. Only CallerValidationException (and its
+        // remoting-encoded message form) gets the 400 treatment.
+        var ct = TestContext.Current.CancellationToken;
+
+        var entry = new DirectoryEntry(
+            new Address("agent", "flaky-agent"),
+            "actor-flaky",
+            "Flaky Agent",
+            "A test agent",
+            null,
+            DateTimeOffset.UtcNow);
+        _factory.DirectoryService
+            .ResolveAsync(Arg.Is<Address>(a => a.Scheme == "agent" && a.Path == "flaky-agent"),
+                Arg.Any<CancellationToken>())
+            .Returns(entry);
+
+        var agent = Substitute.For<IAgent>();
+        agent.ReceiveAsync(Arg.Any<Message>(), Arg.Any<CancellationToken>())
+            .Returns<Task<Message?>>(_ => throw new InvalidOperationException("Database unavailable"));
+        _factory.AgentProxyResolver
+            .Resolve(Arg.Is<string>(s => string.Equals(s, "agent", StringComparison.OrdinalIgnoreCase)),
+                "actor-flaky")
+            .Returns(agent);
+
+        var request = new SendMessageRequest(
+            new AddressDto("agent", "flaky-agent"),
+            "HealthCheck",
+            null,
+            JsonSerializer.SerializeToElement(new { }));
+
+        var response = await _client.PostAsJsonAsync("/api/v1/messages", request, ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadGateway);
+    }
 }
