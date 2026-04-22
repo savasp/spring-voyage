@@ -304,7 +304,7 @@ export function AgentExecutionPanel({
               {" "}
               (
               <Link
-                href={`/units/${encodeURIComponent(parentUnitId)}`}
+                href={`/units?node=${encodeURIComponent(parentUnitId)}&tab=Overview`}
                 className="underline"
               >
                 {parentUnitId}

@@ -203,7 +203,7 @@ function AnalyticsThroughputContent() {
                 const parsed = parseSource(entry.source);
                 const href = parsed
                   ? parsed.scheme === "unit"
-                    ? `/units/${encodeURIComponent(parsed.name)}`
+                    ? `/units?node=${encodeURIComponent(parsed.name)}&tab=Overview`
                     : parsed.scheme === "agent"
                       ? `/agents/${encodeURIComponent(parsed.name)}`
                       : null

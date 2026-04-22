@@ -331,7 +331,7 @@ function AnalyticsCostsContent() {
                 <Link
                   href={
                     filters.scope.kind === "unit"
-                      ? `/units/${encodeURIComponent(filters.scope.name)}`
+                      ? `/units?node=${encodeURIComponent(filters.scope.name)}&tab=Overview`
                       : `/agents/${encodeURIComponent(filters.scope.name)}`
                   }
                   className="ml-auto text-xs text-primary hover:underline"
@@ -371,7 +371,7 @@ function AnalyticsCostsContent() {
                 const name = idx >= 0 ? row.source.slice(idx + 3) : row.source;
                 const href =
                   scheme === "unit"
-                    ? `/units/${encodeURIComponent(name)}`
+                    ? `/units?node=${encodeURIComponent(name)}&tab=Overview`
                     : scheme === "agent"
                       ? `/agents/${encodeURIComponent(name)}`
                       : null;

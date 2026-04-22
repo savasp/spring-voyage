@@ -108,7 +108,7 @@ describe("ConnectorDetailClient", () => {
     expect(screen.getByText(/Bound units \(1\)/)).toBeInTheDocument();
     expect(
       screen.getByLabelText("Open Alpha unit detail"),
-    ).toHaveAttribute("href", "/units/u1");
+    ).toHaveAttribute("href", "/units?node=u1&tab=Overview");
   });
 
   it("renders the not-installed state when the connector returns null", async () => {

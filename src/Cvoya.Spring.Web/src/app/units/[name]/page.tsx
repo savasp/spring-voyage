@@ -1,30 +1,22 @@
 /**
- * `/units/[name]` — unit detail scaffold (T-06, issue #948).
+ * `/units/[name]` — legacy scaffold redirect.
  *
- * This route is deliberately minimal in T-06: name, status badge,
- * description, runtime, image, model plus a breadcrumb back to
- * `/units`. The Validation panel (T-07), inline remediation, and retry
- * affordances are layered on top of this scaffold by subsequent PRs.
- *
- * The page is split into a server component (this file) and a client
- * component (`UnitDetailClient`) — the client half owns the TanStack
- * Query fetch and the SSE subscription (`useActivityStream`), which
- * invalidates the unit's cache on `StateChanged` / `ValidationProgress`
- * events scoped to this unit so T-07 picks up live progress without a
- * further wiring PR.
- *
- * Next.js 16 App Router treats `params` as a Promise — the page awaits
- * it before handing the decoded `name` to the client component. Mirrors
- * the pattern already used by `src/app/settings/packages/[name]/page.tsx`.
+ * The T-06 scaffold (issue #948) was retired by #1011 in favour of the
+ * Explorer (`/units?node=<name>&tab=Overview`). This thin server
+ * component preserves any bookmarks / external links that still point
+ * at the old URL by issuing a `redirect()` to the canonical Explorer
+ * pane. Mirrors the `app/analytics/page.tsx` pattern.
  */
 
-import UnitDetailClient from "@/components/units/detail/unit-detail-client";
+import { redirect } from "next/navigation";
 
 interface PageProps {
   params: Promise<{ name: string }>;
 }
 
-export default async function UnitDetailPage({ params }: PageProps) {
+export default async function UnitDetailRedirect({
+  params,
+}: PageProps): Promise<never> {
   const { name } = await params;
-  return <UnitDetailClient name={name} />;
+  redirect(`/units?node=${encodeURIComponent(name)}&tab=Overview`);
 }
