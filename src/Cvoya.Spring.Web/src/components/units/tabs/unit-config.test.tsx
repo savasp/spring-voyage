@@ -30,7 +30,11 @@ vi.mock("next/navigation", async () => {
       push: vi.fn(),
       replace: (url: string, opts?: { scroll?: boolean }) => {
         replaceMock(url, opts);
-        const qs = url.startsWith("?") ? url.slice(1) : "";
+        // Accept both `?foo=bar` and `/path?foo=bar` — the tab now passes
+        // the pathname alongside the query (#1053) because Next.js 16's
+        // `router.replace("?…")` dropped the canonical-URL update.
+        const qIdx = url.indexOf("?");
+        const qs = qIdx >= 0 ? url.slice(qIdx + 1) : "";
         rtlAct(() => {
           setSearchParams(new URLSearchParams(qs));
         });
@@ -219,6 +223,9 @@ describe("UnitConfigTab — sub-tab layout (QUALITY-unit-config-subtabs)", () =>
     expect(last?.[0]).toMatch(/node=engineering/);
     expect(last?.[0]).toMatch(/tab=Config/);
     expect(last?.[1]).toEqual({ scroll: false });
+    // #1053: navigation must be a `/path?query` URL, not the bare
+    // `?query` form Next.js 16 silently drops.
+    expect(last?.[0]).toMatch(/^\/units\?/);
   });
 
   it("renders each sub-tab's panel body when that sub-tab is activated", () => {

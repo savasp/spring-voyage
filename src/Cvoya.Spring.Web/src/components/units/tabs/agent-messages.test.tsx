@@ -28,6 +28,10 @@ const routerReplaceMock = vi.fn();
 const searchParamsStateMock = { value: "" };
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace: routerReplaceMock }),
+  // #1053: the tab now reads `usePathname()` so it can pass a
+  // `/path?query` URL to `router.replace` (Next.js 16 drops the
+  // canonical-URL update for bare query-only relative URLs).
+  usePathname: () => "/units",
   useSearchParams: () => new URLSearchParams(searchParamsStateMock.value),
 }));
 
@@ -127,6 +131,13 @@ describe("AgentMessagesTab", () => {
     fireEvent.click(screen.getByTestId("stub-emit-created"));
     expect(routerReplaceMock).toHaveBeenCalledWith(
       expect.stringMatching(/conversation=conv-new/),
+      expect.any(Object),
+    );
+    // #1053: navigation must be `/units?…`, not bare `?…`. Next.js 16
+    // silently drops the canonical-URL update on query-only relative
+    // URLs, leaving the controlled `selectedId` snapping back.
+    expect(routerReplaceMock).toHaveBeenCalledWith(
+      expect.stringMatching(/^\/units\?/),
       expect.any(Object),
     );
   });

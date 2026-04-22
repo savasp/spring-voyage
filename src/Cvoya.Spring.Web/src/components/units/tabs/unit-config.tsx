@@ -18,7 +18,7 @@
 
 import { Settings } from "lucide-react";
 import { useCallback } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import {
   Tabs,
@@ -61,6 +61,7 @@ function parseSubTab(raw: string | null): SubTab {
 
 function UnitConfigTab({ node }: TabContentProps) {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const activeSubTab = parseSubTab(searchParams.get("subtab"));
 
@@ -74,9 +75,14 @@ function UnitConfigTab({ node }: TabContentProps) {
       const params = new URLSearchParams(searchParams.toString());
       params.set("subtab", next);
       const qs = params.toString();
-      router.replace(qs ? `?${qs}` : "?", { scroll: false });
+      // #1039 / #1053: Next.js 16 drops the canonical-URL update for
+      // bare `router.replace("?…")` calls — `replaceState` commits the
+      // stale query and the controlled `activeSubTab` derived from
+      // `useSearchParams()` snaps back. Pass the full pathname so the
+      // navigation sticks.
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
     },
-    [router, searchParams],
+    [pathname, router, searchParams],
   );
 
   if (node.kind !== "Unit") return null;

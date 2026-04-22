@@ -30,7 +30,7 @@
 
 import { Suspense, useCallback } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight, Plug } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -57,6 +57,7 @@ function parseTab(raw: string | null): string {
 
 function ConnectorsContent() {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const activeTab = parseTab(searchParams.get("tab"));
 
@@ -73,9 +74,13 @@ function ConnectorsContent() {
         params.set("tab", next);
       }
       const qs = params.toString();
-      router.replace(qs ? `?${qs}` : "?", { scroll: false });
+      // #1039 / #1053: Next.js 16 drops the canonical-URL update for
+      // bare `router.replace("?…")` calls — `replaceState` commits the
+      // stale query and controlled state derived from `useSearchParams()`
+      // snaps back. Pass the full pathname so the navigation sticks.
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
     },
-    [router, searchParams],
+    [pathname, router, searchParams],
   );
 
   return (

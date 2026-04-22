@@ -35,6 +35,9 @@ vi.mock("@/components/ui/toast", () => ({
 // App Router mounted.
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
+  // #1053: `useAnalyticsFilters` now reads `usePathname()` so it can
+  // pass a `/path?query` URL to `router.replace`.
+  usePathname: () => "/analytics/costs",
   useSearchParams: () => new URLSearchParams(""),
 }));
 

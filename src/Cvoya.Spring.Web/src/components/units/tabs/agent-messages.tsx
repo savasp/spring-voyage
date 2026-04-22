@@ -15,7 +15,7 @@
 // Explorer.
 
 import { useCallback, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -29,6 +29,7 @@ import { registerTab, type TabContentProps } from "./index";
 
 function AgentMessagesTab({ node }: TabContentProps) {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const { data, isLoading, error } = useConversations({ agent: node.id });
   const [composerOpen, setComposerOpen] = useState(false);
@@ -44,9 +45,14 @@ function AgentMessagesTab({ node }: TabContentProps) {
         params.delete("conversation");
       }
       const qs = params.toString();
-      router.replace(qs ? `?${qs}` : "?", { scroll: false });
+      // #1039 / #1053: Next.js 16 drops the canonical-URL update for
+      // bare `router.replace("?…")` calls — `replaceState` commits the
+      // stale query and the controlled `selectedId` derived from
+      // `useSearchParams()` snaps back. Pass the full pathname so the
+      // navigation sticks.
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
     },
-    [router, searchParams],
+    [pathname, router, searchParams],
   );
 
   if (node.kind !== "Agent") return null;

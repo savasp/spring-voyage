@@ -16,7 +16,7 @@
 // leading surface here.
 
 import { useCallback, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { MessagesSquare, Plus } from "lucide-react";
 
@@ -31,6 +31,7 @@ import { registerTab, type TabContentProps } from "./index";
 
 function UnitMessagesTab({ node }: TabContentProps) {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   // `node.kind === "Unit"` is guaranteed by the registry — `<DetailPane>`
   // dispatches to `lookupTab(kind, tab)` with `kind` narrowed before
@@ -50,9 +51,14 @@ function UnitMessagesTab({ node }: TabContentProps) {
         params.delete("conversation");
       }
       const qs = params.toString();
-      router.replace(qs ? `?${qs}` : "?", { scroll: false });
+      // #1039 / #1053: Next.js 16 drops the canonical-URL update for
+      // bare `router.replace("?…")` calls — `replaceState` commits the
+      // stale query and the controlled `selectedId` derived from
+      // `useSearchParams()` snaps back. Pass the full pathname so the
+      // navigation sticks.
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
     },
-    [router, searchParams],
+    [pathname, router, searchParams],
   );
 
   if (node.kind !== "Unit") return null;

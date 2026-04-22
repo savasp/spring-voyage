@@ -35,7 +35,11 @@ vi.mock("next/navigation", async () => {
       push: vi.fn(),
       replace: (url: string, opts?: { scroll?: boolean }) => {
         replaceMock(url, opts);
-        const qs = url.startsWith("?") ? url.slice(1) : "";
+        // Accept both `?foo=bar` and `/path?foo=bar` — the page now passes
+        // the pathname alongside the query (#1053) because Next.js 16's
+        // `router.replace("?…")` dropped the canonical-URL update.
+        const qIdx = url.indexOf("?");
+        const qs = qIdx >= 0 ? url.slice(qIdx + 1) : "";
         rtlAct(() => {
           setSearchParams(new URLSearchParams(qs));
         });
@@ -228,8 +232,14 @@ describe("ConnectorsListPage", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: /health/i }));
 
+    // #1053: navigation must be `/connectors?tab=health`, not the bare
+    // `?tab=health`. Next.js 16 silently drops the canonical-URL update
+    // when the relative URL is query-only, which leaves the controlled
+    // `<Tabs value={activeTab}>` snapping back to the prior tab.
     await waitFor(() => {
-      expect(replaceMock).toHaveBeenCalledWith("?tab=health", { scroll: false });
+      expect(replaceMock).toHaveBeenCalledWith("/connectors?tab=health", {
+        scroll: false,
+      });
     });
   });
 });
