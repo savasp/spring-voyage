@@ -11152,6 +11152,7 @@
         "required": [
           "unitId",
           "agentAddress",
+          "member",
           "model",
           "specialty",
           "enabled",
@@ -11166,6 +11167,9 @@
             "type": "string"
           },
           "agentAddress": {
+            "type": "string"
+          },
+          "member": {
             "type": "string"
           },
           "model": {

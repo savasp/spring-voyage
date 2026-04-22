@@ -112,6 +112,51 @@ public class MembershipEndpointTests : IClassFixture<CustomWebApplicationFactory
         list.ShouldContain(m => m.AgentAddress == "hopper" && !m.Enabled);
     }
 
+    // #1060: every projected row carries a unified `member` column whose
+    // value is the scheme-prefixed canonical address of the member. The
+    // /memberships surface only persists agent-scheme rows, so `member` is
+    // always agent://{agentAddress} here. Lock the wire shape so future
+    // projections (or a future server that mixes unit-scheme rows in)
+    // don't quietly drop the field.
+    [Fact]
+    public async Task ListUnitMemberships_EachRow_CarriesSchemePrefixedMemberUri()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        ClearMemberships();
+        ArrangeDirectoryHit("unit", "engineering", "actor-eng");
+
+        await UpsertAsync("engineering", "ada");
+        await UpsertAsync("engineering", "hopper");
+
+        var response = await _client.GetAsync("/api/v1/units/engineering/memberships", ct);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        var list = await response.Content.ReadFromJsonAsync<List<UnitMembershipResponse>>(JsonOptions, ct);
+        list.ShouldNotBeNull();
+        list!.ShouldContain(m => m.AgentAddress == "ada" && m.Member == "agent://ada");
+        list.ShouldContain(m => m.AgentAddress == "hopper" && m.Member == "agent://hopper");
+    }
+
+    // #1060: the same projection applies to the /agents/{id}/memberships
+    // surface, since it goes through the same ToResponse helper.
+    [Fact]
+    public async Task ListAgentMemberships_EachRow_CarriesSchemePrefixedMemberUri()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        ClearMemberships();
+        ArrangeDirectoryHit("agent", "ada", "actor-ada");
+
+        await UpsertAsync("engineering", "ada");
+        await UpsertAsync("marketing", "ada");
+
+        var response = await _client.GetAsync("/api/v1/agents/ada/memberships", ct);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        var list = await response.Content.ReadFromJsonAsync<List<UnitMembershipResponse>>(JsonOptions, ct);
+        list.ShouldNotBeNull();
+        list!.ShouldAllBe(m => m.Member == "agent://ada");
+    }
+
     [Fact]
     public async Task UpsertMembership_NewRow_Persists()
     {

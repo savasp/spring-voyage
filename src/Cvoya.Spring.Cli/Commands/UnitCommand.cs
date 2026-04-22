@@ -32,23 +32,28 @@ public static class UnitCommand
     };
 
     /// <summary>
-    /// Unified member-list row emitted by <c>unit members list</c> (#352, #1028).
+    /// Unified member-list row emitted by <c>unit members list</c> (#352, #1028, #1060).
     /// Field names now mirror the API's <c>UnitMembershipResponse</c> wire shape
-    /// (<c>unitId</c>, <c>agentAddress</c>, plus <c>createdAt</c> / <c>updatedAt</c>
-    /// / <c>isPrimary</c>) so scripts consuming <c>GET /memberships</c>, the
-    /// <c>members add</c> response, and <c>members list --output json</c> can
+    /// (<c>unitId</c>, <c>agentAddress</c>, <c>member</c>, plus <c>createdAt</c> /
+    /// <c>updatedAt</c> / <c>isPrimary</c>) so scripts consuming <c>GET /memberships</c>,
+    /// the <c>members add</c> response, and <c>members list --output json</c> can
     /// share one jq expression. Agent-scheme rows carry per-membership config
     /// overrides; unit-scheme rows leave the agent-only fields null because
     /// sub-unit memberships have no per-child config today (deferred to #217) —
     /// their member identity is carried in <c>subUnitId</c> instead. The
     /// explicit <c>Scheme</c> column lets scripts filter with
-    /// <c>jq '.[] | select(.scheme == "unit")'</c>.
+    /// <c>jq '.[] | select(.scheme == "unit")'</c>; the unified <c>Member</c>
+    /// column carries the scheme-prefixed canonical address
+    /// (<c>agent://{path}</c> or <c>unit://{path}</c>) so scripts that just
+    /// want "the address of this member" don't have to coalesce
+    /// <c>agentAddress</c> with <c>subUnitId</c> per row.
     /// </summary>
     private sealed record MemberListRow(
         string Scheme,
         string UnitId,
         string? AgentAddress,
         string? SubUnitId,
+        string? Member,
         string? Model,
         string? Specialty,
         bool? Enabled,
@@ -58,9 +63,9 @@ public static class UnitCommand
         bool? IsPrimary);
 
     // Table columns preserve the pre-#1028 "scheme / member / unit" human-readable
-    // layout so terminal output stays stable; `member` resolves to whichever id
-    // identifies the row (agent slug or sub-unit slug). The JSON shape carries
-    // the full API-aligned field set.
+    // layout so terminal output stays stable; the `member` table cell shows the
+    // bare slug (agent or sub-unit) for readability while the JSON `member`
+    // field carries the scheme-prefixed canonical address (#1060).
     private static readonly OutputFormatter.Column<MemberListRow>[] MemberListColumns =
     {
         new("scheme", r => r.Scheme),
@@ -71,6 +76,16 @@ public static class UnitCommand
         new("enabled", r => r.Enabled?.ToString().ToLowerInvariant()),
         new("executionMode", r => r.ExecutionMode),
     };
+
+    // #1060: scheme-prefixed canonical address used by the JSON `member`
+    // field. Mirrors the server-side projection in MembershipEndpoints —
+    // kept inline (rather than reaching into Cvoya.Spring.Core.Messaging.Address)
+    // because the CLI builds rows from the Kiota wire types here, and the
+    // projection is the same tiny string concat the core helper does.
+    private static string? BuildMemberUri(string? scheme, string? path)
+        => string.IsNullOrEmpty(scheme) || string.IsNullOrEmpty(path)
+            ? null
+            : $"{scheme}://{path}";
 
     /// <summary>
     /// Creates the "unit" command with subcommands for CRUD, member operations,
@@ -1287,6 +1302,11 @@ public static class UnitCommand
                         UnitId: m.UnitId ?? unitId,
                         AgentAddress: path,
                         SubUnitId: null,
+                        // #1060: prefer the API-side `member` value when
+                        // present so the CLI's JSON shape stays a strict
+                        // superset of the HTTP wire shape. Falls back to the
+                        // locally-built canonical URI for older servers.
+                        Member: m.Member ?? BuildMemberUri("agent", path),
                         Model: m.Model,
                         Specialty: m.Specialty,
                         Enabled: m.Enabled,
@@ -1304,6 +1324,7 @@ public static class UnitCommand
                         UnitId: unitId,
                         AgentAddress: isAgent ? path : null,
                         SubUnitId: isAgent ? null : path,
+                        Member: BuildMemberUri(scheme, path),
                         Model: null,
                         Specialty: null,
                         Enabled: null,
@@ -1333,6 +1354,7 @@ public static class UnitCommand
                     UnitId: m.UnitId ?? unitId,
                     AgentAddress: address,
                     SubUnitId: null,
+                    Member: m.Member ?? BuildMemberUri("agent", address),
                     Model: m.Model,
                     Specialty: m.Specialty,
                     Enabled: m.Enabled,

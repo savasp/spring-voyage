@@ -14,6 +14,14 @@ using Cvoya.Spring.Core.Agents;
 /// </summary>
 /// <param name="UnitId">The unit this membership attaches the agent to.</param>
 /// <param name="AgentAddress">Canonical string form of the agent address (path for <c>scheme=agent</c>).</param>
+/// <param name="Member">
+/// Scheme-prefixed canonical address of the member (#1060). Always
+/// <c>agent://{AgentAddress}</c> on this DTO because <c>UnitMembershipResponse</c>
+/// only carries agent-scheme rows; the unified <c>member</c> column lets
+/// scripts consume mixed agent/sub-unit member rows from
+/// <c>spring unit members list --output json</c> without branching on
+/// <c>agentAddress</c> vs <c>subUnitId</c>.
+/// </param>
 /// <param name="Model">Per-membership model override, or <c>null</c> to inherit.</param>
 /// <param name="Specialty">Per-membership specialty override, or <c>null</c> to inherit.</param>
 /// <param name="Enabled">Per-membership enabled flag; defaults to <c>true</c> on creation.</param>
@@ -29,6 +37,7 @@ using Cvoya.Spring.Core.Agents;
 public record UnitMembershipResponse(
     string UnitId,
     string AgentAddress,
+    string Member,
     string? Model,
     string? Specialty,
     bool Enabled,

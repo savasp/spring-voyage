@@ -71,6 +71,9 @@ code="${response##*$'\n'}"
 body="${response%$'\n'*}"
 e2e::expect_status "0" "${code}" "members list succeeds"
 e2e::expect_contains "\"scheme\": \"unit\"" "${body}" "members list emits scheme=unit for the sub-unit row"
-e2e::expect_contains "\"member\": \"${child}\"" "${body}" "members list emits the child's address on the unit row"
+# #1060: the unified `member` field is the scheme-prefixed canonical
+# address (`unit://<child>` for the sub-unit row here), so scripts can
+# read the member id without branching on agentAddress vs subUnitId.
+e2e::expect_contains "\"member\": \"unit://${child}\"" "${body}" "members list emits the child's scheme-prefixed address on the unit row"
 
 e2e::summary
