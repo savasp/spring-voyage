@@ -123,7 +123,7 @@ Until that happens, consumers outside the open-source repo should pin to a speci
 
 The repository does **not** publish container images today. Inspection shows:
 
-- [`deployment/Dockerfile`](../../deployment/Dockerfile) and [`deployment/Dockerfile.agent`](../../deployment/Dockerfile.agent) exist for local and VPS deployment.
+- [`deployment/Dockerfile`](../../deployment/Dockerfile) (platform host) and the per-tool agent Dockerfiles ([`Dockerfile.agent-base`](../../deployment/Dockerfile.agent-base), [`Dockerfile.agent.claude-code`](../../deployment/Dockerfile.agent.claude-code), [`Dockerfile.agent.dapr`](../../deployment/Dockerfile.agent.dapr)) exist for local and VPS deployment. The legacy `Dockerfile.agent` shim was retired in PR 6 of [#1087](https://github.com/cvoya-com/spring-voyage/issues/1087); operators should reference the per-tool images directly.
 - [`src/Cvoya.Spring.Dapr/Execution/UnitRuntimeOptions.cs`](../../src/Cvoya.Spring.Dapr/Execution/UnitRuntimeOptions.cs) references `ghcr.io/cvoya/spring-agent:latest` as the default agent image, but no workflow in this repository pushes to that tag. The image is expected to be built by an external process (or, at present, locally); a published image at that coordinate is not a guarantee of this repo.
 - No `docker/build-push-action`, `docker login`, or equivalent appears in any workflow.
 - `deployment/deploy.sh` and `deployment/deploy-remote.sh` build images locally with Podman on the target host; they do not push to a registry.

@@ -21,7 +21,7 @@
 #   ./deploy.sh restart         # down + up
 #   ./deploy.sh logs [service]  # follow logs for one or all services
 #   ./deploy.sh status          # show container + host-service status
-#   ./deploy.sh build           # build Dockerfile + Dockerfile.agent images
+#   ./deploy.sh build           # build platform Dockerfile + per-tool agent images
 #   ./deploy.sh ensure-user-net <uid>  # create per-user bridge network for agent isolation
 #
 # Environment: reads values from ./spring.env (or $SPRING_ENV_FILE).
@@ -581,10 +581,10 @@ cmd_build() {
         -t "${SPRING_PLATFORM_IMAGE:-localhost/spring-voyage:latest}" \
         "${REPO_ROOT}"
 
-    # The three agent-runtime images (legacy alias, claude-code path 1,
-    # dapr path 3) are built by the canonical entry point added in
-    # PR 3b of #1087 (#1096). It tags them at :dev locally and re-tags
-    # the legacy `localhost/spring-voyage-agent` for back-compat below.
+    # The two tool-bearing agent images (claude-code path 1, dapr path 3)
+    # are built by the canonical entry point added in PR 3b of #1087
+    # (#1096). It tags them at the requested ${SPRING_AGENT_TAG} locally;
+    # the per-tool image references are the only supported path post-#1087.
     log "building agent images via deployment/build-agent-images.sh"
     DOCKER=podman "${SCRIPT_DIR}/build-agent-images.sh" --tag "${SPRING_AGENT_TAG:-latest}"
 
@@ -592,13 +592,15 @@ cmd_build() {
     # legacy reference so manifests that still pin
     # `localhost/spring-voyage-agent:latest` (or the
     # `${SPRING_AGENT_IMAGE}` override) keep working until they're
-    # migrated. Removed in PR 4 of #1087 along with the deprecated
-    # `Dockerfile.agent`.
+    # migrated. The deprecated `Dockerfile.agent` was removed in PR 6 of
+    # #1087 (#1099); this re-tag is the only remaining back-compat
+    # surface and can be dropped once operator manifests no longer pin
+    # the legacy image reference.
     local legacy_tag="${SPRING_AGENT_IMAGE:-localhost/spring-voyage-agent:latest}"
     log "tagging localhost/spring-voyage-agent-claude-code:${SPRING_AGENT_TAG:-latest} as ${legacy_tag} (legacy)"
     podman tag "localhost/spring-voyage-agent-claude-code:${SPRING_AGENT_TAG:-latest}" "${legacy_tag}"
 
-    # Legacy dapr-agent reference. Same back-compat story; remove in PR 4.
+    # Legacy dapr-agent reference. Same back-compat story.
     local legacy_dapr_tag="${SPRING_DAPR_AGENT_IMAGE:-localhost/spring-dapr-agent:latest}"
     log "tagging localhost/spring-voyage-agent-dapr:${SPRING_AGENT_TAG:-latest} as ${legacy_dapr_tag} (legacy)"
     podman tag "localhost/spring-voyage-agent-dapr:${SPRING_AGENT_TAG:-latest}" "${legacy_dapr_tag}"
@@ -626,7 +628,7 @@ Commands:
   restart                down + up
   status                 Show container status
   logs [service]         Follow logs (all services if omitted)
-  build                  Build Dockerfile + Dockerfile.agent images
+  build                  Build platform Dockerfile + per-tool agent images
   ensure-user-net <uid>  Create per-user bridge network for agent isolation
 
 Environment file: ${ENV_FILE}
