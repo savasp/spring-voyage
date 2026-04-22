@@ -4,7 +4,7 @@
 # #1096).
 #
 # Builds three images, in dependency order:
-#   1. ghcr.io/cvoya/agent-base:<tag>                   (path-1 base)
+#   1. ghcr.io/cvoya-com/agent-base:<tag>                   (path-1 base)
 #   2. localhost/spring-voyage-agent-claude-code:<tag>  (path-1 reference, FROMs #1)
 #   3. localhost/spring-voyage-agent-dapr:<tag>         (path-3 native A2A)
 #
@@ -42,17 +42,17 @@ usage() {
 Usage: deployment/build-agent-images.sh [options]
 
 Builds, in order:
-  1. ghcr.io/cvoya/agent-base:<tag>
+  1. ghcr.io/cvoya-com/agent-base:<tag>
   2. localhost/spring-voyage-agent-claude-code:<tag>
   3. localhost/spring-voyage-agent-dapr:<tag>
 
 Options:
   --tag <value>            Tag suffix for all images (default: dev).
-  --skip-agent-base        Skip building ghcr.io/cvoya/agent-base:<tag>.
+  --skip-agent-base        Skip building ghcr.io/cvoya-com/agent-base:<tag>.
                            Useful when --agent-base-image points at an
                            already-pulled / already-built reference.
   --agent-base-image <ref> Override the FROM line of the claude-code
-                           image. Defaults to ghcr.io/cvoya/agent-base:<tag>
+                           image. Defaults to ghcr.io/cvoya-com/agent-base:<tag>
                            (the tag built in step 1). Honors the
                            AGENT_BASE_IMAGE env var.
   -h, --help               Show this help.
@@ -68,7 +68,7 @@ Examples:
 
   # Verify the published agent-base image works:
   deployment/build-agent-images.sh --skip-agent-base \\
-                                   --agent-base-image ghcr.io/cvoya/agent-base:1.0.0
+                                   --agent-base-image ghcr.io/cvoya-com/agent-base:1.0.0
 
   # Cut release artifacts to the registry-shaped tag:
   deployment/build-agent-images.sh --tag 1.2.3
@@ -131,7 +131,7 @@ fi
 
 log() { printf '[build-agent-images] %s\n' "$*" >&2; }
 
-AGENT_BASE_IMAGE="ghcr.io/cvoya/agent-base"
+AGENT_BASE_IMAGE="ghcr.io/cvoya-com/agent-base"
 CLAUDE_IMAGE="localhost/spring-voyage-agent-claude-code"
 DAPR_IMAGE="localhost/spring-voyage-agent-dapr"
 

@@ -13,12 +13,12 @@ open-source single-host scenario.
 | `deploy-remote.sh`       | SSH + rsync wrapper that runs `deploy.sh` on a remote VPS.        |
 | `spring-voyage-host.sh`  | Manages host-process services (`spring-dispatcher`). Used directly when bouncing the dispatcher in isolation; called by `deploy.sh up/down`. |
 | `Dockerfile`             | Multi-stage platform image (.NET 10 API/Worker + Web + Dapr CLI). |
-| `Dockerfile.agent-base`  | A2A bridge sidecar base image (BYOI conformance path 1 — see [`docs/architecture/agent-runtime.md` § 7](../docs/architecture/agent-runtime.md#7-byoi-conformance-contract)). Published as `ghcr.io/cvoya/agent-base:<semver>` by `release-agent-base.yml`. |
+| `Dockerfile.agent-base`  | A2A bridge sidecar base image (BYOI conformance path 1 — see [`docs/architecture/agent-runtime.md` § 7](../docs/architecture/agent-runtime.md#7-byoi-conformance-contract)). Published as `ghcr.io/cvoya-com/agent-base:<semver>` by `release-agent-base.yml`. |
 | `Dockerfile.agent.claude-code` | Claude Code CLI on top of `agent-base` (path 1 reference). Built locally as `localhost/spring-voyage-agent-claude-code:latest`. |
 | `Dockerfile.agent.dapr`  | Dapr Agent native A2A image (path 3). Built locally as `localhost/spring-voyage-agent-dapr:latest`. |
 | `Dockerfile.agent`       | DEPRECATED. Legacy alias of `Dockerfile.agent-base` kept for back-compat with manifests still pinning `localhost/spring-voyage-agent:latest`. Removed in PR 4 of [#1087](https://github.com/cvoya-com/spring-voyage/issues/1087). |
 | `build-agent-images.sh`  | Builds the three agent images above. Invoked by `deploy.sh build`. |
-| `build-sidecar.sh`       | Builds `ghcr.io/cvoya/agent-base:dev` from local sources. Used when iterating on the bridge sidecar without GHCR pull access. |
+| `build-sidecar.sh`       | Builds `ghcr.io/cvoya-com/agent-base:dev` from local sources. Used when iterating on the bridge sidecar without GHCR pull access. |
 | `Caddyfile`              | Single-host path-routed Caddy config (default).                   |
 | `Caddyfile.multi-host`   | Per-service hostnames variant (web / API / webhook each FQDN).    |
 | `relay.sh`               | Local-dev SSH reverse tunnel for webhook delivery to a laptop.    |
@@ -43,7 +43,7 @@ either reference it directly or layer extra tooling on top:
 
 | Base image                                              | Conformance path | Use it for |
 | ------------------------------------------------------- | ---------------- | ---------- |
-| `ghcr.io/cvoya/agent-base:<semver>`                     | path 1 (bridge)  | Bring your own CLI; the bridge handles A2A. |
+| `ghcr.io/cvoya-com/agent-base:<semver>`                     | path 1 (bridge)  | Bring your own CLI; the bridge handles A2A. |
 | `localhost/spring-voyage-agent-claude-code:latest`      | path 1 (bridge)  | Claude Code CLI baked in; ready to dispatch. |
 | `localhost/spring-voyage-agent-dapr:latest`             | path 3 (native A2A) | Dapr Agent runtime — speaks A2A natively. |
 

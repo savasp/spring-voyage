@@ -21,6 +21,6 @@
 # Removal target: PR 4 of #1087, which lands the launcher changes that
 # make per-tool image references the only supported path.
 
-ARG AGENT_BASE_IMAGE=ghcr.io/cvoya/agent-base:1.0.0
+ARG AGENT_BASE_IMAGE=ghcr.io/cvoya-com/agent-base:1.0.0
 
 FROM ${AGENT_BASE_IMAGE}
