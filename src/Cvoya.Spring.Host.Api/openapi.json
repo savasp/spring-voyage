@@ -7460,13 +7460,9 @@
             "$ref": "#/components/schemas/AgentResponse"
           },
           "status": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/JsonElement"
-              }
+            "type": [
+              "null",
+              "string"
             ]
           },
           "deployment": {
