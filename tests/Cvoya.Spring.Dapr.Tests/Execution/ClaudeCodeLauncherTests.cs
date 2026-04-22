@@ -38,8 +38,16 @@ public class ClaudeCodeLauncherTests
     }
 
     [Fact]
-    public async Task PrepareAsync_ReturnsWorkspaceFilesAndEnvVars_WithoutTouchingDisk()
+    public async Task PrepareAsync_ReturnsWorkspaceFilesAndEnvVars()
     {
+        // The launcher must not write to the local filesystem — workspace
+        // materialisation lives in the dispatcher (issue #1042). An earlier
+        // revision snapshot Path.GetTempPath() before/after PrepareAsync
+        // to assert that, but the assertion races with any parallel test
+        // (in any assembly) that writes under /tmp, producing a recurring
+        // CI flake (#1082). The contract is now enforced by code review
+        // on the launcher implementation, which is pure-functional
+        // dictionary construction.
         var context = new AgentLaunchContext(
             AgentId: "ada",
             ConversationId: "conv-42",
@@ -47,17 +55,7 @@ public class ClaudeCodeLauncherTests
             McpEndpoint: "http://host.docker.internal:9999/mcp/",
             McpToken: "top-secret-token");
 
-        // The launcher must not write to the local filesystem any more —
-        // workspace materialisation lives in the dispatcher (issue #1042).
-        // We snapshot the temp dir before the call so we can assert nothing
-        // new appeared.
-        var preExisting = new HashSet<string>(Directory.EnumerateFileSystemEntries(Path.GetTempPath()));
-
         var prep = await _launcher.PrepareAsync(context, TestContext.Current.CancellationToken);
-
-        var postExisting = Directory.EnumerateFileSystemEntries(Path.GetTempPath());
-        postExisting.Where(p => !preExisting.Contains(p))
-            .ShouldBeEmpty("ClaudeCodeLauncher must not touch the local filesystem");
 
         prep.WorkspaceMountPath.ShouldBe("/workspace");
         prep.WorkspaceFiles.Keys.ShouldBe(new[] { "CLAUDE.md", ".mcp.json" }, ignoreOrder: true);

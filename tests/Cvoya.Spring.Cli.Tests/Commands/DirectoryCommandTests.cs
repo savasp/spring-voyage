@@ -19,6 +19,7 @@ using Xunit;
 /// we pin the parsing + subcommand wiring so regressions surface without
 /// spinning up an HTTP harness (#528).
 /// </summary>
+[Collection(ConsoleRedirectionCollection.Name)]
 public class DirectoryCommandTests
 {
     [Fact]
