@@ -58,9 +58,15 @@ response="$(e2e::cli --output json unit members list "${template_unit}")"
 code="${response##*$'\n'}"
 body="${response%$'\n'*}"
 e2e::expect_status "0" "${code}" "unit members list succeeds for template-created unit"
-e2e::expect_contains "\"member\": \"tech-lead\"" "${body}" "members list includes tech-lead"
-e2e::expect_contains "\"member\": \"backend-engineer\"" "${body}" "members list includes backend-engineer"
-e2e::expect_contains "\"member\": \"qa-engineer\"" "${body}" "members list includes qa-engineer"
+# #1060: the JSON `member` field carries the scheme-prefixed canonical
+# address (`agent://<path>` for agent rows, `unit://<path>` for sub-unit
+# rows) so callers don't have to coalesce `agentAddress` with `subUnitId`
+# per row. The CLI's --output json uses indented spacing (space after the
+# colon); the compact-spacing variant lives on the HTTP /memberships
+# surface tested in fast/06 (#1090).
+e2e::expect_contains "\"member\": \"agent://tech-lead\"" "${body}" "members list includes tech-lead"
+e2e::expect_contains "\"member\": \"agent://backend-engineer\"" "${body}" "members list includes backend-engineer"
+e2e::expect_contains "\"member\": \"agent://qa-engineer\"" "${body}" "members list includes qa-engineer"
 cli_count="$(printf '%s' "${body}" | grep -o '"member"' | wc -l | tr -d '[:space:]')"
 if [[ "${cli_count}" == "3" ]]; then
     e2e::ok "members list returns exactly 3 members (got ${cli_count})"

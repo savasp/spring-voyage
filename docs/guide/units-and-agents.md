@@ -156,6 +156,8 @@ spring unit members remove <unit> <agent-or-unit>
 spring unit members list <unit>
 ```
 
+`unit members list --output json` returns one row per member with a unified `member` field carrying the scheme-prefixed canonical address (`agent://<path>` for agent members, `unit://<path>` for sub-units), so scripts can read the member id without branching on `agentAddress` vs `subUnitId`. The HTTP `/api/v1/units/{id}/memberships` and `/api/v1/agents/{id}/memberships` surfaces carry the same field on `UnitMembershipResponse`.
+
 ### Managing Humans
 
 ```

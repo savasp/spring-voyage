@@ -23,5 +23,30 @@ public record Address(
     [property: DataMember] string Scheme,
     [property: DataMember] string Path)
 {
+    /// <summary>Canonical scheme for agent-shaped addresses.</summary>
+    public const string AgentScheme = "agent";
+
+    /// <summary>Canonical scheme for unit-shaped addresses.</summary>
+    public const string UnitScheme = "unit";
+
     public sealed override string ToString() => $"{Scheme}:{Path}";
+
+    /// <summary>
+    /// Returns the canonical URI form (<c>{scheme}://{path}</c>) used by
+    /// wire-shape projections that need a single scheme-prefixed string —
+    /// e.g. the <c>member</c> field on <c>UnitMembershipResponse</c> (#1060)
+    /// and the <c>source</c> column on activity / cost rows.
+    /// </summary>
+    /// <remarks>
+    /// Distinct from <see cref="ToString"/>, which uses a <c>:</c> separator
+    /// for log lines / error messages. The URI form is the contract callers
+    /// pipe through jq or hand to other systems.
+    /// </remarks>
+    public string ToCanonicalUri() => $"{Scheme}://{Path}";
+
+    /// <summary>Builds an agent-scheme address (<c>agent://{path}</c>).</summary>
+    public static Address ForAgent(string path) => new(AgentScheme, path);
+
+    /// <summary>Builds a unit-scheme address (<c>unit://{path}</c>).</summary>
+    public static Address ForUnit(string path) => new(UnitScheme, path);
 }

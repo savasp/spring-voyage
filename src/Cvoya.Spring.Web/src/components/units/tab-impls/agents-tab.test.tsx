@@ -89,17 +89,24 @@ function makeMembership(
   overrides: Partial<UnitMembershipResponse> = {},
 ): UnitMembershipResponse {
   const now = new Date().toISOString();
-  return {
+  const base = {
     unitId: "engineering",
     agentAddress: "ada",
     model: null,
     specialty: null,
     enabled: true,
-    executionMode: "Auto",
+    executionMode: "Auto" as const,
     createdAt: now,
     updatedAt: now,
     isPrimary: false,
     ...overrides,
+  };
+  // #1060: `member` is the canonical scheme-prefixed address; default
+  // it from `agentAddress` so the fixture stays terse but per-test
+  // overrides still win.
+  return {
+    ...base,
+    member: overrides.member ?? `agent://${base.agentAddress}`,
   };
 }
 

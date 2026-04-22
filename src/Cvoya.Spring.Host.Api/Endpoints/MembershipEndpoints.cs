@@ -195,6 +195,13 @@ public static class MembershipEndpoints
         new(
             m.UnitId,
             m.AgentAddress,
+            // #1060: scheme-prefixed canonical address of the member. The
+            // server only persists agent-scheme rows in unit_memberships
+            // (sub-unit members live on the actor and surface via /members),
+            // so this is always agent://{AgentAddress} here. Sharing the
+            // canonical-uri builder with the rest of the codebase avoids
+            // string-concat drift.
+            Address.ForAgent(m.AgentAddress).ToCanonicalUri(),
             m.Model,
             m.Specialty,
             m.Enabled,

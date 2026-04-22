@@ -65,6 +65,54 @@ public class AddressTests
 
         $"from {address}".ShouldBe("from agent:engineering-team/ada");
     }
+
+    // #1060: ToCanonicalUri produces the scheme://path form used by wire
+    // projections (member field on UnitMembershipResponse, source column on
+    // activity / cost rows). Distinct from ToString, which uses ":" for
+    // log lines and error messages.
+    [Fact]
+    public void ToCanonicalUri_AgentScheme_ReturnsSchemeSlashSlashPath()
+    {
+        new Address("agent", "engineering-team/ada")
+            .ToCanonicalUri()
+            .ShouldBe("agent://engineering-team/ada");
+    }
+
+    [Fact]
+    public void ToCanonicalUri_UnitScheme_ReturnsSchemeSlashSlashPath()
+    {
+        new Address("unit", "engineering-team")
+            .ToCanonicalUri()
+            .ShouldBe("unit://engineering-team");
+    }
+
+    [Fact]
+    public void ToCanonicalUri_RoundTripsThroughForAgent()
+    {
+        Address.ForAgent("ada").ToCanonicalUri().ShouldBe("agent://ada");
+    }
+
+    [Fact]
+    public void ToCanonicalUri_RoundTripsThroughForUnit()
+    {
+        Address.ForUnit("engineering").ToCanonicalUri().ShouldBe("unit://engineering");
+    }
+
+    [Fact]
+    public void ForAgent_PopulatesAgentScheme()
+    {
+        var address = Address.ForAgent("ada");
+        address.Scheme.ShouldBe("agent");
+        address.Path.ShouldBe("ada");
+    }
+
+    [Fact]
+    public void ForUnit_PopulatesUnitScheme()
+    {
+        var address = Address.ForUnit("engineering");
+        address.Scheme.ShouldBe("unit");
+        address.Path.ShouldBe("engineering");
+    }
 }
 
 public class MessageTests
