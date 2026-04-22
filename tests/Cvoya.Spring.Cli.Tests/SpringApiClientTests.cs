@@ -90,6 +90,62 @@ public class SpringApiClientTests
         handler.WasCalled.ShouldBeTrue();
     }
 
+    // #1000: `spring agent status <id> --output json` crashed when the server
+    // modelled the actor status payload as `JsonElement?`. The OpenAPI
+    // lowering produced an empty-schema oneOf that Kiota generated as a
+    // composed type with ambiguous discriminators; serialising it back out
+    // via OutputFormatter.FormatJson threw
+    // `System.InvalidOperationException: '}' is invalid following a property name`.
+    // Switching the wire type to `string?` (same convention as
+    // CreateAgentRequest.DefinitionJson) keeps the client flat — this test
+    // locks the round-trip for that shape.
+    [Fact]
+    public async Task GetAgentStatusAsync_RoundTripsThroughFormatJson()
+    {
+        var responseBody = """
+        {
+          "agent": {
+            "id": "agent-id",
+            "name": "ada",
+            "displayName": "Ada",
+            "description": "",
+            "role": null,
+            "registeredAt": "2026-04-01T00:00:00Z",
+            "model": null,
+            "specialty": null,
+            "enabled": true,
+            "executionMode": "Auto",
+            "parentUnit": "eng-team"
+          },
+          "status": "{\"Status\":\"Idle\",\"ActiveConversationId\":null,\"PendingConversationCount\":0}",
+          "deployment": null
+        }
+        """;
+
+        var handler = new MockHttpMessageHandler(
+            expectedPath: "/api/v1/agents/ada",
+            expectedMethod: HttpMethod.Get,
+            responseBody: responseBody);
+
+        var httpClient = new HttpClient(handler);
+        var client = new SpringApiClient(httpClient, BaseUrl);
+
+        var result = await client.GetAgentStatusAsync("ada", TestContext.Current.CancellationToken);
+
+        result.Agent!.Name.ShouldBe("ada");
+        result.Status.ShouldNotBeNullOrEmpty();
+        // The status field is a JSON document serialised as a string — callers
+        // that want to read it re-parse with JsonDocument.Parse.
+        using var statusDoc = System.Text.Json.JsonDocument.Parse(result.Status!);
+        statusDoc.RootElement.GetProperty("Status").GetString().ShouldBe("Idle");
+
+        // The --output json code path (OutputFormatter.FormatJson) must not
+        // throw — that's the regression #1000 tracked.
+        var formatted = Cvoya.Spring.Cli.Output.OutputFormatter.FormatJson(result);
+        formatted.ShouldContain("\"status\":");
+        handler.WasCalled.ShouldBeTrue();
+    }
+
     [Fact]
     public async Task DeleteAgentAsync_CallsCorrectEndpoint()
     {

@@ -84,9 +84,19 @@ public record UpdateAgentMetadataRequest(
 /// in <c>PersistentAgentRegistry</c> (#396); <c>null</c> for ephemeral agents
 /// or persistent agents that have been undeployed.
 /// </summary>
+/// <param name="Status">
+/// The actor's runtime status payload, serialised as a JSON string. Using a
+/// string on the wire keeps the Kiota-generated client surface flat — the
+/// equivalent <see cref="JsonElement"/> shape lowers to an empty-schema
+/// <c>oneOf</c> in OpenAPI and trips Kiota's composed-type serialiser (issue
+/// #1000). The CLI's <c>agent status</c> verb currently reads only
+/// <c>Agent.*</c> and <c>Deployment.*</c> columns; consumers that need the
+/// actor status can <c>JsonDocument.Parse(Status)</c>. Mirrors the same
+/// convention used for <see cref="CreateAgentRequest.DefinitionJson"/>.
+/// </param>
 public record AgentDetailResponse(
     AgentResponse Agent,
-    JsonElement? Status,
+    string? Status,
     PersistentAgentDeploymentResponse? Deployment = null);
 
 /// <summary>

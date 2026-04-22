@@ -503,7 +503,15 @@ public static class AgentEndpoints
             return Results.Ok(new AgentDetailResponse(agentResponse, null, deployment));
         }
 
-        return Results.Ok(new AgentDetailResponse(agentResponse, result.Value?.Payload, deployment));
+        // #1000: serialise the actor's opaque status payload as a JSON string on the
+        // wire so the Kiota client sees a flat `string?` rather than the empty-schema
+        // oneOf that Kiota cannot round-trip. JsonElement.ValueKind == Undefined means
+        // "no payload"; treat that the same as null to avoid emitting the literal "null".
+        var statusJson = result.Value?.Payload is JsonElement status && status.ValueKind != JsonValueKind.Undefined
+            ? status.GetRawText()
+            : null;
+
+        return Results.Ok(new AgentDetailResponse(agentResponse, statusJson, deployment));
     }
 
     private static async Task<IResult> UpdateAgentMetadataAsync(

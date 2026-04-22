@@ -227,6 +227,43 @@ public class MembershipEndpointTests : IClassFixture<CustomWebApplicationFactory
         detail!.Agent.ParentUnit.ShouldBe("engineering");
     }
 
+    // #1000: the actor-status payload rides the wire as a JSON string (not a
+    // JSON object), matching CreateAgentRequest.DefinitionJson's convention.
+    // The Kiota-generated client cannot round-trip the prior JsonElement?
+    // shape because OpenAPI lowers JsonElement to an empty-schema oneOf,
+    // producing an ambiguous composed type. Lock the wire contract so any
+    // regression here fails the API test suite before reaching the CLI.
+    [Fact]
+    public async Task GetAgent_StatusField_IsStringOrNullOnTheWire()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        ClearMemberships();
+        ArrangeDirectoryHit("agent", "ada", "actor-ada");
+        var agentProxy = Substitute.For<Cvoya.Spring.Dapr.Actors.IAgentActor>();
+        agentProxy.GetMetadataAsync(Arg.Any<CancellationToken>())
+            .Returns(new AgentMetadata());
+        _factory.ActorProxyFactory
+            .CreateActorProxy<Cvoya.Spring.Dapr.Actors.IAgentActor>(
+                Arg.Is<global::Dapr.Actors.ActorId>(a => a.GetId() == "actor-ada"),
+                Arg.Any<string>())
+            .Returns(agentProxy);
+
+        await UpsertAsync("engineering", "ada");
+
+        var response = await _client.GetAsync("/api/v1/agents/ada", ct);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        var raw = await response.Content.ReadAsStringAsync(ct);
+        using var doc = System.Text.Json.JsonDocument.Parse(raw);
+        var statusKind = doc.RootElement.GetProperty("status").ValueKind;
+        // Must be Null (no actor response routed through the stub) or String
+        // (actor responded) — never a nested object or array. Kiota cannot
+        // round-trip the object shape, which is what #1000 tripped on.
+        statusKind.ShouldBeOneOf(
+            System.Text.Json.JsonValueKind.Null,
+            System.Text.Json.JsonValueKind.String);
+    }
+
     [Fact]
     public async Task ListAgentMemberships_SurfacesIsPrimaryFlag()
     {
