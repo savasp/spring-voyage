@@ -182,6 +182,67 @@ public class UnitHumansEndpointsTests : IClassFixture<CustomWebApplicationFactor
                 Arg.Any<CancellationToken>());
     }
 
+    [Fact]
+    public async Task SetHumanPermission_UnitDoesNotExist_Returns404()
+    {
+        // #1029: the existence check must run ahead of the permission gate
+        // on the /humans sub-routes, the same way it does on /policy. A
+        // missing unit is 404 even when the caller has no grant, otherwise
+        // the endpoint leaks "unit exists" vs "unit is forbidden" the way
+        // the original declarative RequireAuthorization gate did.
+        var ct = TestContext.Current.CancellationToken;
+        var unitName = NewUnitName();
+        ArrangeNotFound(unitName);
+
+        _factory.PermissionService
+            .ResolveEffectivePermissionAsync(
+                AuthConstants.DefaultLocalUserId, unitName, Arg.Any<CancellationToken>())
+            .Returns((PermissionLevel?)null);
+
+        var response = await _client.PatchAsJsonAsync(
+            $"/api/v1/units/{unitName}/humans/alice/permissions",
+            new SetHumanPermissionRequest("Operator"),
+            ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task GetHumanPermissions_UnitDoesNotExist_Returns404()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var unitName = NewUnitName();
+        ArrangeNotFound(unitName);
+
+        _factory.PermissionService
+            .ResolveEffectivePermissionAsync(
+                AuthConstants.DefaultLocalUserId, unitName, Arg.Any<CancellationToken>())
+            .Returns((PermissionLevel?)null);
+
+        var response = await _client.GetAsync(
+            $"/api/v1/units/{unitName}/humans", ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task RemoveHumanPermission_UnitDoesNotExist_Returns404()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var unitName = NewUnitName();
+        ArrangeNotFound(unitName);
+
+        _factory.PermissionService
+            .ResolveEffectivePermissionAsync(
+                AuthConstants.DefaultLocalUserId, unitName, Arg.Any<CancellationToken>())
+            .Returns((PermissionLevel?)null);
+
+        var response = await _client.DeleteAsync(
+            $"/api/v1/units/{unitName}/humans/alice/permissions", ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+    }
+
     private static string NewUnitName() => $"humans-test-{Guid.NewGuid():N}";
 
     private void ArrangeResolved(string unitName)
@@ -197,6 +258,15 @@ public class UnitHumansEndpointsTests : IClassFixture<CustomWebApplicationFactor
                 "Test unit",
                 null,
                 DateTimeOffset.UtcNow));
+    }
+
+    private void ArrangeNotFound(string unitName)
+    {
+        _factory.DirectoryService
+            .ResolveAsync(
+                Arg.Is<Address>(a => a.Scheme == "unit" && a.Path == unitName),
+                Arg.Any<CancellationToken>())
+            .Returns((DirectoryEntry?)null);
     }
 
     private void ArrangePermission(string unitName, string humanId, PermissionLevel level)
