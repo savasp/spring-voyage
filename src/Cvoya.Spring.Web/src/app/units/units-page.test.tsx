@@ -22,7 +22,11 @@ vi.mock("next/navigation", async () => {
       push: vi.fn(),
       replace: (url: string) => {
         replaceMock(url);
-        const qs = url.startsWith("?") ? url.slice(1) : "";
+        // Accept both `?foo=bar` and `/path?foo=bar` — the route now passes
+        // the pathname alongside the query (#1039) because Next.js 16's
+        // `router.replace("?…")` dropped the canonical-URL update.
+        const qIdx = url.indexOf("?");
+        const qs = qIdx >= 0 ? url.slice(qIdx + 1) : "";
         currentSearchParams = new URLSearchParams(qs);
         subscribers.forEach((fn) => fn());
       },

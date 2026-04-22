@@ -8,10 +8,15 @@ using System.Globalization;
 using Cvoya.Spring.Core.Directory;
 using Cvoya.Spring.Core.Tenancy;
 using Cvoya.Spring.Core.Units;
+using Cvoya.Spring.Dapr.Actors;
 using Cvoya.Spring.Host.Api.Models;
+
+using global::Dapr.Actors;
+using global::Dapr.Actors.Client;
 
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 
 /// <summary>
 /// Maps the tenant-tree API surface introduced in SVR-tenant-tree (plan
@@ -51,8 +56,11 @@ public static class TenantTreeEndpoints
         [FromServices] IDirectoryService directoryService,
         [FromServices] IUnitMembershipRepository memberships,
         [FromServices] ITenantContext tenantContext,
+        [FromServices] IActorProxyFactory actorProxyFactory,
+        [FromServices] ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
+        var logger = loggerFactory.CreateLogger("Cvoya.Spring.Host.Api.Endpoints.TenantTreeEndpoints");
         var tenantId = tenantContext.CurrentTenantId;
         var entries = await directoryService.ListAllAsync(cancellationToken);
 
@@ -81,8 +89,22 @@ public static class TenantTreeEndpoints
             .GroupBy(m => m.UnitId, StringComparer.Ordinal)
             .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.Ordinal);
 
+        // #1032: look up the real lifecycle status for each unit via its
+        // actor. Previously every unit was pinned to "running", which left
+        // operators looking at a green dot and the badge text "Running"
+        // even for Draft units that can't accept dispatches. Dashboard
+        // endpoints already pay this per-unit actor round-trip (see
+        // DashboardEndpoints.GetUnitsSummaryAsync) and the cache-control
+        // window on this endpoint (15s) absorbs the fanout.
+        var unitStatuses = new Dictionary<string, UnitStatus>(StringComparer.Ordinal);
+        foreach (var unit in unitEntries)
+        {
+            unitStatuses[unit.Address.Path] =
+                await TryGetUnitStatusAsync(actorProxyFactory, unit.ActorId, logger, unit.Address.Path, cancellationToken);
+        }
+
         var unitNodes = unitEntries
-            .Select(u => BuildUnitNode(u, membershipsByUnit, agentEntries, primaryByAgent))
+            .Select(u => BuildUnitNode(u, unitStatuses, membershipsByUnit, agentEntries, primaryByAgent))
             .ToList();
 
         var tenantNode = new TenantTreeNode(
@@ -100,6 +122,7 @@ public static class TenantTreeEndpoints
 
     private static TenantTreeNode BuildUnitNode(
         DirectoryEntry unit,
+        IReadOnlyDictionary<string, UnitStatus> unitStatuses,
         IReadOnlyDictionary<string, List<UnitMembership>> membershipsByUnit,
         IReadOnlyDictionary<string, DirectoryEntry> agentEntries,
         IReadOnlyDictionary<string, string> primaryByAgent)
@@ -116,14 +139,65 @@ public static class TenantTreeEndpoints
             .Cast<TenantTreeNode>()
             .ToList();
 
+        var status = unitStatuses.TryGetValue(unitPath, out var persisted)
+            ? persisted
+            : UnitStatus.Draft;
+
         return new TenantTreeNode(
             Id: unitPath,
             Name: string.IsNullOrWhiteSpace(unit.DisplayName) ? unitPath : unit.DisplayName,
             Kind: "Unit",
-            Status: "running",
+            Status: ToWireStatus(status),
             Desc: string.IsNullOrWhiteSpace(unit.Description) ? null : unit.Description,
             Children: agentNodes);
     }
+
+    /// <summary>
+    /// Read a unit's persisted status from its actor. Mirrors the fallback
+    /// policy in <see cref="DashboardEndpoints.GetUnitsSummaryAsync"/>: a
+    /// missing or unreachable actor collapses to <see cref="UnitStatus.Draft"/>
+    /// so the tree still renders rather than failing the whole fetch.
+    /// </summary>
+    private static async Task<UnitStatus> TryGetUnitStatusAsync(
+        IActorProxyFactory actorProxyFactory,
+        string actorId,
+        ILogger logger,
+        string unitPath,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var proxy = actorProxyFactory.CreateActorProxy<IUnitActor>(
+                new ActorId(actorId), nameof(UnitActor));
+            return await proxy.GetStatusAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex,
+                "Failed to read persisted status for unit {UnitPath}; reporting Draft in tenant tree.",
+                unitPath);
+            return UnitStatus.Draft;
+        }
+    }
+
+    /// <summary>
+    /// Maps the <see cref="UnitStatus"/> lifecycle enum to the lowercase
+    /// wire vocabulary consumed by <c>src/lib/api/validate-tenant-tree.ts</c>
+    /// on the portal. Kept next to the unit-node builder so a new enum
+    /// value fails the wire-status switch fast instead of silently leaking
+    /// into the tree as <c>stopped</c>.
+    /// </summary>
+    private static string ToWireStatus(UnitStatus status) => status switch
+    {
+        UnitStatus.Draft => "draft",
+        UnitStatus.Stopped => "stopped",
+        UnitStatus.Starting => "starting",
+        UnitStatus.Running => "running",
+        UnitStatus.Stopping => "stopping",
+        UnitStatus.Error => "error",
+        UnitStatus.Validating => "validating",
+        _ => "stopped",
+    };
 
     private static TenantTreeNode? BuildAgentNode(
         UnitMembership membership,

@@ -11,7 +11,11 @@ using System.Text.Json.Serialization;
 using Cvoya.Spring.Core.Directory;
 using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Core.Units;
+using Cvoya.Spring.Dapr.Actors;
 using Cvoya.Spring.Host.Api.Models;
+
+using global::Dapr.Actors;
+using global::Dapr.Actors.Client;
 
 using Microsoft.Extensions.DependencyInjection;
 
@@ -135,6 +139,52 @@ public class TenantTreeEndpointTests : IClassFixture<CustomWebApplicationFactory
     }
 
     [Fact]
+    public async Task GetTenantTree_EmitsUnitStatusFromActor_NotHardcodedRunning()
+    {
+        // #1032: the endpoint previously pinned every unit to "running"
+        // regardless of actor state, which showed a green "Running" badge
+        // on Draft units. The wire status must reflect what the actor
+        // persisted — mapped to the lowercase vocabulary the portal
+        // validator speaks.
+        var ct = TestContext.Current.CancellationToken;
+        ClearMemberships();
+        ArrangeDirectoryEntries(
+            units:
+            [
+                ("draft-unit", "Draft Unit"),
+                ("running-unit", "Running Unit"),
+                ("error-unit", "Error Unit"),
+            ]);
+
+        ArrangeUnitStatus("actor-draft-unit", UnitStatus.Draft);
+        ArrangeUnitStatus("actor-running-unit", UnitStatus.Running);
+        ArrangeUnitStatus("actor-error-unit", UnitStatus.Error);
+
+        var body = await FetchTreeAsync(ct);
+        var tenant = body!.Tree;
+
+        tenant.Children!.Single(u => u.Id == "draft-unit").Status.ShouldBe("draft");
+        tenant.Children!.Single(u => u.Id == "running-unit").Status.ShouldBe("running");
+        tenant.Children!.Single(u => u.Id == "error-unit").Status.ShouldBe("error");
+    }
+
+    [Fact]
+    public async Task GetTenantTree_UnreachableUnitActor_FallsBackToDraft()
+    {
+        // A unit's actor can be transiently unreachable (fresh
+        // registration, Dapr sidecar restart). The endpoint must still
+        // render the tree — Draft is the safest fallback (matches the
+        // policy shared with DashboardEndpoints).
+        var ct = TestContext.Current.CancellationToken;
+        ClearMemberships();
+        ArrangeDirectoryEntries(units: [("flaky", "Flaky Unit")]);
+        ArrangeUnitStatusThrows("actor-flaky");
+
+        var body = await FetchTreeAsync(ct);
+        body!.Tree.Children!.Single(u => u.Id == "flaky").Status.ShouldBe("draft");
+    }
+
+    [Fact]
     public async Task GetTenantTree_SurfacesAgentRoleFromDirectoryEntry()
     {
         var ct = TestContext.Current.CancellationToken;
@@ -200,6 +250,29 @@ public class TenantTreeEndpointTests : IClassFixture<CustomWebApplicationFactory
         _factory.DirectoryService
             .ListAllAsync(Arg.Any<CancellationToken>())
             .Returns(list);
+    }
+
+    private void ArrangeUnitStatus(string actorId, UnitStatus status)
+    {
+        var proxy = Substitute.For<IUnitActor>();
+        proxy.GetStatusAsync(Arg.Any<CancellationToken>()).Returns(status);
+        _factory.ActorProxyFactory
+            .CreateActorProxy<IUnitActor>(
+                Arg.Is<ActorId>(a => a.GetId() == actorId),
+                Arg.Any<string>())
+            .Returns(proxy);
+    }
+
+    private void ArrangeUnitStatusThrows(string actorId)
+    {
+        var proxy = Substitute.For<IUnitActor>();
+        proxy.GetStatusAsync(Arg.Any<CancellationToken>())
+            .Returns<Task<UnitStatus>>(_ => throw new InvalidOperationException("actor unreachable"));
+        _factory.ActorProxyFactory
+            .CreateActorProxy<IUnitActor>(
+                Arg.Is<ActorId>(a => a.GetId() == actorId),
+                Arg.Any<string>())
+            .Returns(proxy);
     }
 
     private async Task UpsertMembershipAsync(string unitId, string agentAddress, bool enabled = true)

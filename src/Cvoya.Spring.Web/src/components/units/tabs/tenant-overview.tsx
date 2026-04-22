@@ -24,11 +24,16 @@ function mapStatus(status: string): string {
       return "Running";
     case "starting":
       return "Starting";
+    case "stopping":
+      return "Stopping";
+    case "validating":
+      return "Validating";
     case "paused":
     case "stopped":
       return "Stopped";
     case "error":
       return "Error";
+    case "draft":
     default:
       return "Draft";
   }
