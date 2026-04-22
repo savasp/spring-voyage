@@ -275,10 +275,12 @@ The route writes both via `router.replace(?${qs}, { scroll: false })` so deep-li
 
 ### 7.2 Shape
 
+A small page header bar above the two-pane grid hosts the primary **New unit** CTA (mirrors the dashboard's `dashboard-new-unit` button styling); the Explorer fills the remaining viewport height.
+
 Two panes in a `grid-cols-[280px_minmax(0,1fr)]`:
 
 - **Left** — a search input (`aria-label="Search units & agents"`, filter wiring follows in v2.1) above a scrollable `<UnitTree>`.
-- **Right** — a `<DetailPane>` with breadcrumb + status dot + kind icon + title + status badge, the per-kind tab strip (visible tabs + an optional separator-prefixed overflow strip), and a `role="tabpanel"` body that renders the registered tab component (or a `<TabPlaceholder>` fallback).
+- **Right** — a `<DetailPane>` with breadcrumb + status dot + kind icon + title + status badge, the per-kind tab strip (visible tabs + an optional separator-prefixed overflow strip), and a `role="tabpanel"` body that renders the registered tab component (or a `<TabPlaceholder>` fallback). An icon-only **Copy address** button sits inline with the breadcrumb (mirrors the dashboard's `dashboard-copy-address` swap-to-`Check` pattern); it copies the canonical address of the active selection — `tenant://…`, `unit://…`, or `agent://…` — so a Cmd-K teleport, tree click, or deep-link all keep the copy target in sync.
 
 ### 7.3 ARIA contract
 
