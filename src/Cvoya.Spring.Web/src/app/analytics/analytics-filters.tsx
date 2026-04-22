@@ -19,7 +19,7 @@
 // with the brand hue so the applied filter set is legible from the
 // page's header strip.
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useMemo } from "react";
 
 import { cn } from "@/lib/utils";
@@ -109,6 +109,7 @@ export function useAnalyticsFilters(): AnalyticsFilters & {
   setScope: (s: AnalyticsScope) => void;
 } {
   const router = useRouter();
+  const pathname = usePathname();
   const params = useSearchParams();
 
   const windowValue = parseWindow(params.get("window"));
@@ -134,9 +135,14 @@ export function useAnalyticsFilters(): AnalyticsFilters & {
         next.set("name", nextScope.name);
       }
       const qs = next.toString();
-      router.replace(qs ? `?${qs}` : "?", { scroll: false });
+      // #1039 / #1053: Next.js 16 drops the canonical-URL update for
+      // bare `router.replace("?…")` calls — `replaceState` commits the
+      // stale query and the controlled `windowValue` / `scope` derived
+      // from `useSearchParams()` snap back. Pass the full pathname so
+      // the navigation sticks.
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
     },
-    [params, router, scope, windowValue],
+    [params, pathname, router, scope, windowValue],
   );
 
   return {

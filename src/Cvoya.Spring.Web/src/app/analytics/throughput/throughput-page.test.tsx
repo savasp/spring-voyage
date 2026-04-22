@@ -27,6 +27,9 @@ vi.mock("@/lib/api/client", () => ({
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
+  // #1053: `useAnalyticsFilters` now reads `usePathname()` so it can
+  // pass a `/path?query` URL to `router.replace`.
+  usePathname: () => "/analytics/throughput",
   useSearchParams: () => new URLSearchParams(""),
 }));
 
