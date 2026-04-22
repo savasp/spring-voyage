@@ -205,6 +205,21 @@ describe("UnitsPage — Explorer route (EXP-route)", () => {
     expect(replaceMock.mock.calls.at(-1)?.[0]).toMatch(/node=engineering/);
   });
 
+  it("renders a 'New unit' link in the page header pointing to /units/create (#1069)", async () => {
+    useTenantTreeMock.mockReturnValue({
+      data: sampleTree,
+      isLoading: false,
+      isError: false,
+    });
+    render(wrap(<UnitsPage />));
+    await screen.findByTestId("unit-explorer");
+
+    const link = screen.getByTestId("units-page-new-unit");
+    expect(link).toBeInTheDocument();
+    expect(link).toHaveAttribute("href", "/units/create");
+    expect(link).toHaveTextContent(/new unit/i);
+  });
+
   it("writes node+tab to the URL when a tab is clicked", async () => {
     useTenantTreeMock.mockReturnValue({
       data: sampleTree,

@@ -1,12 +1,13 @@
 "use client";
 
-import { Bot, ChevronRight, Globe, Layers } from "lucide-react";
+import { Bot, Check, ChevronRight, Copy, Globe, Layers } from "lucide-react";
 import {
   createElement,
   type KeyboardEvent,
   useCallback,
   useEffect,
   useId,
+  useState,
 } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -101,7 +102,10 @@ export function DetailPane({
       className="flex h-full flex-col overflow-hidden bg-background"
     >
       <header className="border-b border-border px-6 pb-3 pt-4">
-        <Breadcrumb path={path} onSelect={onSelectNode} />
+        <div className="flex items-center gap-2">
+          <Breadcrumb path={path} onSelect={onSelectNode} />
+          <CopyAddressButton address={addressFor(node)} />
+        </div>
         <div className="mt-2 flex items-center gap-3">
           <span
             aria-hidden="true"
@@ -171,6 +175,71 @@ export function DetailPane({
         )}
       </div>
     </section>
+  );
+}
+
+/**
+ * Canonical address for a tree node — what gets copied to the clipboard
+ * by `<CopyAddressButton>` and what the backend matches against (#1070).
+ *
+ * The synthesized tenant root already ships an id of the form
+ * `tenant://<id>` (see `validate-tenant-tree.test.ts` and the wire shape
+ * documented in `aggregate.ts`); units and agents land bare. Treat any
+ * id that already carries a known scheme prefix as canonical so a future
+ * server-side reshape that pushes prefixes onto every kind doesn't
+ * double-prefix here.
+ */
+export function addressFor(node: TreeNode): string {
+  const id = node.id;
+  const SCHEMES = ["tenant://", "unit://", "agent://"];
+  if (SCHEMES.some((s) => id.startsWith(s))) return id;
+  switch (node.kind) {
+    case "Tenant":
+      return `tenant://${id}`;
+    case "Unit":
+      return `unit://${id}`;
+    case "Agent":
+      return `agent://${id}`;
+  }
+}
+
+/**
+ * Icon-only "copy address" button mirroring the dashboard pattern
+ * (`app/page.tsx` `dashboard-copy-address`): swap to a check glyph for
+ * ~1.5 s on success, swallow clipboard failures (insecure context /
+ * permission denied) since the surface has no toast bus to dispatch to.
+ *
+ * Lives in the breadcrumb row so the address tracks the active selection
+ * — Cmd-K teleport, tree click, breadcrumb click, deep-link all keep
+ * the copy target in sync without an extra hand-wired ref.
+ */
+function CopyAddressButton({ address }: { address: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(address);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard can fail on insecure origins or when the user denies
+      // permission. Silent — same posture as `<DashboardHeader>`.
+    }
+  };
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      aria-label={copied ? "Address copied" : `Copy address ${address}`}
+      title={address}
+      data-testid="detail-copy-address"
+      className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      {copied ? (
+        <Check className="h-3.5 w-3.5" aria-hidden="true" />
+      ) : (
+        <Copy className="h-3.5 w-3.5" aria-hidden="true" />
+      )}
+    </button>
   );
 }
 

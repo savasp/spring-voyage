@@ -11,7 +11,8 @@
 // content the EXP-tab-unit-* issues are migrating into the Explorer.
 
 import { Suspense } from "react";
-import { AlertCircle, Loader2 } from "lucide-react";
+import Link from "next/link";
+import { AlertCircle, Loader2, Plus } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { Card, CardContent } from "@/components/ui/card";
@@ -96,16 +97,51 @@ function UnitExplorerRoute() {
   return (
     <div
       data-testid="unit-explorer-route"
-      className="h-[calc(100vh-6rem)] min-h-[480px]"
+      // The page header below the layout chrome consumes ~2.5rem; subtract
+      // it from the viewport-anchored height so the explorer keeps its
+      // full-bleed feel without scrolling the outer surface.
+      className="flex h-[calc(100vh-6rem)] min-h-[480px] flex-col gap-3"
     >
-      <UnitExplorer
-        tree={tree}
-        selectedId={selectedId}
-        onSelectNode={(id) => writeUrl({ node: id })}
-        tab={tab ?? undefined}
-        onTabChange={(id, nextTab) => writeUrl({ node: id, tab: nextTab })}
-      />
+      <UnitsPageHeader />
+      <div className="min-h-0 flex-1">
+        <UnitExplorer
+          tree={tree}
+          selectedId={selectedId}
+          onSelectNode={(id) => writeUrl({ node: id })}
+          tab={tab ?? undefined}
+          onTabChange={(id, nextTab) => writeUrl({ node: id, tab: nextTab })}
+        />
+      </div>
     </div>
+  );
+}
+
+/**
+ * Header bar above the Explorer surface — currently a single primary
+ * "New unit" CTA that mirrors the dashboard's button (#1069). Kept inline
+ * rather than extracted into a shared component because the two call
+ * sites would still differ on layout (the dashboard pairs it with a
+ * "Copy address" button + sub-caption); duplicating the className keeps
+ * the intent local without inventing a one-prop wrapper.
+ *
+ * No heading element — `<DetailPane>` ships the page's only `<h1>` (the
+ * selected node's name), and DESIGN.md §14 caps each page at one `<h1>`.
+ */
+function UnitsPageHeader() {
+  return (
+    <header
+      data-testid="units-page-header"
+      className="flex shrink-0 items-center justify-end"
+    >
+      <Link
+        href="/units/create"
+        className="inline-flex h-8 items-center justify-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        data-testid="units-page-new-unit"
+      >
+        <Plus className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+        New unit
+      </Link>
+    </header>
   );
 }
 
