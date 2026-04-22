@@ -24,6 +24,7 @@ using Xunit;
 /// integration is owned by the existing <c>SpringApiClientTests</c> (the
 /// Kiota-wrapper layer that <c>RevalidateUnitAsync</c> goes through).
 /// </summary>
+[Collection(ConsoleRedirectionCollection.Name)]
 public class UnitRevalidateCommandTests
 {
     private static Option<string> CreateOutputOption()

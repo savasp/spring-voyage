@@ -17,6 +17,7 @@ using Shouldly;
 
 using Xunit;
 
+[Collection(ConsoleRedirectionCollection.Name)]
 public class GitHubAppCommandTests
 {
     [Fact]

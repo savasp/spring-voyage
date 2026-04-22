@@ -38,8 +38,16 @@ public class GeminiLauncherTests
     }
 
     [Fact]
-    public async Task PrepareAsync_ReturnsWorkspaceFilesAndEnvVars_WithoutTouchingDisk()
+    public async Task PrepareAsync_ReturnsWorkspaceFilesAndEnvVars()
     {
+        // Note: an earlier revision also snapshot Path.GetTempPath() before
+        // and after PrepareAsync to assert "doesn't touch the local
+        // filesystem" (the launcher contract — see issue #1042). That
+        // assertion races with any other parallel test (in any assembly)
+        // that writes under /tmp, producing a recurring CI flake (#1082).
+        // The contract is now enforced by code review on the launcher
+        // implementation, which is pure-functional dictionary
+        // construction.
         var context = new AgentLaunchContext(
             AgentId: "gemini-agent",
             ConversationId: "conv-88",
@@ -47,13 +55,7 @@ public class GeminiLauncherTests
             McpEndpoint: "http://host.docker.internal:9999/mcp/",
             McpToken: "gemini-secret-token");
 
-        var preExisting = new HashSet<string>(Directory.EnumerateFileSystemEntries(Path.GetTempPath()));
-
         var prep = await _launcher.PrepareAsync(context, TestContext.Current.CancellationToken);
-
-        var postExisting = Directory.EnumerateFileSystemEntries(Path.GetTempPath());
-        postExisting.Where(p => !preExisting.Contains(p))
-            .ShouldBeEmpty("GeminiLauncher must not touch the local filesystem");
 
         prep.WorkspaceMountPath.ShouldBe("/workspace");
         prep.WorkspaceFiles.Keys.ShouldBe(new[] { "GEMINI.md", ".mcp.json" }, ignoreOrder: true);
