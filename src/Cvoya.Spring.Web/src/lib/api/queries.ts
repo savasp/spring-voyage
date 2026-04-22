@@ -253,9 +253,9 @@ export function useUnitOrchestration(
  * Read a unit's persisted execution defaults (#601 / #603 / #409
  * B-wide, backend PR #628). The endpoint always returns the empty shape
  * (every field null) when the unit has never had an execution block
- * persisted, so callers never branch on 404 vs unset. The Execution tab
- * on `/units/[id]` and the agent-side "inherited from unit" indicator
- * both ride this hook.
+ * persisted, so callers never branch on 404 vs unset. The Explorer's
+ * Execution tab and the agent-side "inherited from unit" indicator both
+ * ride this hook.
  */
 export function useUnitExecution(
   id: string,
@@ -293,10 +293,10 @@ export function useAgentExecution(
 
 /**
  * Read a single unit's wire envelope (name, displayName, status, model, …)
- * from `GET /api/v1/units/{id}`. The detail page at `/units/[name]` rides
- * this hook; scaffolded as part of T-06 (#948) so the forthcoming
- * Validation panel (T-07) has a ready home plus live cache invalidation
- * from `useActivityStream`.
+ * from `GET /api/v1/units/{id}`. The Explorer's detail pane and the
+ * Create-unit wizard's Finalize step both ride this hook so the
+ * Validation panel sees live cache invalidation from
+ * `useActivityStream`.
  */
 export function useUnit(
   id: string,

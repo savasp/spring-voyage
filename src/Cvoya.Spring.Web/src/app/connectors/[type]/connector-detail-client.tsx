@@ -217,7 +217,7 @@ function ConnectorDetailBody({
                 </div>
                 <Badge variant="outline">bound</Badge>
                 <Link
-                  href={`/units/${encodeURIComponent(b.unitId)}`}
+                  href={`/units?node=${encodeURIComponent(b.unitId)}&tab=Overview`}
                   className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
                   aria-label={`Open ${b.unitDisplayName} unit detail`}
                 >
