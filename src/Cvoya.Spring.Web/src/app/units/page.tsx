@@ -12,7 +12,7 @@
 
 import { Suspense } from "react";
 import { AlertCircle, Loader2 } from "lucide-react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { UnitExplorer } from "@/components/units/unit-explorer";
@@ -30,6 +30,7 @@ import "@/components/units/tabs/register-all";
 
 function UnitExplorerRoute() {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
 
   const selectedId = searchParams.get("node") ?? undefined;
@@ -83,7 +84,13 @@ function UnitExplorerRoute() {
     if (next.node !== undefined) params.set("node", next.node);
     if (next.tab !== undefined) params.set("tab", next.tab);
     const qs = params.toString();
-    router.replace(qs ? `?${qs}` : "?", { scroll: false });
+    // #1039: Next.js 16's `router.replace("?foo=bar")` with a bare
+    // query-only relative URL doesn't update the canonical URL — the
+    // reconciler's `replaceState` call fires with the stale query, so
+    // the URL (and controlled `tab`/`node` props derived from it) snap
+    // back to the prior value the moment React commits. Passing the
+    // full pathname alongside the query restores the intended navigation.
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   };
 
   return (

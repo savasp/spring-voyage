@@ -344,11 +344,14 @@ function statusDotClass(status: NodeStatus): string {
     case "running":
       return "bg-success";
     case "starting":
+    case "stopping":
+    case "validating":
       return "bg-warning";
     case "error":
       return "bg-destructive";
     case "paused":
       return "bg-warning/70";
+    case "draft":
     case "stopped":
     default:
       return "bg-debug";

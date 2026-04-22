@@ -22,12 +22,19 @@ import type {
 } from "./types";
 
 const NODE_KINDS = ["Tenant", "Unit", "Agent"] as const;
+// Mirrors the `NodeStatus` union in `@/components/units/aggregate`.
+// `draft`, `stopping`, and `validating` were added in #1032 when the
+// tenant-tree endpoint started emitting the unit's real lifecycle status
+// instead of pinning every node to `"running"`.
 const NODE_STATUSES = [
   "running",
   "starting",
   "paused",
   "stopped",
+  "stopping",
   "error",
+  "draft",
+  "validating",
 ] as const;
 
 type NodeKind = (typeof NODE_KINDS)[number];

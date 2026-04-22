@@ -5,7 +5,10 @@ export type NodeStatus =
   | "starting"
   | "paused"
   | "stopped"
-  | "error";
+  | "stopping"
+  | "error"
+  | "draft"
+  | "validating";
 
 interface BaseNode {
   /** Stable identifier — used as React `key`, URL `?node=`, and index key. */
@@ -83,10 +86,19 @@ export interface SubtreeAggregate {
   worst: NodeStatus;
 }
 
+// Severity ordering for the worst-status roll-up painted on collapsed
+// tree rows. `draft` is unconfigured (operator hasn't finished setup)
+// and `validating` / `stopping` are transitional — rank them between
+// `stopped` and `starting` so a subtree containing a Draft unit paints
+// stronger than a plain stopped subtree but doesn't outrank a node
+// that's actively transitioning / erroring.
 const STATUS_RANK: Record<NodeStatus, number> = {
-  error: 4,
-  starting: 3,
-  paused: 2,
+  error: 7,
+  starting: 6,
+  stopping: 5,
+  validating: 4,
+  paused: 3,
+  draft: 2,
   running: 1,
   stopped: 0,
 };
