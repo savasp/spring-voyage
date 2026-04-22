@@ -15,14 +15,12 @@ import type { UnitPolicyResponse } from "@/lib/api/types";
 // mocking keeps us off the network.
 const getUnitPolicy = vi.fn<(id: string) => Promise<UnitPolicyResponse>>();
 const setUnitPolicy =
-  vi.fn<
-    (id: string, p: UnitPolicyResponse | null) => Promise<UnitPolicyResponse>
-  >();
+  vi.fn<(id: string, p: UnitPolicyResponse) => Promise<UnitPolicyResponse>>();
 
 vi.mock("@/lib/api/client", () => ({
   api: {
     getUnitPolicy: (id: string) => getUnitPolicy(id),
-    setUnitPolicy: (id: string, p: UnitPolicyResponse | null) =>
+    setUnitPolicy: (id: string, p: UnitPolicyResponse) =>
       setUnitPolicy(id, p),
   },
 }));
