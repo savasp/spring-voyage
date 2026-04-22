@@ -1,7 +1,7 @@
 name: Release agent-base + sidecar
 
 # PR 3a of #1087 (#1095). Publishes three artifacts on tag push:
-#   - ghcr.io/cvoya/agent-base:<semver>      (OCI image, multi-arch)
+#   - ghcr.io/cvoya-com/agent-base:<semver>      (OCI image, multi-arch)
 #   - @cvoya/spring-voyage-agent-sidecar     (npm package)
 #   - GitHub Release with linux-amd64, linux-arm64, darwin-arm64 SEA binaries
 #
@@ -94,7 +94,7 @@ jobs:
     timeout-minutes: 30
     env:
       REGISTRY: ghcr.io
-      IMAGE_NAME: cvoya/agent-base
+      IMAGE_NAME: cvoya-com/agent-base
       RELEASE_VERSION: ${{ needs.resolve.outputs.version }}
     steps:
       - uses: actions/checkout@v6
