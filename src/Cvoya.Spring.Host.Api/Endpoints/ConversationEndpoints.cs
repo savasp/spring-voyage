@@ -124,13 +124,29 @@ public static class ConversationEndpoints
         if (!result.IsSuccess)
         {
             var error = result.Error!;
-            var statusCode = error.Code switch
+            return error.Code switch
             {
-                "ADDRESS_NOT_FOUND" => StatusCodes.Status404NotFound,
-                "PERMISSION_DENIED" => StatusCodes.Status403Forbidden,
-                _ => StatusCodes.Status502BadGateway,
+                "ADDRESS_NOT_FOUND" => Results.Problem(
+                    detail: error.Detail ?? error.Message,
+                    statusCode: StatusCodes.Status404NotFound),
+                "PERMISSION_DENIED" => Results.Problem(
+                    detail: error.Detail ?? error.Message,
+                    statusCode: StatusCodes.Status403Forbidden),
+                // #993: caller-side validation thrown by the destination
+                // actor surfaces as 400 with a stable `code` extension so
+                // clients can switch on it without parsing the message.
+                "CALLER_VALIDATION" => Results.Problem(
+                    title: "Bad Request",
+                    detail: error.Detail ?? error.Message,
+                    statusCode: StatusCodes.Status400BadRequest,
+                    extensions: new Dictionary<string, object?>
+                    {
+                        ["code"] = error.DetailCode,
+                    }),
+                _ => Results.Problem(
+                    detail: error.Message,
+                    statusCode: StatusCodes.Status502BadGateway),
             };
-            return Results.Problem(detail: error.Message, statusCode: statusCode);
         }
 
         return Results.Ok(new ConversationMessageResponse(messageId, id, result.Value?.Payload));

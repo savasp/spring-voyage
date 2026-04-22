@@ -57,7 +57,9 @@ public class HumanActor(
                 MessageType.StatusQuery => await HandleStatusQueryAsync(message, cancellationToken),
                 MessageType.HealthCheck => HandleHealthCheck(message),
                 MessageType.Domain => await HandleDomainMessageAsync(message, cancellationToken),
-                _ => throw new SpringException($"Unknown message type: {message.Type}")
+                _ => throw new CallerValidationException(
+                    CallerValidationCodes.UnknownMessageType,
+                    $"Unknown message type: {message.Type}")
             };
         }
         catch (Exception ex) when (ex is not SpringException)

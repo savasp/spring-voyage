@@ -124,6 +124,31 @@ public class MessageRouter(
             var response = await proxy.ReceiveAsync(message, cancellationToken);
             return Result<Message?, RoutingError>.Success(response);
         }
+        catch (CallerValidationException ex)
+        {
+            // In-process path (tests + cloud-hosted overlay that wires a
+            // non-Dapr proxy): the original exception type arrives intact.
+            // #993: classify as 400-worthy, not 502.
+            _logger.LogInformation(
+                "Caller-side validation failed for {Scheme}://{Path} (actor {ActorId}): {Code} — {Detail}",
+                message.To.Scheme, message.To.Path, actorId, ex.Code, ex.Detail);
+            return Result<Message?, RoutingError>.Failure(
+                RoutingError.CallerValidation(message.To, ex.Code, ex.Detail));
+        }
+        catch (Exception ex) when (CallerValidationException.TryParseMessage(ex.Message, out var code, out var detail))
+        {
+            // Cross-remoting path: Dapr actor-remoting wraps the original
+            // exception in an ActorInvokeException and drops custom
+            // properties, but preserves the message string. We encoded the
+            // code into the message precisely so the classification
+            // survives that hop. See CallerValidationException for the
+            // wire-compat rationale.
+            _logger.LogInformation(
+                "Caller-side validation failed (remoted) for {Scheme}://{Path} (actor {ActorId}): {Code} — {Detail}",
+                message.To.Scheme, message.To.Path, actorId, code, detail);
+            return Result<Message?, RoutingError>.Failure(
+                RoutingError.CallerValidation(message.To, code, detail));
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Delivery failed for {Scheme}://{Path} (actor {ActorId})",

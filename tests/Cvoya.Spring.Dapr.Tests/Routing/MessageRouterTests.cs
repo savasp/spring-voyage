@@ -157,6 +157,71 @@ public class MessageRouterTests
         result.Error!.Code.ShouldBe("DELIVERY_FAILED");
     }
 
+    // #993: caller-side validation failures thrown by the destination actor
+    // should be classified as CALLER_VALIDATION (→ HTTP 400) rather than
+    // DELIVERY_FAILED (→ HTTP 502), so operators can tell bad request shape
+    // apart from genuine downstream/infra failures. The router catches both
+    // the direct exception type (in-process / test path) and the encoded
+    // message form that survives Dapr actor-remoting.
+
+    [Fact]
+    public async Task RouteAsync_caller_validation_exception_returns_CallerValidation()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var destination = new Address("agent", "engineering-team/ada");
+        var entry = new DirectoryEntry(destination, "actor-ada", "Ada", "Engineer", null, DateTimeOffset.UtcNow);
+        var message = CreateMessage(destination);
+
+        _directoryService.ResolveAsync(destination, Arg.Any<CancellationToken>())
+            .Returns(entry);
+
+        var actorProxy = Substitute.For<IAgent>();
+        actorProxy.ReceiveAsync(Arg.Any<Message>(), Arg.Any<CancellationToken>())
+            .Throws(new CallerValidationException(
+                CallerValidationCodes.MissingConversationId,
+                "Domain messages must have a ConversationId"));
+
+        _agentProxyResolver.Resolve("agent", "actor-ada").Returns(actorProxy);
+
+        var result = await _router.RouteAsync(message, ct);
+
+        result.IsSuccess.ShouldBeFalse();
+        result.Error!.Code.ShouldBe("CALLER_VALIDATION");
+        result.Error.DetailCode.ShouldBe(CallerValidationCodes.MissingConversationId);
+        result.Error.Detail.ShouldBe("Domain messages must have a ConversationId");
+    }
+
+    [Fact]
+    public async Task RouteAsync_caller_validation_encoded_in_message_survives_remoting()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var destination = new Address("agent", "engineering-team/ada");
+        var entry = new DirectoryEntry(destination, "actor-ada", "Ada", "Engineer", null, DateTimeOffset.UtcNow);
+        var message = CreateMessage(destination);
+
+        _directoryService.ResolveAsync(destination, Arg.Any<CancellationToken>())
+            .Returns(entry);
+
+        // Simulate the Dapr remoting hop: the custom exception type is gone
+        // but the encoded message survives.
+        var encodedMessage = new CallerValidationException(
+            CallerValidationCodes.UnknownMessageType,
+            "Unknown message type: Amendment").Message;
+
+        var actorProxy = Substitute.For<IAgent>();
+        actorProxy.ReceiveAsync(Arg.Any<Message>(), Arg.Any<CancellationToken>())
+            .Throws(new InvalidOperationException(encodedMessage));
+
+        _agentProxyResolver.Resolve("agent", "actor-ada").Returns(actorProxy);
+
+        var result = await _router.RouteAsync(message, ct);
+
+        result.IsSuccess.ShouldBeFalse();
+        result.Error!.Code.ShouldBe("CALLER_VALIDATION");
+        result.Error.DetailCode.ShouldBe(CallerValidationCodes.UnknownMessageType);
+        result.Error.Detail.ShouldBe("Unknown message type: Amendment");
+    }
+
     // --- Permission Check Tests ---
 
     [Fact]

@@ -154,7 +154,9 @@ public class AgentActor(
                 MessageType.PolicyUpdate => await HandlePolicyUpdateAsync(message, cancellationToken),
                 MessageType.Amendment => await HandleAmendmentAsync(message, cancellationToken),
                 MessageType.Domain => await HandleDomainMessageAsync(message, cancellationToken),
-                _ => throw new SpringException($"Unknown message type: {message.Type}")
+                _ => throw new CallerValidationException(
+                    CallerValidationCodes.UnknownMessageType,
+                    $"Unknown message type: {message.Type}")
             };
         }
         catch (Exception ex) when (ex is not SpringException)
@@ -519,7 +521,9 @@ public class AgentActor(
     private async Task<Message?> HandleDomainMessageAsync(Message message, CancellationToken cancellationToken)
     {
         var conversationId = message.ConversationId
-            ?? throw new SpringException("Domain messages must have a ConversationId");
+            ?? throw new CallerValidationException(
+                CallerValidationCodes.MissingConversationId,
+                "Domain messages must have a ConversationId");
 
         // Resolve the per-turn effective metadata up front: the merge of the
         // agent's own global config with any per-membership override recorded
