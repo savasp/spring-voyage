@@ -95,7 +95,7 @@ public static class UnitOrchestrationCommand
             await Task.WhenAll(orchestrationTask, policyTask);
 
             var orchestration = orchestrationTask.Result;
-            var labelRouting = policyTask.Result.LabelRouting?.LabelRoutingPolicy;
+            var labelRouting = policyTask.Result.LabelRouting;
 
             if (output == "json")
             {
@@ -105,7 +105,7 @@ public static class UnitOrchestrationCommand
                     strategy = orchestration.Strategy,
                     labelRouting = labelRouting is null ? null : new
                     {
-                        triggerLabels = labelRouting.TriggerLabels?.AdditionalData,
+                        triggerLabels = labelRouting.TriggerLabels,
                         addOnAssign = labelRouting.AddOnAssign,
                         removeOnAssign = labelRouting.RemoveOnAssign,
                     },
@@ -124,7 +124,7 @@ public static class UnitOrchestrationCommand
             }
             else
             {
-                var triggers = labelRouting.TriggerLabels?.AdditionalData;
+                var triggers = labelRouting.TriggerLabels;
                 if (triggers is null || triggers.Count == 0)
                 {
                     sb.AppendLine("  triggerLabels:  (none)");
@@ -199,7 +199,7 @@ public static class UnitOrchestrationCommand
                 orchestration = await client.SetUnitOrchestrationAsync(unitId, strategy!, ct);
             }
 
-            LabelRoutingPolicy? labelRouting = null;
+            LabelRoutingPolicyWire? labelRouting = null;
             if (!string.IsNullOrWhiteSpace(labelRoutingFile))
             {
                 if (!File.Exists(labelRoutingFile))
@@ -209,7 +209,7 @@ public static class UnitOrchestrationCommand
                     return;
                 }
 
-                LabelRoutingPolicy newSlot;
+                LabelRoutingPolicyWire newSlot;
                 try
                 {
                     var yamlText = await File.ReadAllTextAsync(labelRoutingFile, ct);
@@ -224,12 +224,9 @@ public static class UnitOrchestrationCommand
                 }
 
                 var currentPolicy = await client.GetUnitPolicyAsync(unitId, ct);
-                currentPolicy.LabelRouting = new UnitPolicyResponse.UnitPolicyResponse_labelRouting
-                {
-                    LabelRoutingPolicy = newSlot,
-                };
+                currentPolicy.LabelRouting = newSlot;
                 var stored = await client.SetUnitPolicyAsync(unitId, currentPolicy, ct);
-                labelRouting = stored.LabelRouting?.LabelRoutingPolicy;
+                labelRouting = stored.LabelRouting;
             }
 
             // Re-read the orchestration slot if we only touched label-routing
@@ -247,7 +244,7 @@ public static class UnitOrchestrationCommand
                     strategy = orchestration.Strategy,
                     labelRouting = labelRouting is null ? null : new
                     {
-                        triggerLabels = labelRouting.TriggerLabels?.AdditionalData,
+                        triggerLabels = labelRouting.TriggerLabels,
                         addOnAssign = labelRouting.AddOnAssign,
                         removeOnAssign = labelRouting.RemoveOnAssign,
                     },
@@ -259,7 +256,7 @@ public static class UnitOrchestrationCommand
                 Console.WriteLine($"  strategy: {orchestration.Strategy ?? "(unset)"}");
                 if (labelRouting is not null)
                 {
-                    var triggers = labelRouting.TriggerLabels?.AdditionalData;
+                    var triggers = labelRouting.TriggerLabels;
                     Console.WriteLine($"  labelRouting.triggerLabels: {FormatMap(triggers)}");
                     Console.WriteLine($"  labelRouting.addOnAssign:   {FormatList(labelRouting.AddOnAssign)}");
                     Console.WriteLine($"  labelRouting.removeOnAssign:{FormatList(labelRouting.RemoveOnAssign)}");
@@ -317,7 +314,7 @@ public static class UnitOrchestrationCommand
     /// <see cref="UnitPolicyCommand"/> applies for <c>--file</c> input, so
     /// the same file works with either CLI surface.
     /// </summary>
-    internal static LabelRoutingPolicy ParseLabelRoutingYaml(string yamlText)
+    internal static LabelRoutingPolicyWire ParseLabelRoutingYaml(string yamlText)
     {
         var deserializer = new DeserializerBuilder()
             .WithNamingConvention(CamelCaseNamingConvention.Instance)
@@ -343,16 +340,9 @@ public static class UnitOrchestrationCommand
         var addOn = ReadList(root, "addOnAssign") ?? ReadList(root, "add_on_assign");
         var removeOn = ReadList(root, "removeOnAssign") ?? ReadList(root, "remove_on_assign");
 
-        return new LabelRoutingPolicy
+        return new LabelRoutingPolicyWire
         {
-            TriggerLabels = triggerMap is null || triggerMap.Count == 0
-                ? null
-                : new LabelRoutingPolicy_triggerLabels
-                {
-                    AdditionalData = triggerMap.ToDictionary(
-                        kvp => kvp.Key,
-                        kvp => (object)kvp.Value),
-                },
+            TriggerLabels = triggerMap is null || triggerMap.Count == 0 ? null : triggerMap,
             AddOnAssign = addOn,
             RemoveOnAssign = removeOn,
         };
@@ -397,7 +387,7 @@ public static class UnitOrchestrationCommand
     private static string FormatList(IReadOnlyList<string>? values)
         => values is null || values.Count == 0 ? "(none)" : "[" + string.Join(", ", values) + "]";
 
-    private static string FormatMap(IDictionary<string, object>? map)
+    private static string FormatMap(IDictionary<string, string>? map)
     {
         if (map is null || map.Count == 0)
         {
