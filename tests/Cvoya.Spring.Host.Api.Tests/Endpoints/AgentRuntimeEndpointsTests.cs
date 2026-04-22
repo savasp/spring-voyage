@@ -146,6 +146,57 @@ public class AgentRuntimeEndpointsTests : IClassFixture<CustomWebApplicationFact
     }
 
     [Fact]
+    public async Task GetConfig_UnknownRuntime_Returns404()
+    {
+        // #1066: GET .../config mirrors GetAsync's 404 semantics —
+        // unregistered runtime → 404 with a hint pointing operators at
+        // the runtime registration, distinct from the
+        // "registered-but-not-installed" 404 below.
+        var ct = TestContext.Current.CancellationToken;
+        var response = await _client.GetAsync(
+            "/api/v1/agent-runtimes/not-a-real-runtime/config", ct);
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task GetConfig_RuntimeNotInstalled_Returns404()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        // Pre-clean: tests share the in-memory DB; another test may have
+        // installed `ollama` already.
+        await _client.DeleteAsync("/api/v1/agent-runtimes/ollama", ct);
+        var response = await _client.GetAsync(
+            "/api/v1/agent-runtimes/ollama/config", ct);
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task GetConfig_AfterInstall_ReturnsStoredConfigSlot()
+    {
+        // #1066: read-only projection over the install row's config slot
+        // — must surface exactly what was persisted (no model list
+        // expansion to the seed catalog, no defaulting) so operators
+        // can confirm `config set` round-trips before invoking it again.
+        var ct = TestContext.Current.CancellationToken;
+        var seedModels = new[] { "claude-opus-4-7", "claude-sonnet-4-6" };
+        await _client.PostAsJsonAsync(
+            "/api/v1/agent-runtimes/claude/install",
+            new AgentRuntimeInstallRequest(seedModels, "claude-opus-4-7", null),
+            ct);
+
+        var response = await _client.GetAsync(
+            "/api/v1/agent-runtimes/claude/config", ct);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        var body = await response.Content.ReadFromJsonAsync<AgentRuntimeConfigResponse>(ct);
+        body.ShouldNotBeNull();
+        body!.Id.ShouldBe("claude");
+        body.DefaultModel.ShouldBe("claude-opus-4-7");
+        body.BaseUrl.ShouldBeNull();
+        body.Models.ShouldBe(seedModels);
+    }
+
+    [Fact]
     public async Task UpdateConfig_PatchesStoredConfig()
     {
         var ct = TestContext.Current.CancellationToken;

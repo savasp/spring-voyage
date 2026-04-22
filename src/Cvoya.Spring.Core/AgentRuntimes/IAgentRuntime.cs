@@ -222,4 +222,121 @@ public interface IAgentRuntime
     /// <param name="dispatchPath">The dispatch path that will consume the credential.</param>
     /// <returns><c>true</c> when the format is plausible for the path; <c>false</c> when the path is known to reject it.</returns>
     bool IsCredentialFormatAccepted(string credential, CredentialDispatchPath dispatchPath);
+
+    /// <summary>
+    /// Probes the runtime's backing service with the supplied
+    /// <paramref name="credential"/> and reports whether the credential is
+    /// accepted, without persisting any side-effects (e.g. the live model
+    /// catalog). Surfaced via
+    /// <c>POST /api/v1/agent-runtimes/{id}/validate-credential</c> and the
+    /// <c>spring agent-runtime validate-credential</c> CLI verb so operators
+    /// can prime / refresh the credential-health row without rotating the
+    /// tenant's stored model list (#1066).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The default implementation delegates to
+    /// <see cref="FetchLiveModelsAsync(string, CancellationToken)"/> and
+    /// translates the outcome — runtimes that already speak a cheap REST
+    /// round-trip for the catalog get credential validation for free
+    /// without re-implementing transport. Override to issue a smaller probe
+    /// (for example, an HTTP HEAD or a one-byte completion) when the
+    /// catalog endpoint is expensive or the runtime supports cheaper
+    /// auth-only probes.
+    /// </para>
+    /// <para>
+    /// Implementations must surface transport-level failures as
+    /// <see cref="CredentialValidationStatus.NetworkError"/> rather than
+    /// throwing. Authentication failures (401/403 from the backing service)
+    /// translate to <see cref="CredentialValidationStatus.Invalid"/>. A
+    /// successful round-trip translates to
+    /// <see cref="CredentialValidationStatus.Valid"/>.
+    /// </para>
+    /// <para>
+    /// Runtimes whose <see cref="CredentialSchema"/> is
+    /// <see cref="AgentRuntimeCredentialKind.None"/> (e.g. local Ollama)
+    /// are filtered out by the host endpoint before this method is called,
+    /// so implementations do not need to special-case the credential-less
+    /// path.
+    /// </para>
+    /// <para>
+    /// The host endpoint that consumes this method records the outcome in
+    /// the shared <c>credential_health</c> store so subsequent reads from
+    /// <c>spring agent-runtime credentials status</c> (and the portal
+    /// banner) reflect the latest probe attempt. This method MUST NOT
+    /// touch the tenant's stored model list — refreshing the catalog is
+    /// the concern of <see cref="FetchLiveModelsAsync"/> and the
+    /// <c>refresh-models</c> path.
+    /// </para>
+    /// </remarks>
+    /// <param name="credential">The raw credential to validate. Empty when the runtime requires no credential.</param>
+    /// <param name="cancellationToken">A token to cancel the validation.</param>
+    /// <returns>A <see cref="CredentialValidationResult"/> describing the outcome.</returns>
+    Task<CredentialValidationResult> ValidateCredentialAsync(
+        string credential,
+        CancellationToken cancellationToken = default)
+    {
+        // Default: piggyback on FetchLiveModelsAsync so a runtime that
+        // already implements the live-catalog probe gets a credible
+        // credential-validation surface for free. We deliberately do NOT
+        // persist the returned model list here — recording the catalog is
+        // the host endpoint's concern (and the host's validate-credential
+        // endpoint specifically does not write to the install row).
+        return ValidateViaFetchLiveModelsAsync(this, credential, cancellationToken);
+
+        static async Task<CredentialValidationResult> ValidateViaFetchLiveModelsAsync(
+            IAgentRuntime runtime,
+            string credential,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                var fetch = await runtime.FetchLiveModelsAsync(credential, cancellationToken).ConfigureAwait(false);
+                return fetch.Status switch
+                {
+                    FetchLiveModelsStatus.Success => new CredentialValidationResult(
+                        Valid: true,
+                        ErrorMessage: null,
+                        Status: CredentialValidationStatus.Valid,
+                        ValidatedAt: DateTimeOffset.UtcNow),
+                    FetchLiveModelsStatus.InvalidCredential => new CredentialValidationResult(
+                        Valid: false,
+                        ErrorMessage: fetch.ErrorMessage,
+                        Status: CredentialValidationStatus.Invalid,
+                        ValidatedAt: DateTimeOffset.UtcNow),
+                    FetchLiveModelsStatus.NetworkError => new CredentialValidationResult(
+                        Valid: false,
+                        ErrorMessage: fetch.ErrorMessage,
+                        Status: CredentialValidationStatus.NetworkError,
+                        ValidatedAt: DateTimeOffset.UtcNow),
+                    FetchLiveModelsStatus.Unsupported => new CredentialValidationResult(
+                        Valid: false,
+                        ErrorMessage: fetch.ErrorMessage
+                            ?? "Runtime does not support credential validation through the live-catalog endpoint.",
+                        Status: CredentialValidationStatus.Unknown,
+                        ValidatedAt: DateTimeOffset.UtcNow),
+                    _ => new CredentialValidationResult(
+                        Valid: false,
+                        ErrorMessage: fetch.ErrorMessage ?? "Unknown validation outcome.",
+                        Status: CredentialValidationStatus.Unknown,
+                        ValidatedAt: DateTimeOffset.UtcNow),
+                };
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                // Defensive: any runtime that throws (rather than returning
+                // a NetworkError) still produces a clean credential-health
+                // signal instead of a 500 from the host endpoint.
+                return new CredentialValidationResult(
+                    Valid: false,
+                    ErrorMessage: ex.Message,
+                    Status: CredentialValidationStatus.NetworkError,
+                    ValidatedAt: DateTimeOffset.UtcNow);
+            }
+        }
+    }
 }

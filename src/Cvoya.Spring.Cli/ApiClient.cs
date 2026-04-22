@@ -1878,6 +1878,54 @@ public class SpringApiClient
     }
 
     /// <summary>
+    /// Reads the tenant-scoped configuration slot for an installed runtime
+    /// (#1066). Returns <c>null</c> when the runtime is not registered with
+    /// the host or is not installed on the current tenant — both surface as
+    /// 404 from the server. Backs
+    /// <c>spring agent-runtime config get &lt;id&gt;</c>.
+    /// </summary>
+    public async Task<AgentRuntimeConfigResponse?> GetAgentRuntimeConfigAsync(
+        string id,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            return await _client.Api.V1.AgentRuntimes[id].Config.GetAsync(cancellationToken: ct);
+        }
+        catch (Microsoft.Kiota.Abstractions.ApiException ex) when (ex.ResponseStatusCode == 404)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Probes the runtime's backing service with the supplied
+    /// <paramref name="credential"/> and records the outcome in the
+    /// credential-health store (#1066). Does NOT touch the tenant's
+    /// model list — the catalog rotation lives on the
+    /// <c>refresh-models</c> path. Backs
+    /// <c>spring agent-runtime validate-credential &lt;id&gt;</c>.
+    /// </summary>
+    public async Task<AgentRuntimeValidateCredentialResponse> ValidateAgentRuntimeCredentialAsync(
+        string id,
+        string? credential,
+        string? secretName,
+        CancellationToken ct = default)
+    {
+        var body = new Cvoya.Spring.Cli.Generated.Api.V1.AgentRuntimes.Item.ValidateCredential.ValidateCredentialRequestBuilder.ValidateCredentialPostRequestBody
+        {
+            AgentRuntimeValidateCredentialRequest = new AgentRuntimeValidateCredentialRequest
+            {
+                Credential = credential,
+                SecretName = string.IsNullOrWhiteSpace(secretName) ? null : secretName,
+            },
+        };
+        var result = await _client.Api.V1.AgentRuntimes[id].ValidateCredential.PostAsync(body, cancellationToken: ct);
+        return result ?? throw new InvalidOperationException(
+            $"Server returned an empty validate-credential response for agent runtime '{id}'.");
+    }
+
+    /// <summary>
     /// Asks the server to fetch the runtime's live model catalog from its
     /// backing service (e.g. the provider's <c>/v1/models</c> endpoint)
     /// and replace the tenant's stored list with the result. Backs

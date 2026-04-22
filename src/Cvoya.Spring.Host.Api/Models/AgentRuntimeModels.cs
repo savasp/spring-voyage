@@ -108,3 +108,76 @@ public record AgentRuntimeInstallRequest(
 /// </param>
 public record AgentRuntimeRefreshModelsRequest(
     string? Credential);
+
+/// <summary>
+/// Response body for <c>GET /api/v1/agent-runtimes/{id}/config</c> — the
+/// tenant-scoped configuration slot for an installed runtime, in
+/// isolation from the rest of the install metadata. Backs
+/// <c>spring agent-runtime config get &lt;id&gt;</c> (#1066) so operators can
+/// read the live config without the noise of the full
+/// <c>agent-runtime show &lt;id&gt;</c> table.
+/// </summary>
+/// <param name="Id">Stable runtime identifier (matches <c>IAgentRuntime.Id</c>).</param>
+/// <param name="Models">Tenant-configured model id list (may be empty when inheriting the seed).</param>
+/// <param name="DefaultModel">Pinned default model id, or <c>null</c>.</param>
+/// <param name="BaseUrl">Optional base URL override, or <c>null</c>.</param>
+public record AgentRuntimeConfigResponse(
+    string Id,
+    IReadOnlyList<string> Models,
+    string? DefaultModel,
+    string? BaseUrl);
+
+/// <summary>
+/// Request body for <c>POST /api/v1/agent-runtimes/{id}/validate-credential</c>.
+/// The endpoint invokes the runtime's
+/// <c>ValidateCredentialAsync</c> with the supplied credential, records
+/// the outcome in the credential-health store, and returns the result.
+/// It does NOT touch the tenant's configured model list — refreshing
+/// the catalog is the responsibility of <c>refresh-models</c>.
+/// </summary>
+/// <param name="Credential">
+/// Raw credential to probe with. Runtimes that require no credential
+/// (e.g. local Ollama) ignore this field; the endpoint short-circuits
+/// to a friendly "no credential required" payload for those.
+/// </param>
+/// <param name="SecretName">
+/// Optional secret-name slot for the credential-health row.
+/// Defaults to <c>"default"</c> on the server. Multi-credential
+/// runtimes supply a stable name so each row updates independently.
+/// </param>
+public record AgentRuntimeValidateCredentialRequest(
+    string? Credential,
+    string? SecretName);
+
+/// <summary>
+/// Response body for <c>POST /api/v1/agent-runtimes/{id}/validate-credential</c>
+/// (#1066). Mirrors the connector validate-credential surface but adds
+/// a probe timestamp so the CLI can surface "credential is valid
+/// (validated at …)" without a follow-up read of the credential-health
+/// row.
+/// </summary>
+/// <param name="Ok">
+/// <c>true</c> when the runtime accepted the credential. <c>false</c>
+/// for every non-valid outcome (rejected, network error, runtime does
+/// not require credentials).
+/// </param>
+/// <param name="Status">
+/// Persistent status recorded in the credential-health store after this
+/// attempt. <see cref="Cvoya.Spring.Core.CredentialHealth.CredentialValidationStatus.NetworkError"/>
+/// validation outcomes do NOT flip the persistent status — they
+/// surface as the previous value (or
+/// <see cref="Cvoya.Spring.Core.CredentialHealth.CredentialHealthStatus.Unknown"/>
+/// for fresh rows).
+/// </param>
+/// <param name="Detail">
+/// Human-readable explanation when <paramref name="Ok"/> is
+/// <c>false</c>; <c>null</c> on success.
+/// </param>
+/// <param name="ValidatedAt">
+/// Wall-clock timestamp of the probe attempt.
+/// </param>
+public record AgentRuntimeValidateCredentialResponse(
+    bool Ok,
+    Cvoya.Spring.Core.CredentialHealth.CredentialHealthStatus Status,
+    string? Detail,
+    DateTimeOffset ValidatedAt);

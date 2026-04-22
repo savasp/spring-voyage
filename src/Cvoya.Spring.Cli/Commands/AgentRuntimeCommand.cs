@@ -17,6 +17,28 @@ using Cvoya.Spring.Cli.Utilities;
 /// </summary>
 public static class AgentRuntimeCommand
 {
+    /// <summary>
+    /// Stderr message emitted when <c>spring agent-runtime credentials
+    /// status &lt;id&gt;</c> is run against a runtime that has no
+    /// credential-health row recorded yet. Exposed as <c>internal</c>
+    /// (rather than living inline at the call site) so the unit tests
+    /// in <c>tests/Cvoya.Spring.Cli.Tests</c> can assert the wording —
+    /// the previous text pointed operators at a non-existent
+    /// <c>... validate-credential</c> verb (#1066), and the regression
+    /// check guards against drift.
+    /// </summary>
+    /// <remarks>
+    /// The <c>{0}</c> placeholder is the runtime id supplied on the
+    /// command line — substituted via <see cref="string.Format(string, object?)"/>
+    /// at the call site. Keep the placeholder explicit so call sites
+    /// don't accidentally interpolate without it and silently lose the
+    /// runtime id from the message.
+    /// </remarks>
+    public const string CredentialsStatusMissingRowHintFormat =
+        "No credential-health row recorded for runtime '{0}'. " +
+        "Run 'spring agent-runtime validate-credential {0} --credential <key>' " +
+        "(or use the portal at /settings/agent-runtimes) to prime the row.";
+
     private static readonly OutputFormatter.Column<InstalledAgentRuntimeResponse>[] ListColumns =
     {
         new("id", r => r.Id),
@@ -49,6 +71,7 @@ public static class AgentRuntimeCommand
         root.Subcommands.Add(CreateConfigCommand(outputOption));
         root.Subcommands.Add(CreateCredentialsCommand(outputOption));
         root.Subcommands.Add(CreateRefreshModelsCommand(outputOption));
+        root.Subcommands.Add(CreateValidateCredentialCommand(outputOption));
         return root;
     }
 
@@ -287,8 +310,55 @@ public static class AgentRuntimeCommand
     private static Command CreateConfigCommand(Option<string> outputOption)
     {
         var root = new Command("config", "Tenant-scoped runtime configuration (default model, base URL).");
+        root.Subcommands.Add(CreateConfigGetCommand(outputOption));
         root.Subcommands.Add(CreateConfigSetCommand(outputOption));
         return root;
+    }
+
+    private static Command CreateConfigGetCommand(Option<string> outputOption)
+    {
+        // #1066: read-only sibling of `config set` that renders ONLY the
+        // configurable fields (default-model / base-URL / models). The
+        // existing `agent-runtime show` command renders the full install
+        // metadata table, which is noisy when an operator only wants to
+        // confirm the live config slot before/after a `config set`.
+        var idArg = new Argument<string>("id") { Description = "Runtime id." };
+        var command = new Command(
+            "get",
+            "Show the tenant-scoped configuration slot for an installed runtime (default-model / base-URL / models). Lighter-weight read counterpart to 'agent-runtime show'.");
+        command.Arguments.Add(idArg);
+        command.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
+        {
+            var id = parseResult.GetValue(idArg)!;
+            var output = parseResult.GetValue(outputOption) ?? "table";
+            var client = ClientFactory.Create();
+            var config = await client.GetAgentRuntimeConfigAsync(id, ct);
+            if (config is null)
+            {
+                await Console.Error.WriteLineAsync(
+                    $"Runtime '{id}' is not installed on the current tenant. Run 'spring agent-runtime install {id}' first.");
+                Environment.Exit(1);
+                return;
+            }
+
+            if (string.Equals(output, "json", StringComparison.OrdinalIgnoreCase))
+            {
+                Console.WriteLine(OutputFormatter.FormatJson(config));
+                return;
+            }
+
+            // Prose: stable two-column key/value list (key, value) so the
+            // shape matches `connector show` and operators can grep cleanly.
+            // We deliberately render the model list as a comma-separated
+            // value rather than its own table so `config get` stays a
+            // single-block read.
+            Console.WriteLine($"id            {config.Id}");
+            Console.WriteLine($"defaultModel  {config.DefaultModel ?? "(none)"}");
+            Console.WriteLine($"baseUrl       {config.BaseUrl ?? "(none)"}");
+            Console.WriteLine(
+                $"models        {(config.Models is { Count: > 0 } ? string.Join(",", config.Models) : "(none)")}");
+        });
+        return command;
     }
 
     private static Command CreateConfigSetCommand(Option<string> outputOption)
@@ -365,8 +435,19 @@ public static class AgentRuntimeCommand
             var result = await client.GetAgentRuntimeCredentialHealthAsync(id, secretName, ct);
             if (result is null)
             {
+                // #1066: prior text pointed at a non-existent
+                // `... validate-credential` subcommand. The new
+                // `spring agent-runtime validate-credential <id>` verb shipped
+                // alongside this fix primes the row without rotating the
+                // model catalog (the previous workaround had to use
+                // `refresh-models` which ALSO rewrites the tenant's stored
+                // model list as a side-effect — distinctly worse for
+                // operators who only wanted to confirm a credential).
                 await Console.Error.WriteLineAsync(
-                    $"No credential-health row recorded for runtime '{id}'. Run 'spring agent-runtime ... validate-credential' (or use the portal) to prime the row.");
+                    string.Format(
+                        System.Globalization.CultureInfo.InvariantCulture,
+                        CredentialsStatusMissingRowHintFormat,
+                        id));
                 Environment.Exit(1);
                 return;
             }
@@ -438,6 +519,98 @@ public static class AgentRuntimeCommand
                     "The runtime may not expose /v1/models, or the backing service is unreachable.");
                 Environment.Exit(1);
             }
+        });
+        return command;
+    }
+
+    private static Command CreateValidateCredentialCommand(Option<string> outputOption)
+    {
+        // #1066: dedicated credential-probe verb. Distinct from
+        // `refresh-models` in two important ways:
+        //  1. It does NOT touch the tenant's stored model list. The host
+        //     endpoint records the outcome in the credential_health store
+        //     ONLY — the model catalog is the responsibility of
+        //     `refresh-models`.
+        //  2. The success-vs-failure axis is the response body's `Ok`
+        //     field, not the HTTP status. A 200 OK with `Ok=false` (i.e.
+        //     the provider rejected the credential) still results in a
+        //     non-zero exit so scripts can distinguish "could not reach
+        //     the host" from "host reached, credential rejected".
+        //
+        // Examples:
+        //   spring agent-runtime validate-credential claude --credential sk-ant-api-...
+        //   spring agent-runtime validate-credential ollama                    # no credential needed
+        var idArg = new Argument<string>("id")
+        {
+            Description = "Runtime id to probe (e.g. 'claude', 'openai', 'google', 'ollama').",
+        };
+        var credentialOption = new Option<string?>("--credential")
+        {
+            Description =
+                "Credential to present to the backing service for the probe. " +
+                "Omit for credential-less runtimes (e.g. local Ollama).",
+        };
+        var secretNameOption = new Option<string?>("--secret-name")
+        {
+            Description =
+                "Secret name slot for the credential-health row (defaults to 'default'). " +
+                "Multi-credential runtimes track one row per secret name.",
+        };
+        var command = new Command(
+            "validate-credential",
+            "Probe the runtime with the supplied credential and update the credential-health row. Does NOT rotate the model catalog (#1066).");
+        command.Arguments.Add(idArg);
+        command.Options.Add(credentialOption);
+        command.Options.Add(secretNameOption);
+
+        command.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
+        {
+            var id = parseResult.GetValue(idArg)!;
+            var credential = parseResult.GetValue(credentialOption);
+            var secretName = parseResult.GetValue(secretNameOption);
+            var output = parseResult.GetValue(outputOption) ?? "table";
+            var client = ClientFactory.Create();
+            try
+            {
+                var result = await client.ValidateAgentRuntimeCredentialAsync(id, credential, secretName, ct);
+                if (string.Equals(output, "json", StringComparison.OrdinalIgnoreCase))
+                {
+                    Console.WriteLine(OutputFormatter.FormatJson(result));
+                }
+                else if (result.Ok == true)
+                {
+                    var when = result.ValidatedAt?.ToString("u") ?? "unknown time";
+                    Console.WriteLine($"Credential for runtime '{id}' is valid (validated at {when}).");
+                }
+                else
+                {
+                    var detail = string.IsNullOrWhiteSpace(result.Detail)
+                        ? "no detail provided by the runtime"
+                        : result.Detail!;
+                    await Console.Error.WriteLineAsync(
+                        $"Credential for runtime '{id}' was not accepted: {detail}");
+                }
+
+                // Non-zero exit when the credential isn't valid so scripts
+                // can branch. We deliberately exit AFTER printing JSON so
+                // callers using `spring ... -o json` still receive the full
+                // payload before the non-zero exit.
+                if (result.Ok != true)
+                {
+                    Environment.Exit(1);
+                }
+            }
+            catch (Microsoft.Kiota.Abstractions.ApiException ex) when (ex.ResponseStatusCode == 404)
+            {
+                await Console.Error.WriteLineAsync(
+                    $"Runtime '{id}' is not registered with the host or is not installed on the current tenant. " +
+                    $"Run 'spring agent-runtime install {id}' first.");
+                Environment.Exit(1);
+            }
+            // Non-404 ApiExceptions escape to Program.Main where the
+            // central ApiExceptionRenderer (added in #1071) emits a
+            // status-aware envelope. Per-call retries are not the right
+            // place to second-guess that envelope.
         });
         return command;
     }

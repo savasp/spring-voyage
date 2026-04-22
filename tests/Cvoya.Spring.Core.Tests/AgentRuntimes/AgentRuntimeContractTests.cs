@@ -35,6 +35,27 @@ public class AgentRuntimeContractTests
     }
 
     [Fact]
+    public void CredentialValidationResult_ValidatedAt_DefaultsToNullForBackwardCompat()
+    {
+        // #1066: ValidatedAt is optional so older runtimes (and tests
+        // pre-dating the timestamp) keep compiling. The host endpoint
+        // substitutes UtcNow when constructing the wire DTO, so the
+        // null is invisible to the client.
+        var result = new CredentialValidationResult(true, null, CredentialValidationStatus.Valid);
+
+        result.ValidatedAt.ShouldBeNull();
+    }
+
+    [Fact]
+    public void CredentialValidationResult_ValidatedAt_RoundTripsExplicitTimestamp()
+    {
+        var when = new DateTimeOffset(2026, 1, 2, 3, 4, 5, TimeSpan.Zero);
+        var result = new CredentialValidationResult(true, null, CredentialValidationStatus.Valid, when);
+
+        result.ValidatedAt.ShouldBe(when);
+    }
+
+    [Fact]
     public void AgentRuntimeCredentialSchema_DefaultsDisplayHintToNull()
     {
         var schema = new AgentRuntimeCredentialSchema(AgentRuntimeCredentialKind.ApiKey);

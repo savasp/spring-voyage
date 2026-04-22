@@ -6036,6 +6036,45 @@
             }
           }
         }
+      },
+      "get": {
+        "tags": [
+          "AgentRuntimes"
+        ],
+        "summary": "Get the tenant-scoped configuration slot for an installed runtime",
+        "operationId": "GetAgentRuntimeConfig",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentRuntimeConfigResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/agent-runtimes/{id}/credential-health": {
@@ -6069,6 +6108,63 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CredentialHealthResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/agent-runtimes/{id}/validate-credential": {
+      "post": {
+        "tags": [
+          "AgentRuntimes"
+        ],
+        "summary": "Probe the runtime with the supplied credential and record the outcome in the credential-health store; does not touch the model catalog",
+        "operationId": "ValidateAgentRuntimeCredential",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AgentRuntimeValidateCredentialRequest"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentRuntimeValidateCredentialResponse"
                 }
               }
             }
@@ -7647,6 +7743,38 @@
           }
         }
       },
+      "AgentRuntimeConfigResponse": {
+        "required": [
+          "id",
+          "models",
+          "defaultModel",
+          "baseUrl"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "models": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "defaultModel": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "baseUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "AgentRuntimeCredentialKind": {
         "enum": [
           "None",
@@ -7749,6 +7877,54 @@
               "null",
               "string"
             ]
+          }
+        }
+      },
+      "AgentRuntimeValidateCredentialRequest": {
+        "required": [
+          "credential",
+          "secretName"
+        ],
+        "type": "object",
+        "properties": {
+          "credential": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "secretName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "AgentRuntimeValidateCredentialResponse": {
+        "required": [
+          "ok",
+          "status",
+          "detail",
+          "validatedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CredentialHealthStatus"
+          },
+          "detail": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "validatedAt": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       },
