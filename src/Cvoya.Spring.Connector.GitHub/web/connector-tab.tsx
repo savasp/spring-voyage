@@ -93,6 +93,11 @@ export function GitHubConnectorTab({ unitId }: GitHubConnectorTabProps) {
   // a network error or an unconfigured repo (#1186). When set we hide the
   // install affordances and render a remediation panel instead.
   const [disabledReason, setDisabledReason] = useState<string | null>(null);
+  // #1132: in-flight indicator for the Recheck button so it can disable
+  // itself + announce a busy state. Mirrors `connector-wizard-step.tsx`
+  // — operators editing an existing unit get the same affordance as
+  // operators using the create-unit wizard.
+  const [rechecking, setRechecking] = useState(false);
 
   const applyConfig = useCallback((c: UnitGitHubConfigResponse) => {
     setConfig(c);
@@ -121,6 +126,7 @@ export function GitHubConnectorTab({ unitId }: GitHubConnectorTabProps) {
   }, [unitId, applyConfig]);
 
   const loadInstallations = useCallback(async () => {
+    setRechecking(true);
     let list: GitHubInstallationResponse[] = [];
     let disabled: string | null = null;
     try {
@@ -145,10 +151,7 @@ export function GitHubConnectorTab({ unitId }: GitHubConnectorTabProps) {
     // post-bind surface in parity with the create-unit wizard (#599).
     // Skip when the connector is disabled at the deployment level — the
     // install URL endpoint will return the same 404 with no URL to show.
-    if (disabled !== null) {
-      return;
-    }
-    if (list.length === 0) {
+    if (disabled === null && list.length === 0) {
       try {
         const { url } = await api.getGitHubInstallUrl();
         setInstallUrl(url);
@@ -157,6 +160,7 @@ export function GitHubConnectorTab({ unitId }: GitHubConnectorTabProps) {
         // configured for GitHub Apps at all.
       }
     }
+    setRechecking(false);
   }, []);
 
   useEffect(() => {
@@ -283,17 +287,54 @@ export function GitHubConnectorTab({ unitId }: GitHubConnectorTabProps) {
                 Install the app on your account or organisation before
                 configuring this unit.
               </p>
-              {installUrl && (
-                <a
-                  href={installUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-2 inline-flex h-8 items-center gap-1 rounded-md border border-warning/60 bg-warning/10 px-3 text-sm font-medium text-warning transition-colors hover:bg-warning/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              {/* #1132: parity with the create-unit wizard step. After
+                  the operator installs the App on github.com they need
+                  to come back here and tell the panel to re-check —
+                  without this the panel was stuck on "No installations"
+                  and the operator had to refresh the whole page. The
+                  button is omitted (along with the install link) when
+                  the connector is disabled at the deployment level —
+                  there are no credentials to check yet. */}
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                {installUrl && (
+                  <a
+                    href={installUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex h-8 items-center gap-1 rounded-md border border-warning/60 bg-warning/10 px-3 text-sm font-medium text-warning transition-colors hover:bg-warning/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                  >
+                    <Github className="h-4 w-4" aria-hidden="true" />
+                    Install GitHub App
+                  </a>
+                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={loadInstallations}
+                  disabled={rechecking}
+                  aria-label="Recheck installations"
+                  aria-busy={rechecking}
+                  data-testid="github-recheck-installations"
                 >
-                  <Github className="h-4 w-4" aria-hidden="true" />
-                  Install GitHub App
-                </a>
-              )}
+                  {rechecking ? (
+                    <Loader2
+                      className="mr-1 h-4 w-4 animate-spin"
+                      aria-hidden="true"
+                    />
+                  ) : (
+                    <RefreshCw
+                      className="mr-1 h-4 w-4"
+                      aria-hidden="true"
+                    />
+                  )}
+                  {rechecking ? "Rechecking…" : "Recheck installations"}
+                  {rechecking && (
+                    <span className="sr-only">
+                      Refreshing GitHub App installations
+                    </span>
+                  )}
+                </Button>
+              </div>
               {installationsError && (
                 <p className="mt-2 text-xs text-muted-foreground">
                   ({installationsError})
@@ -351,9 +392,15 @@ export function GitHubConnectorTab({ unitId }: GitHubConnectorTabProps) {
                 size="sm"
                 variant="outline"
                 onClick={loadInstallations}
+                disabled={rechecking}
                 aria-label="Refresh installations"
+                aria-busy={rechecking}
               >
-                <RefreshCw className="h-4 w-4" />
+                {rechecking ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4" />
+                )}
               </Button>
             </div>
           </div>

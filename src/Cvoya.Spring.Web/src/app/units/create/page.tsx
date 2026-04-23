@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -67,8 +67,24 @@ import {
   type HostingMode,
 } from "@/lib/ai-models";
 import { cn } from "@/lib/utils";
+import {
+  WIZARD_STATE_SCHEMA_VERSION,
+  clearWizardRun,
+  loadOrInitWizardRunId,
+  loadWizardSnapshot,
+  saveWizardSnapshot,
+  type WizardFormSnapshot,
+  type WizardSnapshot,
+  type WizardStep as PersistedWizardStep,
+} from "./wizard-persistence";
 
 const DEFAULT_COLOR = "#6366f1";
+
+// #1132: how long to wait between the last form-state change and the
+// sessionStorage write. 300ms is short enough that a refresh-after-fill
+// almost always picks up the latest values, while still coalescing the
+// per-keystroke storms of typing into the Name / YAML textarea.
+const WIZARD_PERSIST_DEBOUNCE_MS = 300;
 
 const NAME_PATTERN = /^[a-z0-9-]+$/;
 
@@ -238,6 +254,74 @@ export function deriveRequiredCredentialRuntime(
   }
 }
 
+/**
+ * #1132: lift a persisted snapshot back into a `FormState`. The
+ * snapshot stores `tool` / `hosting` as plain strings (so a future
+ * release that adds a new value doesn't have to bump the schema
+ * version), so we validate them against the live enum tables here and
+ * fall back to the defaults if either one is no longer recognised.
+ * Secrets are NOT in `WizardFormSnapshot` to begin with — `INITIAL_FORM`
+ * provides empty defaults for those slots.
+ */
+function mergeSnapshotIntoForm(snap: WizardFormSnapshot): FormState {
+  const tool: ExecutionTool = EXECUTION_TOOLS.some((t) => t.id === snap.tool)
+    ? (snap.tool as ExecutionTool)
+    : DEFAULT_EXECUTION_TOOL;
+  const hosting: HostingMode = HOSTING_MODES.some((m) => m.id === snap.hosting)
+    ? (snap.hosting as HostingMode)
+    : DEFAULT_HOSTING_MODE;
+  return {
+    ...INITIAL_FORM,
+    name: snap.name,
+    displayName: snap.displayName,
+    description: snap.description,
+    provider: snap.provider,
+    model: snap.model,
+    color: snap.color,
+    tool,
+    hosting,
+    image: snap.image,
+    runtime: snap.runtime,
+    mode: snap.mode,
+    templateId: snap.templateId,
+    yamlText: snap.yamlText,
+    yamlFileName: snap.yamlFileName,
+    connectorSlug: snap.connectorSlug,
+    connectorTypeId: snap.connectorTypeId,
+    connectorConfig: snap.connectorConfig,
+  };
+}
+
+/**
+ * #1132: project the live wizard `FormState` down to the
+ * persistence-safe snapshot. Anything secret-bearing (raw API key,
+ * pending unit-secret values, the override toggles that drive the key
+ * input) is dropped — see `WizardFormSnapshot` for the full exclusion
+ * list. New persisted fields go here AND in
+ * `WizardFormSnapshot` / `validateSnapshot`.
+ */
+function extractWizardFormSnapshot(form: FormState): WizardFormSnapshot {
+  return {
+    name: form.name,
+    displayName: form.displayName,
+    description: form.description,
+    provider: form.provider,
+    model: form.model,
+    color: form.color,
+    tool: form.tool,
+    hosting: form.hosting,
+    image: form.image,
+    runtime: form.runtime,
+    mode: form.mode,
+    templateId: form.templateId,
+    yamlText: form.yamlText,
+    yamlFileName: form.yamlFileName,
+    connectorSlug: form.connectorSlug,
+    connectorTypeId: form.connectorTypeId,
+    connectorConfig: form.connectorConfig,
+  };
+}
+
 const INITIAL_FORM: FormState = {
   name: "",
   displayName: "",
@@ -331,8 +415,30 @@ export default function CreateUnitPage() {
   const router = useRouter();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [step, setStep] = useState<Step>(1);
-  const [form, setForm] = useState<FormState>(INITIAL_FORM);
+
+  // #1132: per-tab wizard run id + initial rehydrate. Both initialisers
+  // run exactly once thanks to React's lazy useState semantics, so we
+  // don't introduce a useEffect-driven flash of the empty step-1 form
+  // before the snapshot lands. SSR-safe: the helpers no-op when
+  // sessionStorage is unavailable, in which case the wizard behaves
+  // exactly like the pre-#1132 code (fresh state every mount).
+  const [runId] = useState<string>(() => {
+    if (typeof window === "undefined") return "";
+    return loadOrInitWizardRunId();
+  });
+  const initialSnapshot = useMemo<WizardSnapshot | null>(() => {
+    if (typeof window === "undefined" || runId === "") return null;
+    return loadWizardSnapshot(runId);
+  }, [runId]);
+
+  const [step, setStep] = useState<Step>(
+    (initialSnapshot?.currentStep as Step | undefined) ?? 1,
+  );
+  const [form, setForm] = useState<FormState>(() =>
+    initialSnapshot
+      ? mergeSnapshotIntoForm(initialSnapshot.form)
+      : INITIAL_FORM,
+  );
   const [stepError, setStepError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitWarnings, setSubmitWarnings] = useState<string[]>([]);
@@ -346,6 +452,37 @@ export default function CreateUnitPage() {
   const [createdUnitName, setCreatedUnitName] = useState<string | null>(null);
   const [startError, setStartError] = useState<string | null>(null);
   const [startRequested, setStartRequested] = useState(false);
+
+  // #1132: debounced sessionStorage save. Stops once the unit is
+  // created (we don't want to overwrite the snapshot — it's about to be
+  // cleared by the success path; persisting in the meantime would race
+  // with `clearWizardRun` and either resurrect a stale blob or write a
+  // mid-mutation form state). Saves a stable, secrets-free subset (see
+  // `WizardFormSnapshot`) under the per-tab run id.
+  const persistDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  useEffect(() => {
+    if (runId === "") return;
+    if (createdUnitName !== null) return;
+    if (persistDebounceRef.current !== null) {
+      clearTimeout(persistDebounceRef.current);
+    }
+    persistDebounceRef.current = setTimeout(() => {
+      const snapshot: WizardSnapshot = {
+        schemaVersion: WIZARD_STATE_SCHEMA_VERSION,
+        currentStep: step as PersistedWizardStep,
+        form: extractWizardFormSnapshot(form),
+      };
+      saveWizardSnapshot(runId, snapshot);
+    }, WIZARD_PERSIST_DEBOUNCE_MS);
+    return () => {
+      if (persistDebounceRef.current !== null) {
+        clearTimeout(persistDebounceRef.current);
+        persistDebounceRef.current = null;
+      }
+    };
+  }, [runId, step, form, createdUnitName]);
 
   // Template catalog (#119): cached once per session so revisiting the
   // wizard doesn't round-trip. The key comes from `queryKeys.templates`.
@@ -624,6 +761,24 @@ export default function CreateUnitPage() {
     setStepError(null);
     setSubmitError(null);
     if (step > 1) setStep((s) => (s - 1) as Step);
+  };
+
+  // #1132: explicit cancel — clear the persisted wizard snapshot for
+  // this run AND route back to the units list. Without the explicit
+  // clear, the next visit to /units/create in this tab would resume
+  // the abandoned form, which is the opposite of what "Cancel" means.
+  // We also cancel any pending debounced save so it cannot resurrect
+  // the freshly-cleared blob between this click and the actual page
+  // unmount (router.push is async).
+  const handleCancel = () => {
+    if (persistDebounceRef.current !== null) {
+      clearTimeout(persistDebounceRef.current);
+      persistDebounceRef.current = null;
+    }
+    if (runId !== "") {
+      clearWizardRun(runId);
+    }
+    router.push("/units");
   };
 
   const handleYamlFile = async (file: File) => {
@@ -953,14 +1108,24 @@ export default function CreateUnitPage() {
 
   // On terminal success, redirect to the Explorer's Overview tab
   // (#983). The tab query string matches the rest of the app
-  // (UnitCard, InboxCard); `node` is the unit name.
+  // (UnitCard, InboxCard); `node` is the unit name. #1132: also tear
+  // down the persisted wizard snapshot — the unit exists; rehydrating
+  // it would put the operator into a "create the same unit again"
+  // state on the next /units/create visit in this tab.
   useEffect(() => {
     if (createdUnitName && isTerminalSuccess) {
+      if (persistDebounceRef.current !== null) {
+        clearTimeout(persistDebounceRef.current);
+        persistDebounceRef.current = null;
+      }
+      if (runId !== "") {
+        clearWizardRun(runId);
+      }
       router.push(
         `/units?node=${encodeURIComponent(createdUnitName)}&tab=Overview`,
       );
     }
-  }, [createdUnitName, isTerminalSuccess, router]);
+  }, [createdUnitName, isTerminalSuccess, router, runId]);
 
   const submitting = createUnit.isPending;
 
@@ -1695,7 +1860,11 @@ export default function CreateUnitPage() {
                     {isSelected && WizardStep && (
                       <WizardStep
                         onChange={handleConnectorConfigChange}
-                        initialValue={null}
+                        // #1132: rehydrate from the persisted snapshot
+                        // so a refresh-after-fill on Step 4 brings back
+                        // the operator's owner/repo/installation/events
+                        // instead of an empty form.
+                        initialValue={form.connectorConfig}
                       />
                     )}
                     {isSelected && !WizardStep && (
@@ -2072,18 +2241,37 @@ export default function CreateUnitPage() {
 
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between gap-3">
-          <Button
-            variant="outline"
-            onClick={handleBack}
-            // Disable Back while the initial create mutation is in flight
-            // or while we're actively waiting for validation to finish —
-            // the unit exists at that point and the wizard form controls
-            // are decoupled from the backend state. Terminal-error state
-            // re-enables Back so the operator can fix a field and retry.
-            disabled={step === 1 || submitting || isValidating}
-          >
-            Back
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={handleBack}
+              // Disable Back while the initial create mutation is in flight
+              // or while we're actively waiting for validation to finish —
+              // the unit exists at that point and the wizard form controls
+              // are decoupled from the backend state. Terminal-error state
+              // re-enables Back so the operator can fix a field and retry.
+              disabled={step === 1 || submitting || isValidating}
+            >
+              Back
+            </Button>
+            {/* #1132: explicit cancel that tears down the persisted
+                snapshot before navigating away. Without this the
+                operator's only escape route was the Breadcrumbs link,
+                which leaves the snapshot dangling for the next visit
+                in this tab. We hide it once the unit is created — at
+                that point the Finalize step owns the flow and Cancel
+                would be ambiguous. */}
+            {createdUnitName === null && (
+              <Button
+                variant="ghost"
+                onClick={handleCancel}
+                disabled={submitting || isValidating}
+                data-testid="wizard-cancel"
+              >
+                Cancel
+              </Button>
+            )}
+          </div>
           {step < 6 && (
             <div className="flex flex-1 items-center justify-end gap-3">
               {nextDisabledReason && (

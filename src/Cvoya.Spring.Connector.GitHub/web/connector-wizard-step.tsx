@@ -18,8 +18,8 @@
 // alongside `connector-tab.tsx` in `src/Cvoya.Spring.Web/src/connectors/
 // registry.ts` so both entry points are statically known at build time.
 
-import { useEffect, useState } from "react";
-import { Github, RefreshCw } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Github, Loader2, RefreshCw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -130,65 +130,82 @@ export function GitHubConnectorWizardStep({
   // affordances entirely and render a remediation panel pointing at the
   // CLI / docs. Drives the friendly path for #1186.
   const [disabledReason, setDisabledReason] = useState<string | null>(null);
-  // Incremented by the Refresh button to re-run the installations fetch
-  // effect. Using a monotonically-increasing token keeps the fetch logic
-  // inside the effect (so `setState` after the `await` resolves — which
-  // doesn't count as "synchronous setState inside an effect") while still
-  // supporting imperative refresh from the UI.
-  const [refreshToken, setRefreshToken] = useState(0);
+  // #1132: tracks an in-flight installations refetch. The Recheck
+  // button reads this to disable itself + announce a busy state via
+  // `aria-busy`; the existing-installations Refresh button on the
+  // installation-picker reuses the same flag so both controls stay
+  // coordinated when the user clicks either one.
+  const [rechecking, setRechecking] = useState(false);
+
+  // #1132: lifted out of the mount effect so the Recheck button can
+  // re-run the fetch without re-mounting the component (and without the
+  // monotonic-token gymnastics the previous implementation used). The
+  // function is stable across renders because it has no dependencies —
+  // all reads come from `api`, all writes go through setState.
+  //
+  // Note: every setState below happens AFTER an `await`, which is
+  // important — it keeps `react-hooks/set-state-in-effect` quiet when
+  // the mount effect calls this function (the rule only flags
+  // synchronous setState before the first suspension point).
+  const fetchInstallations = useCallback(async () => {
+    let list: GitHubInstallationResponse[] = [];
+    let disabled: string | null = null;
+    try {
+      list = await api.listGitHubInstallations();
+      setInstallations(list);
+      setInstallationsError(null);
+      setDisabledReason(null);
+    } catch (err) {
+      // disabled-with-reason is a first-class connector state, not a
+      // failure (#1186). Render the remediation panel instead of the
+      // raw RFC 9110 envelope.
+      disabled = extractDisabledReason(err);
+      if (disabled !== null) {
+        setDisabledReason(disabled);
+        setInstallationsError(null);
+      } else {
+        const message = err instanceof Error ? err.message : String(err);
+        setInstallationsError(message);
+        setDisabledReason(null);
+      }
+      setInstallations([]);
+    }
+    // Fetch the install URL whenever the empty-state banner will show
+    // (either the list came back empty, or the call errored). #599: the
+    // previous implementation only fetched on the catch branch, so
+    // platforms where the App simply has no installations surfaced a
+    // banner with no call-to-action link.
+    //
+    // Skip the install-URL fetch when the connector is disabled — the
+    // endpoint will 404 with the same disabled payload, and there is
+    // no install URL to render anyway (the deployment hasn't been
+    // wired up to a GitHub App yet).
+    if (disabled === null && list.length === 0) {
+      try {
+        const { url } = await api.getGitHubInstallUrl();
+        setInstallUrl(url);
+      } catch {
+        // Swallow — the banner already tells the user what's wrong.
+      }
+    }
+  }, []);
+
+  // #1132: imperative wrapper for the Recheck button. Lifts the
+  // `rechecking` flag around the fetch so the UI can render the
+  // spinner / aria-busy state without leaking that concern into the
+  // mount-time effect.
+  const recheckInstallations = useCallback(async () => {
+    setRechecking(true);
+    try {
+      await fetchInstallations();
+    } finally {
+      setRechecking(false);
+    }
+  }, [fetchInstallations]);
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      let list: GitHubInstallationResponse[] = [];
-      let disabled: string | null = null;
-      try {
-        list = await api.listGitHubInstallations();
-        if (cancelled) return;
-        setInstallations(list);
-        setInstallationsError(null);
-        setDisabledReason(null);
-      } catch (err) {
-        if (cancelled) return;
-        // disabled-with-reason is a first-class connector state, not a
-        // failure (#1186). Render the remediation panel instead of the
-        // raw RFC 9110 envelope.
-        disabled = extractDisabledReason(err);
-        if (disabled !== null) {
-          setDisabledReason(disabled);
-          setInstallationsError(null);
-        } else {
-          const message = err instanceof Error ? err.message : String(err);
-          setInstallationsError(message);
-          setDisabledReason(null);
-        }
-        setInstallations([]);
-      }
-      // Fetch the install URL whenever the empty-state banner will show
-      // (either the list came back empty, or the call errored). #599: the
-      // previous implementation only fetched on the catch branch, so
-      // platforms where the App simply has no installations surfaced a
-      // banner with no call-to-action link.
-      //
-      // Skip the install-URL fetch when the connector is disabled — the
-      // endpoint will 404 with the same disabled payload, and there is
-      // no install URL to render anyway (the deployment hasn't been
-      // wired up to a GitHub App yet).
-      if (cancelled || disabled !== null) return;
-      if (list.length === 0) {
-        try {
-          const { url } = await api.getGitHubInstallUrl();
-          if (cancelled) return;
-          setInstallUrl(url);
-        } catch {
-          // Swallow — the banner already tells the user what's wrong.
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [refreshToken]);
+    void fetchInstallations();
+  }, [fetchInstallations]);
 
   // Push validated state up to the wizard on every change. Null when the
   // minimum required fields are missing so the wizard knows not to bundle
@@ -275,17 +292,54 @@ export function GitHubConnectorWizardStep({
               Install the GitHub App on your account or organisation before
               binding this unit.
             </p>
-            {installUrl && (
-              <a
-                href={installUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-2 inline-flex h-8 items-center gap-1 rounded-md border border-warning/60 bg-warning/10 px-3 text-sm font-medium text-warning transition-colors hover:bg-warning/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            {/* #1132: Install-app routes the operator off-site to GitHub
+                — once they install the App, GitHub redirects them away,
+                and they then have to manually return to the wizard. The
+                old code never re-fetched, so the panel stayed stuck on
+                "No installations" and the operator hit a dead end. The
+                Recheck button re-runs the same `list-installations`
+                fetch in place; it's announced as `aria-busy` while in
+                flight and disabled to avoid double-clicks. */}
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              {installUrl && (
+                <a
+                  href={installUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex h-8 items-center gap-1 rounded-md border border-warning/60 bg-warning/10 px-3 text-sm font-medium text-warning transition-colors hover:bg-warning/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                >
+                  <Github className="h-4 w-4" aria-hidden="true" />
+                  Install GitHub App
+                </a>
+              )}
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => void recheckInstallations()}
+                disabled={rechecking}
+                aria-label="Recheck installations"
+                aria-busy={rechecking}
+                data-testid="github-recheck-installations"
               >
-                <Github className="h-4 w-4" aria-hidden="true" />
-                Install GitHub App
-              </a>
-            )}
+                {rechecking ? (
+                  <Loader2
+                    className="mr-1 h-4 w-4 animate-spin"
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <RefreshCw
+                    className="mr-1 h-4 w-4"
+                    aria-hidden="true"
+                  />
+                )}
+                {rechecking ? "Rechecking…" : "Recheck installations"}
+                {rechecking && (
+                  <span className="sr-only">
+                    Refreshing GitHub App installations
+                  </span>
+                )}
+              </Button>
+            </div>
             {installationsError && (
               <p className="mt-2 text-xs text-muted-foreground">
                 ({installationsError})
@@ -344,10 +398,16 @@ export function GitHubConnectorWizardStep({
             <Button
               size="sm"
               variant="outline"
-              onClick={() => setRefreshToken((n) => n + 1)}
+              onClick={() => void recheckInstallations()}
+              disabled={rechecking}
               aria-label="Refresh installations"
+              aria-busy={rechecking}
             >
-              <RefreshCw className="h-4 w-4" />
+              {rechecking ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
             </Button>
           </div>
         </label>
