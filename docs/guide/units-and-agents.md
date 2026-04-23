@@ -328,6 +328,39 @@ version compatibility rules, and debugging tips (where bridge logs go,
 how to verify the readiness probe at `/.well-known/agent.json` and the
 `/healthz` surface).
 
+### Bundled reference images (what you can type into `execution.image` without a build of your own)
+
+Spring Voyage ships three reference container images. Two of them are
+**ready to dispatch** — you can paste them straight into a unit's or
+agent's `execution.image` field (CLI, YAML manifest, or the portal's
+**Execution** tab) once they exist on the host. The third is a base
+image you `FROM` when authoring your own.
+
+| Image reference | Conformance path | Pair with `tool:` | Pulled from a registry? | Ready to dispatch? |
+|-----------------|------------------|-------------------|-------------------------|--------------------|
+| `localhost/spring-voyage-agent-claude-code:latest` | path 1 (bridge) | `claude-code` | No — built locally by `./deployment/build-agent-images.sh`. | Yes, after that script runs. |
+| `localhost/spring-voyage-agent-dapr:latest`        | path 3 (native A2A) | `dapr-agent` | No — built locally by `./deployment/build-agent-images.sh`. | Yes, after that script runs. |
+| `ghcr.io/cvoya-com/agent-base:<semver>`             | path 1 base     | (none — no CLI inside) | Yes — pulled directly from GHCR. | No. The bridge has nothing to spawn on `message/send`; useful only as a `FROM` base or as a no-op smoke target with `SPRING_AGENT_ARGV='["true"]'`. |
+
+So the practical answer to "which images can I enter when creating a
+new unit, without building anything new?":
+
+- The two `localhost/spring-voyage-agent-*:latest` images, **provided
+  someone has already run `./deployment/build-agent-images.sh` on the
+  dispatcher host** (they live in the local image store; the
+  `localhost/` prefix is not a registry). `./deploy.sh build` runs that
+  script for you.
+- `ghcr.io/cvoya-com/agent-base:<semver>` pulls cleanly from GHCR
+  without any build, but it has no agent CLI baked in, so a real turn
+  against it will fail. Use it as a base in your own Dockerfile, not as
+  a unit's image directly.
+
+The same two-image table is reproduced in
+[`README.md` § Custom agent images](../../README.md#custom-agent-images)
+and [`deployment/README.md` § Custom agent images](../../deployment/README.md#custom-agent-images),
+which also cover the `examples/dockerfiles/` starter templates for
+layering extra tooling on top.
+
 ## Persistent Agents
 
 Agents configured with `execution.hosting: persistent` run as long-lived
