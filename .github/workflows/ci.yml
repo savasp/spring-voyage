@@ -88,13 +88,13 @@ jobs:
               - 'src/Cvoya.Spring.Dispatcher/**'
             agent_images:
               - 'deployment/Dockerfile.agent-base'
-              - 'deployment/Dockerfile.agent'
               - 'deployment/Dockerfile.agent.claude-code'
               - 'deployment/Dockerfile.agent.dapr'
               - 'deployment/build-agent-images.sh'
               - 'deployment/agent-sidecar/**'
               - 'agents/dapr-agent/**'
               - 'tests/scripts/smoke-agent-images.sh'
+              - 'tests/scripts/smoke-1087.sh'
 
   build:
     name: Build
@@ -894,6 +894,18 @@ jobs:
         env:
           SMOKE_IMAGE_TAG: dev
         run: bash tests/scripts/smoke-agent-images.sh
+
+      # PR 6 of #1087 (#1099): the unified-dispatch end-to-end smoke fires
+      # an A2A `message/send` against the agent-base bridge (path 1) and
+      # asserts a real response (`status.state == "completed"`, artifact
+      # echoes the prompt). Path 3 (dapr-agent) is gated behind SMOKE_DAPR=1
+      # pending #1110; path 2 (npm-installed bridge) is tracked as a
+      # follow-up. See the script header for the full matrix.
+      - name: End-to-end smoke (PR 6 of #1087 acceptance)
+        shell: bash
+        env:
+          SMOKE_IMAGE_TAG: dev
+        run: bash tests/scripts/smoke-1087.sh
 
   required-checks:
     name: Required checks

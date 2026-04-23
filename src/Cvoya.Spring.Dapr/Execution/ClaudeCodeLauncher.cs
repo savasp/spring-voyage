@@ -47,10 +47,12 @@ public class ClaudeCodeLauncher(ILoggerFactory loggerFactory) : IAgentToolLaunch
     ///   dispatcher can map to <see cref="Cvoya.Spring.Core.Messaging.StreamEvent"/>s.</item>
     /// </list>
     /// Source: matches the smoke argv used by the agent-sidecar config tests
-    /// (<c>deployment/agent-sidecar/test/config.test.ts</c>) — there is no
-    /// <c>scripts/run-claude-code.sh</c> today because the legacy dispatcher
-    /// path runs <c>sleep infinity</c> (PR 5 / #1098 flips it). Documented in
-    /// the issue (#1097) as the BYOI path-1 baseline.
+    /// (<c>deployment/agent-sidecar/test/config.test.ts</c>) and is the
+    /// BYOI path-1 baseline documented in #1097. Since PR 5 of #1087
+    /// (#1098) the dispatcher no longer runs <c>sleep infinity</c>: the
+    /// argv below is JSON-encoded into <c>SPRING_AGENT_ARGV</c> and
+    /// exec'd by the agent-base bridge on every <c>message/send</c>,
+    /// with the user's prompt fed via stdin.
     /// </remarks>
     internal static readonly string[] DefaultClaudeArgv =
     [

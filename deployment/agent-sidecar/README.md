@@ -96,9 +96,10 @@ If you can't `FROM` the base image (you need a non-Debian distro, you ship a roo
 
 ## Architecture refs
 
-- BYOI conformance contract: [`docs/architecture/agent-runtime.md`](../../docs/architecture/agent-runtime.md#9-byoi-conformance-contract).
+- BYOI conformance contract: [`docs/architecture/agent-runtime.md` § 7](../../docs/architecture/agent-runtime.md#7-byoi-conformance-contract).
+- Operator step-by-step (with Dockerfile snippets, env contract, debugging tips): [`docs/guide/byoi-agent-images.md`](../../docs/guide/byoi-agent-images.md).
 - Workflow / dispatch sequence: [`docs/architecture/workflows.md`](../../docs/architecture/workflows.md).
-- ADR `0027-agent-image-conformance-contract.md` — lands in PR 6 of [#1087](https://github.com/cvoya-com/spring-voyage/issues/1087).
+- ADRs: [0025 — unified agent launch contract](../../docs/decisions/0025-unified-agent-launch-contract.md), [0026 — per-agent container scope](../../docs/decisions/0026-per-agent-container-scope.md), [0027 — agent-image conformance contract](../../docs/decisions/0027-agent-image-conformance-contract.md).
 
 ## License
 

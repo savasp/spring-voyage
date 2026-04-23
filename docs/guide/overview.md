@@ -13,6 +13,7 @@ This guide covers how to use Spring Voyage V2 through the `spring` CLI. It walks
 | [Web Portal Walkthrough](portal.md) | Pages, tabs, and CLI equivalents for the browser UI |
 | [Declarative Configuration](declarative.md) | YAML definitions, `spring apply`, and version-controlled setup |
 | [Deployment](deployment.md) | Operator guide: Docker Compose / Podman, Dapr components, TLS, secrets |
+| [Bring Your Own Image (BYOI)](byoi-agent-images.md) | How to ship a custom agent container image — the three conformance paths, env contract, and debugging tips |
 | [Runnable Examples](examples.md) | Catalog of e2e scenario scripts that double as usage examples |
 
 ## Prerequisites

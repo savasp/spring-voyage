@@ -38,6 +38,9 @@ For open design questions that have **not** yet been decided, see [`../architect
 | [0022](0022-postgres-as-primary-store.md) | PostgreSQL as primary store; Dapr state store for actor runtime state | Accepted — relational data via EF Core; actor state via Dapr abstraction |
 | [0023](0023-flat-actor-ids.md) | Flat actor ids; single-hop routing with directory resolution | Accepted — O(path) permission walk, single dispatch hop |
 | [0024](0024-unit-validation-as-dapr-workflow.md) | Unit validation runs as a Dapr Workflow, not as an actor | Accepted — `UnitValidationWorkflow` + in-container probe activities ship in #941 |
+| [0025](0025-unified-agent-launch-contract.md) | Unified agent launch contract (single dispatch path, response-capture as a property) | Accepted — `AgentLaunchSpec` + single A2A path; ephemeral is a retention policy |
+| [0026](0026-per-agent-container-scope.md) | Per-agent container scope (one container per agent, not per unit) | Accepted — `Pooled` reserved for [#362](https://github.com/cvoya-com/spring-voyage/issues/362) |
+| [0027](0027-agent-image-conformance-contract.md) | Agent-image conformance contract (A2A 0.3.x on `:8999`, three conformance paths) | Accepted — bridge ships via OCI base, npm, and SEA binary |
 
 ## Format
 

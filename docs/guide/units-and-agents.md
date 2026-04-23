@@ -283,6 +283,51 @@ spring agent clone policy set --scope tenant --max-clones 20 --max-depth 2
 
 HTTP operators can PUT the same shape against `/api/v1/agents/{id}/cloning-policy` or `/api/v1/tenant/cloning-policy`. A denied request returns HTTP 403 with an `deniedDimension` extension field so tooling can surface exactly which rule fired (`policy`, `attachment`, `max-clones`, `max-depth`, `budget`, or `boundary`).
 
+## How an agent's container is launched
+
+Every agent — ephemeral or persistent — runs through the same dispatch
+path: the dispatcher resolves the agent definition, calls the matching
+`IAgentToolLauncher.PrepareAsync` for an `AgentLaunchSpec`, starts a
+container via the dispatcher service ([ADR 0012](../decisions/0012-spring-dispatcher-service-extraction.md)),
+polls `GET /.well-known/agent.json` on the in-container A2A endpoint
+(default port `8999`), and sends the turn over A2A. The only branch is the
+post-roundtrip lifecycle decision: `Ephemeral` tears the container down
+on turn drain; `Persistent` leaves it registered for the next turn. See
+[ADR 0025](../decisions/0025-unified-agent-launch-contract.md) for the
+unified-dispatch decision record and
+[`docs/architecture/agent-runtime.md`](../architecture/agent-runtime.md)
+for the architecture deep-dive.
+
+Three things every agent image has to do — the **BYOI conformance contract**
+([ADR 0027](../decisions/0027-agent-image-conformance-contract.md)):
+
+1. Expose A2A 0.3.x at `http://0.0.0.0:8999/`.
+2. Serve an Agent Card at `GET /.well-known/agent.json` whose
+   `protocolVersion` is `"0.3"`.
+3. Honour the launcher-supplied environment, including any `SPRING_*` keys
+   the launcher stamps into `AgentLaunchSpec.EnvironmentVariables`. The
+   most important one is `SPRING_AGENT_ARGV` — a **JSON-encoded array of
+   strings** that the agent-base bridge `JSON.parse`s and execs as the
+   spawned tool's argv on every `message/send`. The dispatcher never
+   shell-splits argv strings ([#1063](https://github.com/cvoya-com/spring-voyage/issues/1063)).
+
+There are three conformance paths — pick whichever fits your image
+constraints:
+
+| Path | When to pick it |
+|------|-----------------|
+| 1    | Default. `FROM ghcr.io/cvoya-com/agent-base:<semver>` and `RUN`-install your CLI tool. Works for anything that runs on Debian 12 + Node 22. |
+| 2    | Non-Debian distro / non-default UID / Node-less image. Pull the bridge in via `npm i -g @cvoya/spring-voyage-agent-sidecar` (Node-bearing) or a SEA binary from each GitHub Release (Node-less). |
+| 3    | Your image already speaks A2A natively (e.g. `dapr-agents`). No bridge involved. |
+
+The Tier-A CLI launchers shipped with OSS (Claude Code, Codex, Gemini)
+all use path 1. The Dapr Agent launcher uses path 3. See
+[Bring Your Own Image (BYOI)](byoi-agent-images.md) for the step-by-step
+recipes (with copy-pasteable Dockerfile snippets), the full env contract,
+version compatibility rules, and debugging tips (where bridge logs go,
+how to verify the readiness probe at `/.well-known/agent.json` and the
+`/healthz` surface).
+
 ## Persistent Agents
 
 Agents configured with `execution.hosting: persistent` run as long-lived

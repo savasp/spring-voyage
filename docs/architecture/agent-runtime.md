@@ -89,10 +89,14 @@ AgentActor.ExecuteTurn()
 
 Both hosting modes share a single dispatch path. The only branch is the
 post-roundtrip lifecycle decision: ephemeral tears down, persistent stays
-running. PR 5 of the #1087 series collapsed the legacy "ephemeral goes
-through `RunAsync + harvest stdout`" branch onto this unified path; the
-container's PID 1 is now the agent-base bridge (path 1) or the agent runtime
-itself (path 3 native A2A), never `sleep infinity`.
+running. The unification was decided in [ADR 0025](../decisions/0025-unified-agent-launch-contract.md)
+and shipped through PRs 4–5 of the #1087 series, collapsing the legacy
+"ephemeral goes through `RunAsync + harvest stdout`" branch onto this
+unified path. The container's PID 1 is now always the agent-base bridge
+(BYOI conformance paths 1/2 — see [ADR 0027](../decisions/0027-agent-image-conformance-contract.md))
+or the agent runtime itself (path 3, native A2A); the platform no longer
+launches containers whose entrypoint is a "wait forever" stub. Container
+scope is per-agent, not per-unit — see [ADR 0026](../decisions/0026-per-agent-container-scope.md).
 
 `AgentLaunchContext` — the record the dispatcher hands to the launcher — now
 carries `Provider` and `Model` (both `string?`). The dispatcher reads them
@@ -387,7 +391,7 @@ accepts both the top-level `execution:` block and the legacy
 
 ## 7. BYOI conformance contract
 
-Operators (OSS and Cloud) frequently want to bring their own agent images — pre-baked with proprietary CLIs, custom system tooling, an internal trust anchor, or a non-Debian distro. The contract between an agent image and `A2AExecutionDispatcher` is small enough to fit on one screen, and there are three conformance paths to satisfy it. ADR `0027-agent-image-conformance-contract.md` (filed in PR 6 of [#1087](https://github.com/cvoya-com/spring-voyage/issues/1087)) is the canonical reference; this section is the operational summary.
+Operators (OSS and Cloud) frequently want to bring their own agent images — pre-baked with proprietary CLIs, custom system tooling, an internal trust anchor, or a non-Debian distro. The contract between an agent image and `A2AExecutionDispatcher` is small enough to fit on one screen, and there are three conformance paths to satisfy it. [ADR 0027](../decisions/0027-agent-image-conformance-contract.md) is the canonical reference; this section is the operational summary. For a step-by-step guide with copy-pasteable Dockerfile snippets, the full `SPRING_*` env contract, version compatibility rules, and debugging tips, see [`docs/guide/byoi-agent-images.md`](../guide/byoi-agent-images.md).
 
 ### The wire contract
 
