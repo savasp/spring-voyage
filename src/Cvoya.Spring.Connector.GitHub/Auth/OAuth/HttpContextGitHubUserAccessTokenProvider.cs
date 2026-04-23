@@ -78,10 +78,12 @@ public class HttpContextGitHubUserAccessTokenProvider : IGitHubUserAccessTokenPr
         {
             // Unknown / expired session — treat as not signed in. The
             // wizard surfaces this as "Sign in with GitHub" so the user
-            // can re-authorise.
+            // can re-authorise. The session id is request-controlled, so
+            // log only a fingerprint (never the raw value, which would
+            // also enable log-forging via embedded control characters).
             _logger.LogInformation(
-                "OAuth session {SessionId} not found while resolving GitHub user access token",
-                sessionId);
+                "OAuth session {SessionFingerprint} not found while resolving GitHub user access token",
+                FingerprintForLog(sessionId));
             return null;
         }
 
@@ -89,12 +91,23 @@ public class HttpContextGitHubUserAccessTokenProvider : IGitHubUserAccessTokenPr
         if (string.IsNullOrEmpty(accessToken))
         {
             _logger.LogWarning(
-                "OAuth session {SessionId} resolved but its access-token store entry is missing; treating as signed-out",
-                sessionId);
+                "OAuth session {SessionFingerprint} resolved but its access-token store entry is missing; treating as signed-out",
+                FingerprintForLog(sessionId));
             return null;
         }
 
         return new GitHubUserAccess(session.Login, session.UserId, accessToken);
+    }
+
+    // Hash the session id before logging so request-controlled bytes never
+    // hit the log stream verbatim (CodeQL cs/log-forging) and a stale-but-
+    // valid session id never leaks into log aggregators. Truncated to keep
+    // log lines compact — collision risk is irrelevant for a debug aid.
+    private static string FingerprintForLog(string sessionId)
+    {
+        var bytes = System.Text.Encoding.UTF8.GetBytes(sessionId);
+        var hash = System.Security.Cryptography.SHA256.HashData(bytes);
+        return Convert.ToHexString(hash, 0, 8);
     }
 
     private string? ReadSessionId()
