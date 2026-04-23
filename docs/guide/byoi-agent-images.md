@@ -336,17 +336,21 @@ curl -fsS -X POST http://localhost:8999/ \
         "acceptedOutputModes": ["text/plain"]
       }
     }
-  }' | jq '.result.status.state, .result.artifacts'
+  }' | jq '.result.task.status.state, .result.task.artifacts'
 ```
 
-A healthy bridge returns `status.state: "completed"` and an `artifacts` array carrying whatever the spawned process wrote to stdout. A failure surfaces as `status.state: "failed"` with the error in `status.message`.
+A healthy bridge returns `result.task.status.state: "TASK_STATE_COMPLETED"` and a `result.task.artifacts` array carrying whatever the spawned process wrote to stdout. A failure surfaces as `result.task.status.state: "TASK_STATE_FAILED"` with the error in `result.task.status.message` (`role: "ROLE_AGENT"`).
+
+> **Why proto-style enum names?** The `message/send` result is the .NET A2A SDK's [`SendMessageResponse`](https://github.com/a2aproject/a2a-dotnet/blob/main/src/A2A/Models/SendMessageResponse.cs) — a field-presence wrapper around either `task` (an [`AgentTask`](https://github.com/a2aproject/a2a-dotnet/blob/main/src/A2A/Models/AgentTask.cs)) or `message` (a [`Message`](https://github.com/a2aproject/a2a-dotnet/blob/main/src/A2A/Models/Message.cs)). The SDK pins every enum (`TaskState`, `Role`, …) to the proto-style names via `[JsonStringEnumMemberName]` (see [`TaskState.cs`](https://github.com/a2aproject/a2a-dotnet/blob/main/src/A2A/Models/TaskState.cs) and [`Role.cs`](https://github.com/a2aproject/a2a-dotnet/blob/main/src/A2A/Models/Role.cs)) and rejects the lowercase A2A 0.3 spec form with a `JsonException`. The bridge picks the .NET-side casing because the SDK is the wire-stable consumer; tracked in [#1115](https://github.com/cvoya-com/spring-voyage/issues/1115).
+>
+> The dispatcher's `tasks/get` and `tasks/cancel` calls deserialize the result as a bare `AgentTask` (no `task` wrapper), since `A2AClient.GetTaskAsync` and `CancelTaskAsync` are typed `Task<AgentTask>`. Only `message/send` requires the wrapper.
 
 ### Common pitfalls
 
 | Symptom | Likely cause |
 |---------|--------------|
 | Dispatcher logs `Failed to reach /.well-known/agent.json` after 60 s. | ENTRYPOINT isn't the bridge. PID 1 has to be the bridge (paths 1/2) or your A2A server (path 3). |
-| `message/send` returns `failed` immediately on every turn (paths 1/2). | `SPRING_AGENT_ARGV` is missing, mis-encoded (string instead of JSON array), or points at a binary that's not on PATH. |
+| `message/send` returns `TASK_STATE_FAILED` immediately on every turn (paths 1/2). | `SPRING_AGENT_ARGV` is missing, mis-encoded (string instead of JSON array), or points at a binary that's not on PATH. |
 | Dispatcher logs `bridge version skew: expected 1.x, observed 0.x`. | The agent image is pinning an older bridge than the dispatcher's compatibility window allows. Re-base on a current `agent-base` tag, or bump the npm / SEA binary version. |
 | Agent picks up no MCP tools. | `SPRING_MCP_ENDPOINT` is unreachable from inside the container. On Linux + Podman you typically need `--add-host host.docker.internal:host-gateway`; the dispatcher already adds this to ephemeral configs, but a custom path-3 image must honour the env even if the network setup differs. |
 | Persistent agent restarts every few seconds. | The `PersistentAgentRegistry` health monitor is flagging `/.well-known/agent.json` as unhealthy. Read the dispatcher's logs for the failed probe response. A misconfigured proxy (returning HTML instead of JSON) is a common cause. |
@@ -366,7 +370,7 @@ The script publishes each image on a random host port, waits for `/.well-known/a
 
 ### `smoke-1087.sh` — full A2A round-trip across both bridge-bearing paths
 
-`tests/scripts/smoke-1087.sh` is the wire-level conformance smoke for the unified dispatch path. It boots an agent image, polls `/.well-known/agent.json`, fires an A2A `message/send`, and asserts a real response (`status.state == "completed"`, prompt echoed back via the bridge spawning `cat`). It covers both bridge-bearing conformance paths from ADR 0027:
+`tests/scripts/smoke-1087.sh` is the wire-level conformance smoke for the unified dispatch path. It boots an agent image, polls `/.well-known/agent.json`, fires an A2A `message/send`, and asserts a real response (`result.task.status.state == "TASK_STATE_COMPLETED"`, prompt echoed back via the bridge spawning `cat`). The proto-style enum names follow the .NET A2A SDK contract pinned via `[JsonStringEnumMemberName]`; see issue #1115 for the rationale. It covers both bridge-bearing conformance paths from ADR 0027:
 
 ```bash
 # Path 1 only (default; what CI ran on every PR before #1120).
