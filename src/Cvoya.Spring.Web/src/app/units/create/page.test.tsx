@@ -1254,3 +1254,158 @@ describe("CreateUnitPage — #1034 Finalize summary respects typed name", () => 
     ).toBe("—");
   });
 });
+
+// #1132: wizard state persistence across page reloads. Rehydrating
+// from a sessionStorage snapshot must restore the operator at the right
+// step with the right field values (excluding secrets), while a
+// malformed snapshot must be discarded silently and the wizard must
+// start at step 1. Both behaviours need explicit tests because the
+// effect-driven save and the lazy-init load are easy to break in a
+// future refactor.
+describe("CreateUnitPage — #1132 wizard state persistence", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    seedDefaultMocks();
+    sessionStorage.clear();
+  });
+
+  function seedSnapshot(snapshot: unknown) {
+    const runId = "test-run-1132";
+    sessionStorage.setItem("spring.wizard.unit-create.run-id", runId);
+    sessionStorage.setItem(
+      `spring.wizard.unit-create.${runId}`,
+      typeof snapshot === "string" ? snapshot : JSON.stringify(snapshot),
+    );
+  }
+
+  it("rehydrates the wizard at the saved step with the saved field values", async () => {
+    seedSnapshot({
+      schemaVersion: 1,
+      currentStep: 3,
+      form: {
+        name: "rehydrated-unit",
+        displayName: "Rehydrated Unit",
+        description: "Came back from a refresh.",
+        provider: "claude",
+        model: "claude-sonnet-4-6",
+        color: "#abcdef",
+        tool: "claude-code",
+        hosting: "default",
+        image: "",
+        runtime: "",
+        mode: "scratch",
+        templateId: null,
+        yamlText: "",
+        yamlFileName: null,
+        connectorSlug: null,
+        connectorTypeId: null,
+        connectorConfig: null,
+      },
+    });
+
+    renderPage();
+
+    // Step 3 (Mode) shows the mode cards. Without rehydrate the wizard
+    // would mount at step 1 and the mode picker wouldn't be visible at
+    // all.
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /scratch/i }),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.getByRole("button", { name: /^template/i }),
+    ).toBeInTheDocument();
+
+    // Stepping back to Identity (step 1) should show the persisted
+    // name + display name in the controls — proving the form snapshot
+    // landed in component state.
+    const back = screen.getByRole("button", { name: /^back$/i });
+    await act(async () => {
+      fireEvent.click(back);
+    });
+    await act(async () => {
+      fireEvent.click(back);
+    });
+    await waitFor(() => {
+      const nameInput = screen.getByPlaceholderText(
+        /engineering-team/i,
+      ) as HTMLInputElement;
+      expect(nameInput.value).toBe("rehydrated-unit");
+    });
+    const displayNameInput = screen.getByPlaceholderText(
+      /Engineering Team/i,
+    ) as HTMLInputElement;
+    expect(displayNameInput.value).toBe("Rehydrated Unit");
+  });
+
+  it("discards a snapshot whose schema doesn't validate and starts at step 1", async () => {
+    // Stale schema version (a future major bump must drop pre-bump
+    // blobs on the floor). The wizard must not crash and must mount
+    // at step 1 with an empty Name field.
+    seedSnapshot({
+      schemaVersion: 999,
+      currentStep: 4,
+      form: {
+        name: "should-not-rehydrate",
+      },
+    });
+
+    renderPage();
+
+    const nameInput = screen.getByPlaceholderText(
+      /engineering-team/i,
+    ) as HTMLInputElement;
+    expect(nameInput.value).toBe("");
+    // Step 1 (Identity) renders the Name + Display name controls. Any
+    // higher step would not render those in this layout; finding both
+    // confirms we mounted at step 1.
+    expect(
+      screen.getByPlaceholderText(/Engineering Team/i),
+    ).toBeInTheDocument();
+  });
+
+  it("discards a snapshot whose JSON is malformed", async () => {
+    seedSnapshot("not-json{");
+
+    renderPage();
+
+    const nameInput = screen.getByPlaceholderText(
+      /engineering-team/i,
+    ) as HTMLInputElement;
+    expect(nameInput.value).toBe("");
+  });
+
+  it("clears the snapshot when the operator clicks Cancel", async () => {
+    renderPage();
+    const nameInput = screen.getByPlaceholderText(
+      /engineering-team/i,
+    ) as HTMLInputElement;
+    await act(async () => {
+      fireEvent.change(nameInput, { target: { value: "abandoned" } });
+    });
+
+    // Wait for the debounced save to settle. The save effect uses
+    // setTimeout(300ms); a generous wait keeps the test stable.
+    await new Promise((r) => setTimeout(r, 400));
+
+    const runId = sessionStorage.getItem("spring.wizard.unit-create.run-id");
+    expect(runId).not.toBeNull();
+    expect(
+      sessionStorage.getItem(`spring.wizard.unit-create.${runId}`),
+    ).not.toBeNull();
+
+    const cancel = screen.getByTestId("wizard-cancel");
+    await act(async () => {
+      fireEvent.click(cancel);
+    });
+
+    expect(
+      sessionStorage.getItem("spring.wizard.unit-create.run-id"),
+    ).toBeNull();
+    expect(
+      sessionStorage.getItem(`spring.wizard.unit-create.${runId}`),
+    ).toBeNull();
+    expect(pushMock).toHaveBeenCalledWith("/units");
+  });
+});

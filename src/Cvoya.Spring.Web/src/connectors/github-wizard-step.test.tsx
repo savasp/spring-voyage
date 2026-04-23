@@ -214,6 +214,133 @@ describe("GitHubConnectorWizardStep", () => {
     expect(mocked.getGitHubInstallUrl).not.toHaveBeenCalled();
   });
 
+  // #1132: clicking the Recheck button while the panel says
+  // "No installations" must re-run the same list-installations fetch
+  // and re-render the panel with the new result. The previous code
+  // fetched once on mount and offered no way to re-check, so operators
+  // returning from the github.com install flow saw a permanently-stuck
+  // empty banner.
+  it("re-fetches installations when the Recheck button is clicked (#1132)", async () => {
+    mocked.listGitHubInstallations.mockResolvedValueOnce([]);
+    mocked.getGitHubInstallUrl.mockResolvedValue({
+      url: "https://github.com/apps/spring-voyage/installations/new",
+    });
+    const onChange = vi.fn();
+
+    await act(async () => {
+      render(<GitHubConnectorWizardStep onChange={onChange} />);
+    });
+
+    // Initial mount: empty list + Recheck button visible.
+    const recheck = await screen.findByTestId(
+      "github-recheck-installations",
+    );
+    expect(mocked.listGitHubInstallations).toHaveBeenCalledTimes(1);
+    expect(
+      screen.getByText(/No GitHub App installations found\./),
+    ).toBeInTheDocument();
+    expect(recheck).toHaveAttribute("aria-label", "Recheck installations");
+
+    // Operator returns from the GitHub install flow — the second
+    // round-trip should now see one installation.
+    mocked.listGitHubInstallations.mockResolvedValueOnce([
+      {
+        installationId: 42,
+        account: "acme",
+        accountType: "Organization",
+        repoSelection: "all",
+      } as never,
+    ]);
+
+    await act(async () => {
+      fireEvent.click(recheck);
+    });
+
+    await waitFor(() => {
+      expect(mocked.listGitHubInstallations).toHaveBeenCalledTimes(2);
+    });
+    // Empty banner should be gone and the installation picker should
+    // now be present.
+    await waitFor(() => {
+      expect(
+        screen.queryByText(/No GitHub App installations found\./),
+      ).not.toBeInTheDocument();
+    });
+    expect(screen.getByText(/acme \(Organization, all\)/)).toBeInTheDocument();
+  });
+
+  // #1132: while in flight, the Recheck button is disabled and the
+  // panel announces a busy state via aria-busy + a visually-hidden
+  // status string. Without these the operator can fire double-clicks
+  // and gets no SR feedback that the recheck is pending.
+  it("disables the Recheck button and announces aria-busy while in flight (#1132)", async () => {
+    let resolveSecond: ((value: never[]) => void) | null = null;
+    mocked.listGitHubInstallations.mockResolvedValueOnce([]);
+    mocked.getGitHubInstallUrl.mockResolvedValue({ url: "" });
+    const onChange = vi.fn();
+
+    await act(async () => {
+      render(<GitHubConnectorWizardStep onChange={onChange} />);
+    });
+
+    const recheck = await screen.findByTestId(
+      "github-recheck-installations",
+    );
+    // Stage a deferred response for the second fetch so we can observe
+    // the busy state.
+    mocked.listGitHubInstallations.mockReturnValueOnce(
+      new Promise<never[]>((resolve) => {
+        resolveSecond = resolve;
+      }) as ReturnType<typeof api.listGitHubInstallations>,
+    );
+
+    await act(async () => {
+      fireEvent.click(recheck);
+    });
+
+    await waitFor(() => {
+      expect(recheck).toHaveAttribute("aria-busy", "true");
+    });
+    expect(recheck).toBeDisabled();
+    expect(recheck.textContent).toMatch(/rechecking/i);
+
+    // Resolve and verify we return to the idle state.
+    await act(async () => {
+      resolveSecond!([]);
+    });
+    await waitFor(() => {
+      expect(recheck).toHaveAttribute("aria-busy", "false");
+    });
+    expect(recheck).not.toBeDisabled();
+  });
+
+  // #1132: when the connector is disabled at the deployment level,
+  // recheck makes no sense — there are no credentials to check. The
+  // friendly disabled panel from #1129 must remain the only thing on
+  // screen; the Recheck button MUST NOT render.
+  it("does not render the Recheck button when the connector is disabled (#1132)", async () => {
+    mocked.listGitHubInstallations.mockRejectedValue(
+      new ApiError(404, "Not Found", {
+        disabled: true,
+        reason: "GitHub App not configured on this deployment.",
+      }),
+    );
+    const onChange = vi.fn();
+
+    await act(async () => {
+      render(<GitHubConnectorWizardStep onChange={onChange} />);
+    });
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(/GitHub connector not configured on this deployment\./),
+      ).toBeInTheDocument(),
+    );
+    expect(
+      screen.queryByTestId("github-recheck-installations"),
+    ).not.toBeInTheDocument();
+  });
+
   it("hydrates from initialValue when provided", async () => {
     mocked.listGitHubInstallations.mockResolvedValue([]);
     const onChange = vi.fn();
