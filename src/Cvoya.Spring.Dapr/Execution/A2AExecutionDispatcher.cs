@@ -451,6 +451,14 @@ public class A2AExecutionDispatcher(
                     "A2A readiness probe attempt {Attempt} for {Endpoint} returned not-ready (container {ContainerId})",
                     attempts, endpoint, containerId);
             }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                // Internal CancelAfter fired mid-probe: fall through to the
+                // "did not become ready" warning + return false so the
+                // timeout stays visible in logs. Outer cancellation still
+                // propagates because the when-filter doesn't match.
+                break;
+            }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 lastException = ex;
@@ -463,7 +471,7 @@ public class A2AExecutionDispatcher(
             {
                 await Task.Delay(ReadinessProbeInterval, cts.Token);
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
                 break;
             }
