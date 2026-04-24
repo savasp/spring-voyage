@@ -32,6 +32,8 @@ public static class ContainersEndpoints
             new(6005, nameof(ContainerLogsRequested));
         public static readonly Microsoft.Extensions.Logging.EventId ContainerProbeRequested =
             new(6006, nameof(ContainerProbeRequested));
+        public static readonly Microsoft.Extensions.Logging.EventId ContainerA2ARequested =
+            new(6007, nameof(ContainerA2ARequested));
     }
 
     /// <summary>
@@ -44,6 +46,7 @@ public static class ContainersEndpoints
         group.MapPost("/", RunOrStartAsync);
         group.MapGet("/{id}/logs", GetLogsAsync);
         group.MapPost("/{id}/probe", ProbeAsync);
+        group.MapPost("/{id}/a2a", SendA2AAsync);
         group.MapDelete("/{id}", StopAsync);
 
         return endpoints;
@@ -283,6 +286,82 @@ public static class ContainersEndpoints
 
         var healthy = await runtime.ProbeContainerHttpAsync(id, request.Url, cancellationToken);
         return Results.Ok(new ProbeContainerHttpResponse { Healthy = healthy });
+    }
+
+    /// <summary>
+    /// <c>POST /v1/containers/{id}/a2a</c> — forward a JSON HTTP <c>POST</c>
+    /// into the named container's network namespace and return the response.
+    /// Symmetric with <see cref="ProbeAsync"/>: the dispatcher executes the
+    /// request from inside the container so it works when the worker process
+    /// and the agent container live on different bridge networks (the
+    /// message-send half of #1160). See
+    /// <c>IContainerRuntime.SendHttpJsonAsync</c> for why the surface is
+    /// deliberately narrow (POST + JSON body only).
+    /// </summary>
+    internal static async Task<IResult> SendA2AAsync(
+        string id,
+        [FromBody] SendContainerHttpJsonRequest request,
+        IContainerRuntime runtime,
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken)
+    {
+        var logger = loggerFactory.CreateLogger("Cvoya.Spring.Dispatcher.Containers");
+
+        if (string.IsNullOrWhiteSpace(id))
+        {
+            return Results.BadRequest(new DispatcherErrorResponse
+            {
+                Code = "id_required",
+                Message = "Container id is required.",
+            });
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Url))
+        {
+            return Results.BadRequest(new DispatcherErrorResponse
+            {
+                Code = "url_required",
+                Message = "Field 'url' is required.",
+            });
+        }
+
+        if (request.BodyBase64 is null)
+        {
+            return Results.BadRequest(new DispatcherErrorResponse
+            {
+                Code = "body_required",
+                Message = "Field 'bodyBase64' is required (use an empty string for an empty body).",
+            });
+        }
+
+        byte[] bodyBytes;
+        try
+        {
+            bodyBytes = request.BodyBase64.Length == 0
+                ? []
+                : Convert.FromBase64String(request.BodyBase64);
+        }
+        catch (FormatException ex)
+        {
+            return Results.BadRequest(new DispatcherErrorResponse
+            {
+                Code = "body_invalid",
+                Message = $"Field 'bodyBase64' is not valid base64: {ex.Message}",
+            });
+        }
+
+        logger.LogInformation(
+            EventIds.ContainerA2ARequested,
+            "Forwarding A2A POST to container id={ContainerId} url={Url} bytes={Bytes}",
+            id, request.Url, bodyBytes.Length);
+
+        var response = await runtime.SendHttpJsonAsync(id, request.Url, bodyBytes, cancellationToken);
+
+        return Results.Ok(new SendContainerHttpJsonResponse
+        {
+            StatusCode = response.StatusCode,
+            BodyBase64 = response.Body.Length == 0 ? string.Empty : Convert.ToBase64String(response.Body),
+        });
     }
 
     /// <summary>

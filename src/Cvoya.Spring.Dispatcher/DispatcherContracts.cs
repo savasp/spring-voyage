@@ -182,6 +182,63 @@ public record ProbeContainerHttpResponse
 }
 
 /// <summary>
+/// Request body for <c>POST /v1/containers/{id}/a2a</c> — the dispatcher-
+/// proxied A2A message-send primitive that closes the second half of issue
+/// #1160. The worker hands the dispatcher the in-container URL it would
+/// have called directly, plus the raw JSON body bytes (base64-wrapped on
+/// the wire to avoid double-escaping). The dispatcher executes the POST
+/// from inside the agent container's network namespace via
+/// <c>podman exec -i &lt;id&gt; wget --post-file=/dev/stdin</c> and returns
+/// the response body verbatim.
+/// </summary>
+/// <remarks>
+/// <para>
+/// The shape mirrors <see cref="ProbeContainerHttpRequest"/> on purpose —
+/// the two endpoints are the only points where the dispatcher reaches into
+/// a container's network namespace, and keeping their wire shapes parallel
+/// keeps the security review small. See
+/// <c>IContainerRuntime.SendHttpJsonAsync</c> for the rationale on the
+/// narrow POST-only / JSON-only contract.
+/// </para>
+/// <para>
+/// Body bytes are carried as base64 (<c>bodyBase64</c>) so the wire stays
+/// pure JSON and the worker / dispatcher never have to second-guess content
+/// encoding or escape JSON inside JSON. The dispatcher decodes once and
+/// streams the original bytes through the wget stdin pipe.
+/// </para>
+/// </remarks>
+public record SendContainerHttpJsonRequest
+{
+    /// <summary>The in-container URL to POST to (e.g. <c>http://localhost:8999/</c>).</summary>
+    [JsonPropertyName("url")]
+    public required string Url { get; init; }
+
+    /// <summary>Base64-encoded UTF-8 JSON request body.</summary>
+    [JsonPropertyName("bodyBase64")]
+    public required string BodyBase64 { get; init; }
+}
+
+/// <summary>
+/// Response body for <c>POST /v1/containers/{id}/a2a</c>. Carries the
+/// HTTP status the dispatcher observed from the in-container endpoint
+/// plus the response body bytes (base64-wrapped). On any failure the
+/// status collapses to 502 with an empty body — the worker reconstructs
+/// an <see cref="System.Net.Http.HttpResponseMessage"/> from these two
+/// fields and the A2A SDK's own retry/timeout policy decides what to do
+/// next.
+/// </summary>
+public record SendContainerHttpJsonResponse
+{
+    /// <summary>HTTP status code observed from the in-container endpoint.</summary>
+    [JsonPropertyName("statusCode")]
+    public required int StatusCode { get; init; }
+
+    /// <summary>Base64-encoded response body bytes (empty on failures).</summary>
+    [JsonPropertyName("bodyBase64")]
+    public required string BodyBase64 { get; init; }
+}
+
+/// <summary>
 /// Request body for <c>POST /v1/networks</c>. The dispatcher creates the
 /// network idempotently — repeating the call with the same name is a 200,
 /// not a 409, so callers (notably <c>ContainerLifecycleManager</c>) can

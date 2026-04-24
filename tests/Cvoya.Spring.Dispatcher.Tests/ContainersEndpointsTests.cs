@@ -355,6 +355,109 @@ public class ContainersEndpointsTests : IClassFixture<DispatcherWebApplicationFa
     }
 
     [Fact]
+    public async Task PostContainerA2A_WithoutToken_Returns401()
+    {
+        var client = _factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync(
+            "/v1/containers/abc/a2a",
+            new { url = "http://localhost:8999/", bodyBase64 = string.Empty },
+            TestContext.Current.CancellationToken);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task PostContainerA2A_MissingUrl_Returns400()
+    {
+        // ADR 0028 / #1160: the A2A proxy endpoint is the worker's only
+        // way to reach an agent across the platform/tenant network split.
+        // Reject malformed requests at the edge so a future caller bug
+        // surfaces here rather than as a confusing wget exec failure
+        // inside the container.
+        _factory.ContainerRuntime.ClearSubstitute();
+
+        var client = CreateAuthorizedClient();
+
+        var response = await client.PostAsJsonAsync(
+            "/v1/containers/abc/a2a",
+            new { url = "", bodyBase64 = string.Empty },
+            TestContext.Current.CancellationToken);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        await _factory.ContainerRuntime.DidNotReceive().SendHttpJsonAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<byte[]>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task PostContainerA2A_Authorized_ForwardsBodyAndReturnsBase64Response()
+    {
+        // Pin the wire shape — base64 in / base64 out — and that the
+        // dispatcher hands the request to IContainerRuntime.SendHttpJsonAsync
+        // verbatim. The base64 hop exists so the worker can ship a JSON
+        // payload through JSON-on-the-wire without escaping headaches and
+        // so the dispatcher can pipe the bytes straight to wget's stdin.
+        _factory.ContainerRuntime.ClearSubstitute();
+        var responseBytes = "{\"jsonrpc\":\"2.0\",\"result\":{\"task\":{}}}"u8.ToArray();
+        byte[]? capturedBody = null;
+        string? capturedUrl = null;
+        string? capturedContainerId = null;
+        _factory.ContainerRuntime
+            .SendHttpJsonAsync(
+                Arg.Do<string>(id => capturedContainerId = id),
+                Arg.Do<string>(url => capturedUrl = url),
+                Arg.Do<byte[]>(b => capturedBody = b),
+                Arg.Any<CancellationToken>())
+            .Returns(new ContainerHttpResponse(200, responseBytes));
+
+        var client = CreateAuthorizedClient();
+        var requestBytes = "{\"jsonrpc\":\"2.0\",\"method\":\"message/send\"}"u8.ToArray();
+
+        var response = await client.PostAsJsonAsync(
+            "/v1/containers/agent-1/a2a",
+            new
+            {
+                url = "http://localhost:8999/",
+                bodyBase64 = Convert.ToBase64String(requestBytes),
+            },
+            TestContext.Current.CancellationToken);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
+        body.GetProperty("statusCode").GetInt32().ShouldBe(200);
+        var roundtripped = Convert.FromBase64String(body.GetProperty("bodyBase64").GetString()!);
+        roundtripped.ShouldBe(responseBytes);
+
+        capturedContainerId.ShouldBe("agent-1");
+        capturedUrl.ShouldBe("http://localhost:8999/");
+        capturedBody.ShouldBe(requestBytes);
+    }
+
+    [Fact]
+    public async Task PostContainerA2A_RuntimeReturns502_PassesThroughStatus()
+    {
+        _factory.ContainerRuntime.ClearSubstitute();
+        _factory.ContainerRuntime
+            .SendHttpJsonAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<byte[]>(), Arg.Any<CancellationToken>())
+            .Returns(new ContainerHttpResponse(502, []));
+
+        var client = CreateAuthorizedClient();
+
+        var response = await client.PostAsJsonAsync(
+            "/v1/containers/agent-1/a2a",
+            new { url = "http://localhost:8999/", bodyBase64 = string.Empty },
+            TestContext.Current.CancellationToken);
+
+        // The HTTP wrapper is always 200 — the proxied status lives in the
+        // body so the worker sees the same shape regardless of whether
+        // wget succeeded or failed (mirrors the probe endpoint pattern).
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
+        body.GetProperty("statusCode").GetInt32().ShouldBe(502);
+        body.GetProperty("bodyBase64").GetString().ShouldBe(string.Empty);
+    }
+
+    [Fact]
     public async Task PostContainers_WithWorkspace_PreservesExistingMounts()
     {
         _factory.ContainerRuntime.ClearSubstitute();

@@ -97,7 +97,6 @@ public class A2AExecutionDispatcherTests
             [_launcher],
             _persistentRegistry,
             _ephemeralRegistry,
-            _httpClientFactory,
             _loggerFactory);
     }
 
@@ -116,22 +115,29 @@ public class A2AExecutionDispatcherTests
     }
 
     /// <summary>
-    /// Wires the http client factory so the A2A SendMessage call sees a stub
-    /// responder, and stubs the container runtime's readiness probe to return
-    /// healthy. Returns the responder so tests can inspect the requests it
-    /// received. The readiness probe is dispatched into the container via
-    /// <see cref="IContainerRuntime.ProbeContainerHttpAsync"/> (see #1160) so
-    /// the HttpClient stub no longer has to answer the agent-card GET.
+    /// Wires the container runtime so both halves of the A2A roundtrip — the
+    /// readiness probe AND the JSON-RPC <c>message/send</c> POST — answer
+    /// successfully. Both legs go through <see cref="IContainerRuntime"/>
+    /// since #1160 closed: <see cref="IContainerRuntime.ProbeContainerHttpAsync"/>
+    /// covers readiness and <see cref="IContainerRuntime.SendHttpJsonAsync"/>
+    /// covers the message-send call (the worker no longer talks HTTP directly
+    /// to the agent container). The returned recorder lets tests assert on the
+    /// proxied POST payloads the dispatcher would have shipped on the wire.
     /// </summary>
-    private StubA2AResponder InstallA2AStub(string responseText = "agent reply")
+    private SendHttpJsonRecorder InstallA2AStub(string responseText = "agent reply")
     {
-        var responder = new StubA2AResponder(responseText);
-        _httpClientFactory.CreateClient(Arg.Any<string>())
-            .Returns(_ => new HttpClient(responder, disposeHandler: false));
+        var recorder = new SendHttpJsonRecorder(responseText);
         _containerRuntime.ProbeContainerHttpAsync(
             Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(true));
-        return responder;
+        _containerRuntime.SendHttpJsonAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<byte[]>(), Arg.Any<CancellationToken>())
+            .Returns(call => recorder.RespondAsync(
+                call.ArgAt<string>(0),
+                call.ArgAt<string>(1),
+                call.ArgAt<byte[]>(2),
+                call.ArgAt<CancellationToken>(3)));
+        return recorder;
     }
 
     [Fact]
@@ -505,23 +511,35 @@ public class A2AExecutionDispatcherTests
         _promptAssembler.AssembleAsync(message, Arg.Any<PromptAssemblyContext?>(), Arg.Any<CancellationToken>())
             .Returns("p");
 
-        // Build a stub that blocks on SendMessage so we can fire the cancel.
-        var responder = new BlockingA2AResponder();
-        _httpClientFactory.CreateClient(Arg.Any<string>())
-            .Returns(_ => new HttpClient(responder, disposeHandler: false));
-        // Readiness now goes through the container runtime (see #1160); stub
-        // it healthy so the dispatcher proceeds to SendMessage and blocks
-        // there (which is where the test fires the cancel).
+        // Both legs of the A2A roundtrip now go through IContainerRuntime
+        // (see #1160). Readiness answers healthy immediately so the
+        // dispatcher proceeds to the JSON-RPC POST, which we hold open via
+        // SendHttpJsonAsync until the test fires the cancel.
         _containerRuntime.ProbeContainerHttpAsync(
             Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(true));
+        var sendStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _containerRuntime.SendHttpJsonAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<byte[]>(), Arg.Any<CancellationToken>())
+            .Returns(async call =>
+            {
+                sendStarted.TrySetResult(true);
+                await Task.Delay(Timeout.Infinite, call.ArgAt<CancellationToken>(3));
+                return new ContainerHttpResponse(200, []);
+            });
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
         var dispatchTask = _dispatcher.DispatchAsync(message, context: null, cts.Token);
 
         // Wait until the readiness probe + SendMessage call has been issued,
         // then cancel.
-        await responder.WaitForSendMessageAsync(TimeSpan.FromSeconds(5));
+        var ready = await Task.WhenAny(
+            sendStarted.Task,
+            Task.Delay(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+        if (ready != sendStarted.Task)
+        {
+            throw new TimeoutException("SendMessage was not invoked within timeout.");
+        }
         cts.Cancel();
 
         try { await dispatchTask; } catch { /* expected — cancelled */ }
@@ -645,103 +663,44 @@ public class A2AExecutionDispatcherTests
 }
 
 /// <summary>
-/// HttpMessageHandler that answers any GET <c>/.well-known/agent.json</c>
-/// request with 200 and any A2A <c>message/send</c> JSON-RPC POST with a
-/// completed task whose artifact carries the configured response text.
+/// Records every dispatcher-proxied A2A POST the dispatcher issues
+/// (<see cref="IContainerRuntime.SendHttpJsonAsync"/>) and answers each
+/// one with a completed-task JSON-RPC body whose artifact text is the
+/// configured response. Replaces the old <c>StubA2AResponder</c> which
+/// stubbed the (now removed) HttpClient transport.
 /// </summary>
-internal sealed class StubA2AResponder(string responseText) : HttpMessageHandler
+internal sealed class SendHttpJsonRecorder(string responseText)
 {
     private readonly string _responseText = responseText;
+    private readonly List<(string ContainerId, string Url, byte[] Body)> _calls = new();
 
-    public int ReadinessProbes { get; private set; }
-    public int SendMessageCalls { get; private set; }
+    public IReadOnlyList<(string ContainerId, string Url, byte[] Body)> Calls => _calls;
 
-    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    public Task<ContainerHttpResponse> RespondAsync(
+        string containerId, string url, byte[] body, CancellationToken cancellationToken)
     {
-        if (request.Method == HttpMethod.Get && request.RequestUri?.AbsolutePath.EndsWith("/.well-known/agent.json") == true)
-        {
-            ReadinessProbes++;
-            return new HttpResponseMessage(HttpStatusCode.OK)
+        cancellationToken.ThrowIfCancellationRequested();
+        _calls.Add((containerId, url, body));
+        var responseBody = $$"""
             {
-                Content = new StringContent("{\"name\":\"stub\"}"),
-            };
-        }
-
-        if (request.Method == HttpMethod.Post)
-        {
-            SendMessageCalls++;
-            // SendMessageResponse on the wire is field-presence driven —
-            // either `task` or `message` is set on `result`. The bridge
-            // returns a Task because every CLI invocation is a task in the
-            // bridge's model (see deployment/agent-sidecar/src/a2a.ts).
-            var body = $$"""
-                {
-                  "jsonrpc": "2.0",
-                  "id": 1,
-                  "result": {
-                    "task": {
-                      "id": "task-1",
-                      "contextId": "ctx",
-                      "status": { "state": "TASK_STATE_COMPLETED" },
-                      "artifacts": [
-                        {
-                          "artifactId": "a-1",
-                          "parts": [ { "kind": "text", "text": "{{System.Text.Encodings.Web.JavaScriptEncoder.Default.Encode(_responseText)}}" } ]
-                        }
-                      ]
+              "jsonrpc": "2.0",
+              "id": 1,
+              "result": {
+                "task": {
+                  "id": "task-1",
+                  "contextId": "ctx",
+                  "status": { "state": "TASK_STATE_COMPLETED" },
+                  "artifacts": [
+                    {
+                      "artifactId": "a-1",
+                      "parts": [ { "kind": "text", "text": "{{System.Text.Encodings.Web.JavaScriptEncoder.Default.Encode(_responseText)}}" } ]
                     }
-                  }
+                  ]
                 }
-                """;
-            await Task.Yield();
-            return new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json"),
-            };
-        }
-
-        return new HttpResponseMessage(HttpStatusCode.NotFound);
-    }
-}
-
-/// <summary>
-/// Like <see cref="StubA2AResponder"/> but the message/send POST blocks until
-/// the cancellation token fires. Used by the cancellation test to ensure the
-/// dispatcher is mid-flight when we cancel.
-/// </summary>
-internal sealed class BlockingA2AResponder : HttpMessageHandler
-{
-    private readonly TaskCompletionSource<bool> _sendStarted =
-        new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-    public Task WaitForSendMessageAsync(TimeSpan timeout)
-    {
-        return Task.WhenAny(_sendStarted.Task, Task.Delay(timeout))
-            .ContinueWith(t =>
-            {
-                if (!_sendStarted.Task.IsCompleted)
-                {
-                    throw new TimeoutException("SendMessage was not invoked within timeout.");
-                }
-            });
-    }
-
-    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-    {
-        if (request.Method == HttpMethod.Get && request.RequestUri?.AbsolutePath.EndsWith("/.well-known/agent.json") == true)
-        {
-            return new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new StringContent("{\"name\":\"stub\"}"),
-            };
-        }
-
-        if (request.Method == HttpMethod.Post)
-        {
-            _sendStarted.TrySetResult(true);
-            await Task.Delay(Timeout.Infinite, cancellationToken);
-        }
-
-        return new HttpResponseMessage(HttpStatusCode.NotFound);
+              }
+            }
+            """;
+        var bytes = System.Text.Encoding.UTF8.GetBytes(responseBody);
+        return Task.FromResult(new ContainerHttpResponse(200, bytes));
     }
 }

@@ -179,6 +179,54 @@ public class DispatcherClientContainerRuntime(
     }
 
     /// <inheritdoc />
+    public async Task<ContainerHttpResponse> SendHttpJsonAsync(
+        string containerId,
+        string url,
+        byte[] body,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(containerId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(url);
+        ArgumentNullException.ThrowIfNull(body);
+
+        var httpClient = CreateClient();
+        var uri = $"v1/containers/{Uri.EscapeDataString(containerId)}/a2a";
+        var request = new DispatcherSendA2ARequest
+        {
+            Url = url,
+            BodyBase64 = body.Length == 0 ? string.Empty : Convert.ToBase64String(body),
+        };
+
+        using var response = await httpClient.PostAsJsonAsync(uri, request, JsonOptions, ct);
+
+        // Mirror ProbeContainerHttpAsync: 404 (container unknown) collapses
+        // to a 502 so the worker's retry/timeout policy owns the next move
+        // uniformly. Note that this is the "we couldn't reach the agent at
+        // all" surface — the A2A SDK never sees a 404 because of it; it
+        // sees a 502 from the proxy and decides whether to retry.
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return new ContainerHttpResponse(StatusCode: 502, Body: []);
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var body2 = await SafeReadBodyAsync(response, ct);
+            throw new InvalidOperationException(
+                $"Dispatcher returned {(int)response.StatusCode} forwarding A2A POST to {containerId} ({url}): {body2}");
+        }
+
+        var parsed = await response.Content.ReadFromJsonAsync<DispatcherSendA2AResponse>(JsonOptions, ct)
+            ?? throw new InvalidOperationException(
+                "Dispatcher returned an empty response body for the A2A proxy call.");
+
+        var bytes = string.IsNullOrEmpty(parsed.BodyBase64)
+            ? []
+            : Convert.FromBase64String(parsed.BodyBase64);
+        return new ContainerHttpResponse(parsed.StatusCode, bytes);
+    }
+
+    /// <inheritdoc />
     public async Task CreateNetworkAsync(string name, CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
@@ -442,6 +490,28 @@ public class DispatcherClientContainerRuntime(
     internal record DispatcherProbeResponse
     {
         public required bool Healthy { get; init; }
+    }
+
+    /// <summary>
+    /// Wire shape sent to <c>POST /v1/containers/{id}/a2a</c> — the
+    /// dispatcher-proxied A2A message-send primitive (#1160). Mirrors
+    /// <c>SendContainerHttpJsonRequest</c> on the dispatcher side; duplicated
+    /// here so the worker package does not take a build dependency on the
+    /// dispatcher package.
+    /// </summary>
+    internal record DispatcherSendA2ARequest
+    {
+        public required string Url { get; init; }
+        public required string BodyBase64 { get; init; }
+    }
+
+    /// <summary>
+    /// Wire shape returned by <c>POST /v1/containers/{id}/a2a</c>.
+    /// </summary>
+    internal record DispatcherSendA2AResponse
+    {
+        public required int StatusCode { get; init; }
+        public required string BodyBase64 { get; init; }
     }
 
     /// <summary>

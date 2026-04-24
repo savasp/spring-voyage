@@ -296,6 +296,74 @@ public class ProcessContainerRuntime(
     }
 
     /// <inheritdoc />
+    public async Task<ContainerHttpResponse> SendHttpJsonAsync(
+        string containerId,
+        string url,
+        byte[] body,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(containerId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(url);
+        ArgumentNullException.ThrowIfNull(body);
+
+        // BusyBox wget honours --post-file=/dev/stdin, so we can stream the
+        // body in over the podman exec stdin pipe without command-line size
+        // limits. -q silences progress so stdout is purely the response body;
+        // -O - writes the body to stdout for capture. The header argument is
+        // a single argv entry (no whitespace splitting via ArgumentList) so
+        // the Content-Type value passes through verbatim.
+        string[] args =
+        [
+            "exec",
+            "-i",
+            containerId,
+            "wget",
+            "-q",
+            "-O",
+            "-",
+            "--post-file=/dev/stdin",
+            "--header=Content-Type: application/json",
+            url,
+        ];
+
+        try
+        {
+            var (exitCode, stdout, _) = await RunProcessWithStdinAsync(
+                binaryName, args, body, ct);
+
+            if (exitCode == 0)
+            {
+                return new ContainerHttpResponse(
+                    StatusCode: 200,
+                    Body: System.Text.Encoding.UTF8.GetBytes(stdout));
+            }
+
+            // Any non-zero exit collapses to "agent unreachable" (502). The
+            // probe primitive applies the same simplification — finer status
+            // discrimination is the caller's job (the A2A SDK retries the
+            // turn at its own layer).
+            _logger.LogDebug(
+                "POST to {Url} inside container {ContainerId} exited {ExitCode} via {Binary} wget",
+                url, containerId, exitCode, binaryName);
+            return new ContainerHttpResponse(StatusCode: 502, Body: []);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            // Local timeout — surface as 502 so the worker's retry loop can
+            // own the next attempt.
+            return new ContainerHttpResponse(StatusCode: 502, Body: []);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(
+                ex,
+                "POST to {Url} inside container {ContainerId} failed: {Message}",
+                url, containerId, ex.Message);
+            return new ContainerHttpResponse(StatusCode: 502, Body: []);
+        }
+    }
+
+    /// <inheritdoc />
     public async Task RemoveNetworkAsync(string name, CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
@@ -429,6 +497,52 @@ public class ProcessContainerRuntime(
         {
             args.AddRange(command);
         }
+    }
+
+    /// <summary>
+    /// Like <see cref="RunProcessAsync"/> but pipes <paramref name="stdin"/>
+    /// to the child process's standard input. Used by
+    /// <see cref="SendHttpJsonAsync"/> to stream a JSON request body into
+    /// <c>podman exec -i ... wget --post-file=/dev/stdin</c> without going
+    /// through argv (which has size limits and shell-escape concerns).
+    /// </summary>
+    private static async Task<(int ExitCode, string Stdout, string Stderr)> RunProcessWithStdinAsync(
+        string fileName, IEnumerable<string> arguments, byte[] stdin, CancellationToken ct)
+    {
+        using var process = new Process();
+        process.StartInfo = new ProcessStartInfo
+        {
+            FileName = fileName,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        foreach (var arg in arguments)
+        {
+            process.StartInfo.ArgumentList.Add(arg);
+        }
+
+        process.Start();
+
+        // Write the body and close stdin so the child sees EOF. Closing the
+        // BaseStream is the only reliable cross-platform way to propagate
+        // EOF to the child's stdin under .NET's process model.
+        await process.StandardInput.BaseStream.WriteAsync(stdin, ct);
+        await process.StandardInput.BaseStream.FlushAsync(ct);
+        process.StandardInput.Close();
+
+        var stdoutTask = process.StandardOutput.ReadToEndAsync(ct);
+        var stderrTask = process.StandardError.ReadToEndAsync(ct);
+
+        await process.WaitForExitAsync(ct);
+
+        var stdout = await stdoutTask;
+        var stderr = await stderrTask;
+
+        return (process.ExitCode, stdout, stderr);
     }
 
     private static async Task<(int ExitCode, string Stdout, string Stderr)> RunProcessAsync(

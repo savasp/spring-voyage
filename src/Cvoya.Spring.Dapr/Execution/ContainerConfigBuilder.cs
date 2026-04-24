@@ -48,6 +48,37 @@ public static class ContainerConfigBuilder
     private const string HostGatewayEntry = "host.docker.internal:host-gateway";
 
     /// <summary>
+    /// Bridge network agent containers attach to in the OSS deployment.
+    /// Symmetric with <c>spring-net</c> (the platform network) but reserved
+    /// for tenant-owned workloads — agents, persistent agents, and
+    /// (eventually, see issue #1166) workflow containers. The platform
+    /// services that an agent needs to reach (the dispatcher / MCP server
+    /// on the host, the Ollama backend) are dual-attached to this network
+    /// in <c>deployment/deploy.sh</c> so DNS resolves from inside the
+    /// tenant namespace too.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// ADR 0028 — Decision A. Per-tenant network isolation: agent traffic
+    /// rides on its own bridge so platform-only services (postgres, redis,
+    /// the API/web/Caddy front door, the Dapr control plane) can never be
+    /// reached by a tenant container even on a single host. Agent ↔ agent
+    /// reachability stays open within a tenant; agent ↔ platform crossings
+    /// happen only through dual-attached pivots (today: Ollama; tomorrow:
+    /// the host MCP server, see #1167).
+    /// </para>
+    /// <para>
+    /// OSS ships a single tenant network (<c>spring-tenant-default</c>) —
+    /// the OSS deployment is single-tenant by design (see ADR 0028). The
+    /// per-tenant naming convention is preserved here so the cloud overlay
+    /// can drop in a tenant-aware resolver without changing the builder
+    /// contract; until that resolver lands every agent in OSS lives on
+    /// this one network.
+    /// </para>
+    /// </remarks>
+    public const string TenantNetworkName = "spring-tenant-default";
+
+    /// <summary>
     /// Translates a launcher's <see cref="AgentLaunchSpec"/> into a
     /// <see cref="ContainerConfig"/>.
     /// </summary>
@@ -83,6 +114,13 @@ public static class ContainerConfigBuilder
             Command: spec.Argv is { Count: > 0 } ? spec.Argv : null,
             EnvironmentVariables: MergeEnvironment(spec.EnvironmentVariables, extraEnv),
             VolumeMounts: spec.ExtraVolumeMounts,
+            // ADR 0028 — Decision A. Agent containers attach to the
+            // per-tenant bridge instead of podman's default network, so
+            // tenant traffic cannot reach platform-only services
+            // (postgres / redis / API / web) even on a single host. See
+            // TenantNetworkName for the OSS resolution story; the cloud
+            // overlay swaps this for a tenant-id-aware lookup.
+            NetworkName: TenantNetworkName,
             ExtraHosts: BuildExtraHosts(extraHosts),
             // The fallback to WorkspaceMountPath only fires when the launcher
             // actually populated a workspace (i.e. WorkspaceFiles is non-empty).
