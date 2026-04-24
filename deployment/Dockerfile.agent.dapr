@@ -46,11 +46,16 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # `tini` for clean signal forwarding (matches the agent-base image so
 # `tasks/cancel` semantics are uniform across the Tier-A and Tier-B
 # launchers). `ca-certificates` so `httpx` can verify TLS endpoints
-# (Anthropic, OpenAI, etc.).
+# (Anthropic, OpenAI, etc.). `wget` so the dispatcher's
+# `ProcessContainerRuntime.ProbeContainerHttpAsync` can `podman exec …
+# wget --spider` the in-container A2A readiness endpoint — without it
+# every probe returns 127 and the 60 s readiness wait times out silently
+# (#1172 follow-up).
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
         ca-certificates \
         tini \
+        wget \
  && rm -rf /var/lib/apt/lists/*
 
 # Non-root agent user (uid 1000 / gid 1000) for parity with
