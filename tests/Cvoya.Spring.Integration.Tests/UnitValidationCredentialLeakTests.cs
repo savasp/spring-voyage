@@ -303,6 +303,15 @@ public sealed class UnitValidationCredentialLeakTests : IDisposable
 
         public Task<bool> ProbeContainerHttpAsync(string containerId, string url, CancellationToken ct = default)
             => throw new NotSupportedException("canary harness does not probe containers");
+
+        // #1160 added the dispatcher-proxied A2A primitive. The canary
+        // test runs the OpenAI ValidatingCredential probe (a one-shot
+        // RunAsync) and never exercises agent A2A traffic, so the
+        // honest answer is "not supported here" — the same shape as the
+        // other surfaces above.
+        public Task<ContainerHttpResponse> SendHttpJsonAsync(
+            string containerId, string url, byte[] body, CancellationToken ct = default)
+            => throw new NotSupportedException("canary harness does not proxy A2A messages");
     }
 
     /// <summary>

@@ -43,7 +43,6 @@ public class A2AExecutionDispatcher(
     IEnumerable<IAgentToolLauncher> launchers,
     PersistentAgentRegistry persistentAgentRegistry,
     EphemeralAgentRegistry ephemeralAgentRegistry,
-    IHttpClientFactory httpClientFactory,
     ILoggerFactory loggerFactory) : IExecutionDispatcher
 {
     private readonly ILogger _logger = loggerFactory.CreateLogger<A2AExecutionDispatcher>();
@@ -164,13 +163,13 @@ public class A2AExecutionDispatcher(
             containerId = await containerRuntime.StartAsync(config, cancellationToken);
             lease = ephemeralAgentRegistry.Register(agentId, conversationId, containerId);
 
-            // The endpoint URI's host is "localhost" because the readiness probe
-            // runs INSIDE the agent container's own network namespace (via the
-            // dispatcher's exec-wget primitive — see WaitForA2AReadyAsync). The
-            // SendA2AMessageAsync call below still treats the URI as worker-side;
-            // see #1160 for the open design call on routing the actual A2A
-            // message send when the worker and the agent container are on
-            // different networks.
+            // The endpoint URI's host is "localhost" because BOTH the
+            // readiness probe AND the message-send call now run INSIDE the
+            // agent container's own network namespace (via the dispatcher's
+            // exec-wget primitives — see WaitForA2AReadyAsync and
+            // DispatcherProxyHttpMessageHandler). This is what closes #1160
+            // end-to-end: the worker and the agent container can sit on
+            // different bridge networks without breaking dispatch.
             var endpoint = new Uri($"http://localhost:{spec.A2APort}/");
 
             var ready = await WaitForA2AReadyAsync(
@@ -185,7 +184,7 @@ public class A2AExecutionDispatcher(
                     $"Ephemeral agent '{agentId}' did not become A2A-ready within {ReadinessTimeout}.");
             }
 
-            return await SendA2AMessageAsync(endpoint, agentId, message, prompt, cancellationToken);
+            return await SendA2AMessageAsync(endpoint, agentId, containerId, message, prompt, cancellationToken);
         }
         finally
         {
@@ -222,19 +221,40 @@ public class A2AExecutionDispatcher(
         CancellationToken cancellationToken)
     {
         var agentId = definition.AgentId;
+        Uri endpoint;
+        string? containerId;
 
         // Check if the agent service is already running and healthy.
-        if (!persistentAgentRegistry.TryGetEndpoint(agentId, out var endpoint) || endpoint is null)
+        if (persistentAgentRegistry.TryGet(agentId, out var entry) && entry is not null
+            && entry.HealthStatus == AgentHealthStatus.Healthy)
         {
-            // Not running — auto-start the agent container.
-            endpoint = await StartPersistentAgentAsync(definition, cancellationToken);
+            endpoint = entry.Endpoint;
+            containerId = entry.ContainerId;
+        }
+        else
+        {
+            // Not running (or unhealthy) — auto-start the agent container.
+            (endpoint, containerId) = await StartPersistentAgentAsync(definition, cancellationToken);
+        }
+
+        if (string.IsNullOrEmpty(containerId))
+        {
+            // Legacy externally-registered persistent agents have no container
+            // id, so the dispatcher-proxied transport can't reach them. The
+            // OSS deployment never registers an agent without a container id;
+            // the rare integration test that does should keep using the
+            // legacy direct-HTTP path, but warn loudly so the gap is visible.
+            throw new SpringException(
+                $"Persistent agent '{agentId}' is registered without a container id; the dispatcher-proxied " +
+                "A2A transport requires one. Re-deploy the agent through the standard persistent path so the " +
+                "registry captures the container id (#1160).");
         }
 
         var prompt = await promptAssembler.AssembleAsync(message, context, cancellationToken);
 
         try
         {
-            return await SendA2AMessageAsync(endpoint, agentId, message, prompt, cancellationToken);
+            return await SendA2AMessageAsync(endpoint, agentId, containerId, message, prompt, cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -249,8 +269,11 @@ public class A2AExecutionDispatcher(
 
     /// <summary>
     /// Starts a persistent agent container and registers it in the registry.
+    /// Returns both the endpoint and the container id so the caller can
+    /// route the A2A message-send call through the dispatcher-proxied
+    /// transport (#1160).
     /// </summary>
-    private async Task<Uri> StartPersistentAgentAsync(
+    private async Task<(Uri Endpoint, string ContainerId)> StartPersistentAgentAsync(
         AgentDefinition definition,
         CancellationToken cancellationToken)
     {
@@ -321,7 +344,7 @@ public class A2AExecutionDispatcher(
             "Persistent agent {AgentId} started and registered at {Endpoint} (container {ContainerId})",
             agentId, endpoint, containerId);
 
-        return endpoint;
+        return (endpoint, containerId);
     }
 
     /// <summary>
@@ -329,14 +352,29 @@ public class A2AExecutionDispatcher(
     /// Used by both the ephemeral and persistent dispatch paths after the
     /// in-container A2A endpoint has been observed ready.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The HTTP transport under the A2A SDK is wrapped in
+    /// <see cref="DispatcherProxyHttpMessageHandler"/> so the JSON-RPC
+    /// roundtrip executes inside the agent container's network namespace
+    /// rather than from the worker's loopback. This is the message-send
+    /// half of issue #1160 (the readiness half is already covered by
+    /// <see cref="IContainerRuntime.ProbeContainerHttpAsync"/>) and is the
+    /// reason agent containers can sit on a separate
+    /// <c>spring-tenant-&lt;id&gt;</c> bridge from the worker without
+    /// breaking dispatch.
+    /// </para>
+    /// </remarks>
     internal async Task<SvMessage?> SendA2AMessageAsync(
         Uri endpoint,
         string agentId,
+        string containerId,
         SvMessage originalMessage,
         string prompt,
         CancellationToken cancellationToken)
     {
-        using var httpClient = httpClientFactory.CreateClient($"A2A-{agentId}");
+        using var proxyHandler = new DispatcherProxyHttpMessageHandler(containerRuntime, containerId);
+        using var httpClient = new HttpClient(proxyHandler, disposeHandler: false);
         var a2aClient = new A2AClient(endpoint, httpClient);
 
         var userMessage = prompt;

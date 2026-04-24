@@ -120,6 +120,65 @@ public interface IContainerRuntime
     /// inspect / logs.
     /// </returns>
     Task<bool> ProbeContainerHttpAsync(string containerId, string url, CancellationToken ct = default);
+
+    /// <summary>
+    /// Forwards a JSON HTTP <c>POST</c> into the named container's network
+    /// namespace and returns the response. The dispatcher executes the
+    /// request from inside the container (via <c>podman exec -i ... wget</c>)
+    /// so the call works even when the worker process and the agent container
+    /// live on different bridge networks — the worker is on the platform
+    /// bridge (<c>spring-net</c>) and the agent is on a per-tenant bridge
+    /// (<c>spring-tenant-&lt;id&gt;</c>) it cannot route into directly.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is the dispatcher-proxied A2A message-send primitive that closes
+    /// the second half of issue #1160 — the readiness probe was already
+    /// dispatched through <see cref="ProbeContainerHttpAsync"/>; this method
+    /// covers the actual JSON-RPC <c>message/send</c> roundtrip the A2A SDK
+    /// makes after readiness. Workers wire an
+    /// <c>HttpMessageHandler</c> that translates outbound A2A SDK HTTP
+    /// requests into calls on this primitive, so the SDK code path is
+    /// preserved end-to-end (only the transport is swapped).
+    /// </para>
+    /// <para>
+    /// The contract is intentionally narrow — POST + JSON body only — for
+    /// the same reason <see cref="ProbeContainerHttpAsync"/> is narrow: a
+    /// generic <c>exec</c> primitive widens the dispatcher's RCE surface,
+    /// and the only worker-side caller today is the A2A SDK proxy. If a
+    /// future caller needs GET, alternate content types, or response
+    /// headers we will widen the contract deliberately rather than ship
+    /// a general HTTP relay.
+    /// </para>
+    /// <para>
+    /// The container image must carry <c>wget</c> on its PATH (BusyBox
+    /// <c>wget</c> in alpine and the Spring agent-base / dapr-agent images
+    /// is sufficient). When <c>wget</c> exits 0 the response body is the
+    /// captured stdout and the status is reported as 200; any non-zero
+    /// exit (DNS failure, connection refused, missing <c>wget</c>, container
+    /// gone) collapses to status 502 with an empty body. Callers that need
+    /// finer status discrimination should keep their retry/timeout policy
+    /// at the call site (the A2A SDK does).
+    /// </para>
+    /// </remarks>
+    /// <param name="containerId">Identifier of the container to forward the request into.</param>
+    /// <param name="url">
+    /// In-container URL to POST to (e.g. <c>http://localhost:8999/</c>).
+    /// The host portion is interpreted from inside the container, so
+    /// <c>localhost</c> resolves to the agent's own loopback.
+    /// </param>
+    /// <param name="body">UTF-8 JSON payload to send as the request body.</param>
+    /// <param name="ct">A token to cancel the operation.</param>
+    /// <returns>
+    /// The proxied HTTP response. <see cref="ContainerHttpResponse.StatusCode"/>
+    /// is 200 on a successful 2xx from the in-container endpoint and 502 on
+    /// any failure.
+    /// </returns>
+    Task<ContainerHttpResponse> SendHttpJsonAsync(
+        string containerId,
+        string url,
+        byte[] body,
+        CancellationToken ct = default);
 }
 
 /// <summary>
@@ -201,6 +260,18 @@ public record ContainerConfig(
 public record ContainerWorkspace(
     string MountPath,
     IReadOnlyDictionary<string, string> Files);
+
+/// <summary>
+/// Response shape returned by <see cref="IContainerRuntime.SendHttpJsonAsync"/>.
+/// Captured deliberately narrow — status code + body bytes — because the
+/// dispatcher-proxied transport collapses every failure mode into a single
+/// 502 anyway, and the only worker-side consumer (the A2A SDK proxy)
+/// reconstructs an <see cref="System.Net.Http.HttpResponseMessage"/> from
+/// these two fields and ignores response headers.
+/// </summary>
+/// <param name="StatusCode">HTTP status code (200 on 2xx, 502 on any failure).</param>
+/// <param name="Body">UTF-8 response body bytes; empty on 502.</param>
+public record ContainerHttpResponse(int StatusCode, byte[] Body);
 
 /// <summary>
 /// Result of a container execution.

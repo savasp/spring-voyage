@@ -353,6 +353,73 @@ public class DispatcherClientContainerRuntimeTests
     }
 
     [Fact]
+    public async Task SendHttpJsonAsync_PostsBase64Body_AndDecodesResponse()
+    {
+        // ADR 0028 / #1160: this is the worker side of the dispatcher-proxied
+        // A2A message-send. The wire shape is base64 in / base64 out so the
+        // dispatcher service can hand the body straight to `wget --post-file`
+        // without re-parsing it. Make sure the client serialises and decodes
+        // the contract the dispatcher expects.
+        HttpRequestMessage? captured = null;
+        var responseBody = "{\"jsonrpc\":\"2.0\",\"result\":{}}"u8.ToArray();
+        var handler = new FakeHandler(async (req, _) =>
+        {
+            captured = req;
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = JsonContent.Create(new
+                {
+                    statusCode = 200,
+                    bodyBase64 = Convert.ToBase64String(responseBody),
+                }),
+            };
+        });
+
+        var runtime = CreateRuntime(handler);
+        var requestBody = "{\"jsonrpc\":\"2.0\",\"method\":\"message/send\"}"u8.ToArray();
+        var result = await runtime.SendHttpJsonAsync(
+            "agent-container-1",
+            "http://localhost:8999/",
+            requestBody,
+            TestContext.Current.CancellationToken);
+
+        result.StatusCode.ShouldBe(200);
+        result.Body.ShouldBe(responseBody);
+
+        captured.ShouldNotBeNull();
+        captured!.Method.ShouldBe(HttpMethod.Post);
+        captured.RequestUri!.AbsolutePath.ShouldBe("/v1/containers/agent-container-1/a2a");
+        var body = await captured.Content!.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        using var parsed = JsonDocument.Parse(body);
+        parsed.RootElement.GetProperty("url").GetString().ShouldBe("http://localhost:8999/");
+        var sent = Convert.FromBase64String(parsed.RootElement.GetProperty("bodyBase64").GetString()!);
+        sent.ShouldBe(requestBody);
+    }
+
+    [Fact]
+    public async Task SendHttpJsonAsync_404IsTreatedAsBadGateway()
+    {
+        // The dispatcher returns 404 when the container is gone (race with a
+        // teardown). The client collapses that to the same 502 the
+        // dispatcher would have returned for a wget non-zero exit, so the
+        // A2A SDK consumer sees one consistent failure mode regardless of
+        // which side observed the death first. Mirrors the equivalent
+        // contract for ProbeContainerHttpAsync.
+        var handler = new FakeHandler(async (_, _) =>
+            new HttpResponseMessage(HttpStatusCode.NotFound));
+
+        var runtime = CreateRuntime(handler);
+        var result = await runtime.SendHttpJsonAsync(
+            "missing-container",
+            "http://localhost:8999/",
+            [1, 2, 3],
+            TestContext.Current.CancellationToken);
+
+        result.StatusCode.ShouldBe(502);
+        result.Body.ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task RunAsync_MissingBaseUrl_Throws()
     {
         var handler = new FakeHandler(async (_, _) => new HttpResponseMessage(HttpStatusCode.OK));

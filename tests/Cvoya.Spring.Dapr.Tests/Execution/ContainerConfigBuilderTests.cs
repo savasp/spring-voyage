@@ -229,4 +229,18 @@ public class ContainerConfigBuilderTests
         Should.Throw<ArgumentNullException>(
             () => ContainerConfigBuilder.Build(Image, spec: null!));
     }
+
+    [Fact]
+    public void Build_AttachesContainerToTenantBridge()
+    {
+        // ADR 0028 — Decision A / issue #1160: agent containers must
+        // attach to the per-tenant bridge instead of podman's default
+        // network so tenant traffic cannot reach platform-only services
+        // (postgres / redis / API / web). OSS resolves every agent to
+        // a single shared spring-tenant-default network.
+        var config = ContainerConfigBuilder.Build(Image, MinimalSpec());
+
+        config.NetworkName.ShouldBe(ContainerConfigBuilder.TenantNetworkName);
+        config.NetworkName.ShouldBe("spring-tenant-default");
+    }
 }

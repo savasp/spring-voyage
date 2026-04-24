@@ -1,11 +1,21 @@
 #!/usr/bin/env bash
 # Spring Voyage — local Podman deployment.
 #
-# Brings up the full container stack on a shared Podman network (spring-net):
+# Brings up the full container stack on two Podman networks:
+#   spring-net               — platform services (api, worker, web, db, dapr)
+#   spring-tenant-default    — per-tenant bridge for agent containers
+#                              (ADR 0028 — Decision A, issue #1160)
+#
+# Containers on spring-net:
 #   spring-postgres, spring-redis,
 #   spring-placement, spring-scheduler,            (Dapr control plane)
 #   spring-api-dapr, spring-worker-dapr,           (per-app Dapr sidecars)
 #   spring-worker, spring-api, spring-web, spring-caddy
+#
+# Containers on spring-tenant-default:
+#   spring-ollama (also on spring-net — dual-attached so agents can resolve
+#                  `spring-ollama:11434` from inside the tenant namespace)
+#   …plus ephemeral / persistent agent containers launched at dispatch time.
 #
 # In addition to the container stack, deploy.sh delegates to
 # `spring-voyage-host.sh` to start/stop the spring-dispatcher service as a
@@ -40,6 +50,13 @@ RESOLVED_ENV_FILE=""
 
 NETWORK_NAME="spring-net"
 USER_NETWORK_PREFIX="spring-user-"
+# Per-tenant bridge agent containers attach to (ADR 0028 — Decision A,
+# issue #1160). OSS is single-tenant so we ship one network here; the
+# cloud overlay creates one per tenant and the dispatcher resolves the
+# right one by tenant id. Ollama is dual-attached to this network in
+# start_ollama so agents can reach it from inside the tenant namespace
+# without crossing onto spring-net.
+TENANT_NETWORK_NAME="spring-tenant-default"
 
 SERVICES=(
     spring-postgres
@@ -119,6 +136,28 @@ ensure_network() {
     else
         log "creating network '${net}'"
         podman network create "${net}" >/dev/null
+    fi
+}
+
+ensure_tenant_network_attachment() {
+    # Dual-attach a platform-side container to the tenant network so its
+    # services resolve from inside the tenant namespace too (ADR 0028 —
+    # Decision C in spirit: Ollama is the first dual-attached pivot;
+    # Decision E and #1167 will cover the host MCP server next).
+    # Idempotent: podman network connect emits a non-zero exit when the
+    # container is already on the network — we swallow that case so a
+    # repeated `./deploy.sh up` is safe.
+    local container="$1"
+    local net="${2:-${TENANT_NETWORK_NAME}}"
+    if podman network inspect "${net}" --format '{{range .Containers}}{{.Name}} {{end}}' 2>/dev/null \
+        | tr ' ' '\n' | grep -qx "${container}"; then
+        log "container '${container}' already attached to network '${net}'"
+        return 0
+    fi
+    if podman network connect "${net}" "${container}" >/dev/null 2>&1; then
+        log "attached '${container}' to network '${net}'"
+    else
+        log "warning: failed to attach '${container}' to network '${net}' — agents may not reach it via DNS"
     fi
 }
 
@@ -391,6 +430,12 @@ start_ollama() {
         -v spring-ollama-data:/root/.ollama \
         ${gpu_args[@]+"${gpu_args[@]}"} \
         "${OLLAMA_IMAGE:-docker.io/ollama/ollama:latest}"
+
+    # Dual-attach Ollama to the tenant network so agent containers (which
+    # join spring-tenant-default — see ContainerConfigBuilder) can resolve
+    # `spring-ollama:11434` from inside their own namespace without crossing
+    # onto spring-net. ADR 0028 — Decision C (OSS slice) / issue #1160.
+    ensure_tenant_network_attachment spring-ollama "${TENANT_NETWORK_NAME}"
 }
 
 pull_ollama_default_model() {
@@ -496,6 +541,8 @@ cmd_up() {
     require podman
     load_env
     ensure_network "${NETWORK_NAME}"
+    # Tenant network must exist before start_ollama tries to dual-attach.
+    ensure_network "${TENANT_NETWORK_NAME}"
 
     start_postgres
     wait_healthy spring-postgres 60
