@@ -46,6 +46,26 @@ using Microsoft.Extensions.Logging;
 /// the runtime source of truth and the worker can serve traffic with
 /// a stale tree until the next reconciliation pass.
 /// </para>
+/// <para>
+/// <strong>Runs after <c>ApplicationStarted</c>.</strong> The
+/// reconciliation issues outbound <see cref="IUnitActor"/> proxy
+/// calls. Those calls travel through the Dapr sidecar, which has to
+/// call back into the worker on its app port to activate / route to
+/// the actor — so the worker must be listening before we issue them.
+/// <see cref="IHostedService.StartAsync"/> runs <em>before</em>
+/// Kestrel binds, which is why this service derives from
+/// <see cref="BackgroundService"/> and gates the reconciliation on
+/// <see cref="IHostApplicationLifetime.ApplicationStarted"/>: a
+/// previous incarnation that ran the reconciliation directly inside
+/// <c>StartAsync</c> deadlocked on the sidecar callback for 100&#8239;s,
+/// timed out with <see cref="TaskCanceledException"/> (which the old
+/// "ex is not <see cref="OperationCanceledException"/>" filter let
+/// escape), and crashed the worker into a restart loop that prevented
+/// every actor — <see cref="AgentActor"/> included — from ever
+/// registering with Dapr placement. See the
+/// <c>did not find address for actor 'AgentActor/&lt;guid&gt;'</c>
+/// regression after the #1155 deployment.
+/// </para>
 /// </remarks>
 public class UnitSubunitMembershipReconciliationService(
     IServiceScopeFactory scopeFactory,
@@ -53,27 +73,67 @@ public class UnitSubunitMembershipReconciliationService(
     IActorProxyFactory actorProxyFactory,
     IUnitSubunitMembershipProjector projector,
     ITenantScopeBypass tenantScopeBypass,
-    ILogger<UnitSubunitMembershipReconciliationService> logger) : IHostedService
+    IHostApplicationLifetime applicationLifetime,
+    ILogger<UnitSubunitMembershipReconciliationService> logger) : BackgroundService
 {
     /// <inheritdoc />
-    public async Task StartAsync(CancellationToken cancellationToken)
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // Defer until the host has finished startup so Kestrel is
+        // listening on the app port. The Dapr sidecar's actor invoke
+        // path makes a callback into this same worker process; if we
+        // call out before the listener binds, the sidecar burns its
+        // 100-second app-channel timeout waiting and the resulting
+        // TaskCanceledException would otherwise propagate out of a
+        // hosted-service StartAsync and crash the worker. See the
+        // remarks block for the historical regression this guards.
+        if (!await WaitForApplicationStartedAsync(stoppingToken))
+        {
+            return;
+        }
+
         try
         {
-            await ReconcileAsync(cancellationToken);
+            await ReconcileAsync(stoppingToken);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
         {
-            // Reconciliation is best-effort. A failure here would make
-            // the host unable to start, which is far worse than serving
-            // a stale tenant tree until the next boot.
+            // Reconciliation is best-effort. We swallow every failure
+            // that is not a host-driven shutdown — including HTTP
+            // timeouts (TaskCanceledException, which derives from
+            // OperationCanceledException and would have escaped the
+            // pre-#1155 fix-up filter). Serving traffic with a stale
+            // tenant tree until the next boot is strictly better than
+            // taking the worker — and with it the entire actor
+            // runtime — down on a transient projection error.
             logger.LogError(ex,
-                "Sub-unit membership reconciliation failed at startup; continuing with whatever projection rows already exist.");
+                "Sub-unit membership reconciliation failed; continuing with whatever projection rows already exist.");
         }
     }
 
-    /// <inheritdoc />
-    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    private async Task<bool> WaitForApplicationStartedAsync(CancellationToken stoppingToken)
+    {
+        if (applicationLifetime.ApplicationStarted.IsCancellationRequested)
+        {
+            return true;
+        }
+
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var startedRegistration = applicationLifetime.ApplicationStarted.Register(
+            static state => ((TaskCompletionSource)state!).TrySetResult(), tcs);
+        using var stopRegistration = stoppingToken.Register(
+            static state => ((TaskCompletionSource)state!).TrySetCanceled(), tcs);
+
+        try
+        {
+            await tcs.Task;
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
+        }
+    }
 
     private async Task ReconcileAsync(CancellationToken cancellationToken)
     {
@@ -142,8 +202,13 @@ public class UnitSubunitMembershipReconciliationService(
 
                 visited++;
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
             {
+                // Any per-unit failure (including a sidecar HTTP timeout —
+                // which surfaces as TaskCanceledException, an
+                // OperationCanceledException — when a single actor is slow
+                // to activate) just skips that unit; we still want to
+                // project edges for the rest of the directory.
                 logger.LogWarning(ex,
                     "Sub-unit membership reconciliation: failed to read members from unit {UnitPath}; skipping.",
                     unit.Address.Path);
@@ -178,7 +243,7 @@ public class UnitSubunitMembershipReconciliationService(
                 await projector.ProjectRemoveAsync(edge.Parent, edge.Child, cancellationToken);
                 removed++;
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
             {
                 logger.LogWarning(ex,
                     "Sub-unit membership reconciliation: failed to retire ghost edge {Parent} → {Child}.",
