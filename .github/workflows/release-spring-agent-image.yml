@@ -120,7 +120,7 @@ jobs:
       # identity is github-actions[bot], which GHCR accepts for pushes to
       # packages owned by the repository org.
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
