@@ -125,6 +125,7 @@ public static class ContainersEndpoints
             VolumeMounts: mounts,
             Timeout: request.TimeoutSeconds is { } ts ? TimeSpan.FromSeconds(ts) : null,
             NetworkName: request.NetworkName,
+            AdditionalNetworks: request.AdditionalNetworks,
             Labels: request.Labels is null
                 ? null
                 : new Dictionary<string, string>(request.Labels),

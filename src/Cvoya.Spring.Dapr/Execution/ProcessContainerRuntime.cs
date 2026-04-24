@@ -450,6 +450,25 @@ public class ProcessContainerRuntime(
             args.Add(config.NetworkName);
         }
 
+        // Additional networks ride as repeated `--network` flags. Both podman
+        // and docker (>= 20.10) accept the option more than once; the dispatcher
+        // attaches the container to every named network at create time. Used to
+        // dual-attach a workflow / unit container to the per-tenant bridge on
+        // top of the per-app spring-net-<guid> sidecar bridge — see ADR 0028
+        // and issue #1166. Empty / null is the no-op default.
+        if (config.AdditionalNetworks is { Count: > 0 } extraNetworks)
+        {
+            foreach (var network in extraNetworks)
+            {
+                if (string.IsNullOrWhiteSpace(network))
+                {
+                    continue;
+                }
+                args.Add("--network");
+                args.Add(network);
+            }
+        }
+
         if (config.Labels is not null)
         {
             foreach (var (key, value) in config.Labels)

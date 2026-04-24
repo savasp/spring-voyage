@@ -109,6 +109,40 @@ public class ContainersEndpointsTests : IClassFixture<DispatcherWebApplicationFa
     }
 
     [Fact]
+    public async Task PostContainers_AdditionalNetworks_RoundTripIntoContainerConfig()
+    {
+        // ADR 0028 / issue #1166: ContainerLifecycleManager dual-attaches
+        // workflow / unit containers to the per-tenant bridge. The wire
+        // shape carries the extras as `additionalNetworks`; the dispatcher
+        // must forward them onto ContainerConfig.AdditionalNetworks so the
+        // process runtime emits the second `--network` flag.
+        _factory.ContainerRuntime.ClearSubstitute();
+        _factory.ContainerRuntime
+            .RunAsync(Arg.Any<ContainerConfig>(), Arg.Any<CancellationToken>())
+            .Returns(new ContainerResult("net-1", 0, string.Empty, string.Empty));
+
+        var client = CreateAuthorizedClient();
+
+        var response = await client.PostAsJsonAsync("/v1/containers", new
+        {
+            image = "agent:v1",
+            network = "spring-net-abc",
+            additionalNetworks = new[] { "spring-tenant-default" },
+            detached = false,
+        }, TestContext.Current.CancellationToken);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        await _factory.ContainerRuntime.Received(1).RunAsync(
+            Arg.Is<ContainerConfig>(c =>
+                c.NetworkName == "spring-net-abc"
+                && c.AdditionalNetworks != null
+                && c.AdditionalNetworks.Count == 1
+                && c.AdditionalNetworks[0] == "spring-tenant-default"),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task PostContainers_Detached_CallsStartAsync()
     {
         _factory.ContainerRuntime.ClearSubstitute();

@@ -199,6 +199,16 @@ public interface IContainerRuntime
 /// <param name="VolumeMounts">Optional volume mount specifications.</param>
 /// <param name="Timeout">Optional timeout after which the container should be stopped.</param>
 /// <param name="NetworkName">Optional Docker/Podman network to attach the container to.</param>
+/// <param name="AdditionalNetworks">
+/// Additional networks to attach the container to alongside <see cref="NetworkName"/>.
+/// Emitted as repeated <c>--network</c> flags on the container <c>run</c> command (the
+/// runtime accepts the option more than once on Podman and Docker 20.10+). Used by
+/// <c>ContainerLifecycleManager</c> to dual-attach Dapr-fronted workflow / unit
+/// containers to a tenant bridge (<c>spring-tenant-&lt;id&gt;</c>) on top of the
+/// per-workflow app↔sidecar bridge — see ADR 0028 / issue #1166. <c>null</c> or
+/// empty means "no additional networks". Names must be non-empty; the dispatcher
+/// pre-creates them via <see cref="CreateNetworkAsync"/> if needed.
+/// </param>
 /// <param name="Labels">Optional container labels for identification and cleanup.</param>
 /// <param name="DaprEnabled">Whether to attach a Dapr sidecar to this container.</param>
 /// <param name="DaprAppId">The app-id for the Dapr sidecar.</param>
@@ -224,6 +234,7 @@ public record ContainerConfig(
     IReadOnlyList<string>? VolumeMounts = null,
     TimeSpan? Timeout = null,
     string? NetworkName = null,
+    IReadOnlyList<string>? AdditionalNetworks = null,
     IReadOnlyDictionary<string, string>? Labels = null,
     bool DaprEnabled = false,
     string? DaprAppId = null,
