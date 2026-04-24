@@ -187,11 +187,11 @@ Extracting the runtime to a separate service means the worker's container-launch
 
 Workflow containers (not agent containers) typically need their own Dapr sidecar. `ContainerLifecycleManager` + `DaprSidecarManager` (both in `Cvoya.Spring.Dapr.Execution`) compose this flow, with **every** container operation routed through the dispatcher (Stage 2 of [#522](https://github.com/cvoya-com/spring-voyage/issues/522) — the worker no longer holds any podman/docker binding of its own):
 
-1. Create a bridge network (`spring-net-<guid>`) via `POST /v1/networks`.
-2. Start the Dapr sidecar container (`daprio/daprd:latest`) with the app id, ports, and components path the workflow needs (`POST /v1/containers`, detached). Image and health knobs (`Image`, `HealthTimeout`, `HealthPollInterval`, `ComponentsPath`) bind from the `Dapr:Sidecar` config section — see `DaprSidecarOptions`.
+1. Create a per-workflow bridge network (`spring-net-<guid>`) via `POST /v1/networks` and idempotently ensure the per-tenant bridge (`spring-tenant-<id>`, OSS = `spring-tenant-default`) exists.
+2. Start the Dapr sidecar container (`daprio/daprd:latest`) on the per-workflow bridge with the app id, ports, and components path the workflow needs (`POST /v1/containers`, detached). The sidecar stays on the per-workflow bridge only — daprd has no tenant-side dependency. Image and health knobs (`Image`, `HealthTimeout`, `HealthPollInterval`, `ComponentsPath`) bind from the `Dapr:Sidecar` config section — see `DaprSidecarOptions`.
 3. Poll the sidecar's `/v1.0/healthz` from inside its container via `POST /v1/containers/{id}/probe` until healthy or the configured timeout elapses.
-4. Start the workflow container on the same network so app-to-sidecar traffic stays in-network (`POST /v1/containers`, detached).
-5. Tear down sidecar (`DELETE /v1/containers/{id}`), workflow container, and network (`DELETE /v1/networks/{name}`) when the app container exits.
+4. Start the workflow container dual-attached to the per-workflow bridge **and** the per-tenant bridge (`POST /v1/containers` carries `network` + `additionalNetworks`, detached). App-to-sidecar traffic stays in-network on `spring-net-<guid>`; the tenant attach is what lets the workflow container reach tenant infrastructure (Ollama, peer agents) by uniform DNS — ADR 0028 / [#1166](https://github.com/cvoya-com/spring-voyage/issues/1166).
+5. Tear down sidecar (`DELETE /v1/containers/{id}`), workflow container, and the per-workflow bridge (`DELETE /v1/networks/{name}`) when the app container exits. The per-tenant bridge is shared platform-wide and is **not** torn down here — it lives for the lifetime of the deployment.
 
 `WorkflowOrchestrationStrategy` drives this pattern for every workflow dispatch (see [Workflows](workflows.md#workflow-as-container-primary-model)). Agent containers, by contrast, do **not** get a per-container Dapr sidecar — they speak A2A directly to the dispatcher and reach platform services via the host-level MCP server.
 

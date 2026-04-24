@@ -43,13 +43,28 @@ public class ContainerLifecycleManager(
         var daprHttpPort = 3500;
         var daprGrpcPort = 50001;
 
+        // Tenant network the workflow / unit container is dual-attached to in
+        // addition to the per-app spring-net-<guid> bridge — that bridge keeps
+        // app↔sidecar traffic isolated; the tenant attach is what lets the
+        // container reach tenant infrastructure (Ollama, peer agents, future
+        // tenant services) by uniform DNS. ADR 0028 — Decision A; closes the
+        // workflow-side slice in issue #1166. The sidecar itself stays on
+        // spring-net-<guid> only — daprd has no tenant-side dependency.
+        var tenantNetwork = ContainerConfigBuilder.TenantNetworkName;
+
         _logger.LogInformation(
             EventIds.LifecycleStarting,
-            "Starting container lifecycle for app {AppId} on network {NetworkName}",
-            appId, networkName);
+            "Starting container lifecycle for app {AppId} on network {NetworkName} (dual-attached to tenant network {TenantNetwork})",
+            appId, networkName, tenantNetwork);
 
-        // Step 1: Create the network.
+        // Step 1: Create the per-workflow bridge (idempotent on re-create).
         await CreateNetworkAsync(networkName, ct);
+
+        // Step 1b: Ensure the tenant bridge exists. Idempotent on the
+        // dispatcher side, so a second create with the same name is a 200.
+        // OSS deploys this once via deploy.sh, but we don't rely on that —
+        // a fresh clone / partial bring-up should still launch successfully.
+        await CreateNetworkAsync(tenantNetwork, ct);
 
         DaprSidecarInfo? sidecarInfo = null;
         try
@@ -86,6 +101,7 @@ public class ContainerLifecycleManager(
             var augmentedConfig = config with
             {
                 NetworkName = networkName,
+                AdditionalNetworks = MergeAdditionalNetworks(config.AdditionalNetworks, tenantNetwork),
                 EnvironmentVariables = augmentedEnv
             };
 
@@ -154,6 +170,34 @@ public class ContainerLifecycleManager(
         {
             await RemoveNetworkAsync(networkName, ct);
         }
+    }
+
+    /// <summary>
+    /// Appends the tenant network to whatever the caller already specified in
+    /// <see cref="ContainerConfig.AdditionalNetworks"/>, deduplicating so a
+    /// caller that already pinned the tenant network doesn't get a duplicate
+    /// <c>--network</c> flag (some podman / docker versions surface a warning
+    /// in that case). Order is preserved — caller-supplied networks come
+    /// first, tenant network last.
+    /// </summary>
+    private static IReadOnlyList<string> MergeAdditionalNetworks(
+        IReadOnlyList<string>? existing,
+        string tenantNetwork)
+    {
+        if (existing is null || existing.Count == 0)
+        {
+            return [tenantNetwork];
+        }
+
+        if (existing.Contains(tenantNetwork, StringComparer.Ordinal))
+        {
+            return existing;
+        }
+
+        var merged = new List<string>(existing.Count + 1);
+        merged.AddRange(existing);
+        merged.Add(tenantNetwork);
+        return merged;
     }
 
     private async Task CreateNetworkAsync(string networkName, CancellationToken ct)

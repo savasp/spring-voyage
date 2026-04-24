@@ -373,6 +373,7 @@ public class DispatcherClientContainerRuntime(
             WorkingDirectory = config.WorkingDirectory,
             TimeoutSeconds = config.Timeout is { } t ? (int)t.TotalSeconds : null,
             NetworkName = config.NetworkName,
+            AdditionalNetworks = config.AdditionalNetworks,
             Labels = config.Labels is null
                 ? null
                 : new Dictionary<string, string>(config.Labels),
@@ -430,6 +431,16 @@ public class DispatcherClientContainerRuntime(
 
         [JsonPropertyName("network")]
         public string? NetworkName { get; init; }
+
+        /// <summary>
+        /// Additional networks the dispatcher should attach the container to
+        /// alongside <see cref="NetworkName"/>. Mirrors
+        /// <c>RunContainerRequest.AdditionalNetworks</c> on the dispatcher side;
+        /// duplicated here so the worker package does not take a build dependency
+        /// on the dispatcher package. See ADR 0028 / issue #1166.
+        /// </summary>
+        [JsonPropertyName("additionalNetworks")]
+        public IReadOnlyList<string>? AdditionalNetworks { get; init; }
 
         public IDictionary<string, string>? Labels { get; init; }
         public IReadOnlyList<string>? ExtraHosts { get; init; }

@@ -136,6 +136,47 @@ public class ProcessContainerRuntimeTests
     }
 
     [Fact]
+    public void BuildRunArguments_WithAdditionalNetworks_EmitsRepeatedNetworkFlags()
+    {
+        // ADR 0028 / issue #1166: workflow + unit containers dual-attach to
+        // a per-tenant bridge alongside their per-workflow spring-net-<guid>
+        // bridge. Both podman (>=4) and docker (>=20.10) accept --network
+        // more than once at run time, attaching the container to every
+        // named network.
+        var config = new ContainerConfig(
+            Image: "my-image:latest",
+            NetworkName: "spring-net-abc",
+            AdditionalNetworks: ["spring-tenant-default"]);
+
+        var args = ProcessContainerRuntime.BuildRunArguments(config, "spring-exec-multi-net");
+
+        AssertFlagPair(args, "--network", "spring-net-abc");
+        AssertFlagPair(args, "--network", "spring-tenant-default");
+
+        // Two separate flag pairs in the argv (no comma-joined form, no merged value).
+        var networkFlagCount = args.Count(a => a == "--network");
+        networkFlagCount.ShouldBe(2);
+    }
+
+    [Fact]
+    public void BuildRunArguments_WithEmptyAdditionalNetworkEntry_SkipsIt()
+    {
+        // Defensive: a future caller building the list dynamically might
+        // include a blank slot. Drop it rather than emit a malformed
+        // `--network ""` pair the runtime would reject.
+        var config = new ContainerConfig(
+            Image: "my-image:latest",
+            NetworkName: "spring-net-abc",
+            AdditionalNetworks: ["", "spring-tenant-default", "  "]);
+
+        var args = ProcessContainerRuntime.BuildRunArguments(config, "spring-exec-blank-net");
+
+        var networkFlagCount = args.Count(a => a == "--network");
+        networkFlagCount.ShouldBe(2);
+        args.ShouldContain("spring-tenant-default");
+    }
+
+    [Fact]
     public void BuildRunArguments_WithExtraHosts_UsesCombinedAddHostForm()
     {
         var config = new ContainerConfig(

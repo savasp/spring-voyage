@@ -186,6 +186,41 @@ public class DispatcherClientContainerRuntimeTests
     }
 
     [Fact]
+    public async Task RunAsync_SerialisesAdditionalNetworks_WhenContainerConfigCarriesThem()
+    {
+        // ADR 0028 / issue #1166: ContainerLifecycleManager dual-attaches
+        // Dapr-fronted containers to a per-tenant bridge alongside the per-app
+        // spring-net-<guid> bridge. The wire shape must carry the extra
+        // networks so the dispatcher emits the second `--network` flag.
+        HttpRequestMessage? captured = null;
+        var handler = new FakeHandler(async (req, _) =>
+        {
+            captured = req;
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = JsonContent.Create(new { id = "an-1", exitCode = 0, stdout = "", stderr = "" }),
+            };
+        });
+
+        var runtime = CreateRuntime(handler);
+
+        var config = new ContainerConfig(
+            Image: "agent:v1",
+            NetworkName: "spring-net-abc",
+            AdditionalNetworks: ["spring-tenant-default"]);
+
+        await runtime.RunAsync(config, TestContext.Current.CancellationToken);
+
+        captured.ShouldNotBeNull();
+        var body = await captured!.Content!.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        using var parsed = JsonDocument.Parse(body);
+        parsed.RootElement.GetProperty("network").GetString().ShouldBe("spring-net-abc");
+        var extra = parsed.RootElement.GetProperty("additionalNetworks");
+        extra.GetArrayLength().ShouldBe(1);
+        extra[0].GetString().ShouldBe("spring-tenant-default");
+    }
+
+    [Fact]
     public async Task PullImageAsync_PostsImageAndTimeout()
     {
         HttpRequestMessage? captured = null;

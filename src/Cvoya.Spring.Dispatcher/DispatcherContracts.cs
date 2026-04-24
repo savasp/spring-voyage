@@ -56,6 +56,16 @@ public record RunContainerRequest
     [JsonPropertyName("network")]
     public string? NetworkName { get; init; }
 
+    /// <summary>
+    /// Additional networks the dispatcher should attach the container to in
+    /// addition to <see cref="NetworkName"/>. Emitted as repeated
+    /// <c>--network</c> flags. Used by <c>ContainerLifecycleManager</c> to
+    /// dual-attach Dapr-fronted containers to a per-tenant bridge on top of
+    /// the per-workflow app↔sidecar bridge (ADR 0028 / issue #1166).
+    /// </summary>
+    [JsonPropertyName("additionalNetworks")]
+    public IReadOnlyList<string>? AdditionalNetworks { get; init; }
+
     /// <summary>Container labels.</summary>
     [JsonPropertyName("labels")]
     public IDictionary<string, string>? Labels { get; init; }

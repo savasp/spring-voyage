@@ -3,6 +3,8 @@
 
 namespace Cvoya.Spring.Dapr.Tests.Execution;
 
+using System.Linq;
+
 using Cvoya.Spring.Core.Execution;
 using Cvoya.Spring.Dapr.Execution;
 
@@ -99,5 +101,119 @@ public class ContainerLifecycleManagerTests
 
         await _containerRuntime.DidNotReceive().StopAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
         await _sidecarManager.DidNotReceive().StopSidecarAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task LaunchWithSidecarAsync_DualAttachesAppContainerToTenantNetwork()
+    {
+        // Sidecar is healthy on the first probe so the lifecycle proceeds to
+        // the app run. We capture the augmented ContainerConfig handed to
+        // the runtime to assert tenant-network dual-attach (#1166 / ADR 0028).
+        StubSidecarHappyPath();
+
+        ContainerConfig? launchedConfig = null;
+        _containerRuntime.RunAsync(Arg.Do<ContainerConfig>(c => launchedConfig = c), Arg.Any<CancellationToken>())
+            .Returns(new ContainerResult("app-container", 0, "ok", string.Empty));
+
+        var input = new ContainerConfig(
+            Image: "agent:v1",
+            DaprEnabled: true,
+            DaprAppId: "spring-app-test",
+            DaprAppPort: 8080);
+
+        await _manager.LaunchWithSidecarAsync(input, TestContext.Current.CancellationToken);
+
+        launchedConfig.ShouldNotBeNull();
+        launchedConfig!.NetworkName.ShouldNotBeNull();
+        launchedConfig.NetworkName.ShouldStartWith("spring-net-");
+        launchedConfig.AdditionalNetworks.ShouldNotBeNull();
+        launchedConfig.AdditionalNetworks!.ShouldContain(ContainerConfigBuilder.TenantNetworkName);
+    }
+
+    [Fact]
+    public async Task LaunchWithSidecarAsync_KeepsSidecarOnPerWorkflowBridgeOnly()
+    {
+        // The sidecar is daprd, which talks to the app over the per-workflow
+        // bridge — it has no business reaching tenant infrastructure. Pin
+        // that here so a future change that refactors the launch path
+        // doesn't accidentally widen the sidecar's network footprint.
+        DaprSidecarConfig? capturedSidecarConfig = null;
+        _sidecarManager.StartSidecarAsync(
+                Arg.Do<DaprSidecarConfig>(c => capturedSidecarConfig = c),
+                Arg.Any<CancellationToken>())
+            .Returns(new DaprSidecarInfo("sidecar-1", 3500, 50001));
+        _sidecarManager.WaitForHealthyAsync(Arg.Any<string>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
+            .Returns(true);
+
+        _containerRuntime.RunAsync(Arg.Any<ContainerConfig>(), Arg.Any<CancellationToken>())
+            .Returns(new ContainerResult("app-container", 0, string.Empty, string.Empty));
+
+        var input = new ContainerConfig(Image: "agent:v1", DaprEnabled: true);
+
+        await _manager.LaunchWithSidecarAsync(input, TestContext.Current.CancellationToken);
+
+        capturedSidecarConfig.ShouldNotBeNull();
+        capturedSidecarConfig!.NetworkName.ShouldNotBeNull();
+        capturedSidecarConfig.NetworkName.ShouldStartWith("spring-net-");
+        capturedSidecarConfig.NetworkName.ShouldNotBe(ContainerConfigBuilder.TenantNetworkName);
+    }
+
+    [Fact]
+    public async Task LaunchWithSidecarAsync_EnsuresTenantNetworkExistsBeforeLaunch()
+    {
+        // ADR 0028: the lifecycle must be self-sufficient — a fresh clone or
+        // partial bring-up must still launch successfully even if deploy.sh
+        // has not been re-run. We assert the tenant network is created
+        // (idempotently) alongside the per-workflow bridge.
+        StubSidecarHappyPath();
+
+        var createdNetworks = new List<string>();
+        _containerRuntime.CreateNetworkAsync(
+                Arg.Do<string>(n => createdNetworks.Add(n)),
+                Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
+
+        _containerRuntime.RunAsync(Arg.Any<ContainerConfig>(), Arg.Any<CancellationToken>())
+            .Returns(new ContainerResult("app-container", 0, string.Empty, string.Empty));
+
+        var input = new ContainerConfig(Image: "agent:v1", DaprEnabled: true);
+
+        await _manager.LaunchWithSidecarAsync(input, TestContext.Current.CancellationToken);
+
+        createdNetworks.ShouldContain(ContainerConfigBuilder.TenantNetworkName);
+        // The per-workflow ephemeral bridge is also created — the sidecar runs
+        // there, the app dual-attaches to it plus the tenant bridge.
+        createdNetworks.Count(n => n.StartsWith("spring-net-")).ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task LaunchWithSidecarAsync_DeduplicatesTenantNetworkWhenCallerAlreadyPinnedIt()
+    {
+        // A future caller might already enumerate the tenant network in
+        // AdditionalNetworks. Don't emit a duplicate `--network` flag.
+        StubSidecarHappyPath();
+
+        ContainerConfig? launchedConfig = null;
+        _containerRuntime.RunAsync(Arg.Do<ContainerConfig>(c => launchedConfig = c), Arg.Any<CancellationToken>())
+            .Returns(new ContainerResult("app-container", 0, string.Empty, string.Empty));
+
+        var input = new ContainerConfig(
+            Image: "agent:v1",
+            DaprEnabled: true,
+            AdditionalNetworks: [ContainerConfigBuilder.TenantNetworkName]);
+
+        await _manager.LaunchWithSidecarAsync(input, TestContext.Current.CancellationToken);
+
+        launchedConfig.ShouldNotBeNull();
+        launchedConfig!.AdditionalNetworks.ShouldNotBeNull();
+        launchedConfig.AdditionalNetworks!.Count(n => n == ContainerConfigBuilder.TenantNetworkName).ShouldBe(1);
+    }
+
+    private void StubSidecarHappyPath()
+    {
+        _sidecarManager.StartSidecarAsync(Arg.Any<DaprSidecarConfig>(), Arg.Any<CancellationToken>())
+            .Returns(new DaprSidecarInfo("sidecar-1", 3500, 50001));
+        _sidecarManager.WaitForHealthyAsync(Arg.Any<string>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
+            .Returns(true);
     }
 }
