@@ -244,6 +244,48 @@ public class ContainersEndpointsTests : IClassFixture<DispatcherWebApplicationFa
     }
 
     [Fact]
+    public async Task PostContainers_WithEmptyWorkspaceAndNoExplicitWorkdir_LeavesWorkdirUnset()
+    {
+        // Regression for #1159 (dispatcher side): launchers like
+        // DaprAgentLauncher bind-mount an empty workspace to keep the launch
+        // shape uniform with file-bearing launchers, but ship images whose
+        // CMD is relative to the image WORKDIR (e.g. `python agent.py` from
+        // /app). If the dispatcher silently defaults workdir to the
+        // materialised mount path, the relative CMD lookup fails and the
+        // container exits immediately with "No such file or directory".
+        // The dispatcher must only override the workdir when the workspace
+        // actually carries files, mirroring the worker-side policy in
+        // ContainerConfigBuilder.Build.
+        _factory.ContainerRuntime.ClearSubstitute();
+
+        ContainerConfig? captured = null;
+        _factory.ContainerRuntime
+            .RunAsync(Arg.Do<ContainerConfig>(c => captured = c), Arg.Any<CancellationToken>())
+            .Returns(new ContainerResult("ws-empty", 0, "ok", string.Empty));
+
+        var client = CreateAuthorizedClient();
+
+        var response = await client.PostAsJsonAsync("/v1/containers", new
+        {
+            image = "spring-voyage-agent-dapr:latest",
+            workspace = new
+            {
+                mountPath = "/workspace",
+                files = new Dictionary<string, string>(),
+            },
+            detached = false,
+        }, TestContext.Current.CancellationToken);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        captured.ShouldNotBeNull();
+        captured!.WorkingDirectory.ShouldBeNull(
+            "an empty workspace must not override the image's default WORKDIR");
+        captured.VolumeMounts.ShouldNotBeNull();
+        captured.VolumeMounts!.ShouldContain(m => m.EndsWith(":/workspace"));
+    }
+
+    [Fact]
     public async Task PostContainers_WithWorkspace_RejectsTraversalPaths()
     {
         _factory.ContainerRuntime.ClearSubstitute();

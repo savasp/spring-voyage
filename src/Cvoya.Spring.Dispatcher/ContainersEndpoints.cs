@@ -105,8 +105,20 @@ public static class ContainersEndpoints
         }
 
         var mounts = BuildEffectiveMounts(request.Mounts, materialized);
+        // Only default the workdir to the materialised mount path when the
+        // workspace actually contains files. Launchers like DaprAgentLauncher
+        // bind-mount an empty workspace just to keep the launch shape uniform
+        // — they ship images whose CMD is relative to a fixed image WORKDIR
+        // (e.g. `python agent.py` from /app). Silently overriding workdir to
+        // /workspace in that case makes the relative CMD lookup fail and the
+        // container exits immediately with "No such file or directory". This
+        // mirrors the worker-side policy in ContainerConfigBuilder.Build —
+        // see the long comment there for the rationale (#1159).
         var workdir = request.WorkingDirectory
-            ?? materialized?.MountPath;
+            ?? (materialized is not null
+                && request.Workspace is { Files.Count: > 0 }
+                    ? materialized.MountPath
+                    : null);
 
         var config = new ContainerConfig(
             Image: request.Image,
