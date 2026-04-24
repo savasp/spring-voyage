@@ -3,12 +3,31 @@
 from __future__ import annotations
 
 import inspect
+from types import SimpleNamespace
 from typing import Awaitable, Callable
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from agent import DaprAgentExecutor, _build_agent, _build_agent_kwargs
+
+
+def _text_part(text: str) -> SimpleNamespace:
+    """Mimic the a2a-sdk v0.3+ ``Part`` shape: a discriminated-union wrapper
+    around ``TextPart | FilePart | DataPart`` exposed via ``part.root``.
+
+    Reading ``part.text`` directly raises ``AttributeError`` against the real
+    SDK, which the JSON-RPC layer surfaces as a -32603 internal error. Tests
+    that pass through ``DaprAgentExecutor.execute`` must therefore mirror the
+    discriminated-root shape so we exercise the same access path the SDK
+    actually delivers.
+    """
+    return SimpleNamespace(root=SimpleNamespace(kind="text", text=text))
+
+
+def _non_text_part() -> SimpleNamespace:
+    """Mimic a non-text ``Part`` (file/data) — root has no ``.text``."""
+    return SimpleNamespace(root=SimpleNamespace(kind="file", file=object()))
 
 
 class TestDaprAgentExecutor:
@@ -36,7 +55,7 @@ class TestDaprAgentExecutor:
         context.task_id = "task-1"
         context.context_id = "ctx-1"
         context.message = MagicMock()
-        context.message.parts = [MagicMock(text="What is 2+2?")]
+        context.message.parts = [_text_part("What is 2+2?")]
 
         event_queue = MagicMock()
         event_queue.enqueue_event = AsyncMock()
@@ -74,6 +93,41 @@ class TestDaprAgentExecutor:
 
         # Should have enqueued: task, working status, failed status
         assert event_queue.enqueue_event.call_count == 3
+
+    @pytest.mark.asyncio
+    async def test_execute_extracts_text_via_discriminated_root(self):
+        """Regression: a2a-sdk v0.3+ wraps each part in a ``Part(root=...)``
+        discriminated union. The executor must read text via ``part.root.text``
+        and skip non-text parts; reading ``part.text`` directly raises
+        AttributeError and crashes the JSON-RPC handler with -32603.
+        """
+        mock_agent = MagicMock()
+        mock_runner = MagicMock()
+        mock_runner.run = AsyncMock(return_value="ok")
+
+        executor = DaprAgentExecutor(self._make_factory(mock_agent, mock_runner))
+
+        context = MagicMock()
+        context.current_task = MagicMock()
+        context.task_id = "task-parts"
+        context.context_id = "ctx-parts"
+        context.message = MagicMock()
+        # Mix a non-text part in between two text parts to confirm the
+        # executor concatenates text parts and silently skips others rather
+        # than throwing on the missing attribute.
+        context.message.parts = [
+            _text_part("hello "),
+            _non_text_part(),
+            _text_part("world"),
+        ]
+
+        event_queue = MagicMock()
+        event_queue.enqueue_event = AsyncMock()
+
+        await executor.execute(context, event_queue)
+
+        mock_runner.run.assert_awaited_once()
+        assert mock_runner.run.await_args.kwargs["payload"] == {"task": "hello world"}
 
     @pytest.mark.asyncio
     async def test_cancel_enqueues_canceled_status(self):

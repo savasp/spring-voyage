@@ -111,11 +111,19 @@ class DaprAgentExecutor(AgentExecutor):
         await event_queue.enqueue_event(task)
 
         # Extract user text from the incoming A2A message.
+        # In a2a-sdk v0.3+ `Part` is a discriminated-union wrapper around
+        # `TextPart | FilePart | DataPart` exposed via `part.root`; only
+        # `TextPart` (kind == "text") carries a `.text` attribute. Reading
+        # `part.text` directly raises AttributeError, which the SDK then
+        # surfaces as a JSON-RPC -32603 (Internal Error). Pull the text via
+        # the discriminated root and skip non-text parts.
         user_text = ""
         if context.message and context.message.parts:
             for part in context.message.parts:
-                if part.text:
-                    user_text += part.text
+                root = getattr(part, "root", part)
+                text = getattr(root, "text", None)
+                if text:
+                    user_text += text
 
         await event_queue.enqueue_event(
             TaskStatusUpdateEvent(
