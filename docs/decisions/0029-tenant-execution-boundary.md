@@ -202,6 +202,14 @@ The work this ADR opens lands as two artifacts that outlive any specific impleme
 - **Control-channel complexity for lifecycle supervision.** Platform actors driving tenant-container lifecycle hooks over a cross-network channel is new plumbing; see the open-questions section.
 - **Discipline required to hold the line.** The interface ceiling is small on purpose. Follow-up work has to resist adding interfaces without a forcing use case.
 
+### Known limitation: topology metadata visibility
+
+The boundary contract this ADR defines, combined with [ADR 0028](0028-tenant-scoped-runtime-topology.md)'s topology, gives V2.1 a content-layer isolation story that is necessary but not sufficient for the most stringent compliance postures. The platform inherently sees structural and operational metadata: which units exist per tenant, which agents are in each, configurations, manifests, message routing topology, message rates, container sizes. Routing, supervision, and observability all require it; encrypting it would defeat the operational signals the platform needs.
+
+Tenants whose threat model treats topology and operational metadata as proprietary IP — not just message contents — are not fully addressed by V2.1's architecture. The pragmatic long-term answer is a **tier model**: default tier shares infrastructure with content-layer encryption + contracts + audit (what V2.1 delivers); a premium tier offers dedicated deployment so the topology lives only on the tenant's own platform stack. Industry SaaS converges on this shape.
+
+Tracked separately as a V3+ architectural decision in [#1203](https://github.com/cvoya-com/spring-voyage/issues/1203). The terminal-architecture work in [#1170](https://github.com/cvoya-com/spring-voyage/issues/1170) — encrypted-at-rest tenant data with KMS integration — is part of the content-layer story and complementary to, not a substitute for, the tier-model decision.
+
 ### Revisit ADR 0028 Decision C (per-tenant Ollama)
 
 [ADR 0028](0028-tenant-scoped-runtime-topology.md) made LLM services per-tenant (Decision C) because the tenancy boundary was enforced at the network layer — putting Ollama on the tenant network was the mechanism for "tenant A can't reach tenant B's Ollama." Moving LLM access to **native APIs + scoped credentials delivered via `IAgentContext`** makes tenancy an API-layer property: a platform-wide Ollama with tenant-scoped auth keys is functionally equivalent, and the single-instance deployment avoids the per-tenant provisioning / idle / model-cache costs that [#1164](https://github.com/cvoya-com/spring-voyage/issues/1164) was filed to address.
