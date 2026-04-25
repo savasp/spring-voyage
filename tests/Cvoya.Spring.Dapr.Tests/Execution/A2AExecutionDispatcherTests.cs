@@ -16,7 +16,9 @@ using Cvoya.Spring.Core.Execution;
 using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Dapr.Execution;
 
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -62,10 +64,32 @@ public class A2AExecutionDispatcherTests
     public A2AExecutionDispatcherTests()
     {
         _loggerFactory.CreateLogger(Arg.Any<string>()).Returns(Substitute.For<ILogger>());
-        _persistentRegistry = new PersistentAgentRegistry(
-            _persistentContainerRuntime, _httpClientFactory, _loggerFactory);
+
+        var daprEph = Substitute.For<IDaprSidecarManager>();
+        var daprOptions = new DaprSidecarOptions();
+        var clmEph = new ContainerLifecycleManager(
+            _containerRuntime, daprEph, Options.Create(daprOptions), _loggerFactory);
         _ephemeralRegistry = new EphemeralAgentRegistry(
-            _containerRuntime, _loggerFactory);
+            _containerRuntime, clmEph, _loggerFactory);
+
+        var persistentServices = new ServiceCollection();
+        persistentServices.AddSingleton(_persistentContainerRuntime);
+        persistentServices.AddSingleton(_httpClientFactory);
+        persistentServices.AddSingleton(_loggerFactory);
+        persistentServices.AddSingleton(Substitute.For<IDaprSidecarManager>());
+        persistentServices.AddSingleton(Options.Create(daprOptions));
+        persistentServices.AddSingleton<ContainerLifecycleManager>();
+        persistentServices.AddSingleton(Substitute.For<IAgentDefinitionProvider>());
+        persistentServices.AddSingleton(Substitute.For<IMcpServer>());
+        persistentServices.AddSingleton(_launcher);
+        persistentServices.AddSingleton<IEnumerable<IAgentToolLauncher>>(
+            p => [p.GetRequiredService<IAgentToolLauncher>()]);
+        persistentServices.AddSingleton<PersistentAgentRegistry>();
+        persistentServices.AddSingleton<PersistentAgentLifecycle>();
+        _persistentRegistry = persistentServices
+            .BuildServiceProvider()
+            .GetRequiredService<PersistentAgentRegistry>();
+
         _launcher.Tool.Returns("claude-code");
         _launcher.PrepareAsync(Arg.Any<AgentLaunchContext>(), Arg.Any<CancellationToken>())
             .Returns(DefaultSpec);
@@ -89,6 +113,10 @@ public class A2AExecutionDispatcherTests
             .Returns(ContainerId);
         _httpClientFactory.CreateClient(Arg.Any<string>()).Returns(_ => new HttpClient());
 
+        var daprD = Substitute.For<IDaprSidecarManager>();
+        var clmD = new ContainerLifecycleManager(
+            _containerRuntime, daprD, Options.Create(daprOptions), _loggerFactory);
+
         _dispatcher = new A2AExecutionDispatcher(
             _containerRuntime,
             _promptAssembler,
@@ -97,6 +125,8 @@ public class A2AExecutionDispatcherTests
             [_launcher],
             _persistentRegistry,
             _ephemeralRegistry,
+            clmD,
+            Options.Create(daprOptions),
             _loggerFactory);
     }
 

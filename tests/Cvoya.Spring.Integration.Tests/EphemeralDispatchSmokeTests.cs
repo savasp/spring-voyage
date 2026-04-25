@@ -19,6 +19,8 @@ using Cvoya.Spring.Dapr.Execution;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
+using NSubstitute;
+
 using Shouldly;
 
 using Xunit;
@@ -71,7 +73,10 @@ public class EphemeralDispatchSmokeTests
             "docker" => new DockerRuntime(runtimeOptions, loggerFactory),
             _ => throw new InvalidOperationException($"unexpected binary {binary}"),
         };
-        var registry = new EphemeralAgentRegistry(runtime, loggerFactory);
+        var dapr = Substitute.For<IDaprSidecarManager>();
+        var clm = new ContainerLifecycleManager(
+            runtime, dapr, Options.Create(new DaprSidecarOptions()), loggerFactory);
+        var registry = new EphemeralAgentRegistry(runtime, clm, loggerFactory);
 
         // Pull alpine:latest first so StartAsync below doesn't race the
         // implicit pull. PullImageAsync is idempotent on cached images.

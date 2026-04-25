@@ -213,6 +213,12 @@ public interface IContainerRuntime
 /// <param name="DaprEnabled">Whether to attach a Dapr sidecar to this container.</param>
 /// <param name="DaprAppId">The app-id for the Dapr sidecar.</param>
 /// <param name="DaprAppPort">The port the app listens on for Dapr to call.</param>
+/// <param name="DaprSidecarComponentsPath">
+/// Optional host path to a Dapr components directory to bind-mount into the
+/// <c>daprd</c> sidecar (overrides the <c>Dapr:Sidecar:ComponentsPath</c> default for
+/// this launch only). Used by the Dapr Python agent, which needs Conversation +
+/// workflow state components distinct from the platform <c>production</c> profile.
+/// </param>
 /// <param name="ExtraHosts">Additional <c>host:IP</c> entries to add to the container's <c>/etc/hosts</c>. Used to expose the MCP server to Linux containers via <c>host.docker.internal:host-gateway</c>.</param>
 /// <param name="WorkingDirectory">Optional working directory inside the container.</param>
 /// <param name="Workspace">
@@ -239,6 +245,7 @@ public record ContainerConfig(
     bool DaprEnabled = false,
     string? DaprAppId = null,
     int? DaprAppPort = null,
+    string? DaprSidecarComponentsPath = null,
     IReadOnlyList<string>? ExtraHosts = null,
     string? WorkingDirectory = null,
     ContainerWorkspace? Workspace = null);

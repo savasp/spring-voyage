@@ -40,9 +40,11 @@ using Microsoft.Extensions.Logging;
 /// </remarks>
 public class EphemeralAgentRegistry(
     IContainerRuntime containerRuntime,
+    ContainerLifecycleManager containerLifecycleManager,
     ILoggerFactory loggerFactory) : IHostedService
 {
     private readonly ILogger _logger = loggerFactory.CreateLogger<EphemeralAgentRegistry>();
+    private readonly ContainerLifecycleManager _containerLifecycle = containerLifecycleManager;
     private readonly ConcurrentDictionary<string, EphemeralAgentEntry> _entries = new();
 
     /// <summary>
@@ -57,13 +59,20 @@ public class EphemeralAgentRegistry(
     /// <see cref="ReleaseAsync"/> when the turn ends so the entry is removed
     /// from the registry and the container is torn down.
     /// </summary>
-    public EphemeralAgentLease Register(string agentId, string conversationId, string containerId)
+    public EphemeralAgentLease Register(
+        string agentId,
+        string conversationId,
+        string containerId,
+        string? sidecarId = null,
+        string? sidecarNetworkName = null)
     {
         var lease = $"{agentId}|{conversationId}|{Guid.NewGuid():N}";
         _entries[lease] = new EphemeralAgentEntry(
             AgentId: agentId,
             ConversationId: conversationId,
             ContainerId: containerId,
+            SidecarId: sidecarId,
+            SidecarNetworkName: sidecarNetworkName,
             StartedAt: DateTimeOffset.UtcNow);
 
         _logger.LogDebug(
@@ -90,7 +99,16 @@ public class EphemeralAgentRegistry(
 
         try
         {
-            await containerRuntime.StopAsync(entry.ContainerId, cancellationToken);
+            if (entry.SidecarId is not null
+                && entry.SidecarNetworkName is not null)
+            {
+                await _containerLifecycle.TeardownAsync(
+                    entry.ContainerId, entry.SidecarId, entry.SidecarNetworkName, cancellationToken);
+            }
+            else
+            {
+                await containerRuntime.StopAsync(entry.ContainerId, cancellationToken);
+            }
         }
         catch (Exception ex)
         {
@@ -145,4 +163,6 @@ public record EphemeralAgentEntry(
     string AgentId,
     string ConversationId,
     string ContainerId,
+    string? SidecarId,
+    string? SidecarNetworkName,
     DateTimeOffset StartedAt);

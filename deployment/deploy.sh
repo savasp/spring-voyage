@@ -139,6 +139,15 @@ ensure_network() {
     fi
 }
 
+# Dual-attach Dapr state + control plane so daprd sidecars for delegated
+# Python agents (per-launch spring-net-* bridge, second-attach to tenant) can
+# resolve these hosts — ADR 0028 "V2 interim" stack (see also docker-compose).
+ensure_delegated_dapr_tenant_attachments() {
+    for c in spring-postgres spring-redis spring-placement spring-scheduler; do
+        ensure_tenant_network_attachment "${c}" "${TENANT_NETWORK_NAME}"
+    done
+}
+
 ensure_tenant_network_attachment() {
     # Dual-attach a platform-side container to the tenant network so its
     # services resolve from inside the tenant namespace too (ADR 0028 —
@@ -560,6 +569,7 @@ cmd_up() {
     # sidecar tries to register with placement / schedule actor reminders.
     start_placement
     start_scheduler
+    ensure_delegated_dapr_tenant_attachments
 
     # Per-app Dapr sidecars. Start both before the apps so DAPR_HTTP_ENDPOINT
     # / DAPR_GRPC_ENDPOINT resolves the moment the apps come up (#308).
