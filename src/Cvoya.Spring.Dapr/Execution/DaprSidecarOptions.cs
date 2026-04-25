@@ -61,4 +61,39 @@ public class DaprSidecarOptions
     /// custom components folder, which is the dev-default.
     /// </summary>
     public string? ComponentsPath { get; set; }
+
+    /// <summary>
+    /// Dapr placement service <c>host:port</c> for workflow / actor runtimes. When
+    /// set, <see cref="DaprSidecarManager"/> appends
+    /// <c>--placement-host-address</c> to daprd. Defaults to
+    /// <c>spring-placement:50005</c> in OSS so delegated Dapr agent containers
+    /// can run <c>dapr-agents</c> workflow loops once the sidecar is dual-
+    /// attached to the same tenant bridge as the control plane (see ADR 0028
+    /// "V2 interim" deployment).
+    /// </summary>
+    public string? PlacementHostAddress { get; set; } = "spring-placement:50005";
+
+    /// <summary>
+    /// Dapr scheduler <c>host:port</c>. When set, <see cref="DaprSidecarManager"/>
+    /// appends <c>--scheduler-host-address</c> to daprd. Defaults to
+    /// <c>spring-scheduler:50006</c>.
+    /// </summary>
+    public string? SchedulerHostAddress { get; set; } = "spring-scheduler:50006";
+
+    /// <summary>
+    /// Optional path to the bundled <c>delegated-dapr-agent</c> component profile
+    /// (Conversation + Redis state for workflows). Baked at
+    /// <c>/dapr/components/delegated-dapr-agent</c> in the platform image; the
+    /// same path must exist on the dispatcher host in host-side worker setups.
+    /// When unset, <see cref="ComponentsPath"/> is used (may be insufficient for
+    /// <c>dapr-agent</c>).
+    /// </summary>
+    public string? DelegatedDaprAgentComponentsPath { get; set; } = "/dapr/components/delegated-dapr-agent";
+
+    /// <summary>
+    /// Optional daprd global config file, bind-mounted in the sidecar. OSS leaves
+    /// this empty so daprd uses defaults; platform sidecars in
+    /// <c>deployment/deploy.sh</c> use <c>/config/config.yaml</c>.
+    /// </summary>
+    public string? DaprConfigFilePath { get; set; }
 }

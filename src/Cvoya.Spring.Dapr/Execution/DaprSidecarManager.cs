@@ -208,11 +208,31 @@ public class DaprSidecarManager(
             commandParts.Add("/components");
         }
 
+        if (config.PlacementHostAddress is { Length: > 0 } ph)
+        {
+            commandParts.Add("--placement-host-address");
+            commandParts.Add(ph);
+        }
+
+        if (config.SchedulerHostAddress is { Length: > 0 } sh)
+        {
+            commandParts.Add("--scheduler-host-address");
+            commandParts.Add(sh);
+        }
+
+        if (config.DaprConfigFilePath is { Length: > 0 } dcfp)
+        {
+            mounts.Add($"{dcfp}:/config/config.yaml:ro");
+            commandParts.Add("--config");
+            commandParts.Add("/config/config.yaml");
+        }
+
         return new ContainerConfig(
             Image: _options.Image,
             Command: commandParts,
             VolumeMounts: mounts.Count > 0 ? mounts : null,
             NetworkName: config.NetworkName,
+            AdditionalNetworks: config.AdditionalNetworks,
             Labels: labels);
     }
 

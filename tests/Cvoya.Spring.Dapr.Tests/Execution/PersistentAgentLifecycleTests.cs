@@ -7,7 +7,9 @@ using Cvoya.Spring.Core;
 using Cvoya.Spring.Core.Execution;
 using Cvoya.Spring.Dapr.Execution;
 
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 using NSubstitute;
 
@@ -40,16 +42,23 @@ public class PersistentAgentLifecycleTests
         _loggerFactory.CreateLogger(Arg.Any<string>()).Returns(Substitute.For<ILogger>());
         _launcher.Tool.Returns("claude-code");
 
-        _registry = new PersistentAgentRegistry(
-            _containerRuntime, _httpClientFactory, _loggerFactory);
-
-        _lifecycle = new PersistentAgentLifecycle(
-            _containerRuntime,
-            _agentProvider,
-            _mcpServer,
-            [_launcher],
-            _registry,
-            _loggerFactory);
+        var daprOptions = new DaprSidecarOptions();
+        var services = new ServiceCollection();
+        services.AddSingleton(_containerRuntime);
+        services.AddSingleton(_httpClientFactory);
+        services.AddSingleton(_loggerFactory);
+        services.AddSingleton(Substitute.For<IDaprSidecarManager>());
+        services.AddSingleton(Options.Create(daprOptions));
+        services.AddSingleton<ContainerLifecycleManager>();
+        services.AddSingleton(_agentProvider);
+        services.AddSingleton(_mcpServer);
+        services.AddSingleton(_launcher);
+        services.AddSingleton<IEnumerable<IAgentToolLauncher>>(_ => new[] { _launcher });
+        services.AddSingleton<PersistentAgentRegistry>();
+        services.AddSingleton<PersistentAgentLifecycle>();
+        var sp = services.BuildServiceProvider();
+        _registry = sp.GetRequiredService<PersistentAgentRegistry>();
+        _lifecycle = sp.GetRequiredService<PersistentAgentLifecycle>();
     }
 
     [Fact]

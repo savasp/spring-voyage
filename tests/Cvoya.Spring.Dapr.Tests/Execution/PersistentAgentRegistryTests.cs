@@ -5,10 +5,13 @@ namespace Cvoya.Spring.Dapr.Tests.Execution;
 
 using System.Net;
 
+using Cvoya.Spring.Core;
 using Cvoya.Spring.Core.Execution;
 using Cvoya.Spring.Dapr.Execution;
 
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 using NSubstitute;
 
@@ -24,12 +27,41 @@ public class PersistentAgentRegistryTests : IDisposable
     private readonly IContainerRuntime _containerRuntime = Substitute.For<IContainerRuntime>();
     private readonly IHttpClientFactory _httpClientFactory = Substitute.For<IHttpClientFactory>();
     private readonly ILoggerFactory _loggerFactory = Substitute.For<ILoggerFactory>();
+    private readonly IAgentDefinitionProvider _agentProvider = Substitute.For<IAgentDefinitionProvider>();
+    private readonly IMcpServer _mcpServer = Substitute.For<IMcpServer>();
+    private readonly IAgentToolLauncher _launcher = Substitute.For<IAgentToolLauncher>();
     private readonly PersistentAgentRegistry _registry;
 
     public PersistentAgentRegistryTests()
     {
         _loggerFactory.CreateLogger(Arg.Any<string>()).Returns(Substitute.For<ILogger>());
-        _registry = new PersistentAgentRegistry(_containerRuntime, _httpClientFactory, _loggerFactory);
+        _launcher.Tool.Returns("claude-code");
+        _mcpServer.Endpoint.Returns("http://host.docker.internal:12345/mcp/");
+        _mcpServer.IssueSession(Arg.Any<string>(), Arg.Any<string>())
+            .Returns(ci => new McpSession("t", ci.ArgAt<string>(0), ci.ArgAt<string>(1)));
+        _launcher.PrepareAsync(Arg.Any<AgentLaunchContext>(), Arg.Any<CancellationToken>())
+            .Returns(new AgentLaunchSpec(
+                new Dictionary<string, string>(),
+                new Dictionary<string, string>(),
+                "/workspace"));
+        _agentProvider
+            .GetByIdAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns((AgentDefinition?)null);
+
+        var services = new ServiceCollection();
+        services.AddSingleton(_containerRuntime);
+        services.AddSingleton(_httpClientFactory);
+        services.AddSingleton(_loggerFactory);
+        services.AddSingleton(Substitute.For<IDaprSidecarManager>());
+        services.AddSingleton(Options.Create(new DaprSidecarOptions()));
+        services.AddSingleton<ContainerLifecycleManager>();
+        services.AddSingleton(_agentProvider);
+        services.AddSingleton(_mcpServer);
+        services.AddSingleton(_launcher);
+        services.AddSingleton<IEnumerable<IAgentToolLauncher>>(_ => new[] { _launcher });
+        services.AddSingleton<PersistentAgentRegistry>();
+        services.AddSingleton<PersistentAgentLifecycle>();
+        _registry = services.BuildServiceProvider().GetRequiredService<PersistentAgentRegistry>();
     }
 
     public void Dispose()
@@ -176,6 +208,7 @@ public class PersistentAgentRegistryTests : IDisposable
         var endpoint = new Uri("http://localhost:8999/");
         var definition = new AgentDefinition("agent-1", "Test Agent", null,
             new AgentExecutionConfig("claude-code", "image:v1", Hosting: AgentHostingMode.Persistent));
+        _agentProvider.GetByIdAsync("agent-1", Arg.Any<CancellationToken>()).Returns(definition);
         _registry.Register("agent-1", endpoint, "container-1", definition);
 
         // Simulate restart failure (container starts but never becomes ready).
