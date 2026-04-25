@@ -47,7 +47,15 @@ public class McpServerPolicyEnforcementTests : IAsyncLifetime
 
         _server = new McpServer(
             [_registry],
-            Options.Create(new McpServerOptions { ContainerHost = "127.0.0.1" }),
+            Options.Create(new McpServerOptions
+            {
+                // Loopback-only bind keeps the test hermetic — production
+                // default is `+` (all local interfaces) so the worker's
+                // MCP socket is reachable through the published container
+                // port (closes #1199).
+                BindAddress = "127.0.0.1",
+                ContainerHost = "127.0.0.1",
+            }),
             _loggerFactory,
             provider.GetRequiredService<IServiceScopeFactory>());
 

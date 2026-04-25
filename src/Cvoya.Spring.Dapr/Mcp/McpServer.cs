@@ -131,8 +131,8 @@ public class McpServer : IMcpServer, IHostedService, IDisposable
         _acceptLoop = Task.Run(() => AcceptLoopAsync(_acceptCts.Token));
 
         _logger.LogInformation(
-            "MCP server listening on 127.0.0.1:{Port}; container endpoint {Endpoint}",
-            port, Endpoint);
+            "MCP server listening on {BindAddress}:{Port}; container endpoint {Endpoint}",
+            _options.BindAddress, port, Endpoint);
 
         return Task.CompletedTask;
     }
@@ -153,7 +153,11 @@ public class McpServer : IMcpServer, IHostedService, IDisposable
             {
                 port = _options.Port == 0 ? PickFreePort() : _options.Port;
                 listener = new HttpListener();
-                listener.Prefixes.Add($"http://127.0.0.1:{port}/mcp/");
+                // Bind on `BindAddress` (default `+` — all interfaces) so the
+                // worker's MCP socket is reachable through a published
+                // container port, not just from the worker's own loopback. See
+                // McpServerOptions.BindAddress for why this matters for #1199.
+                listener.Prefixes.Add($"http://{_options.BindAddress}:{port}/mcp/");
                 try
                 {
                     listener.Start();
@@ -184,7 +188,7 @@ public class McpServer : IMcpServer, IHostedService, IDisposable
 
         throw new HttpListenerException(
             lastException?.ErrorCode ?? 0,
-            $"Failed to bind MCP server on 127.0.0.1 after {maxAttempts} attempts.");
+            $"Failed to bind MCP server on {_options.BindAddress} after {maxAttempts} attempts.");
     }
 
     private static void SafeAbort(HttpListener listener)

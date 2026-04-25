@@ -335,13 +335,23 @@ start_worker() {
     if [[ -z "${SPRING_DISPATCHER_WORKER_TOKEN:-}" ]]; then
         die "SPRING_DISPATCHER_WORKER_TOKEN is not set. The dispatcher must be started first ('${HOST_SCRIPT##${REPO_ROOT}/} start') so it can write the bearer token to ${DISPATCHER_ENV_FILE} for the worker to source."
     fi
+    # Worker MCP server port. Bound on `+` (all interfaces) inside the worker
+    # container and published to the host so agent containers on the tenant
+    # bridge can reach it via `host.docker.internal:${mcp_port}` (closes
+    # #1199). The same value is set both as `-e Mcp__Port=` (so the worker's
+    # IConfiguration picks it up and the listener binds the right port) and
+    # `-p ${mcp_port}:${mcp_port}` (so the host port-maps to it). Override
+    # with `Mcp__Port` in spring.env if 5050 conflicts on the host.
+    local mcp_port="${Mcp__Port:-5050}"
     run_container spring-worker \
         --env-file "${RESOLVED_ENV_FILE}" \
+        -p "${mcp_port}:${mcp_port}" \
         -e "DAPR_APP_ID=spring-worker" \
         -e "DAPR_HTTP_ENDPOINT=http://spring-worker-dapr:3500" \
         -e "DAPR_GRPC_ENDPOINT=http://spring-worker-dapr:50001" \
         -e "Dispatcher__BaseUrl=http://host.containers.internal:${dispatcher_port}/" \
         -e "Dispatcher__BearerToken=${SPRING_DISPATCHER_WORKER_TOKEN}" \
+        -e "Mcp__Port=${mcp_port}" \
         -v spring-dataprotection-keys:/home/app/.aspnet/DataProtection-Keys \
         "${SPRING_PLATFORM_IMAGE:-localhost/spring-voyage:latest}" \
         dotnet /app/Cvoya.Spring.Host.Worker.dll
