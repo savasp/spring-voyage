@@ -41,7 +41,16 @@ public class McpServerTests : IAsyncLifetime
     {
         _server = new McpServer(
             [_registry],
-            Options.Create(new McpServerOptions { ContainerHost = "127.0.0.1" }),
+            Options.Create(new McpServerOptions
+            {
+                // Loopback-only bind keeps the test hermetic — the
+                // production default is `+` (all interfaces) so the
+                // worker's MCP socket is reachable through the worker
+                // container's published port (closes #1199), but tests
+                // don't want listeners on outward-facing interfaces.
+                BindAddress = "127.0.0.1",
+                ContainerHost = "127.0.0.1",
+            }),
             _loggerFactory);
         await _server.StartAsync(CancellationToken.None);
         _client = new HttpClient { BaseAddress = new Uri(_server.Endpoint!) };
@@ -168,7 +177,11 @@ public class McpServerTests : IAsyncLifetime
         var registry = new FakeSkillRegistry("race");
         var server = new McpServer(
             [registry],
-            Options.Create(new McpServerOptions { ContainerHost = "127.0.0.1" }),
+            Options.Create(new McpServerOptions
+            {
+                BindAddress = "127.0.0.1",
+                ContainerHost = "127.0.0.1",
+            }),
             _loggerFactory);
 
         await server.StartAsync(CancellationToken.None);
