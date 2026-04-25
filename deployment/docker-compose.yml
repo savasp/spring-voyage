@@ -49,6 +49,13 @@ networks:
   spring-net:
     name: spring-net
     driver: bridge
+  # Per-tenant bridge (OSS single-tenant). Dual-attach selected platform
+  # services here so delegated daprd + agent containers can reach placement,
+  # scheduler, and Redis from their tenant-attached network — ADR 0028
+  # "V2 interim" single-network story.
+  spring-tenant-default:
+    name: spring-tenant-default
+    driver: bridge
 
 volumes:
   spring-postgres-data:
@@ -76,7 +83,7 @@ services:
     env_file: spring.env
     volumes:
       - spring-postgres-data:/var/lib/postgresql/data
-    networks: [spring-net]
+    networks: [spring-net, spring-tenant-default]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 10s
@@ -103,7 +110,7 @@ services:
     env_file: spring.env
     volumes:
       - spring-redis-data:/data
-    networks: [spring-net]
+    networks: [spring-net, spring-tenant-default]
     healthcheck:
       test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
       interval: 10s
@@ -122,7 +129,7 @@ services:
     command: ["./placement"]
     volumes:
       - spring-placement-data:/var/run/dapr/raft
-    networks: [spring-net]
+    networks: [spring-net, spring-tenant-default]
 
   spring-scheduler:
     image: ${DAPR_IMAGE:-docker.io/daprio/dapr:1.17.4}
@@ -135,7 +142,7 @@ services:
       - --override-broadcast-host-port=spring-scheduler:50006
     volumes:
       - spring-scheduler-data:/var/lock
-    networks: [spring-net]
+    networks: [spring-net, spring-tenant-default]
 
   # -----------------------------------------------------------------
   # Per-app Dapr sidecars. Each .NET host runs in its own container and

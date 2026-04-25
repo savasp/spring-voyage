@@ -12,6 +12,7 @@ using Cvoya.Spring.Core.Execution;
 using Cvoya.Spring.Core.Messaging;
 
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 using A2AMessage = A2A.Message;
 using SvMessage = Cvoya.Spring.Core.Messaging.Message;
@@ -43,9 +44,12 @@ public class A2AExecutionDispatcher(
     IEnumerable<IAgentToolLauncher> launchers,
     PersistentAgentRegistry persistentAgentRegistry,
     EphemeralAgentRegistry ephemeralAgentRegistry,
+    ContainerLifecycleManager containerLifecycleManager,
+    IOptions<DaprSidecarOptions> daprSidecarOptions,
     ILoggerFactory loggerFactory) : IExecutionDispatcher
 {
     private readonly ILogger _logger = loggerFactory.CreateLogger<A2AExecutionDispatcher>();
+    private readonly DaprSidecarOptions _daprSidecarOptions = daprSidecarOptions.Value;
     private readonly Dictionary<string, IAgentToolLauncher> _launchersByTool =
         launchers.ToDictionary(l => l.Tool, StringComparer.OrdinalIgnoreCase);
 
@@ -149,19 +153,48 @@ public class A2AExecutionDispatcher(
             Model: definition.Execution.Model);
 
         var spec = await launcher.PrepareAsync(launchContext, cancellationToken);
-        var config = ContainerConfigBuilder.Build(definition.Execution.Image, spec);
+        var baseConfig = ContainerConfigBuilder.Build(definition.Execution.Image, spec);
+        var useDaprSidecar = string.Equals(
+            definition.Execution.Tool, DaprAgentLauncher.ToolId, StringComparison.OrdinalIgnoreCase);
 
         string? containerId = null;
+        string? sidecarId = null;
+        string? lifecycleNetworkName = null;
         EphemeralAgentLease? lease = null;
         try
         {
-            // Detached start: the container runs until we stop it, regardless
-            // of what the agent process inside does. This is the seam that
-            // fixes #1087 — the dispatcher no longer waits for the agent's
-            // stdout to terminate, it talks A2A to the in-container bridge
-            // and tears the container down explicitly when the turn drains.
-            containerId = await containerRuntime.StartAsync(config, cancellationToken);
-            lease = ephemeralAgentRegistry.Register(agentId, conversationId, containerId);
+            if (useDaprSidecar)
+            {
+                // dapr-agent + dapr-agents 1.x: the Python process needs a
+                // daprd with the delegated component profile, placement, and
+                // scheduler so the DurableAgent workflow loop can start (see
+                // ADR 0028 V2 interim dual-attach deployment).
+                var daprAppId = BuildEphemeralDaprAppId();
+                var daprConfig = baseConfig with
+                {
+                    DaprAppId = daprAppId,
+                    DaprAppPort = spec.A2APort,
+                    DaprSidecarComponentsPath = _daprSidecarOptions.DelegatedDaprAgentComponentsPath,
+                };
+
+                var detached = await containerLifecycleManager.LaunchWithSidecarDetachedAsync(
+                    daprConfig, cancellationToken);
+                containerId = detached.ContainerId;
+                sidecarId = detached.SidecarInfo.SidecarId;
+                lifecycleNetworkName = detached.NetworkName;
+                lease = ephemeralAgentRegistry.Register(
+                    agentId, conversationId, containerId, sidecarId, lifecycleNetworkName);
+            }
+            else
+            {
+                // Detached start: the container runs until we stop it, regardless
+                // of what the agent process inside does. This is the seam that
+                // fixes #1087 — the dispatcher no longer waits for the agent's
+                // stdout to terminate, it talks A2A to the in-container bridge
+                // and tears the container down explicitly when the turn drains.
+                containerId = await containerRuntime.StartAsync(baseConfig, cancellationToken);
+                lease = ephemeralAgentRegistry.Register(agentId, conversationId, containerId);
+            }
 
             // The endpoint URI's host is "localhost" because BOTH the
             // readiness probe AND the message-send call now run INSIDE the
@@ -203,7 +236,15 @@ public class A2AExecutionDispatcher(
                 // stop so we don't leak the container.
                 try
                 {
-                    await containerRuntime.StopAsync(containerId, CancellationToken.None);
+                    if (useDaprSidecar && sidecarId is not null && lifecycleNetworkName is not null)
+                    {
+                        await containerLifecycleManager.TeardownAsync(
+                            containerId, sidecarId, lifecycleNetworkName, CancellationToken.None);
+                    }
+                    else
+                    {
+                        await containerRuntime.StopAsync(containerId, CancellationToken.None);
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -212,6 +253,23 @@ public class A2AExecutionDispatcher(
                 }
             }
         }
+    }
+
+    private static string BuildEphemeralDaprAppId() => $"e{Guid.NewGuid():N}";
+
+    /// <summary>
+    /// Produces a stable, short Dapr <c>app-id</c> for a persistent
+    /// <c>dapr-agent</c> so workflow / actor state can survive process restarts.
+    /// </summary>
+    private static string BuildPersistentDaprAppId(string agentId)
+    {
+        var id = agentId.Replace("/", "-", StringComparison.Ordinal).Replace(":", "-", StringComparison.Ordinal);
+        if (id.Length > 32)
+        {
+            id = id[^32..];
+        }
+
+        return "p" + id;
     }
 
     private async Task<SvMessage?> DispatchPersistentAsync(
@@ -319,9 +377,32 @@ public class A2AExecutionDispatcher(
             "Starting persistent agent {AgentId} with image {Image}",
             agentId, definition.Execution.Image);
 
-        var config = ContainerConfigBuilder.Build(definition.Execution.Image, spec);
+        var baseConfig = ContainerConfigBuilder.Build(definition.Execution.Image, spec);
+        var useDaprSidecar = string.Equals(
+            definition.Execution.Tool, DaprAgentLauncher.ToolId, StringComparison.OrdinalIgnoreCase);
 
-        var containerId = await containerRuntime.StartAsync(config, cancellationToken);
+        string containerId;
+        string? sidecarId = null;
+        string? lifecycleNetworkName = null;
+        if (useDaprSidecar)
+        {
+            var daprAppId = BuildPersistentDaprAppId(agentId);
+            var daprConfig = baseConfig with
+            {
+                DaprAppId = daprAppId,
+                DaprAppPort = spec.A2APort,
+                DaprSidecarComponentsPath = _daprSidecarOptions.DelegatedDaprAgentComponentsPath,
+            };
+            var detached = await containerLifecycleManager.LaunchWithSidecarDetachedAsync(
+                daprConfig, cancellationToken);
+            containerId = detached.ContainerId;
+            sidecarId = detached.SidecarInfo.SidecarId;
+            lifecycleNetworkName = detached.NetworkName;
+        }
+        else
+        {
+            containerId = await containerRuntime.StartAsync(baseConfig, cancellationToken);
+        }
 
         var endpoint = new Uri($"http://localhost:{spec.A2APort}/");
 
@@ -332,13 +413,22 @@ public class A2AExecutionDispatcher(
             _logger.LogError(
                 "Persistent agent {AgentId} did not become ready within {Timeout}. Stopping container.",
                 agentId, ReadinessTimeout);
-            await containerRuntime.StopAsync(containerId, CancellationToken.None);
+            if (useDaprSidecar && sidecarId is not null && lifecycleNetworkName is not null)
+            {
+                await containerLifecycleManager.TeardownAsync(
+                    containerId, sidecarId, lifecycleNetworkName, CancellationToken.None);
+            }
+            else
+            {
+                await containerRuntime.StopAsync(containerId, CancellationToken.None);
+            }
+
             throw new SpringException(
                 $"Persistent agent '{agentId}' did not become ready within {ReadinessTimeout}.");
         }
 
         // Register in the persistent registry.
-        persistentAgentRegistry.Register(agentId, endpoint, containerId, definition);
+        persistentAgentRegistry.Register(agentId, endpoint, containerId, definition, sidecarId, lifecycleNetworkName);
 
         _logger.LogInformation(
             "Persistent agent {AgentId} started and registered at {Endpoint} (container {ContainerId})",

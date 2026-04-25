@@ -48,8 +48,13 @@ public class ContainerLifecycleManager(
         // app↔sidecar traffic isolated; the tenant attach is what lets the
         // container reach tenant infrastructure (Ollama, peer agents, future
         // tenant services) by uniform DNS. ADR 0028 — Decision A; closes the
-        // workflow-side slice in issue #1166. The sidecar itself stays on
-        // spring-net-<guid> only — daprd has no tenant-side dependency.
+        // workflow-side slice in issue #1166.
+        //
+        // The daprd sidecar is also second-attached to the tenant network when
+        // the per-app primary network differs from it, so the sidecar can still
+        // resolve the placement and scheduler services after deploy.sh
+        // dual-attaches the control plane to the tenant bridge (V2 single-tenant
+        // interim topology; see ADR 0028 status note).
         var tenantNetwork = ContainerConfigBuilder.TenantNetworkName;
 
         _logger.LogInformation(
@@ -70,13 +75,8 @@ public class ContainerLifecycleManager(
         try
         {
             // Step 2: Start the Dapr sidecar.
-            var sidecarConfig = new DaprSidecarConfig(
-                AppId: appId,
-                AppPort: appPort,
-                DaprHttpPort: daprHttpPort,
-                DaprGrpcPort: daprGrpcPort,
-                ComponentsPath: _sidecarOptions.ComponentsPath,
-                NetworkName: networkName);
+            var sidecarConfig = BuildDaprSidecarConfig(
+                appId, appPort, daprHttpPort, daprGrpcPort, networkName, tenantNetwork, config);
 
             sidecarInfo = await sidecarManager.StartSidecarAsync(sidecarConfig, ct);
 
@@ -125,6 +125,126 @@ public class ContainerLifecycleManager(
             await TeardownAsync(null, sidecarInfo?.SidecarId, networkName, CancellationToken.None);
             throw;
         }
+    }
+
+    /// <summary>
+    /// Launches a detached (long-running) app container with a Dapr sidecar
+    /// on a per-launch <c>spring-net-&lt;guid&gt;</c> bridge, dual-attached to
+    /// the tenant network — same as <see cref="LaunchWithSidecarAsync"/>, but
+    /// uses <see cref="IContainerRuntime.StartAsync"/> so the A2A server and
+    /// the <c>dapr-agents</c> workflow runtime keep running. Used for
+    /// <c>tool=dapr-agent</c> ephemeral and persistent dispatches.
+    /// </summary>
+    public async Task<DetachedContainerLifecycleResult> LaunchWithSidecarDetachedAsync(
+        ContainerConfig config, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(config.DaprAppId);
+        if (config.DaprAppPort is null)
+        {
+            throw new InvalidOperationException(
+                "LaunchWithSidecarDetachedAsync requires DaprAppPort to be set on the container config.");
+        }
+
+        var networkName = config.NetworkName ?? $"spring-net-{Guid.NewGuid():N}"[..32];
+        var appId = config.DaprAppId;
+        var appPort = config.DaprAppPort.Value;
+        const int daprHttpPort = 3500;
+        const int daprGrpcPort = 50001;
+        var tenantNetwork = ContainerConfigBuilder.TenantNetworkName;
+
+        _logger.LogInformation(
+            EventIds.LifecycleStarting,
+            "Starting detached sidecar lifecycle for app {AppId} on network {NetworkName} (tenant {TenantNetwork})",
+            appId, networkName, tenantNetwork);
+
+        await CreateNetworkAsync(networkName, ct);
+        await CreateNetworkAsync(tenantNetwork, ct);
+
+        DaprSidecarInfo? sidecarInfo = null;
+        try
+        {
+            var sidecarConfig = BuildDaprSidecarConfig(
+                appId, appPort, daprHttpPort, daprGrpcPort, networkName, tenantNetwork, config);
+
+            sidecarInfo = await sidecarManager.StartSidecarAsync(sidecarConfig, ct);
+
+            var healthy = await sidecarManager.WaitForHealthyAsync(
+                sidecarInfo.SidecarId, DefaultHealthTimeout, ct);
+
+            if (!healthy)
+            {
+                throw new InvalidOperationException(
+                    $"Dapr sidecar {sidecarInfo.SidecarId} did not become healthy within {DefaultHealthTimeout}.");
+            }
+
+            var augmentedEnv = new Dictionary<string, string>(
+                config.EnvironmentVariables ?? new Dictionary<string, string>())
+            {
+                ["DAPR_HTTP_PORT"] = daprHttpPort.ToString(),
+                ["DAPR_GRPC_PORT"] = daprGrpcPort.ToString()
+            };
+
+            var augmentedConfig = config with
+            {
+                NetworkName = networkName,
+                AdditionalNetworks = MergeAdditionalNetworks(config.AdditionalNetworks, tenantNetwork),
+                EnvironmentVariables = augmentedEnv
+            };
+
+            var containerId = await containerRuntime.StartAsync(augmentedConfig, ct);
+
+            _logger.LogInformation(
+                EventIds.LifecycleCompleted,
+                "Detached sidecar lifecycle started for app {AppId}, container {ContainerId}",
+                appId, containerId);
+
+            return new DetachedContainerLifecycleResult(
+                containerId, sidecarInfo, networkName);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                EventIds.LifecycleFailed, ex,
+                "Detached sidecar lifecycle failed for app {AppId}. Cleaning up.", appId);
+
+            await TeardownAsync(null, sidecarInfo?.SidecarId, networkName, CancellationToken.None);
+            throw;
+        }
+    }
+
+    private DaprSidecarConfig BuildDaprSidecarConfig(
+        string appId,
+        int appPort,
+        int daprHttpPort,
+        int daprGrpcPort,
+        string primaryNetwork,
+        string tenantNetwork,
+        ContainerConfig appConfig)
+    {
+        // Per-launch override (Dapr Python agent) wins; else the default platform profile.
+        var componentsPath = appConfig.DaprSidecarComponentsPath
+            ?? _sidecarOptions.ComponentsPath;
+
+        IReadOnlyList<string>? sidecarAdditional = null;
+        if (!string.Equals(primaryNetwork, tenantNetwork, StringComparison.Ordinal)
+            && !string.IsNullOrEmpty(tenantNetwork))
+        {
+            // Second bridge so daprd can see placement/scheduler/Redis on the
+            // tenant network after deploy.sh dual-attaches the control plane.
+            sidecarAdditional = [tenantNetwork];
+        }
+
+        return new DaprSidecarConfig(
+            AppId: appId,
+            AppPort: appPort,
+            DaprHttpPort: daprHttpPort,
+            DaprGrpcPort: daprGrpcPort,
+            ComponentsPath: componentsPath,
+            NetworkName: primaryNetwork,
+            AdditionalNetworks: sidecarAdditional,
+            PlacementHostAddress: _sidecarOptions.PlacementHostAddress,
+            SchedulerHostAddress: _sidecarOptions.SchedulerHostAddress,
+            DaprConfigFilePath: _sidecarOptions.DaprConfigFilePath);
     }
 
     /// <summary>
@@ -260,5 +380,14 @@ public class ContainerLifecycleManager(
 /// <param name="NetworkName">The network that was created for the lifecycle.</param>
 public record ContainerLifecycleResult(
     ContainerResult ContainerResult,
+    DaprSidecarInfo SidecarInfo,
+    string NetworkName);
+
+/// <summary>
+/// Result of <see cref="ContainerLifecycleManager.LaunchWithSidecarDetachedAsync"/> —
+/// a detached app container with its sidecar, still running.
+/// </summary>
+public record DetachedContainerLifecycleResult(
+    string ContainerId,
     DaprSidecarInfo SidecarInfo,
     string NetworkName);

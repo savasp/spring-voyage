@@ -58,8 +58,11 @@ public class DaprAgentLauncher(
 
     private readonly ILogger _logger = loggerFactory.CreateLogger<DaprAgentLauncher>();
 
+    /// <summary>YAML / definition <c>execution.tool</c> value for this launcher.</summary>
+    public const string ToolId = "dapr-agent";
+
     /// <inheritdoc />
-    public string Tool => "dapr-agent";
+    public string Tool => ToolId;
 
     /// <inheritdoc />
     public Task<AgentLaunchSpec> PrepareAsync(

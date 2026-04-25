@@ -7,6 +7,7 @@ using Cvoya.Spring.Core;
 using Cvoya.Spring.Core.Execution;
 
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 /// <summary>
 /// Imperative lifecycle controller for persistent agents. Backs the CLI
@@ -33,9 +34,12 @@ public class PersistentAgentLifecycle(
     IMcpServer mcpServer,
     IEnumerable<IAgentToolLauncher> launchers,
     PersistentAgentRegistry persistentAgentRegistry,
+    ContainerLifecycleManager containerLifecycleManager,
+    IOptions<DaprSidecarOptions> daprSidecarOptions,
     ILoggerFactory loggerFactory)
 {
     private readonly ILogger _logger = loggerFactory.CreateLogger<PersistentAgentLifecycle>();
+    private readonly DaprSidecarOptions _daprSidecarOptions = daprSidecarOptions.Value;
     private readonly Dictionary<string, IAgentToolLauncher> _launchersByTool =
         launchers.ToDictionary(l => l.Tool, StringComparer.OrdinalIgnoreCase);
 
@@ -136,10 +140,34 @@ public class PersistentAgentLifecycle(
         // describes the workspace files + mount path here. The shared
         // ContainerConfigBuilder is the single seam that translates the
         // launch spec into a container config across all dispatch paths.
-        var config = ContainerConfigBuilder.Build(image, prep);
+        var baseConfig = ContainerConfigBuilder.Build(image, prep);
+        var useDaprSidecar = string.Equals(
+            definition.Execution!.Tool, DaprAgentLauncher.ToolId, StringComparison.OrdinalIgnoreCase);
 
-        var containerId = await containerRuntime.StartAsync(config, cancellationToken);
-        var endpoint = new Uri($"http://localhost:{A2AExecutionDispatcher.SidecarPort}/");
+        string containerId;
+        string? sidecarId = null;
+        string? lifecycleNetworkName = null;
+        if (useDaprSidecar)
+        {
+            var daprAppId = BuildPersistentDaprAppIdForDeploy(agentId);
+            var daprConfig = baseConfig with
+            {
+                DaprAppId = daprAppId,
+                DaprAppPort = prep.A2APort,
+                DaprSidecarComponentsPath = _daprSidecarOptions.DelegatedDaprAgentComponentsPath,
+            };
+            var detached = await containerLifecycleManager.LaunchWithSidecarDetachedAsync(
+                daprConfig, cancellationToken);
+            containerId = detached.ContainerId;
+            sidecarId = detached.SidecarInfo.SidecarId;
+            lifecycleNetworkName = detached.NetworkName;
+        }
+        else
+        {
+            containerId = await containerRuntime.StartAsync(baseConfig, cancellationToken);
+        }
+
+        var endpoint = new Uri($"http://localhost:{prep.A2APort}/");
 
         var ready = await persistentAgentRegistry.WaitForA2AReadyAsync(
             containerId, endpoint, A2AExecutionDispatcher.ReadinessTimeout, cancellationToken);
@@ -149,7 +177,16 @@ public class PersistentAgentLifecycle(
             _logger.LogError(
                 "Persistent agent {AgentId} did not become ready within {Timeout}. Stopping container.",
                 agentId, A2AExecutionDispatcher.ReadinessTimeout);
-            await containerRuntime.StopAsync(containerId, CancellationToken.None);
+            if (useDaprSidecar && sidecarId is not null && lifecycleNetworkName is not null)
+            {
+                await containerLifecycleManager.TeardownAsync(
+                    containerId, sidecarId, lifecycleNetworkName, CancellationToken.None);
+            }
+            else
+            {
+                await containerRuntime.StopAsync(containerId, CancellationToken.None);
+            }
+
             throw new SpringException(
                 $"Persistent agent '{agentId}' did not become ready within {A2AExecutionDispatcher.ReadinessTimeout}.");
         }
@@ -163,7 +200,8 @@ public class PersistentAgentLifecycle(
                 Execution = definition.Execution with { Image = image }
             };
 
-        persistentAgentRegistry.Register(agentId, endpoint, containerId, effectiveDefinition);
+        persistentAgentRegistry.Register(
+            agentId, endpoint, containerId, effectiveDefinition, sidecarId, lifecycleNetworkName);
 
         // TryGet immediately after Register so we return the canonical entry
         // rather than a locally-constructed copy.
@@ -240,5 +278,17 @@ public class PersistentAgentLifecycle(
         // replicas == 1 is equivalent to "ensure deployed". Reuse the deploy
         // path with no image override.
         return await DeployAsync(agentId, imageOverride: null, cancellationToken);
+    }
+
+    /// <summary>Matches <see cref="A2AExecutionDispatcher"/>'s stable app-id for persistent dapr agents.</summary>
+    private static string BuildPersistentDaprAppIdForDeploy(string agentId)
+    {
+        var id = agentId.Replace("/", "-", StringComparison.Ordinal).Replace(":", "-", StringComparison.Ordinal);
+        if (id.Length > 32)
+        {
+            id = id[^32..];
+        }
+
+        return "p" + id;
     }
 }

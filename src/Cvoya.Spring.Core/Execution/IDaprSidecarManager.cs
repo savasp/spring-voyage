@@ -42,13 +42,27 @@ public interface IDaprSidecarManager
 /// <param name="DaprGrpcPort">The gRPC port for the Dapr sidecar API.</param>
 /// <param name="ComponentsPath">The path to the Dapr components directory.</param>
 /// <param name="NetworkName">The Docker/Podman network to attach the sidecar to.</param>
+/// <param name="AdditionalNetworks">
+/// Extra bridge networks the sidecar joins (e.g. <c>spring-tenant-default</c>) so
+/// daprd can resolve placement / scheduler / Redis that are dual-attached there in
+/// the OSS "single-tenant, dual-attached" deployment — see ADR 0028 "V2 interim".
+/// </param>
+/// <param name="PlacementHostAddress">Optional <c>host:port</c> for the Dapr placement service (workflow / actors).</param>
+/// <param name="SchedulerHostAddress">Optional <c>host:port</c> for the Dapr scheduler.</param>
+/// <param name="DaprConfigFilePath">
+/// Optional daprd <c>--config</c> file path inside the sidecar (bind-mounted by the dispatcher run).
+/// </param>
 public record DaprSidecarConfig(
     string AppId,
     int AppPort,
     int DaprHttpPort,
     int DaprGrpcPort,
     string? ComponentsPath = null,
-    string? NetworkName = null);
+    string? NetworkName = null,
+    IReadOnlyList<string>? AdditionalNetworks = null,
+    string? PlacementHostAddress = null,
+    string? SchedulerHostAddress = null,
+    string? DaprConfigFilePath = null);
 
 /// <summary>
 /// Information about a running Dapr sidecar container.

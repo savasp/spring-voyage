@@ -275,15 +275,8 @@ async def _default_factory() -> tuple[Agent, AgentRunner]:
     """
     agent = await _build_agent()
     runner = AgentRunner()
-    try:
-        runner.workflow(agent)
-        logger.info("Agent workflow runtime started")
-    except Exception:
-        logger.warning(
-            "Failed to start agent workflow runtime; subsequent agent "
-            "invocations will fail until a Dapr sidecar is reachable.",
-            exc_info=True,
-        )
+    runner.workflow(agent)
+    logger.info("Agent workflow runtime started")
     return agent, runner
 
 

@@ -11,6 +11,7 @@ using Cvoya.Spring.Core.Execution;
 using Cvoya.Spring.Dapr.Execution;
 
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 using NSubstitute;
 
@@ -32,7 +33,10 @@ public class EphemeralAgentRegistryTests
     public EphemeralAgentRegistryTests()
     {
         _loggerFactory.CreateLogger(Arg.Any<string>()).Returns(Substitute.For<ILogger>());
-        _registry = new EphemeralAgentRegistry(_runtime, _loggerFactory);
+        var dapr = Substitute.For<IDaprSidecarManager>();
+        var clm = new ContainerLifecycleManager(
+            _runtime, dapr, Options.Create(new DaprSidecarOptions()), _loggerFactory);
+        _registry = new EphemeralAgentRegistry(_runtime, clm, _loggerFactory);
     }
 
     [Fact]

@@ -10,7 +10,9 @@ using Cvoya.Spring.Core.Execution;
 using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Dapr.Execution;
 
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 using NSubstitute;
 
@@ -42,6 +44,7 @@ public class PersistentDispatchIntegrationTests
     public PersistentDispatchIntegrationTests()
     {
         _loggerFactory.CreateLogger(Arg.Any<string>()).Returns(Substitute.For<ILogger>());
+        var daprOptions = new DaprSidecarOptions();
         _launcher.Tool.Returns("claude-code");
         _launcher.PrepareAsync(Arg.Any<AgentLaunchContext>(), Arg.Any<CancellationToken>())
             .Returns(new AgentLaunchSpec(
@@ -63,8 +66,30 @@ public class PersistentDispatchIntegrationTests
         _promptAssembler.AssembleAsync(Arg.Any<SvMessage>(), Arg.Any<PromptAssemblyContext?>(), Arg.Any<CancellationToken>())
             .Returns("assembled prompt");
 
-        _persistentRegistry = new PersistentAgentRegistry(
-            _containerRuntime, _httpClientFactory, _loggerFactory);
+        var persistentServices = new ServiceCollection();
+        persistentServices.AddSingleton(_containerRuntime);
+        persistentServices.AddSingleton(_httpClientFactory);
+        persistentServices.AddSingleton(_loggerFactory);
+        persistentServices.AddSingleton(Substitute.For<IDaprSidecarManager>());
+        persistentServices.AddSingleton(Options.Create(daprOptions));
+        persistentServices.AddSingleton<ContainerLifecycleManager>();
+        persistentServices.AddSingleton(Substitute.For<IAgentDefinitionProvider>());
+        persistentServices.AddSingleton(_mcpServer);
+        persistentServices.AddSingleton(_launcher);
+        persistentServices.AddSingleton<IEnumerable<IAgentToolLauncher>>(
+            p => [p.GetRequiredService<IAgentToolLauncher>()]);
+        persistentServices.AddSingleton<PersistentAgentRegistry>();
+        persistentServices.AddSingleton<PersistentAgentLifecycle>();
+        _persistentRegistry = persistentServices
+            .BuildServiceProvider()
+            .GetRequiredService<PersistentAgentRegistry>();
+
+        var daprEph = Substitute.For<IDaprSidecarManager>();
+        var clmEph = new ContainerLifecycleManager(
+            _containerRuntime, daprEph, Options.Create(daprOptions), _loggerFactory);
+        var daprD = Substitute.For<IDaprSidecarManager>();
+        var clmD = new ContainerLifecycleManager(
+            _containerRuntime, daprD, Options.Create(daprOptions), _loggerFactory);
 
         _dispatcher = new A2AExecutionDispatcher(
             _containerRuntime,
@@ -73,7 +98,9 @@ public class PersistentDispatchIntegrationTests
             _mcpServer,
             [_launcher],
             _persistentRegistry,
-            new EphemeralAgentRegistry(_containerRuntime, _loggerFactory),
+            new EphemeralAgentRegistry(_containerRuntime, clmEph, _loggerFactory),
+            clmD,
+            Options.Create(daprOptions),
             _loggerFactory);
     }
 

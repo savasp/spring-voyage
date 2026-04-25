@@ -7,6 +7,7 @@ using System.Collections.Concurrent;
 
 using Cvoya.Spring.Core.Execution;
 
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
@@ -24,9 +25,13 @@ using Microsoft.Extensions.Logging;
 public class PersistentAgentRegistry(
     IContainerRuntime containerRuntime,
     IHttpClientFactory httpClientFactory,
+    ContainerLifecycleManager containerLifecycleManager,
+    IServiceScopeFactory serviceScopeFactory,
     ILoggerFactory loggerFactory) : IHostedService, IDisposable
 {
     private readonly ILogger _logger = loggerFactory.CreateLogger<PersistentAgentRegistry>();
+    private readonly ContainerLifecycleManager _containerLifecycle = containerLifecycleManager;
+    private readonly IServiceScopeFactory _scopeFactory = serviceScopeFactory;
     private readonly ConcurrentDictionary<string, PersistentAgentEntry> _entries = new();
     private Timer? _healthTimer;
 
@@ -52,13 +57,21 @@ public class PersistentAgentRegistry(
     /// <param name="endpoint">The A2A endpoint URL of the running agent service.</param>
     /// <param name="containerId">The container identifier, if applicable.</param>
     /// <param name="definition">The agent definition, needed for restart.</param>
-    public void Register(string agentId, Uri endpoint, string? containerId, AgentDefinition? definition = null)
+    public void Register(
+        string agentId,
+        Uri endpoint,
+        string? containerId,
+        AgentDefinition? definition = null,
+        string? sidecarId = null,
+        string? sidecarNetworkName = null)
     {
         var entry = new PersistentAgentEntry(
             agentId, endpoint, containerId, DateTimeOffset.UtcNow,
             HealthStatus: AgentHealthStatus.Healthy,
             ConsecutiveFailures: 0,
-            Definition: definition);
+            Definition: definition,
+            SidecarId: sidecarId,
+            SidecarNetworkName: sidecarNetworkName);
         _entries[agentId] = entry;
 
         _logger.LogInformation(
@@ -155,7 +168,7 @@ public class PersistentAgentRegistry(
 
         if (entry.ContainerId is not null)
         {
-            await StopContainerSafeAsync(entry.ContainerId, cancellationToken);
+            await TeardownOrStopEntryAsync(entry, cancellationToken);
         }
 
         _logger.LogInformation(
@@ -191,8 +204,7 @@ public class PersistentAgentRegistry(
         }
 
         var stopTasks = _entries.Values
-            .Where(e => e.ContainerId is not null)
-            .Select(e => StopContainerSafeAsync(e.ContainerId!, cancellationToken));
+            .Select(e => TeardownOrStopEntryAsync(e, cancellationToken));
 
         await Task.WhenAll(stopTasks);
         _entries.Clear();
@@ -322,6 +334,23 @@ public class PersistentAgentRegistry(
     /// Attempts to restart an unhealthy agent by stopping the old container
     /// and starting a fresh one.
     /// </summary>
+    private async Task TeardownOrStopEntryAsync(
+        PersistentAgentEntry entry,
+        CancellationToken cancellationToken)
+    {
+        if (entry.SidecarId is not null
+            && entry.SidecarNetworkName is not null
+            && entry.ContainerId is not null)
+        {
+            await _containerLifecycle.TeardownAsync(
+                entry.ContainerId, entry.SidecarId, entry.SidecarNetworkName, cancellationToken);
+        }
+        else if (entry.ContainerId is not null)
+        {
+            await StopContainerSafeAsync(entry.ContainerId, cancellationToken);
+        }
+    }
+
     private async Task TryRestartAsync(PersistentAgentEntry entry)
     {
         _logger.LogInformation(
@@ -330,13 +359,6 @@ public class PersistentAgentRegistry(
 
         try
         {
-            // Stop the old container.
-            if (entry.ContainerId is not null)
-            {
-                await StopContainerSafeAsync(entry.ContainerId, CancellationToken.None);
-            }
-
-            // We need the definition to restart. If not available, just remove.
             if (entry.Definition?.Execution?.Image is null)
             {
                 _logger.LogWarning(
@@ -346,40 +368,9 @@ public class PersistentAgentRegistry(
                 return;
             }
 
-            // Start a fresh container.
-            var config = new ContainerConfig(
-                Image: entry.Definition.Execution.Image,
-                ExtraHosts: ["host.docker.internal:host-gateway"]);
-
-            var newContainerId = await containerRuntime.StartAsync(config, CancellationToken.None);
-
-            // Wait for the new container to become ready.
-            var ready = await WaitForA2AReadyAsync(
-                newContainerId, entry.Endpoint, A2AExecutionDispatcher.ReadinessTimeout, CancellationToken.None);
-
-            if (ready)
-            {
-                _entries[entry.AgentId] = entry with
-                {
-                    ContainerId = newContainerId,
-                    HealthStatus = AgentHealthStatus.Healthy,
-                    ConsecutiveFailures = 0,
-                    StartedAt = DateTimeOffset.UtcNow
-                };
-
-                _logger.LogInformation(
-                    EventIds.AgentRestarted,
-                    "Persistent agent {AgentId} restarted successfully (new container {ContainerId})",
-                    entry.AgentId, newContainerId);
-            }
-            else
-            {
-                _logger.LogError(
-                    "Restart of agent {AgentId} failed: A2A endpoint did not become ready. Removing from registry.",
-                    entry.AgentId);
-                await StopContainerSafeAsync(newContainerId, CancellationToken.None);
-                _entries.TryRemove(entry.AgentId, out _);
-            }
+            using var scope = _scopeFactory.CreateScope();
+            var lifecycle = scope.ServiceProvider.GetRequiredService<PersistentAgentLifecycle>();
+            await lifecycle.DeployAsync(entry.AgentId, cancellationToken: CancellationToken.None);
         }
         catch (Exception ex)
         {
@@ -503,4 +494,6 @@ public record PersistentAgentEntry(
     DateTimeOffset StartedAt,
     AgentHealthStatus HealthStatus = AgentHealthStatus.Healthy,
     int ConsecutiveFailures = 0,
-    AgentDefinition? Definition = null);
+    AgentDefinition? Definition = null,
+    string? SidecarId = null,
+    string? SidecarNetworkName = null);
