@@ -38,18 +38,16 @@ Each area gets its own planning session, narrative file under `areas/`, and umbr
 
 | ID | Area | File | Umbrella |
 | --- | --- | --- | --- |
-| A | Coding-agent config | [areas/a-agent-config.md](areas/a-agent-config.md) | TBD |
-| B | Documentation overhaul | [areas/b-docs.md](areas/b-docs.md) | TBD |
-| C | Public Web API + OpenAPI | [areas/c-web-api.md](areas/c-web-api.md) | TBD |
-| D | ADR-0029 boundaries + component APIs | [areas/d-adr-0029.md](areas/d-adr-0029.md) | TBD |
-| E1 | CLI as primary UX | [areas/e1-cli.md](areas/e1-cli.md) | TBD |
-| E2 | New unit/agent-interaction UX | [areas/e2-new-ux.md](areas/e2-new-ux.md) | TBD |
-| F | Conversation concept (#1123) | [areas/f-conversation.md](areas/f-conversation.md) | TBD |
-| G | Code review + decomposition | [areas/g-code-cleanup.md](areas/g-code-cleanup.md) | TBD |
-| H | Issue triage (milestone-blind) | [areas/h-triage.md](areas/h-triage.md) | TBD |
-| J | ADR audit + re-evaluation | [areas/j-adr-audit.md](areas/j-adr-audit.md) | TBD |
-
-The Umbrella column populates once per-area umbrella issues are created (after this PR merges so file links resolve).
+| A | Coding-agent config | [areas/a-agent-config.md](areas/a-agent-config.md) | [#1214](https://github.com/cvoya-com/spring-voyage/issues/1214) |
+| B | Documentation overhaul | [areas/b-docs.md](areas/b-docs.md) | [#1215](https://github.com/cvoya-com/spring-voyage/issues/1215) |
+| C | Public Web API + OpenAPI | [areas/c-web-api.md](areas/c-web-api.md) | [#1216](https://github.com/cvoya-com/spring-voyage/issues/1216) |
+| D | ADR-0029 boundaries + component APIs | [areas/d-adr-0029.md](areas/d-adr-0029.md) | [#1217](https://github.com/cvoya-com/spring-voyage/issues/1217) |
+| E1 | CLI as primary UX | [areas/e1-cli.md](areas/e1-cli.md) | [#1218](https://github.com/cvoya-com/spring-voyage/issues/1218) |
+| E2 | New unit/agent-interaction UX | [areas/e2-new-ux.md](areas/e2-new-ux.md) | [#1219](https://github.com/cvoya-com/spring-voyage/issues/1219) |
+| F | Conversation concept (#1123) | [areas/f-conversation.md](areas/f-conversation.md) | [#1220](https://github.com/cvoya-com/spring-voyage/issues/1220) |
+| G | Code review + decomposition | [areas/g-code-cleanup.md](areas/g-code-cleanup.md) | [#1221](https://github.com/cvoya-com/spring-voyage/issues/1221) |
+| H | Issue triage (milestone-blind) | [areas/h-triage.md](areas/h-triage.md) | [#1222](https://github.com/cvoya-com/spring-voyage/issues/1222) |
+| J | ADR audit + re-evaluation | [areas/j-adr-audit.md](areas/j-adr-audit.md) | [#1223](https://github.com/cvoya-com/spring-voyage/issues/1223) |
 
 ## Dependency picture
 
