@@ -109,35 +109,75 @@ public class ConversationQueryService(SpringDbContext dbContext) : IConversation
 
         foreach (var group in rows.GroupBy(r => r.ConversationId))
         {
-            // A conversation is "in my inbox" when the most recent event on it
-            // is a MessageReceived emitted by MY human address and no later
-            // event from the same human cleared it.
+            // A conversation is "in my inbox" when the human has received a
+            // domain message on it and has not replied since. The reply
+            // signal is "another actor (non-human) emitted a MessageReceived
+            // on the same conversation AFTER the human's last
+            // MessageReceived" — that's the only path through which an
+            // agent / unit observes the human's follow-up. #1210: keying
+            // off "the LAST event must be the human's MessageReceived" was
+            // too narrow — trailing observability events on the same
+            // conversation (StateChanged on dispatch teardown, CostIncurred
+            // from a budget enforcer, future event types added by extension
+            // plugins) hid fresh agent replies even though the human had
+            // genuinely not responded. Keying off the most recent
+            // MessageReceived per side instead is robust to those tails.
             var ordered = group.OrderBy(r => r.Timestamp).ToList();
-            var last = ordered[^1];
 
-            if (!string.Equals(last.EventType, nameof(ActivityEventType.MessageReceived), StringComparison.Ordinal))
+            ConversationEventRow? humanReceive = null;
+            ConversationEventRow? laterAgentReceive = null;
+
+            for (var i = ordered.Count - 1; i >= 0; i--)
+            {
+                var row = ordered[i];
+                if (!string.Equals(row.EventType, nameof(ActivityEventType.MessageReceived), StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                if (string.Equals(row.Source, humanSourceCanonical, StringComparison.OrdinalIgnoreCase))
+                {
+                    humanReceive = row;
+                    break;
+                }
+
+                if (laterAgentReceive is null
+                    && !row.Source.StartsWith("human:", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Track the latest non-human MessageReceived; if it
+                    // comes after the human's, the human has already
+                    // replied and the conversation is no longer pending.
+                    laterAgentReceive = row;
+                }
+            }
+
+            if (humanReceive is null)
             {
                 continue;
             }
 
-            if (!string.Equals(last.Source, humanSourceCanonical, StringComparison.OrdinalIgnoreCase))
+            if (laterAgentReceive is not null && laterAgentReceive.Timestamp > humanReceive.Timestamp)
             {
                 continue;
             }
 
-            // Find the "from" — the most recent non-human event before the ask.
+            // Find the "from" — the most recent non-human source before the
+            // human's ask. Falls back to the human's own source when no
+            // upstream actor is present (a synthetic conversation seeded
+            // directly against the human address).
+            var humanIndex = ordered.IndexOf(humanReceive);
             var from = ordered
-                .TakeWhile(r => r != last)
+                .Take(humanIndex)
                 .Where(r => !r.Source.StartsWith("human:", StringComparison.OrdinalIgnoreCase))
                 .Select(r => NormaliseSource(r.Source))
-                .LastOrDefault() ?? NormaliseSource(last.Source);
+                .LastOrDefault() ?? NormaliseSource(humanReceive.Source);
 
             inbox.Add(new InboxItem(
                 ConversationId: group.Key,
                 From: from,
                 Human: humanSourceDisplay,
-                PendingSince: last.Timestamp,
-                Summary: last.Summary));
+                PendingSince: humanReceive.Timestamp,
+                Summary: humanReceive.Summary));
         }
 
         return inbox

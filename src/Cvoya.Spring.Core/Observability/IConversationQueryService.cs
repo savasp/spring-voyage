@@ -36,10 +36,14 @@ public interface IConversationQueryService
         CancellationToken cancellationToken);
 
     /// <summary>
-    /// Lists inbox rows for the supplied human address — conversations whose
-    /// most recent event is a <c>MessageReceived</c> on the human and where no
-    /// later event has been emitted by the same human. Rows drop off as soon
-    /// as the human acts or the agent retracts.
+    /// Lists inbox rows for the supplied human address — conversations where
+    /// the human has a <c>MessageReceived</c> event and no non-human actor
+    /// has observed a <c>MessageReceived</c> after that point on the same
+    /// conversation. Rows drop off when the human replies (and an agent /
+    /// unit on the other side acknowledges the reply with its own
+    /// <c>MessageReceived</c>). The predicate intentionally ignores trailing
+    /// observability events such as <c>StateChanged</c> from dispatch
+    /// teardown or <c>CostIncurred</c> from a budget enforcer (#1210).
     /// </summary>
     /// <param name="humanAddress">The <c>scheme://path</c> of the human whose inbox to load.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>

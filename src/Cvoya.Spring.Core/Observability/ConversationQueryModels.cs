@@ -62,11 +62,15 @@ public record ConversationEvent(
 
 /// <summary>
 /// One row in a human's inbox (<c>GET /api/v1/inbox</c>). A conversation shows
-/// up here when the last event on the thread is a <c>MessageReceived</c> on a
-/// <c>human://</c> source matching the caller — i.e. "an agent said something
-/// to me and I haven't replied yet". Responding via
-/// <c>POST /api/v1/conversations/{id}/messages</c> (or the CLI's
-/// <c>spring inbox respond</c>) removes the row.
+/// up here when the human has a <c>MessageReceived</c> on the thread and no
+/// non-human actor has observed a <c>MessageReceived</c> after that point —
+/// i.e. "an agent said something to me and I haven't replied yet". The
+/// predicate is intentionally tolerant of trailing observability events
+/// (state changes, cost emissions) on the same conversation; only a follow-up
+/// <c>MessageReceived</c> from another participant clears the row (#1210).
+/// Responding via <c>POST /api/v1/conversations/{id}/messages</c> (or the
+/// CLI's <c>spring inbox respond</c>) removes the row by causing exactly that
+/// follow-up event.
 /// </summary>
 /// <param name="ConversationId">The conversation the ask belongs to.</param>
 /// <param name="From">The <c>scheme://path</c> of the actor that last spoke on the thread (the requester).</param>
