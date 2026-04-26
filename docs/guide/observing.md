@@ -82,7 +82,7 @@ The platform cancels any in-flight dispatch on every participating agent, remove
 
 ### Inbox: Things Awaiting You
 
-The inbox is the human-facing "things pointed at me that I have not responded to" surface. A conversation shows up here when the last event targets your `human://` address and you have not yet sent a follow-up; it drops off as soon as you respond or the agent retracts.
+The inbox is the human-facing "things pointed at me that I have not responded to" surface. A conversation shows up here when an agent (or unit) has delivered a message to your `human://` address and no other participant has observed a follow-up message after that point; it drops off as soon as you respond. Trailing observability events on the conversation (state changes from dispatch teardown, cost emissions) do not affect the inbox.
 
 ```
 spring inbox list                              # conversations awaiting a reply from you

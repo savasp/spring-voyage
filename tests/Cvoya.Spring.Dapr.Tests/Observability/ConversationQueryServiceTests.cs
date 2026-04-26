@@ -184,6 +184,117 @@ public class ConversationQueryServiceTests : IDisposable
         inbox.ShouldBeEmpty();
     }
 
+    [Fact]
+    public async Task ListInboxAsync_FreshAgentReply_AppearsInInbox()
+    {
+        // Reproduces #1210: a fresh agent → human reply should land in the
+        // inbox immediately. The on-the-wire event sequence emitted by the
+        // platform on a normal "human asks agent / agent answers" turn is:
+        //
+        //   1. agent:<id> MessageReceived       (AgentActor saw the human's message)
+        //   2. agent:<id> ConversationStarted   (HandleDomainMessageAsync, Case 1)
+        //   3. agent:<id> StateChanged          (Idle → Active, Debug severity)
+        //   4. human:<id> MessageReceived       (HumanActor saw the agent's reply)
+        //
+        // The inbox predicate keys off "last event is MessageReceived from
+        // the caller's human address", so this conversation must show up.
+        var t0 = DateTimeOffset.UtcNow.AddMinutes(-2);
+        await SeedConversationAsync("e58eaf86", new[]
+        {
+            ("agent:backend-engineer", "MessageReceived", "Received Domain message from human://local-dev-user", t0),
+            ("agent:backend-engineer", "ConversationStarted", "Started conversation e58eaf86", t0.AddMilliseconds(1)),
+            ("agent:backend-engineer", "StateChanged", "State changed from Idle to Active", t0.AddMilliseconds(2)),
+            ("human:local-dev-user", "MessageReceived", "Received Domain message from agent://backend-engineer", t0.AddMinutes(1)),
+        });
+
+        var svc = new ConversationQueryService(_db);
+        var inbox = await svc.ListInboxAsync("human://local-dev-user", TestContext.Current.CancellationToken);
+
+        inbox.Count.ShouldBe(1);
+        inbox[0].ConversationId.ShouldBe("e58eaf86");
+        inbox[0].Human.ShouldBe("human://local-dev-user");
+        inbox[0].From.ShouldBe("agent://backend-engineer");
+    }
+
+    [Fact]
+    public async Task ListInboxAsync_FreshReplyAlongsideStaleConversation_BothAppearMostRecentFirst()
+    {
+        // Variant of #1210: the user reported that a stale conversation from
+        // an earlier debug session was visible while a fresh reply was not.
+        // Both rows must appear, with the fresh row sorted ahead of the
+        // stale one (most recent PendingSince first).
+        var stale = DateTimeOffset.UtcNow.AddMinutes(-90);
+        var fresh = DateTimeOffset.UtcNow.AddMinutes(-1);
+        await SeedConversationAsync("5925edfa", new[]
+        {
+            ("agent:debug-agent", "ConversationStarted", "Started 5925edfa", stale.AddMinutes(-1)),
+            ("human:local-dev-user", "MessageReceived", "Stale ask", stale),
+        });
+        await SeedConversationAsync("e58eaf86", new[]
+        {
+            ("agent:backend-engineer", "MessageReceived", "Received Domain message", fresh.AddSeconds(-80)),
+            ("agent:backend-engineer", "ConversationStarted", "Started e58eaf86", fresh.AddSeconds(-79)),
+            ("human:local-dev-user", "MessageReceived", "Fresh reply", fresh),
+        });
+
+        var svc = new ConversationQueryService(_db);
+        var inbox = await svc.ListInboxAsync("human://local-dev-user", TestContext.Current.CancellationToken);
+
+        inbox.Count.ShouldBe(2);
+        inbox[0].ConversationId.ShouldBe("e58eaf86");
+        inbox[1].ConversationId.ShouldBe("5925edfa");
+    }
+
+    [Fact]
+    public async Task ListInboxAsync_TrailingStateChangedAfterHumanReceive_StillAppears()
+    {
+        // #1210 root cause: when the dispatch path emits a trailing event on
+        // the same correlation id (e.g. StateChanged from
+        // ClearActiveConversationAsync after a non-zero exit, future
+        // observability events from extension plugins, etc.), the inbox
+        // predicate must NOT drop the row. The human still hasn't replied,
+        // and the row has to stay visible until they do.
+        var t0 = DateTimeOffset.UtcNow.AddMinutes(-2);
+        await SeedConversationAsync("c-trailing", new[]
+        {
+            ("agent:ada", "MessageReceived", "Agent received human's ask", t0),
+            ("agent:ada", "ConversationStarted", "Started c-trailing", t0.AddMilliseconds(1)),
+            ("human:savasp", "MessageReceived", "Agent's reply", t0.AddSeconds(80)),
+            // Trailing event on the same conversation — e.g. a state
+            // teardown emitted by the agent after routing the response.
+            ("agent:ada", "StateChanged", "State changed from Active to Idle", t0.AddSeconds(81)),
+        });
+
+        var svc = new ConversationQueryService(_db);
+        var inbox = await svc.ListInboxAsync("human://savasp", TestContext.Current.CancellationToken);
+
+        inbox.Count.ShouldBe(1);
+        inbox[0].ConversationId.ShouldBe("c-trailing");
+        inbox[0].From.ShouldBe("agent://ada");
+    }
+
+    [Fact]
+    public async Task ListInboxAsync_HumanReceivedThenAgentReceivedAfter_DropsRow()
+    {
+        // The human replied — an agent emitted MessageReceived AFTER the
+        // human's last MessageReceived on the same conversation. The
+        // conversation must drop out of the inbox even if there are more
+        // trailing events afterwards.
+        var t0 = DateTimeOffset.UtcNow.AddMinutes(-5);
+        await SeedConversationAsync("c-replied", new[]
+        {
+            ("agent:ada", "MessageReceived", "Agent received human's first ask", t0),
+            ("human:savasp", "MessageReceived", "Agent's reply", t0.AddSeconds(60)),
+            ("agent:ada", "MessageReceived", "Agent received human's reply", t0.AddSeconds(120)),
+            ("agent:ada", "StateChanged", "Trailing tail", t0.AddSeconds(121)),
+        });
+
+        var svc = new ConversationQueryService(_db);
+        var inbox = await svc.ListInboxAsync("human://savasp", TestContext.Current.CancellationToken);
+
+        inbox.ShouldBeEmpty();
+    }
+
     private async Task SeedConversationAsync(
         string conversationId,
         (string source, string eventType, string summary, DateTimeOffset ts)[] events)
