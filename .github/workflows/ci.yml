@@ -354,7 +354,7 @@ jobs:
           # only there. The path filter excludes those directories upstream;
           # this grep is a belt-and-braces check.
           set +e
-          hits=$(grep -rEn --include='*.md'             --exclude-dir=decisions --exclude-dir=plan --exclude-dir=roadmap             'V2|V2\.1' docs/)
+          hits=$(grep -rEn --include='*.md'             --exclude-dir=decisions --exclude-dir=plan --exclude-dir=roadmap             '\bV2\b|\bV2\.1\b' docs/)
           set -e
           if [ -n "$hits" ]; then
             echo "::error::Pinned-version framing (V2 / V2.1) found in user-facing docs."
