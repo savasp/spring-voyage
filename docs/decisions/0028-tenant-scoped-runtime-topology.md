@@ -31,7 +31,7 @@ This ADR records the decisions all of the above lines up to.
 
 The decisions below cost more than option 1 from #1160 would have. The reason to pay that cost now is that the project already treats tenancy as a first-class architectural concern (see [`docs/architecture/agent-runtimes-and-tenant-scoping.md`](../architecture/agent-runtimes-and-tenant-scoping.md), which makes every business-data row tenant-scoped at the EF layer): network-layer isolation is the **structural counterpart** to that application-layer scoping. Application-layer scoping requires auditors to trust the code; network and (eventually) crypto boundaries make the property self-evidently true.
 
-The ultimate target is a multi-tenant platform where tenant-specific logic runs only on tenant-specific networks and platform infrastructure sees only encrypted tenant data. Compliance claims like "the platform cannot read tenant agent conversations" become enforceable by construction. V2 doesn't ship that target — the per-tenant agents-host container with encrypted-at-rest `AgentActor` state and KMS integration is multi-issue, multi-release work tracked under #1170. V2 does ship the structural foundation (per-tenant networks, dispatcher-proxied platform→tenant traffic, pluggable LLM dispatch) so the migration is a scoped follow-up rather than a rewrite.
+The ultimate target is a multi-tenant platform where tenant-specific logic runs only on tenant-specific networks and platform infrastructure sees only encrypted tenant data. Compliance claims like "the platform cannot read tenant agent conversations" become enforceable by construction. v0.1 doesn't ship that target — the per-tenant agents-host container with encrypted-at-rest `AgentActor` state and KMS integration is multi-issue, multi-release work tracked under #1170. v0.1 ships the structural foundation (per-tenant networks, dispatcher-proxied platform→tenant traffic, pluggable LLM dispatch) so the migration is a scoped follow-up rather than a rewrite.
 
 ## Decision
 
@@ -70,7 +70,7 @@ The dispatcher does not gain "LLM lifecycle" responsibility. Provisioning is a d
 
 Tenant containers calling platform services use Caddy ingress (OSS) or cloud ingress, the same authenticated path external API clients use. Authorization is at the application layer (the existing API auth middleware); direct access from tenant networks to internal platform infrastructure (`spring-postgres`, `spring-redis`, internal Dapr endpoints) is forbidden by network layout.
 
-OSS Caddy routing for the tenant→platform path is tracked in #1169 (V2.1). The pattern is normative from V2 so no future implementation introduces dual-homing or direct-infra-access shortcuts before the routing lands; the V2 bug fix doesn't exercise this path so it doesn't block V2.
+OSS Caddy routing for the tenant→platform path is tracked in #1169. The pattern is normative from v0.1 so no future implementation introduces dual-homing or direct-infra-access shortcuts before the routing lands; the v0.1 bug fix doesn't exercise this path so it doesn't block v0.1.
 
 ### Decision E — Hosted and delegated agents have symmetric LLM access via the public API
 
@@ -178,9 +178,9 @@ The worker hosts every Dapr virtual actor (`AgentActor`, `UnitActor`, `Connector
 
 The worker must stay single-network as a structural constraint, not a policy: dual-homing would collapse the isolation the per-tenant network design establishes. The terminal architecture (#1170) goes further and moves hosted-agent execution out of the worker entirely.
 
-### V2 deliverables
+### v0.1 deliverables
 
-The umbrella issue [#1165](https://github.com/cvoya-com/spring-voyage/issues/1165) tracks the V2 work as native sub-issues:
+The umbrella issue [#1165](https://github.com/cvoya-com/spring-voyage/issues/1165) tracks the v0.1 work as native sub-issues:
 
 - **#1160** — dispatcher-proxied A2A message send (Decision B's open half).
 - **#1166** — attach workflow containers to tenant networks (Decision A applied to workflows).
@@ -191,18 +191,18 @@ The agent-container side of Decision A (move agents from the default podman netw
 
 OSS deployment-layer changes (rename network from `spring-net` for agent traffic to `spring-tenant-default`; add Ollama to the tenant network; add the uniform `tenant-ollama` DNS) land alongside the #1160 implementation in `deployment/deploy.sh` and `deployment/docker-compose.yml`.
 
-### V2.1 deliverables
+### Follow-up deliverables (post-v0.1)
 
 - **#1169** — Caddy ingress for tenant → spring-api (OSS routing — Decision D's OSS half; covers LLM-via-public-API under the 2026-04-26 amendment).
 
 The per-tenant Ollama follow-up (#1164) is **obsolete under the 2026-04-26 amendment** and should be closed.
 
-### Terminal architecture (not V2)
+### Terminal architecture (not v0.1)
 
-The shape is described inline in #1170. Summary: tenant-specific logic runs only on tenant networks; platform infrastructure sees only encrypted tenant data; per-tenant agents-host container replaces in-process hosted-agent execution; `AgentActor` state encrypted at rest with per-tenant keys; KMS / HSM integration. V2's dispatcher-proxied traffic pattern, per-tenant networks, and pluggable LLM dispatch interface are deliberately chosen so this migration is a scoped follow-up rather than a rewrite.
+The shape is described inline in #1170. Summary: tenant-specific logic runs only on tenant networks; platform infrastructure sees only encrypted tenant data; per-tenant agents-host container replaces in-process hosted-agent execution; `AgentActor` state encrypted at rest with per-tenant keys; KMS / HSM integration. The v0.1 dispatcher-proxied traffic pattern, per-tenant networks, and pluggable LLM dispatch interface are deliberately chosen so this migration is a scoped follow-up rather than a rewrite.
 
 ### Costs accepted
 
 - One additional HTTP hop for every worker→agent A2A message and every hosted-agent LLM call. Same shape as ADR 0012 already accepted for `IContainerRuntime` operations; the dispatcher runs on the same host so the latency cost is a local TCP call.
 - Network-management complexity: per-tenant networks need to be provisioned and torn down by the deployment layer. OSS lifts this with a single `spring-tenant-default` network created by `deploy.sh`; cloud delegates to K8s namespace lifecycle.
-- The MCP-server tenancy question (#1167) is unresolved — accepted as a `needs-thinking` follow-up rather than blocking V2 on a decision that doesn't have a current forcing function.
+- The MCP-server tenancy question (#1167) is unresolved — accepted as a `needs-thinking` follow-up rather than blocking v0.1 on a decision that doesn't have a current forcing function.
