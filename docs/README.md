@@ -1,12 +1,12 @@
-# Spring Voyage V2 Documentation
+# Spring Voyage Documentation
 
-Spring Voyage V2 is a general-purpose AI agent orchestration platform. It enables autonomous AI agents -- organized into composable groups called units -- to collaborate on any domain.
+Spring Voyage is a general-purpose AI agent orchestration platform. It enables autonomous AI agents -- organized into composable groups called units -- to collaborate on any domain.
 
 ## Documentation
 
 ### [Concepts](concepts/overview.md)
 
-The abstractions and mental model behind Spring Voyage V2. Start here.
+The abstractions and mental model behind Spring Voyage. Start here.
 
 - [Agents](concepts/agents.md) -- autonomous AI entities
 - [Units](concepts/units.md) -- composable groups of agents
@@ -32,12 +32,12 @@ How the concepts are realized as a running system.
 - [Deployment](architecture/deployment.md) -- execution modes, solution structure
 - [Security](architecture/security.md) -- RBAC, authentication, resilience
 - [Packages](architecture/packages.md) -- domain packages, skill format
-- [Agent Runtimes & Tenant Scoping](architecture/agent-runtimes-and-tenant-scoping.md) -- V2 plugin model, tenant installs, credential-health lifecycle (#674)
+- [Agent Runtimes & Tenant Scoping](architecture/agent-runtimes-and-tenant-scoping.md) -- plugin model, tenant installs, credential-health lifecycle (#674)
 - [Open Questions](architecture/open-questions.md) -- design questions, future work
 
 ### [User Guide](guide/overview.md)
 
-How to use Spring Voyage V2 through the `spring` CLI.
+How to use Spring Voyage through the `spring` CLI.
 
 - [Getting Started](guide/getting-started.md) -- first setup, first unit, first agent
 - [Managing Units and Agents](guide/units-and-agents.md) -- creation, configuration, lifecycle
@@ -56,7 +56,7 @@ CLI workflows for managing the OSS admin surfaces (agent-runtime + connector ins
 
 ### [Developer Guide](developer/overview.md)
 
-For contributors to the Spring Voyage V2 platform.
+For contributors to the Spring Voyage platform.
 
 - [Development Setup](developer/setup.md) -- prerequisites, building, running locally
 - [Creating Packages](developer/creating-packages.md) -- agents, skills, workflows, connectors
@@ -67,4 +67,4 @@ For contributors to the Spring Voyage V2 platform.
 - [CLI Reference — `spring agent-runtime` / `spring connector`](cli-reference.md) -- concise verb reference for the admin surfaces introduced by the #674 refactor.
 - [Glossary](glossary.md) -- definitions of all key terms
 - [Decision Records](decisions/README.md) -- the "why" behind major architectural choices, captured as narrow ADRs
-- [Roadmap](roadmap/README.md) -- forward-looking narrative; live progress lives on the V2 / V2.1 milestones
+- [Roadmap](roadmap/README.md) -- forward-looking narrative; live progress lives on the release milestones
