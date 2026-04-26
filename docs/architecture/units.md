@@ -73,7 +73,7 @@ Agents that don't specify `execution.<field>` inherit the default from their par
 
 ### Agent Cloning
 
-In v1, handling concurrent work of the same type required manually defining multiple identical agents (e.g., three backend engineers). V2 replaces this with platform-managed cloning — the platform spawns copies of an agent on demand, governed by the agent's cloning policy.
+In v1, handling concurrent work of the same type required manually defining multiple identical agents (e.g., three backend engineers). The current platform replaces this with platform-managed cloning — the platform spawns copies of an agent on demand, governed by the agent's cloning policy.
 
 **Cloning policies** (property of the agent definition):
 
@@ -606,12 +606,12 @@ Every field is **independently optional and independently clearable** — a unit
 - **CLI.** `spring unit execution get|set|clear` and `spring agent execution get|set|clear` with `--image / --runtime / --tool / --provider / --model` (plus `--hosting` on the agent verb). `clear` without arguments strips the whole block; `clear --field X` clears one field.
 - **Portal.** A dedicated Execution tab on the unit detail page and an Execution panel on the agent detail page (delivered in the companion portal PR).
 
-**Extension seams for V2.1.** Two seams are reserved for follow-up issues and **not implemented** in the B-wide PR:
+**Extension seams (future).** Two seams are reserved for follow-up issues and **not implemented** in the B-wide PR:
 
 - **#622 — `IImageReferenceHistory`** — a scoped-registered seam so a hosted downstream can partition recently-dispatched image references per tenant. Shape 2 of the image-selection UX: autocomplete suggestions on the `Image` text field.
 - **#623 — registry integration** — Shape 3: discover images directly from a configured container registry (GHCR / GCR / ECR / Harbor / Quay). Marked `needs-thinking` pending auth-scope and caching decisions.
 
-Both are V2.1 work; today's PR ships Shape 1 (plain text input) with the inheritance merge and the save-time validation.
+Both are deferred work; today's PR ships Shape 1 (plain text input) with the inheritance merge and the save-time validation.
 
 ### Organizational Patterns
 

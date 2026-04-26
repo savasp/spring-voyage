@@ -1,6 +1,6 @@
-# Spring Voyage V2 -- User Guide
+# Spring Voyage -- User Guide
 
-This guide covers how to use Spring Voyage V2 through the `spring` CLI. It walks through authentication, creating and managing units and agents, sending messages, observing activity, and day-to-day operations.
+This guide covers how to use Spring Voyage through the `spring` CLI. It walks through authentication, creating and managing units and agents, sending messages, observing activity, and day-to-day operations.
 
 ## Document Map
 

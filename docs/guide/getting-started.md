@@ -1,6 +1,6 @@
 # Getting Started
 
-This guide walks you through setting up Spring Voyage V2 and creating your first unit with agents.
+This guide walks you through setting up Spring Voyage and creating your first unit with agents.
 
 ## Installation
 
