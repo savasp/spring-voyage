@@ -35,7 +35,11 @@ For changes under `src/Cvoya.Spring.Web/`, keep `src/Cvoya.Spring.Web/DESIGN.md`
 
 This repository is the **public, open-source core** of Spring Voyage. A private repository extends it via git submodule and dependency injection — adding multi-tenancy, OAuth/SSO, billing, and premium features.
 
-**Every design decision must account for extensibility.** The private repo extends, overrides, or composes OSS behaviour cleanly — without forking, patching, or working around limitations. Treat this repo as a framework that consumers use.
+- **Don't bypass `ITenantContext`.** Resolve the current tenant through `ITenantContext.CurrentTenantId`; never hardcode `"default"` or assume only one tenant exists. New persisted entities that should be tenant-scoped must implement `ITenantScopedEntity` so the cloud host can enforce isolation through its scoped overrides.
+- **Don't make services static or use singletons outside DI.** Everything must go through the container so the private repo can control lifetime and scoping.
+- **Don't create internal types that the private repo would need to access.** If a type is part of the extension contract, make it `public`. Use `internal` only for true implementation details.
+- **Don't reference private repo issues, PRs, or branches.** It is fine to acknowledge that a Spring Voyage hosted service exists, but do not link to or create dependencies on `cvoya-com/spring` issues or PRs from this repo. The dependency direction is one-way: the private repo may reference this repo's work, not the reverse.
+- **Every design decision must account for extensibility.** The private repo extends, overrides, or composes OSS behaviour cleanly — without forking, patching, or working around limitations. Treat this repo as a framework that consumers use.
 
 ### Extension model
 
@@ -74,12 +78,17 @@ Operational surfaces (agent-runtime config, connector config, credential health,
 
 User-facing features remain strictly parity-bound — see [`CONVENTIONS.md`](CONVENTIONS.md) § "UI / CLI Feature Parity".
 
-## Concurrent agents
+## Agents, Sub-agents, concurrent agents
 
 Multiple coding agents work on this codebase simultaneously.
 
-- Always use worktree isolation.
-- Small, focused PRs — one issue per PR.
+Rules:
+- Each agent must operate in its own dedicated worktree — never share a worktree between agents.
+- Small, focused PRs — one issue per PR unless instructed to combine issues into one.
 - Rebase onto `main` before merging.
-- When adding to shared files (`StateKeys`, DI registrations, enums), append to the end.
+- When adding to shared files (`StateKeys`, DI registrations, enums) — append to the end.
 - File follow-up issues before the PR lands and reference concrete numbers in the PR body. Prose-only "we'll file it later" routinely drops follow-ups on the floor.
+
+## Repository Configuration
+
+- `.claude/settings.local.json` is gitignored and is the correct place for user-specific tooling (MCP servers, design tools, personal preferences). Do not add user-specific tool configuration to committed repo files (`settings.json`, agent definitions, or CLAUDE.md). Repo-level config should reflect project requirements shared by all contributors, not individual workflow preferences.
