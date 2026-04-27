@@ -25,6 +25,12 @@ Use the `/build`, `/test`, and `/lint` skills. Each points at the canonical CI i
 
 Pitfall: bare `dotnet test SpringVoyage.slnx` exits 0 without running tests. Always go through `/test`.
 
+### Before pushing any code-change PR (mandatory)
+
+Run **all three** skills — `/build`, `/lint`, `/test` — at the **solution root**, and fix every failure before pushing. CI runs the same commands on the full solution. A scoped `dotnet test path/to/single.csproj` is **not** a substitute: integration tests live in their own project (`tests/Cvoya.Spring.Integration.Tests`) and routinely break first when API contracts change. Skipping `/lint` because "the change is small" is also not allowed — `dotnet format --verify-no-changes` catches trailing-newline and whitespace errors that block merge.
+
+This applies to dispatched sub-agents the same way: a PR claim of "tests pass" means the full solution-wide `/test`, not a project-scoped subset.
+
 ## Documentation updates
 
 When shipping a feature, update the relevant architecture or guide doc in the same PR. A PR that changes user-visible behaviour or architecture without touching the corresponding docs is not complete. New concepts get a doc entry alongside the change.

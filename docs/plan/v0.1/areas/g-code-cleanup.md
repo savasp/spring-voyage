@@ -1,24 +1,30 @@
 # Area G: Code review + decomposition
 
-**Status:** Planning session pending. Splits into discovery (early) and PRs (later).
+**Status:** 🟢 **Discovery done.** Cleanup sub-issues populated under umbrella [#1221](https://github.com/cvoya-com/spring-voyage/issues/1221) — see the sub-issue panel for the live work breakdown. No ADR-0029 boundary violations found in existing code; cleanup PRs are gated on Area D establishing the new boundaries (with two structural-cleanup exceptions noted below that should land *before* D Stage 3 to reduce merge cost).
 
-## Scope (provisional)
+## Stage 0 — complete ✅
 
-- **Discovery (early, parallel):** review existing code, identify areas needing cleanup or decomposition.
-- **PRs (later):** targeted cleanup PRs once D establishes new boundaries.
+`agents/dapr-agent/agent.py` already dropped the Dapr-Workflow wrapper (cites "ADR 0029 Stage 0"). Uses a plain-Python tool-calling loop with `DaprChatClient` + MCP tool proxies.
+
+## Scope
+
+- **Discovery ✅:** Done. Five new structural-cleanup issues plus four pre-existing `area:code-cleanup` issues are tracked under #1221.
+- **PRs (later):** Targeted cleanup PRs once D establishes new boundaries.
+
+## Boundary violations — none found
+
+No ADR-0029 boundary violations in existing code. `ILlmDispatcher` / `DispatcherProxiedLlmDispatcher` is platform-internal (worker host process only). `DaprChatClient` in `dapr-agent` is targeted for retirement in Area D Stage 3 — not a current violation.
+
+## Sequencing notes for Area D
+
+Two structural cleanups should land **before** Area D Stage 3 changes hit those files (reduces merge-conflict cost):
+
+- `A2AExecutionDispatcher.cs` extraction — the primary surface for Area D's new A2A/tenant boundary changes.
+- `ServiceCollectionExtensions.cs` split — Area D Stage 3 will add new boundary registrations to this 1,130-line monolith.
+
+`AgentActor.cs` decomposition is the highest-priority structural cleanup for code health (2,190 lines, 7 concerns), but its self-call cleanup pattern is the platform-side half of the tenant execution boundary — Area D should understand the pattern before redesigning the tenant-to-platform API surface.
 
 ## Dependencies
 
-- Discovery depends on: pre-work.
-- Cleanup PRs depend on: D (so the new boundaries inform decomposition direction).
-
-## Open questions
-
-- What heuristics define "needs cleanup"? (size, coupling, test coverage, divergence from new boundaries)
-- Should cleanup land in v0.1 or some carry to post-v0.1?
-- How do we avoid getting lost in cleanup that doesn't pay for itself?
-- Where does "code health" reporting live (a doc, a dashboard, an issue label)?
-
-## Notes
-
-Bias toward cleanup that aligns with D's new boundaries; defer cosmetic cleanup. Output of discovery feeds the per-area umbrellas as sub-issues.
+- Discovery: pre-work ✅ done.
+- Cleanup PRs: depend on D for boundary direction; the two pre-D enablers above are the exceptions.
