@@ -16,7 +16,7 @@ Key concepts:
 - **Units** — composite agents with pluggable orchestration strategies.
 - **Connectors** — bridges between external systems and units.
 - **Messages** — typed communications between addressable entities.
-- **Execution patterns** — *hosted* (in-process) and *delegated* (containerised tool execution).
+- **Execution patterns** — _hosted_ (in-process) and _delegated_ (containerised tool execution).
 - **Prompt assembly** — four-layer composition: platform, unit context, conversation context, agent instructions.
 
 ## Build, test, lint
@@ -83,7 +83,8 @@ User-facing features remain strictly parity-bound — see [`CONVENTIONS.md`](CON
 Multiple coding agents work on this codebase simultaneously.
 
 Rules:
-- Each agent must operate in its own dedicated worktree — never share a worktree between agents.
+
+- Every PR must be developed in a dedicated worktree — create one before starting any code work. Never work directly in the main checkout. Other agent processes may be active concurrently and so making changes to the main worktree might result into conflicts or agents tripping on each other's work.
 - Small, focused PRs — one issue per PR unless instructed to combine issues into one.
 - Rebase onto `main` before merging.
 - When adding to shared files (`StateKeys`, DI registrations, enums) — append to the end.
