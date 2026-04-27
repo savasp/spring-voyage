@@ -31,7 +31,7 @@ public static class CloningPolicyEndpoints
     /// </summary>
     public static IEndpointRouteBuilder MapCloningPolicyEndpoints(this IEndpointRouteBuilder app)
     {
-        var agent = app.MapGroup("/api/v1/agents/{id}/cloning-policy")
+        var agent = app.MapGroup("/api/v1/tenant/agents/{id}/cloning-policy")
             .WithTags("CloningPolicy")
             .RequireAuthorization();
 

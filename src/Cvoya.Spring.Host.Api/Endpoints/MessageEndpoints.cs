@@ -20,7 +20,7 @@ public static class MessageEndpoints
     /// <returns>The route group builder for chaining.</returns>
     public static RouteGroupBuilder MapMessageEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/v1/messages")
+        var group = app.MapGroup("/api/v1/tenant/messages")
             .WithTags("Messages");
 
         group.MapPost("/", SendMessageAsync)

@@ -29,7 +29,7 @@ public static class BoundaryEndpoints
     /// </summary>
     public static IEndpointRouteBuilder MapBoundaryEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/v1/units/{id}/boundary")
+        var group = app.MapGroup("/api/v1/tenant/units/{id}/boundary")
             .WithTags("UnitBoundary")
             .RequireAuthorization();
 

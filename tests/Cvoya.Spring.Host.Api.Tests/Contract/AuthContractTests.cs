@@ -34,12 +34,12 @@ public class AuthContractTests : IClassFixture<CustomWebApplicationFactory>
         var ct = TestContext.Current.CancellationToken;
         var request = new CreateTokenRequest("contract-auth-create");
 
-        var response = await _client.PostAsJsonAsync("/api/v1/auth/tokens", request, ct);
+        var response = await _client.PostAsJsonAsync("/api/v1/tenant/auth/tokens", request, ct);
         response.StatusCode.ShouldBe(HttpStatusCode.Created);
 
         var body = await response.Content.ReadAsStringAsync(ct);
         OpenApiContract.AssertResponse(
-            "/api/v1/auth/tokens", "post", "201", body);
+            "/api/v1/tenant/auth/tokens", "post", "201", body);
     }
 
     [Fact]
@@ -49,17 +49,17 @@ public class AuthContractTests : IClassFixture<CustomWebApplicationFactory>
 
         // First create succeeds.
         var first = await _client.PostAsJsonAsync(
-            "/api/v1/auth/tokens", new CreateTokenRequest("contract-auth-conflict"), ct);
+            "/api/v1/tenant/auth/tokens", new CreateTokenRequest("contract-auth-conflict"), ct);
         first.StatusCode.ShouldBe(HttpStatusCode.Created);
 
         // Second create with the same name → 409 with a problem+json body.
         var second = await _client.PostAsJsonAsync(
-            "/api/v1/auth/tokens", new CreateTokenRequest("contract-auth-conflict"), ct);
+            "/api/v1/tenant/auth/tokens", new CreateTokenRequest("contract-auth-conflict"), ct);
         second.StatusCode.ShouldBe(HttpStatusCode.Conflict);
 
         var body = await second.Content.ReadAsStringAsync(ct);
         OpenApiContract.AssertResponse(
-            "/api/v1/auth/tokens", "post", "409", body, "application/problem+json");
+            "/api/v1/tenant/auth/tokens", "post", "409", body, "application/problem+json");
     }
 
     [Fact]
@@ -69,14 +69,14 @@ public class AuthContractTests : IClassFixture<CustomWebApplicationFactory>
 
         // Seed at least one token so the array branch of the schema is exercised.
         await _client.PostAsJsonAsync(
-            "/api/v1/auth/tokens", new CreateTokenRequest("contract-auth-list"), ct);
+            "/api/v1/tenant/auth/tokens", new CreateTokenRequest("contract-auth-list"), ct);
 
-        var response = await _client.GetAsync("/api/v1/auth/tokens", ct);
+        var response = await _client.GetAsync("/api/v1/tenant/auth/tokens", ct);
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var body = await response.Content.ReadAsStringAsync(ct);
         OpenApiContract.AssertResponse(
-            "/api/v1/auth/tokens", "get", "200", body);
+            "/api/v1/tenant/auth/tokens", "get", "200", body);
     }
 
     [Fact]
@@ -85,12 +85,12 @@ public class AuthContractTests : IClassFixture<CustomWebApplicationFactory>
         var ct = TestContext.Current.CancellationToken;
 
         var response = await _client.DeleteAsync(
-            "/api/v1/auth/tokens/contract-auth-not-there", ct);
+            "/api/v1/tenant/auth/tokens/contract-auth-not-there", ct);
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
 
         var body = await response.Content.ReadAsStringAsync(ct);
         OpenApiContract.AssertResponse(
-            "/api/v1/auth/tokens/{name}", "delete", "404", body, "application/problem+json");
+            "/api/v1/tenant/auth/tokens/{name}", "delete", "404", body, "application/problem+json");
     }
 
     [Fact]
@@ -98,11 +98,11 @@ public class AuthContractTests : IClassFixture<CustomWebApplicationFactory>
     {
         var ct = TestContext.Current.CancellationToken;
 
-        var response = await _client.GetAsync("/api/v1/auth/me", ct);
+        var response = await _client.GetAsync("/api/v1/tenant/auth/me", ct);
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var body = await response.Content.ReadAsStringAsync(ct);
         OpenApiContract.AssertResponse(
-            "/api/v1/auth/me", "get", "200", body);
+            "/api/v1/tenant/auth/me", "get", "200", body);
     }
 }

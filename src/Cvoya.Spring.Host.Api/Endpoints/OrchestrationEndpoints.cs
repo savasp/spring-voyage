@@ -45,7 +45,7 @@ public static class OrchestrationEndpoints
     /// </summary>
     public static IEndpointRouteBuilder MapOrchestrationEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/v1/units/{id}/orchestration")
+        var group = app.MapGroup("/api/v1/tenant/units/{id}/orchestration")
             .WithTags("UnitOrchestration")
             .RequireAuthorization();
 

@@ -38,7 +38,7 @@ public static class SystemConfigurationEndpoints
     /// </summary>
     public static RouteGroupBuilder MapSystemConfigurationEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/v1/system")
+        var group = app.MapGroup("/api/v1/platform/system")
             .WithTags("System");
 
         group.MapGet("/configuration", ([FromServices] IStartupConfigurationValidator validator) =>

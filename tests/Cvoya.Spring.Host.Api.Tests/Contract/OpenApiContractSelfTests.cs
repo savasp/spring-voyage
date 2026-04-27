@@ -30,7 +30,7 @@ public class OpenApiContractSelfTests
 
         Should.Throw<ContractAssertionException>(() =>
             OpenApiContract.AssertResponse(
-                "/api/v1/auth/me", "get", "200", bodyMissingField));
+                "/api/v1/tenant/auth/me", "get", "200", bodyMissingField));
     }
 
     [Fact]
@@ -42,7 +42,7 @@ public class OpenApiContractSelfTests
 
         Should.Throw<ContractAssertionException>(() =>
             OpenApiContract.AssertResponse(
-                "/api/v1/auth/me", "get", "200", anyBody, "application/xml"));
+                "/api/v1/tenant/auth/me", "get", "200", anyBody, "application/xml"));
     }
 
     [Fact]
@@ -53,7 +53,7 @@ public class OpenApiContractSelfTests
 
         Should.Throw<ContractAssertionException>(() =>
             OpenApiContract.AssertResponse(
-                "/api/v1/auth/me", "get", "418", anyBody));
+                "/api/v1/tenant/auth/me", "get", "418", anyBody));
     }
 
     [Fact]
@@ -69,7 +69,7 @@ public class OpenApiContractSelfTests
         // problem+json. Should NOT throw.
         Should.NotThrow(() =>
             OpenApiContract.AssertResponse(
-                "/api/v1/auth/tokens", "post", "409",
+                "/api/v1/tenant/auth/tokens", "post", "409",
                 emptyProblem, "application/problem+json"));
     }
 }

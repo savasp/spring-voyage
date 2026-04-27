@@ -58,11 +58,11 @@ public class UnitContractTests : IClassFixture<CustomWebApplicationFactory>
         // deterministic.
         ArrangeUnitActor(UnitStatus.Draft);
 
-        var response = await _client.GetAsync("/api/v1/units", ct);
+        var response = await _client.GetAsync("/api/v1/tenant/units", ct);
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var body = await response.Content.ReadAsStringAsync(ct);
-        OpenApiContract.AssertResponse("/api/v1/units", "get", "200", body);
+        OpenApiContract.AssertResponse("/api/v1/tenant/units", "get", "200", body);
     }
 
     [Fact]
@@ -87,11 +87,11 @@ public class UnitContractTests : IClassFixture<CustomWebApplicationFactory>
             Description: "A unit for contract tests",
             IsTopLevel: true);
 
-        var response = await _client.PostAsJsonAsync("/api/v1/units", request, ct);
+        var response = await _client.PostAsJsonAsync("/api/v1/tenant/units", request, ct);
         response.StatusCode.ShouldBe(HttpStatusCode.Created);
 
         var body = await response.Content.ReadAsStringAsync(ct);
-        OpenApiContract.AssertResponse("/api/v1/units", "post", "201", body);
+        OpenApiContract.AssertResponse("/api/v1/tenant/units", "post", "201", body);
     }
 
     [Fact]
@@ -107,12 +107,12 @@ public class UnitContractTests : IClassFixture<CustomWebApplicationFactory>
             IsTopLevel: null,
             ParentUnitIds: null);
 
-        var response = await _client.PostAsJsonAsync("/api/v1/units", request, ct);
+        var response = await _client.PostAsJsonAsync("/api/v1/tenant/units", request, ct);
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
 
         var body = await response.Content.ReadAsStringAsync(ct);
         OpenApiContract.AssertResponse(
-            "/api/v1/units", "post", "400", body, "application/problem+json");
+            "/api/v1/tenant/units", "post", "400", body, "application/problem+json");
     }
 
     [Fact]
@@ -126,12 +126,12 @@ public class UnitContractTests : IClassFixture<CustomWebApplicationFactory>
                 Arg.Any<CancellationToken>())
             .Returns((DirectoryEntry?)null);
 
-        var response = await _client.GetAsync("/api/v1/units/contract-ghost-unit", ct);
+        var response = await _client.GetAsync("/api/v1/tenant/units/contract-ghost-unit", ct);
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
 
         var body = await response.Content.ReadAsStringAsync(ct);
         OpenApiContract.AssertResponse(
-            "/api/v1/units/{id}", "get", "404", body, "application/problem+json");
+            "/api/v1/tenant/units/{id}", "get", "404", body, "application/problem+json");
     }
 
     [Fact]
@@ -146,12 +146,12 @@ public class UnitContractTests : IClassFixture<CustomWebApplicationFactory>
             .Returns((DirectoryEntry?)null);
 
         var response = await _client.GetAsync(
-            "/api/v1/units/contract-ghost-readiness/readiness", ct);
+            "/api/v1/tenant/units/contract-ghost-readiness/readiness", ct);
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
 
         var body = await response.Content.ReadAsStringAsync(ct);
         OpenApiContract.AssertResponse(
-            "/api/v1/units/{id}/readiness", "get", "404", body, "application/problem+json");
+            "/api/v1/tenant/units/{id}/readiness", "get", "404", body, "application/problem+json");
     }
 
     private void ResetDirectory()

@@ -36,7 +36,7 @@ public static class ExpertiseEndpoints
     public static IEndpointRouteBuilder MapExpertiseEndpoints(this IEndpointRouteBuilder app)
     {
         // Agent expertise.
-        var agents = app.MapGroup("/api/v1/agents/{id}/expertise")
+        var agents = app.MapGroup("/api/v1/tenant/agents/{id}/expertise")
             .WithTags("Expertise")
             .RequireAuthorization();
 
@@ -54,7 +54,7 @@ public static class ExpertiseEndpoints
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         // Unit own expertise (non-aggregated).
-        var unitOwn = app.MapGroup("/api/v1/units/{id}/expertise/own")
+        var unitOwn = app.MapGroup("/api/v1/tenant/units/{id}/expertise/own")
             .WithTags("Expertise")
             .RequireAuthorization();
 
@@ -72,7 +72,7 @@ public static class ExpertiseEndpoints
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         // Unit aggregated expertise (recursive composition to leaves).
-        var unitAgg = app.MapGroup("/api/v1/units/{id}/expertise")
+        var unitAgg = app.MapGroup("/api/v1/tenant/units/{id}/expertise")
             .WithTags("Expertise")
             .RequireAuthorization();
 
