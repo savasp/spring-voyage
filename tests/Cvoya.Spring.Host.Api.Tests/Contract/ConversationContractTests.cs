@@ -56,11 +56,11 @@ public class ConversationContractTests : IClassFixture<ConversationContractTests
                     "active", now, now, 1, "agent://contract-bot", "Started"),
             });
 
-        var response = await _client.GetAsync("/api/v1/conversations", ct);
+        var response = await _client.GetAsync("/api/v1/tenant/conversations", ct);
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var body = await response.Content.ReadAsStringAsync(ct);
-        OpenApiContract.AssertResponse("/api/v1/conversations", "get", "200", body);
+        OpenApiContract.AssertResponse("/api/v1/tenant/conversations", "get", "200", body);
     }
 
     [Fact]
@@ -81,12 +81,12 @@ public class ConversationContractTests : IClassFixture<ConversationContractTests
                         "ConversationStarted", "Info", "Started"),
                 }));
 
-        var response = await _client.GetAsync("/api/v1/conversations/contract-conv-detail", ct);
+        var response = await _client.GetAsync("/api/v1/tenant/conversations/contract-conv-detail", ct);
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var body = await response.Content.ReadAsStringAsync(ct);
         OpenApiContract.AssertResponse(
-            "/api/v1/conversations/{id}", "get", "200", body);
+            "/api/v1/tenant/conversations/{id}", "get", "200", body);
     }
 
     [Fact]
@@ -98,12 +98,12 @@ public class ConversationContractTests : IClassFixture<ConversationContractTests
             .GetAsync("contract-conv-missing", Arg.Any<CancellationToken>())
             .Returns((ConversationDetail?)null);
 
-        var response = await _client.GetAsync("/api/v1/conversations/contract-conv-missing", ct);
+        var response = await _client.GetAsync("/api/v1/tenant/conversations/contract-conv-missing", ct);
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
 
         var body = await response.Content.ReadAsStringAsync(ct);
         OpenApiContract.AssertResponse(
-            "/api/v1/conversations/{id}", "get", "404", body, "application/problem+json");
+            "/api/v1/tenant/conversations/{id}", "get", "404", body, "application/problem+json");
     }
 
     [Fact]
@@ -134,12 +134,12 @@ public class ConversationContractTests : IClassFixture<ConversationContractTests
             "Hello from contract test");
 
         var response = await _client.PostAsJsonAsync(
-            "/api/v1/conversations/contract-conv-post/messages", body, ct);
+            "/api/v1/tenant/conversations/contract-conv-post/messages", body, ct);
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var responseBody = await response.Content.ReadAsStringAsync(ct);
         OpenApiContract.AssertResponse(
-            "/api/v1/conversations/{id}/messages", "post", "200", responseBody);
+            "/api/v1/tenant/conversations/{id}/messages", "post", "200", responseBody);
     }
 
     [Fact]
@@ -153,12 +153,12 @@ public class ConversationContractTests : IClassFixture<ConversationContractTests
 
         var body = new CloseConversationRequest("contract test");
         var response = await _client.PostAsJsonAsync(
-            "/api/v1/conversations/contract-close-missing/close", body, ct);
+            "/api/v1/tenant/conversations/contract-close-missing/close", body, ct);
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
 
         var responseBody = await response.Content.ReadAsStringAsync(ct);
         OpenApiContract.AssertResponse(
-            "/api/v1/conversations/{id}/close", "post", "404",
+            "/api/v1/tenant/conversations/{id}/close", "post", "404",
             responseBody, "application/problem+json");
     }
 
@@ -209,12 +209,12 @@ public class ConversationContractTests : IClassFixture<ConversationContractTests
 
         var body = new CloseConversationRequest("contract test");
         var response = await _client.PostAsJsonAsync(
-            "/api/v1/conversations/contract-close-ok/close", body, ct);
+            "/api/v1/tenant/conversations/contract-close-ok/close", body, ct);
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var responseBody = await response.Content.ReadAsStringAsync(ct);
         OpenApiContract.AssertResponse(
-            "/api/v1/conversations/{id}/close", "post", "200", responseBody);
+            "/api/v1/tenant/conversations/{id}/close", "post", "200", responseBody);
     }
 
     /// <summary>

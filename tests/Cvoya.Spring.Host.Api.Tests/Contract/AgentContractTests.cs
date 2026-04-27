@@ -52,11 +52,11 @@ public class AgentContractTests : IClassFixture<CustomWebApplicationFactory>
                     DateTimeOffset.UtcNow),
             });
 
-        var response = await _client.GetAsync("/api/v1/agents", ct);
+        var response = await _client.GetAsync("/api/v1/tenant/agents", ct);
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var body = await response.Content.ReadAsStringAsync(ct);
-        OpenApiContract.AssertResponse("/api/v1/agents", "get", "200", body);
+        OpenApiContract.AssertResponse("/api/v1/tenant/agents", "get", "200", body);
     }
 
     [Fact]
@@ -73,11 +73,11 @@ public class AgentContractTests : IClassFixture<CustomWebApplicationFactory>
             Role: "backend",
             UnitIds: new[] { "contract-unit" });
 
-        var response = await _client.PostAsJsonAsync("/api/v1/agents", request, ct);
+        var response = await _client.PostAsJsonAsync("/api/v1/tenant/agents", request, ct);
         response.StatusCode.ShouldBe(HttpStatusCode.Created);
 
         var body = await response.Content.ReadAsStringAsync(ct);
-        OpenApiContract.AssertResponse("/api/v1/agents", "post", "201", body);
+        OpenApiContract.AssertResponse("/api/v1/tenant/agents", "post", "201", body);
     }
 
     [Fact]
@@ -90,12 +90,12 @@ public class AgentContractTests : IClassFixture<CustomWebApplicationFactory>
                 Arg.Any<CancellationToken>())
             .Returns((DirectoryEntry?)null);
 
-        var response = await _client.GetAsync("/api/v1/agents/contract-ghost-agent", ct);
+        var response = await _client.GetAsync("/api/v1/tenant/agents/contract-ghost-agent", ct);
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
 
         var body = await response.Content.ReadAsStringAsync(ct);
         OpenApiContract.AssertResponse(
-            "/api/v1/agents/{id}", "get", "404", body, "application/problem+json");
+            "/api/v1/tenant/agents/{id}", "get", "404", body, "application/problem+json");
     }
 
     [Fact]
@@ -109,14 +109,14 @@ public class AgentContractTests : IClassFixture<CustomWebApplicationFactory>
             .Returns((DirectoryEntry?)null);
 
         var response = await _client.PostAsJsonAsync(
-            "/api/v1/agents/contract-ghost-deploy/deploy",
+            "/api/v1/tenant/agents/contract-ghost-deploy/deploy",
             new DeployPersistentAgentRequest(),
             ct);
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
 
         var body = await response.Content.ReadAsStringAsync(ct);
         OpenApiContract.AssertResponse(
-            "/api/v1/agents/{id}/deploy", "post", "404", body, "application/problem+json");
+            "/api/v1/tenant/agents/{id}/deploy", "post", "404", body, "application/problem+json");
     }
 
     [Fact]
@@ -139,12 +139,12 @@ public class AgentContractTests : IClassFixture<CustomWebApplicationFactory>
         // the endpoint returns the canonical empty deployment shape so the
         // response carries every required field on the wire.
         var response = await _client.PostAsync(
-            "/api/v1/agents/contract-undeploy/undeploy", content: null, ct);
+            "/api/v1/tenant/agents/contract-undeploy/undeploy", content: null, ct);
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var body = await response.Content.ReadAsStringAsync(ct);
         OpenApiContract.AssertResponse(
-            "/api/v1/agents/{id}/undeploy", "post", "200", body);
+            "/api/v1/tenant/agents/{id}/undeploy", "post", "200", body);
     }
 
     private void ArrangeUnitEntry(string unitId, string actorId)

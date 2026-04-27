@@ -283,6 +283,15 @@ public static class ServiceCollectionExtensions
         services.TryAddEnumerable(
             ServiceDescriptor.Singleton<ITenantSeedProvider, ConnectorInstallSeedProvider>());
 
+        // Platform-tenant registry (#1260 / C1.2d). Scoped because it
+        // depends on SpringDbContext. The endpoints that consume this
+        // surface are gated to PlatformOperator at the API layer; the
+        // cloud overlay can register a permission-checked variant ahead
+        // of this TryAdd* call.
+        services.TryAddScoped<ITenantRegistry, TenantRegistry>();
+        services.TryAddEnumerable(
+            ServiceDescriptor.Singleton<ITenantSeedProvider, DefaultTenantRecordSeedProvider>());
+
         // Credential-health store (#686). Scoped because it holds a
         // SpringDbContext. The DelegatingHandler that feeds this store at
         // use-time opens a child DI scope per write so it can be invoked

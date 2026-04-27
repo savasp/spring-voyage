@@ -79,11 +79,11 @@ public class MessageContractTests : IClassFixture<CustomWebApplicationFactory>
             "contract-conv-1",
             JsonSerializer.SerializeToElement(new { Text = "hello from contract test" }));
 
-        var response = await _client.PostAsJsonAsync("/api/v1/messages", request, ct);
+        var response = await _client.PostAsJsonAsync("/api/v1/tenant/messages", request, ct);
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var body = await response.Content.ReadAsStringAsync(ct);
-        OpenApiContract.AssertResponse("/api/v1/messages", "post", "200", body);
+        OpenApiContract.AssertResponse("/api/v1/tenant/messages", "post", "200", body);
     }
 
     [Fact]
@@ -97,11 +97,11 @@ public class MessageContractTests : IClassFixture<CustomWebApplicationFactory>
             null,
             JsonSerializer.SerializeToElement(new { }));
 
-        var response = await _client.PostAsJsonAsync("/api/v1/messages", request, ct);
+        var response = await _client.PostAsJsonAsync("/api/v1/tenant/messages", request, ct);
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
 
         var body = await response.Content.ReadAsStringAsync(ct);
         OpenApiContract.AssertResponse(
-            "/api/v1/messages", "post", "400", body, "application/problem+json");
+            "/api/v1/tenant/messages", "post", "400", body, "application/problem+json");
     }
 }
