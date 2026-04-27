@@ -1,20 +1,6 @@
 # Area G: Code review + decomposition
 
-**Status:** 🟢 **Discovery done.** Five new cleanup issues created (#1276–#1280), all wired under #1221. Pre-existing issues (#940, #939, #1200, #1043) labeled `area:code-cleanup`. Cleanup PRs gated on Area D establishing boundaries.
-
-## Sub-issues (v0.1)
-
-| # | Title | Notes |
-|---|---|---|
-| [#1276](https://github.com/cvoya-com/spring-voyage/issues/1276) | cleanup: decompose AgentActor.cs (2,190 lines, 7 concerns, 15 deps) | Highest priority; critical-path for every agent message |
-| [#1277](https://github.com/cvoya-com/spring-voyage/issues/1277) | cleanup: extract IAgentTransport from A2AExecutionDispatcher (789 lines) | Do before Area D changes hit this file |
-| [#1278](https://github.com/cvoya-com/spring-voyage/issues/1278) | cleanup: split ServiceCollectionExtensions.cs monolith (1,130 lines) | Do before Area D adds new boundary registrations |
-| [#1279](https://github.com/cvoya-com/spring-voyage/issues/1279) | cleanup: add timeout-path tests for A2AExecutionDispatcher | Test gap for 60s readiness probe + 5min task-poll timeouts |
-| [#1280](https://github.com/cvoya.spring-voyage/issues/1280) | cleanup: extract validation/membership from UnitActor.cs (1,401 lines) | Start with validation scheduling (cleanest seam) |
-| [#940](https://github.com/cvoya-com/spring-voyage/issues/940) | Migrate dapr-agent to a2a-sdk 1.x | Pre-existing |
-| [#939](https://github.com/cvoya-com/spring-voyage/issues/939) | Defer agent-runtime validation to unit-start time | Pre-existing |
-| [#1200](https://github.com/cvoya-com/spring-voyage/issues/1200) | Copying an agent's identity doesn't copy the unique path | Pre-existing |
-| [#1043](https://github.com/cvoya-com/spring-voyage/issues/1043) | Track upstream Kiota fix for nullable oneOf wrappers | Pre-existing |
+**Status:** 🟢 **Discovery done.** Cleanup sub-issues populated under umbrella [#1221](https://github.com/cvoya-com/spring-voyage/issues/1221) — see the sub-issue panel for the live work breakdown. No ADR-0029 boundary violations found in existing code; cleanup PRs are gated on Area D establishing the new boundaries (with two structural-cleanup exceptions noted below that should land *before* D Stage 3 to reduce merge cost).
 
 ## Stage 0 — complete ✅
 
@@ -22,20 +8,23 @@
 
 ## Scope
 
-- **Discovery ✅:** Done. Five new issues + four pre-existing tagged.
-- **PRs (later):** Targeted cleanup PRs. #1277 and #1278 should land **before** Area D changes hit those files (reduces merge-conflict cost). #1276 (AgentActor) is the highest-priority structural cleanup. All PRs after D is underway.
+- **Discovery ✅:** Done. Five new structural-cleanup issues plus four pre-existing `area:code-cleanup` issues are tracked under #1221.
+- **PRs (later):** Targeted cleanup PRs once D establishes new boundaries.
 
 ## Boundary violations — none found
 
 No ADR-0029 boundary violations in existing code. `ILlmDispatcher` / `DispatcherProxiedLlmDispatcher` is platform-internal (worker host process only). `DaprChatClient` in `dapr-agent` is targeted for retirement in Area D Stage 3 — not a current violation.
 
-## Key area D interaction
+## Sequencing notes for Area D
 
-- `A2AExecutionDispatcher.cs` (#1277) is the primary surface for Area D's new A2A/tenant boundary changes — decompose it first.
-- `ServiceCollectionExtensions.cs` (#1278) will need new Area D registrations — split it first.
-- `AgentActor.cs` (#1276) dispatch coordination (the self-call cleanup pattern, "RunDispatchAsync outside actor turn" constraint) is the platform-side half of the tenant execution boundary — Area D should understand this before designing the tenant-to-platform API.
+Two structural cleanups should land **before** Area D Stage 3 changes hit those files (reduces merge-conflict cost):
+
+- `A2AExecutionDispatcher.cs` extraction — the primary surface for Area D's new A2A/tenant boundary changes.
+- `ServiceCollectionExtensions.cs` split — Area D Stage 3 will add new boundary registrations to this 1,130-line monolith.
+
+`AgentActor.cs` decomposition is the highest-priority structural cleanup for code health (2,190 lines, 7 concerns), but its self-call cleanup pattern is the platform-side half of the tenant execution boundary — Area D should understand the pattern before redesigning the tenant-to-platform API surface.
 
 ## Dependencies
 
 - Discovery: pre-work ✅ done.
-- Cleanup PRs: depend on D (new boundaries inform decomposition direction). #1277, #1278 can land earlier as enablers for D.
+- Cleanup PRs: depend on D for boundary direction; the two pre-D enablers above are the exceptions.
