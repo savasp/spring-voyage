@@ -51,7 +51,7 @@ jobs:
           BASE_REPO: ${{ github.repository }}
         run: |
           if [[ "$EVENT_NAME" != "pull_request" || "$HEAD_REPO" == "$BASE_REPO" ]]; then
-            echo "runner=vpr-spring-voyage-runner" >> "$GITHUB_OUTPUT"
+            echo "runner=vps-spring-voyage-runner" >> "$GITHUB_OUTPUT"
           else
             echo "runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
           fi
