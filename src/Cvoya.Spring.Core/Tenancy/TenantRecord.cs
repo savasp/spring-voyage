@@ -3,6 +3,8 @@
 
 namespace Cvoya.Spring.Core.Tenancy;
 
+using Cvoya.Spring.Core.Security;
+
 /// <summary>
 /// First-class tenant record — the row that identifies a tenant on the
 /// platform.

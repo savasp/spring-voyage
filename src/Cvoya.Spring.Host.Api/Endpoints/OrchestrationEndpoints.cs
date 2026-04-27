@@ -47,7 +47,7 @@ public static class OrchestrationEndpoints
     {
         var group = app.MapGroup("/api/v1/tenant/units/{id}/orchestration")
             .WithTags("UnitOrchestration")
-            .RequireAuthorization();
+            .RequireAuthorization(Auth.RolePolicies.TenantUser);
 
         group.MapGet("/", GetOrchestrationAsync)
             .WithName("GetUnitOrchestration")

@@ -70,27 +70,29 @@ public class TenantRegistryTests
     [InlineData("acme!")]                 // disallowed punctuation
     [InlineData("-acme")]                 // leading hyphen
     [InlineData("a c m e")]               // spaces
-    [InlineData("a")]                     // shortest valid is fine — sentinel for the next two cases
-    [InlineData("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")] // 65 chars
+    [InlineData("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")] // 65 chars (one over the max)
     public async Task CreateAsync_MalformedId_ThrowsArgumentException(string id)
     {
-        // The "a" case is actually valid; it acts as a positive control —
-        // the test data table also exercises the shortest valid id and
-        // the smallest invalid one (65 chars).
         var ct = TestContext.Current.CancellationToken;
         using var context = CreateContext();
         var sut = CreateSut(context);
 
-        if (id == "a")
-        {
-            // Positive control — single-letter ids are valid.
-            var record = await sut.CreateAsync(id, displayName: null, ct);
-            record.Id.ShouldBe("a");
-            return;
-        }
-
         await Should.ThrowAsync<ArgumentException>(() =>
             sut.CreateAsync(id, displayName: null, ct));
+    }
+
+    [Fact]
+    public async Task CreateAsync_ShortestValidId_Succeeds()
+    {
+        // Positive control bracketing the 65-char invalid case in
+        // CreateAsync_MalformedId_ThrowsArgumentException — single-letter
+        // ids are the shortest accepted form.
+        var ct = TestContext.Current.CancellationToken;
+        using var context = CreateContext();
+        var sut = CreateSut(context);
+
+        var record = await sut.CreateAsync("a", displayName: null, ct);
+        record.Id.ShouldBe("a");
     }
 
     [Fact]

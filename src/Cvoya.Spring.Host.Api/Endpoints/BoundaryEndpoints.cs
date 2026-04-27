@@ -31,7 +31,7 @@ public static class BoundaryEndpoints
     {
         var group = app.MapGroup("/api/v1/tenant/units/{id}/boundary")
             .WithTags("UnitBoundary")
-            .RequireAuthorization();
+            .RequireAuthorization(Auth.RolePolicies.TenantUser);
 
         group.MapGet("/", GetBoundaryAsync)
             .WithName("GetUnitBoundary")

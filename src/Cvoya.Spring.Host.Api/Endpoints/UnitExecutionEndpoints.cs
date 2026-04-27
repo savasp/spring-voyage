@@ -43,7 +43,7 @@ public static class UnitExecutionEndpoints
     {
         var group = app.MapGroup("/api/v1/tenant/units/{id}/execution")
             .WithTags("UnitExecution")
-            .RequireAuthorization();
+            .RequireAuthorization(Auth.RolePolicies.TenantUser);
 
         group.MapGet("/", GetExecutionAsync)
             .WithName("GetUnitExecution")

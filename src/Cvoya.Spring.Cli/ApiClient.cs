@@ -556,7 +556,7 @@ public class SpringApiClient
         string unitId,
         CancellationToken ct = default)
     {
-        var url = $"{_baseUrl}/api/v1/units/{Uri.EscapeDataString(unitId)}/policy";
+        var url = $"{_baseUrl}/api/v1/tenant/units/{Uri.EscapeDataString(unitId)}/policy";
         using var response = await _httpClient.GetAsync(url, ct).ConfigureAwait(false);
         await ThrowIfNotSuccessAsync(response, ct).ConfigureAwait(false);
 
@@ -579,7 +579,7 @@ public class SpringApiClient
         UnitPolicyWire policy,
         CancellationToken ct = default)
     {
-        var url = $"{_baseUrl}/api/v1/units/{Uri.EscapeDataString(unitId)}/policy";
+        var url = $"{_baseUrl}/api/v1/tenant/units/{Uri.EscapeDataString(unitId)}/policy";
         var json = System.Text.Json.JsonSerializer.Serialize(policy, UnitPolicyJsonOptions);
         using var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
         using var response = await _httpClient.PutAsync(url, content, ct).ConfigureAwait(false);
