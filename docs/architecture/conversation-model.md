@@ -221,11 +221,11 @@ The dialog surface gives the user a **"this isn't what I meant" affordance** on 
 
 **Rationale.**
 
-- v0.1 is the first **public** release. Per the v0.1 plan-of-record, V1 was internal-only; V2 was scrapped before shipping. There is no production data we owe migration to in the sense a public-release-N→N+1 migration would imply. The "existing data" is internal usage data — important for the developers who generated it, not for end users.
+- v0.1 is the first **public** release; all prior usage was internal-only or pre-public. There is no production data we owe migration to in the sense a public-release-N→N+1 migration would imply. The "existing data" is internal usage data — important for the developers who generated it, not for end users. (See `docs/plan/v0.1/decisions.md` for the release history this rests on.)
 - Deterministic collapse (group existing conversations by computed participant set; merge messages in timestamp order into the new conversation) sounds elegant but is wrong in practice: the existing conversations were authored under "many conversations per participant set" semantics, so they were intentionally separate **work episodes**, not artificial fragments of one underlying conversation. Merging them collapses meaningful structure (different work, different time periods) into one undifferentiated stream.
 - User-mediated collapse (prompt the user to choose which conversations belong together) does not scale and asks users to reason about a kernel concept they did not opt into.
 - Clean-slate respects the invariant absolutely from day one. The kernel never has to handle pre-invariant data inline; the new model is uniform. Pre-v0.1 data stays addressable via the same `/conversations/{id}` route (Web Portal continuity preserved for archival reading) but is moved to a clearly-labeled "legacy" partition.
-- "Probably: V2 reset, but call it out" from #1123 — V2 has been scrapped; v0.1 is the equivalent reset point. This is the call.
+- #1123 anticipated a reset on the next release boundary; v0.1 is that boundary. This is the call.
 
 **Consequences.**
 
