@@ -11,17 +11,23 @@ using Shouldly;
 using Xunit;
 
 /// <summary>
-/// Kiota-client tests for the new conversation + inbox wrappers added in #452 / #456.
+/// Kiota-client tests for the thread + inbox wrappers (renamed from
+/// ConversationClientTests per ADR-0030 / #1288).
 /// Keep these as small, focused integration tests mirroring
 /// <see cref="SpringApiClientTests"/> — each asserts the HTTP path, method,
 /// body shape, and response parsing for a single wrapper method.
 /// </summary>
-public class ConversationClientTests
+/// <remarks>
+/// TODO(#1291): the expected API paths below still use <c>/conversations</c>.
+/// Once #1291 lands (API URL rename to <c>/threads</c>), update the
+/// <c>expectedPath</c> strings here and regenerate the Kiota client.
+/// </remarks>
+public class ThreadClientTests
 {
     private const string BaseUrl = "http://localhost:5000";
 
     [Fact]
-    public async Task ListConversationsAsync_CallsCorrectEndpointAndParsesResponse()
+    public async Task ListThreadsAsync_CallsCorrectEndpointAndParsesResponse()
     {
         var handler = new MockHttpMessageHandler(
             expectedPath: "/api/v1/tenant/conversations",
@@ -31,7 +37,7 @@ public class ConversationClientTests
         var httpClient = new HttpClient(handler);
         var client = new SpringApiClient(httpClient, BaseUrl);
 
-        var result = await client.ListConversationsAsync(ct: TestContext.Current.CancellationToken);
+        var result = await client.ListThreadsAsync(ct: TestContext.Current.CancellationToken);
 
         result.ShouldNotBeNull();
         result.Count.ShouldBe(1);
@@ -44,7 +50,7 @@ public class ConversationClientTests
     }
 
     [Fact]
-    public async Task ListConversationsAsync_WithFilters_ForwardsQueryParameters()
+    public async Task ListThreadsAsync_WithFilters_ForwardsQueryParameters()
     {
         var handler = new MockHttpMessageHandler(
             expectedPath: "/api/v1/tenant/conversations",
@@ -60,7 +66,7 @@ public class ConversationClientTests
         var httpClient = new HttpClient(handler);
         var client = new SpringApiClient(httpClient, BaseUrl);
 
-        var result = await client.ListConversationsAsync(
+        var result = await client.ListThreadsAsync(
             unit: "eng-team",
             status: "active",
             limit: 25,
@@ -71,7 +77,7 @@ public class ConversationClientTests
     }
 
     [Fact]
-    public async Task GetConversationAsync_CallsCorrectEndpointAndParsesDetail()
+    public async Task GetThreadAsync_CallsCorrectEndpointAndParsesDetail()
     {
         var handler = new MockHttpMessageHandler(
             expectedPath: "/api/v1/tenant/conversations/c-1",
@@ -81,7 +87,7 @@ public class ConversationClientTests
         var httpClient = new HttpClient(handler);
         var client = new SpringApiClient(httpClient, BaseUrl);
 
-        var result = await client.GetConversationAsync("c-1", TestContext.Current.CancellationToken);
+        var result = await client.GetThreadAsync("c-1", TestContext.Current.CancellationToken);
 
         result.ShouldNotBeNull();
         result.Summary.ShouldNotBeNull();
@@ -93,13 +99,13 @@ public class ConversationClientTests
     }
 
     [Fact]
-    public async Task SendConversationMessageAsync_PostsToCorrectEndpointWithWrappedBody()
+    public async Task SendThreadMessageAsync_PostsToCorrectEndpointWithWrappedBody()
     {
-        var conversationId = "c-1";
+        var threadId = "c-1";
         var handler = new MockHttpMessageHandler(
-            expectedPath: $"/api/v1/tenant/conversations/{conversationId}/messages",
+            expectedPath: $"/api/v1/tenant/conversations/{threadId}/messages",
             expectedMethod: HttpMethod.Post,
-            responseBody: $$"""{"messageId":"{{Guid.NewGuid()}}","conversationId":"{{conversationId}}"}""",
+            responseBody: $$"""{"messageId":"{{Guid.NewGuid()}}","conversationId":"{{threadId}}"}""",
             validateRequestBody: body =>
             {
                 var json = JsonSerializer.Deserialize<JsonElement>(body);
@@ -111,13 +117,13 @@ public class ConversationClientTests
         var httpClient = new HttpClient(handler);
         var client = new SpringApiClient(httpClient, BaseUrl);
 
-        var result = await client.SendConversationMessageAsync(
-            conversationId, "agent", "ada", "Looks good — ship it.",
+        var result = await client.SendThreadMessageAsync(
+            threadId, "agent", "ada", "Looks good — ship it.",
             TestContext.Current.CancellationToken);
 
         result.ShouldNotBeNull();
         result.MessageId.ShouldNotBeNull();
-        result.ConversationId.ShouldBe(conversationId);
+        result.ConversationId.ShouldBe(threadId);
         handler.WasCalled.ShouldBeTrue();
     }
 

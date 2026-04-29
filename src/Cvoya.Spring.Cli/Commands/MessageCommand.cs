@@ -31,17 +31,17 @@ public static class MessageCommand
     {
         var addressArg = new Argument<string>("address") { Description = "Destination address (e.g. agent://ada)" };
         var textArg = new Argument<string>("text") { Description = "Message text" };
-        var conversationOption = new Option<string?>("--conversation") { Description = "Conversation identifier" };
+        var threadOption = new Option<string?>("--thread") { Description = "Thread identifier" };
         var command = new Command("send", "Send a message to an address");
         command.Arguments.Add(addressArg);
         command.Arguments.Add(textArg);
-        command.Options.Add(conversationOption);
+        command.Options.Add(threadOption);
 
         command.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
         {
             var address = parseResult.GetValue(addressArg)!;
             var text = parseResult.GetValue(textArg)!;
-            var conversationId = parseResult.GetValue(conversationOption);
+            var conversationId = parseResult.GetValue(threadOption);
             var output = parseResult.GetValue(outputOption) ?? "table";
             var verbose = parseResult.GetValue<bool>("--verbose");
             var (scheme, path) = AddressParser.Parse(address);
@@ -49,12 +49,12 @@ public static class MessageCommand
 
             var result = await client.SendMessageAsync(scheme, path, text, conversationId, ct);
 
-            // #985: surface the resolved conversation id so operators can
+            // #985: surface the resolved thread id so operators can
             // thread follow-up sends. The server auto-generates one when the
-            // caller omits `--conversation` on Domain messages to agent://
+            // caller omits `--thread` on Domain messages to agent://
             // targets; echo it either way so the CLI behaviour is uniform.
             var messageIdText = result.MessageId?.ToString() ?? "n/a";
-            var conversationIdText = !string.IsNullOrWhiteSpace(result.ConversationId)
+            var threadIdText = !string.IsNullOrWhiteSpace(result.ConversationId)
                 ? result.ConversationId
                 : "n/a";
 
@@ -63,7 +63,7 @@ public static class MessageCommand
             // scripted output clean by default.
             Console.WriteLine(output == "json"
                 ? OutputFormatter.FormatJson(result, verbose)
-                : $"Sent message {messageIdText} to {address} in conversation {conversationIdText}.");
+                : $"Sent message {messageIdText} to {address} in thread {threadIdText}.");
         });
 
         return command;
@@ -108,7 +108,7 @@ public static class MessageCommand
                 Console.WriteLine($"Message:      {detail.MessageId}");
                 if (!string.IsNullOrWhiteSpace(detail.ConversationId))
                 {
-                    Console.WriteLine($"Conversation: {detail.ConversationId}");
+                    Console.WriteLine($"Thread:       {detail.ConversationId}");
                 }
                 Console.WriteLine($"Type:         {detail.MessageType}");
                 Console.WriteLine($"From:         {detail.From}");

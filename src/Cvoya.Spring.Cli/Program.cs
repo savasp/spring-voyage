@@ -53,7 +53,7 @@ public class Program
                 AgentCommand.Create(outputOption),
                 UnitCommand.Create(outputOption),
                 MessageCommand.Create(outputOption),
-                ConversationCommand.Create(outputOption),
+                ThreadCommand.Create(outputOption),
                 InboxCommand.Create(outputOption),
                 ActivityCommand.Create(outputOption),
                 AgentRuntimeCommand.Create(outputOption),

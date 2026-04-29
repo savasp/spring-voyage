@@ -10,14 +10,23 @@ using Cvoya.Spring.Cli.Output;
 using Cvoya.Spring.Cli.Utilities;
 
 /// <summary>
-/// Builds the <c>spring conversation</c> verb family (#452). Three subcommands:
-/// <c>list</c> — filtered conversation summaries; <c>show &lt;id&gt;</c> — the full
-/// thread (summary + ordered events); <c>send --conversation &lt;id&gt;</c> — thread a
-/// message into an existing conversation (deliberately distinct from
+/// Builds the <c>spring thread</c> verb family. Four subcommands:
+/// <c>list</c> — filtered thread summaries; <c>show &lt;id&gt;</c> — the full
+/// thread (summary + ordered events); <c>send --thread &lt;id&gt;</c> — send a
+/// message into an existing thread (deliberately distinct from
 /// <c>spring message send</c> which targets an address and implicitly starts a
-/// new conversation when no id is supplied).
+/// new thread when no id is supplied); <c>close &lt;id&gt;</c> — operator-driven
+/// close for threads stuck due to actor failure.
 /// </summary>
-public static class ConversationCommand
+/// <remarks>
+/// Renamed from <c>ConversationCommand</c> per ADR-0030 (Thread / Engagement /
+/// Collaboration terminology). The CLI is system-facing; the audience term is
+/// <c>thread</c>.
+/// TODO(#1291): the underlying API URL is still <c>/api/v1/tenant/conversations</c>.
+/// Once #1291 lands (API URL rename to <c>/api/v1/tenant/threads</c>), regenerate
+/// the Kiota client and remove this note.
+/// </remarks>
+public static class ThreadCommand
 {
     private static readonly OutputFormatter.Column<ConversationSummary>[] ListColumns =
     {
@@ -31,11 +40,11 @@ public static class ConversationCommand
     };
 
     /// <summary>
-    /// Creates the <c>conversation</c> command tree.
+    /// Creates the <c>thread</c> command tree.
     /// </summary>
     public static Command Create(Option<string> outputOption)
     {
-        var cmd = new Command("conversation", "Inspect and respond to conversations");
+        var cmd = new Command("thread", "Inspect and manage threads");
         cmd.Subcommands.Add(CreateListCommand(outputOption));
         cmd.Subcommands.Add(CreateShowCommand(outputOption));
         cmd.Subcommands.Add(CreateSendCommand(outputOption));
@@ -55,7 +64,7 @@ public static class ConversationCommand
         };
         var limitOption = new Option<int?>("--limit") { Description = "Maximum rows to return (default 50)" };
 
-        var command = new Command("list", "List conversations with optional filters");
+        var command = new Command("list", "List threads with optional filters");
         command.Options.Add(unitOption);
         command.Options.Add(agentOption);
         command.Options.Add(statusOption);
@@ -67,7 +76,7 @@ public static class ConversationCommand
             var output = parseResult.GetValue(outputOption) ?? "table";
             var client = ClientFactory.Create();
 
-            var result = await client.ListConversationsAsync(
+            var result = await client.ListThreadsAsync(
                 unit: parseResult.GetValue(unitOption),
                 agent: parseResult.GetValue(agentOption),
                 status: parseResult.GetValue(statusOption),
@@ -85,8 +94,8 @@ public static class ConversationCommand
 
     private static Command CreateShowCommand(Option<string> outputOption)
     {
-        var idArg = new Argument<string>("id") { Description = "The conversation id" };
-        var command = new Command("show", "Show a conversation thread (summary + ordered events)");
+        var idArg = new Argument<string>("id") { Description = "The thread id" };
+        var command = new Command("show", "Show a thread (summary + ordered events)");
         command.Arguments.Add(idArg);
 
         command.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
@@ -97,7 +106,7 @@ public static class ConversationCommand
 
             try
             {
-                var detail = await client.GetConversationAsync(id, ct);
+                var detail = await client.GetThreadAsync(id, ct);
 
                 if (output == "json")
                 {
@@ -108,7 +117,7 @@ public static class ConversationCommand
                 var summary = detail.Summary;
                 if (summary is not null)
                 {
-                    Console.WriteLine($"Conversation: {summary.Id}");
+                    Console.WriteLine($"Thread:       {summary.Id}");
                     Console.WriteLine($"Status:       {summary.Status}");
                     Console.WriteLine($"Origin:       {summary.Origin}");
                     Console.WriteLine($"Participants: {FormatParticipants(summary.Participants)}");
@@ -124,11 +133,11 @@ public static class ConversationCommand
                 // event). The thread reads top-to-bottom oldest-first so
                 // operators can see *what* was said, not just that
                 // something was said.
-                RenderConversationEvents(events);
+                RenderThreadEvents(events);
             }
             catch (Microsoft.Kiota.Abstractions.ApiException ex)
             {
-                await Console.Error.WriteLineAsync($"Failed to load conversation '{id}': {ProblemDetailsFormatter.Format(ex)}");
+                await Console.Error.WriteLineAsync($"Failed to load thread '{id}': {ProblemDetailsFormatter.Format(ex)}");
                 Environment.Exit(1);
             }
         });
@@ -138,12 +147,12 @@ public static class ConversationCommand
 
     private static Command CreateSendCommand(Option<string> outputOption)
     {
-        // `spring conversation send` requires an existing conversation id — that
-        // is the whole point of the verb, per #452. `spring message send`
-        // already covers the start-a-new-conversation path.
-        var conversationOption = new Option<string>("--conversation")
+        // `spring thread send` requires an existing thread id — that
+        // is the whole point of the verb. `spring message send`
+        // already covers the start-a-new-thread path.
+        var threadOption = new Option<string>("--thread")
         {
-            Description = "The existing conversation id to thread into.",
+            Description = "The existing thread id to send into.",
             Required = true,
         };
         var addressArg = new Argument<string>("address")
@@ -154,14 +163,14 @@ public static class ConversationCommand
 
         var command = new Command(
             "send",
-            "Send a message into an existing conversation. Use 'spring message send' to start a new conversation.");
-        command.Options.Add(conversationOption);
+            "Send a message into an existing thread. Use 'spring message send' to start a new thread.");
+        command.Options.Add(threadOption);
         command.Arguments.Add(addressArg);
         command.Arguments.Add(textArg);
 
         command.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
         {
-            var conversationId = parseResult.GetValue(conversationOption)!;
+            var threadId = parseResult.GetValue(threadOption)!;
             var address = parseResult.GetValue(addressArg)!;
             var text = parseResult.GetValue(textArg)!;
             var output = parseResult.GetValue(outputOption) ?? "table";
@@ -171,17 +180,17 @@ public static class ConversationCommand
 
             try
             {
-                var result = await client.SendConversationMessageAsync(
-                    conversationId, scheme, path, text, ct);
+                var result = await client.SendThreadMessageAsync(
+                    threadId, scheme, path, text, ct);
 
                 Console.WriteLine(output == "json"
                     ? OutputFormatter.FormatJson(result)
-                    : $"Message sent to {address} in conversation {result.ConversationId}. (id: {result.MessageId?.ToString() ?? "n/a"})");
+                    : $"Message sent to {address} in thread {result.ConversationId}. (id: {result.MessageId?.ToString() ?? "n/a"})");
             }
             catch (Microsoft.Kiota.Abstractions.ApiException ex)
             {
                 await Console.Error.WriteLineAsync(
-                    $"Failed to send to conversation '{conversationId}': {ProblemDetailsFormatter.Format(ex)}");
+                    $"Failed to send to thread '{threadId}': {ProblemDetailsFormatter.Format(ex)}");
                 Environment.Exit(1);
             }
         });
@@ -194,16 +203,16 @@ public static class ConversationCommand
         // #1038: operator-driven close. Required when a dispatch fails in a
         // way the actor itself cannot recover from (e.g. container exit 125
         // before the runtime instance materialised — #1036) so the agent
-        // does not stay stuck on a dead conversation forever.
-        var idArg = new Argument<string>("id") { Description = "The conversation id to close" };
+        // does not stay stuck on a dead thread forever.
+        var idArg = new Argument<string>("id") { Description = "The thread id to close" };
         var reasonOption = new Option<string?>("--reason")
         {
-            Description = "Optional human-readable reason — surfaced on the ConversationClosed activity event.",
+            Description = "Optional human-readable reason — surfaced on the ThreadClosed activity event.",
         };
 
         var command = new Command(
             "close",
-            "Close (abort) an in-flight or pending conversation across every participating agent.");
+            "Close (abort) an in-flight or pending thread across every participating agent.");
         command.Arguments.Add(idArg);
         command.Options.Add(reasonOption);
 
@@ -217,7 +226,7 @@ public static class ConversationCommand
 
             try
             {
-                var detail = await client.CloseConversationAsync(id, reason, ct);
+                var detail = await client.CloseThreadAsync(id, reason, ct);
 
                 if (output == "json")
                 {
@@ -226,7 +235,7 @@ public static class ConversationCommand
                 }
 
                 var summary = detail.Summary;
-                Console.WriteLine($"Conversation {id} closed.");
+                Console.WriteLine($"Thread {id} closed.");
                 if (summary is not null)
                 {
                     Console.WriteLine($"Status:       {summary.Status}");
@@ -241,7 +250,7 @@ public static class ConversationCommand
             catch (Microsoft.Kiota.Abstractions.ApiException ex)
             {
                 await Console.Error.WriteLineAsync(
-                    $"Failed to close conversation '{id}': {ProblemDetailsFormatter.Format(ex)}");
+                    $"Failed to close thread '{id}': {ProblemDetailsFormatter.Format(ex)}");
                 Environment.Exit(1);
             }
         });
@@ -250,12 +259,12 @@ public static class ConversationCommand
     }
 
     /// <summary>
-    /// Renders the ordered event timeline for a conversation, inlining
+    /// Renders the ordered event timeline for a thread, inlining
     /// the message body for every <c>MessageReceived</c> event that
     /// carries one (#1209). Other event types fall back to the existing
     /// summary-only row so the timeline stays compact.
     /// </summary>
-    internal static void RenderConversationEvents(IReadOnlyList<ConversationEvent> events)
+    internal static void RenderThreadEvents(IReadOnlyList<ConversationEvent> events)
     {
         if (events.Count == 0)
         {
