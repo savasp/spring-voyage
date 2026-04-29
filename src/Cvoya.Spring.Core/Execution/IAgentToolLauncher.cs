@@ -44,6 +44,25 @@ public interface IAgentToolLauncher
 /// <param name="Prompt">The assembled system prompt (Layer 1–4).</param>
 /// <param name="McpEndpoint">The URL the container should use to reach the MCP server.</param>
 /// <param name="McpToken">The bearer token the container must present on MCP calls.</param>
+/// <param name="TenantId">
+/// The tenant identifier for the agent's execution context. Delivered to the
+/// container as <c>SPRING_TENANT_ID</c> (D1 spec § 2.2.1).
+/// </param>
+/// <param name="UnitId">
+/// Optional unit identifier. Delivered as <c>SPRING_UNIT_ID</c> when non-null.
+/// </param>
+/// <param name="AgentDefinitionYaml">
+/// The agent's full definition serialised as YAML. Written to
+/// <c>/spring/context/agent-definition.yaml</c> per D1 spec § 2.2.2.
+/// </param>
+/// <param name="TenantConfigJson">
+/// Tenant-level configuration blob serialised as JSON. Written to
+/// <c>/spring/context/tenant-config.json</c> when non-null per D1 spec § 2.2.2.
+/// </param>
+/// <param name="ConcurrentThreads">
+/// Resolved value of the agent / unit <c>concurrent_threads</c> policy flag
+/// (D1 spec § 2.1, § 1.2.4). Delivered as <c>SPRING_CONCURRENT_THREADS</c>.
+/// </param>
 /// <param name="Provider">
 /// Optional LLM provider selector from the agent's <see cref="AgentExecutionConfig.Provider"/>.
 /// Launchers that front a Dapr Conversation runtime (e.g. the Dapr Agent) use
@@ -60,6 +79,11 @@ public record AgentLaunchContext(
     string Prompt,
     string McpEndpoint,
     string McpToken,
+    string TenantId = "default",
+    string? UnitId = null,
+    string? AgentDefinitionYaml = null,
+    string? TenantConfigJson = null,
+    bool ConcurrentThreads = true,
     string? Provider = null,
     string? Model = null);
 
@@ -93,6 +117,19 @@ public record AgentLaunchContext(
 /// <see cref="WorkspaceFiles"/> is non-empty.
 /// </param>
 /// <param name="ExtraVolumeMounts">Additional volume-mount specs (beyond the workspace mount).</param>
+/// <param name="ContextFiles">
+/// Files to materialise at <see cref="ContextMountPath"/> inside the container
+/// (D1 spec § 2.2.2 — <c>/spring/context/</c>). Keys are filenames relative
+/// to <see cref="ContextMountPath"/> (e.g. <c>agent-definition.yaml</c>,
+/// <c>tenant-config.json</c>). The dispatcher creates a fresh per-invocation
+/// directory, writes these files, and bind-mounts it at
+/// <see cref="ContextMountPath"/>. <c>null</c> or empty means no context mount.
+/// </param>
+/// <param name="ContextMountPath">
+/// Absolute path inside the container where the dispatcher bind-mounts the
+/// context files directory. Must match the canonical path <c>/spring/context/</c>
+/// per D1 spec § 2.2.2. Only used when <see cref="ContextFiles"/> is non-empty.
+/// </param>
 /// <param name="WorkingDirectory">
 /// Optional working directory inside the container. When <c>null</c>, the
 /// dispatcher uses <see cref="WorkspaceMountPath"/>.
@@ -131,6 +168,8 @@ public record AgentLaunchSpec(
     IReadOnlyDictionary<string, string> EnvironmentVariables,
     string WorkspaceMountPath,
     IReadOnlyList<string>? ExtraVolumeMounts = null,
+    IReadOnlyDictionary<string, string>? ContextFiles = null,
+    string ContextMountPath = "/spring/context/",
     string? WorkingDirectory = null,
     IReadOnlyList<string>? Argv = null,
     string? User = null,

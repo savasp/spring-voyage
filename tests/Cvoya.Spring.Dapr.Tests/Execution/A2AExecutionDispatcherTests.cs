@@ -45,6 +45,7 @@ public class A2AExecutionDispatcherTests
     private readonly IAgentDefinitionProvider _agentProvider = Substitute.For<IAgentDefinitionProvider>();
     private readonly IMcpServer _mcpServer = Substitute.For<IMcpServer>();
     private readonly IAgentToolLauncher _launcher = Substitute.For<IAgentToolLauncher>();
+    private readonly IAgentContextBuilder _agentContextBuilder = Substitute.For<IAgentContextBuilder>();
     private readonly ILoggerFactory _loggerFactory = Substitute.For<ILoggerFactory>();
     private readonly IHttpClientFactory _httpClientFactory = Substitute.For<IHttpClientFactory>();
     private readonly IContainerRuntime _persistentContainerRuntime = Substitute.For<IContainerRuntime>();
@@ -95,6 +96,24 @@ public class A2AExecutionDispatcherTests
         _launcher.PrepareAsync(Arg.Any<AgentLaunchContext>(), Arg.Any<CancellationToken>())
             .Returns(DefaultSpec);
 
+        // D3a: the context builder returns a minimal bootstrap bundle so the
+        // dispatcher's MergeBootstrapContext does not crash during tests.
+        _agentContextBuilder.BuildAsync(Arg.Any<AgentLaunchContext>(), Arg.Any<CancellationToken>())
+            .Returns(new AgentBootstrapContext(
+                EnvironmentVariables: new Dictionary<string, string>
+                {
+                    ["SPRING_TENANT_ID"] = "default",
+                    ["SPRING_AGENT_ID"] = AgentId,
+                    ["SPRING_MCP_URL"] = "http://host.docker.internal:12345/mcp/",
+                    ["SPRING_MCP_TOKEN"] = "test-token",
+                    ["SPRING_LLM_PROVIDER_URL"] = "http://ollama:11434",
+                    ["SPRING_LLM_PROVIDER_TOKEN"] = "test-llm-token",
+                    ["SPRING_BUCKET2_TOKEN"] = "test-bucket2-token",
+                    ["SPRING_WORKSPACE_PATH"] = "/spring/workspace/",
+                    ["SPRING_CONCURRENT_THREADS"] = "true",
+                },
+                ContextFiles: new Dictionary<string, string>()));
+
         _mcpServer.Endpoint.Returns("http://host.docker.internal:12345/mcp/");
         _mcpServer.IssueSession(Arg.Any<string>(), Arg.Any<string>())
             .Returns(ci => new McpSession("test-token", ci.ArgAt<string>(0), ci.ArgAt<string>(1)));
@@ -131,6 +150,7 @@ public class A2AExecutionDispatcherTests
             _agentProvider,
             _mcpServer,
             [_launcher],
+            _agentContextBuilder,
             _persistentRegistry,
             _ephemeralRegistry,
             clmD,

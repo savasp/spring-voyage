@@ -90,10 +90,19 @@ public enum AgentHostingMode
 /// the model name (e.g. <c>gpt-4o-mini</c>). <c>null</c> means "let the
 /// launcher choose its default".
 /// </param>
+/// <param name="ConcurrentThreads">
+/// Whether the agent may have multiple <c>on_message</c> invocations in flight
+/// concurrently — one per distinct thread. <c>true</c> (default, per F1 Q3 /
+/// ADR-0030) means the SDK must be re-entrant; <c>false</c> means the platform
+/// serialises all <c>on_message</c> calls for the agent.
+/// Delivered to the container via <c>SPRING_CONCURRENT_THREADS</c>
+/// (D1 spec § 2.2.1).
+/// </param>
 public record AgentExecutionConfig(
     string Tool,
     string? Image,
     string? Runtime = null,
     AgentHostingMode Hosting = AgentHostingMode.Ephemeral,
     string? Provider = null,
-    string? Model = null);
+    string? Model = null,
+    bool ConcurrentThreads = true);

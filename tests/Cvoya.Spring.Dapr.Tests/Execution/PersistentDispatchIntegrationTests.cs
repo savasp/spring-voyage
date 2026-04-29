@@ -34,6 +34,7 @@ public class PersistentDispatchIntegrationTests
     private readonly IAgentDefinitionProvider _agentProvider = Substitute.For<IAgentDefinitionProvider>();
     private readonly IMcpServer _mcpServer = Substitute.For<IMcpServer>();
     private readonly IAgentToolLauncher _launcher = Substitute.For<IAgentToolLauncher>();
+    private readonly IAgentContextBuilder _agentContextBuilder = Substitute.For<IAgentContextBuilder>();
     private readonly ILoggerFactory _loggerFactory = Substitute.For<ILoggerFactory>();
     private readonly IHttpClientFactory _httpClientFactory = Substitute.For<IHttpClientFactory>();
     private readonly PersistentAgentRegistry _persistentRegistry;
@@ -51,6 +52,16 @@ public class PersistentDispatchIntegrationTests
                 WorkspaceFiles: new Dictionary<string, string>(),
                 EnvironmentVariables: new Dictionary<string, string>(),
                 WorkspaceMountPath: "/workspace"));
+
+        // D3a: return a minimal bootstrap bundle.
+        _agentContextBuilder.BuildAsync(Arg.Any<AgentLaunchContext>(), Arg.Any<CancellationToken>())
+            .Returns(new AgentBootstrapContext(
+                EnvironmentVariables: new Dictionary<string, string>
+                {
+                    ["SPRING_TENANT_ID"] = "default",
+                    ["SPRING_AGENT_ID"] = AgentId,
+                },
+                ContextFiles: new Dictionary<string, string>()));
 
         _mcpServer.Endpoint.Returns("http://host.docker.internal:12345/mcp/");
         _mcpServer.IssueSession(Arg.Any<string>(), Arg.Any<string>())
@@ -101,6 +112,7 @@ public class PersistentDispatchIntegrationTests
             _agentProvider,
             _mcpServer,
             [_launcher],
+            _agentContextBuilder,
             _persistentRegistry,
             new EphemeralAgentRegistry(_containerRuntime, clmEph, volumeManager, _loggerFactory),
             clmD,

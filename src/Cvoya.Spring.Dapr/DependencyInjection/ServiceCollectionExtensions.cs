@@ -471,6 +471,13 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IAgentToolLauncher, CodexLauncher>();
         services.AddSingleton<IAgentToolLauncher, GeminiLauncher>();
         services.AddSingleton<IAgentToolLauncher, DaprAgentLauncher>();
+
+        // D3a / Stage 3 of ADR-0029: IAgentContext bootstrap builder. Assembles
+        // the canonical env-var + mounted-file bundle (D1 spec § 2) per launch.
+        // TryAdd so the cloud overlay can replace with a tenant-KMS-backed
+        // variant that issues signed tokens and resolves per-tenant endpoints.
+        services.AddOptions<AgentContextOptions>().BindConfiguration(AgentContextOptions.SectionName);
+        services.TryAddSingleton<IAgentContextBuilder, AgentContextBuilder>();
         // D3c: per-agent workspace volume manager. Provisions volumes before
         // agent containers start, reclaims them on agent delete / ephemeral
         // completion, and emits volume-level telemetry (size, growth rate).

@@ -47,6 +47,7 @@ public class A2AExecutionDispatcher(
     IAgentDefinitionProvider agentDefinitionProvider,
     IMcpServer mcpServer,
     IEnumerable<IAgentToolLauncher> launchers,
+    IAgentContextBuilder agentContextBuilder,
     PersistentAgentRegistry persistentAgentRegistry,
     EphemeralAgentRegistry ephemeralAgentRegistry,
     ContainerLifecycleManager containerLifecycleManager,
@@ -59,6 +60,8 @@ public class A2AExecutionDispatcher(
     private readonly DaprSidecarOptions _daprSidecarOptions = daprSidecarOptions.Value;
     private readonly IA2ATransportFactory _transportFactory = transportFactory
         ?? throw new ArgumentNullException(nameof(transportFactory));
+    private readonly IAgentContextBuilder _agentContextBuilder = agentContextBuilder
+        ?? throw new ArgumentNullException(nameof(agentContextBuilder));
     private readonly Dictionary<string, IAgentToolLauncher> _launchersByTool =
         launchers.ToDictionary(l => l.Tool, StringComparer.OrdinalIgnoreCase);
 
@@ -167,9 +170,23 @@ public class A2AExecutionDispatcher(
             McpEndpoint: mcpServer.Endpoint,
             McpToken: session.Token,
             Provider: definition.Execution.Provider,
-            Model: definition.Execution.Model);
+            Model: definition.Execution.Model,
+            // D3a: populate D1-spec metadata so the context builder can mint the
+            // full bootstrap bundle (env vars + /spring/context/ files) per § 2.
+            ConcurrentThreads: definition.Execution.ConcurrentThreads);
+
+        // D3a: assemble the IAgentContext bootstrap bundle (env vars + mounted
+        // context files) defined by the D1 spec § 2. The bundle is merged into
+        // the launcher's spec so every container receives the canonical env var
+        // set regardless of tool.
+        var bootstrapContext = await _agentContextBuilder.BuildAsync(launchContext, cancellationToken);
 
         var spec = await launcher.PrepareAsync(launchContext, cancellationToken);
+
+        // D3a: merge bootstrap env vars on top of launcher-produced env vars;
+        // merge context files from the bootstrap bundle into the spec. The
+        // builder's env vars win on collision (they are the D1-canonical names).
+        var specWithContext = MergeBootstrapContext(spec, bootstrapContext);
 
         // D3c: provision the per-agent workspace volume before starting the
         // container. The volume survives container restarts and mid-flight
@@ -178,9 +195,9 @@ public class A2AExecutionDispatcher(
         // volume".
         var volumeName = await volumeManager.EnsureAsync(agentId, cancellationToken);
         var volumeMount = AgentVolumeManager.BuildVolumeMount(volumeName);
-        var specWithVolume = spec with
+        var specWithVolume = specWithContext with
         {
-            ExtraVolumeMounts = MergeVolumeMounts(spec.ExtraVolumeMounts, volumeMount),
+            ExtraVolumeMounts = MergeVolumeMounts(specWithContext.ExtraVolumeMounts, volumeMount),
         };
 
         var baseConfig = ContainerConfigBuilder.Build(definition.Execution.Image, specWithVolume);
@@ -286,6 +303,50 @@ public class A2AExecutionDispatcher(
     }
 
     private static string BuildEphemeralDaprAppId() => $"e{Guid.NewGuid():N}";
+
+    /// <summary>
+    /// Merges the <see cref="AgentBootstrapContext"/> assembled by
+    /// <see cref="IAgentContextBuilder"/> into a launcher-produced
+    /// <see cref="AgentLaunchSpec"/>. Bootstrap env vars win on key collision
+    /// (they carry the D1-canonical names); context files are placed in the
+    /// spec's <see cref="AgentLaunchSpec.ContextFiles"/> map.
+    /// </summary>
+    private static AgentLaunchSpec MergeBootstrapContext(
+        AgentLaunchSpec spec,
+        AgentBootstrapContext bootstrap)
+    {
+        // Merge env vars: start with launcher values, overlay bootstrap values
+        // so D1-canonical names always reflect what the builder computed.
+        var mergedEnv = new Dictionary<string, string>(spec.EnvironmentVariables, StringComparer.Ordinal);
+        foreach (var kvp in bootstrap.EnvironmentVariables)
+        {
+            mergedEnv[kvp.Key] = kvp.Value;
+        }
+
+        // Merge context files: start with any files the launcher may have put
+        // in ContextFiles (unusual but allowed), then add bootstrap files. On
+        // collision bootstrap wins for the same reason as env vars.
+        Dictionary<string, string> mergedContext;
+        if (spec.ContextFiles is { Count: > 0 })
+        {
+            mergedContext = new Dictionary<string, string>(spec.ContextFiles, StringComparer.Ordinal);
+        }
+        else
+        {
+            mergedContext = new Dictionary<string, string>(StringComparer.Ordinal);
+        }
+
+        foreach (var kvp in bootstrap.ContextFiles)
+        {
+            mergedContext[kvp.Key] = kvp.Value;
+        }
+
+        return spec with
+        {
+            EnvironmentVariables = mergedEnv,
+            ContextFiles = mergedContext.Count > 0 ? mergedContext : null,
+        };
+    }
 
     /// <summary>
     /// Appends <paramref name="additionalMount"/> to an existing mount list,
@@ -425,9 +486,17 @@ public class A2AExecutionDispatcher(
             McpEndpoint: mcpServer.Endpoint,
             McpToken: session.Token,
             Provider: definition.Execution.Provider,
-            Model: definition.Execution.Model);
+            Model: definition.Execution.Model,
+            // D3a: populate D1-spec metadata for context builder.
+            ConcurrentThreads: definition.Execution.ConcurrentThreads);
+
+        // D3a: assemble the IAgentContext bootstrap bundle (env vars + /spring/context/ files).
+        var bootstrapContext = await _agentContextBuilder.BuildAsync(launchContext, cancellationToken);
 
         var spec = await launcher.PrepareAsync(launchContext, cancellationToken);
+
+        // D3a: merge bootstrap bundle into launcher spec.
+        var specWithContext = MergeBootstrapContext(spec, bootstrapContext);
 
         _logger.LogInformation(
             "Starting persistent agent {AgentId} with image {Image}",
@@ -438,9 +507,9 @@ public class A2AExecutionDispatcher(
         // reclamation only happens on explicit undeploy (UndeployAsync).
         var volumeName = await volumeManager.EnsureAsync(agentId, cancellationToken);
         var volumeMount = AgentVolumeManager.BuildVolumeMount(volumeName);
-        var specWithVolume = spec with
+        var specWithVolume = specWithContext with
         {
-            ExtraVolumeMounts = MergeVolumeMounts(spec.ExtraVolumeMounts, volumeMount),
+            ExtraVolumeMounts = MergeVolumeMounts(specWithContext.ExtraVolumeMounts, volumeMount),
         };
 
         var baseConfig = ContainerConfigBuilder.Build(definition.Execution.Image, specWithVolume);

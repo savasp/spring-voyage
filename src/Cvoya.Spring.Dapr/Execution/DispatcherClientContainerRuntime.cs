@@ -494,6 +494,17 @@ public class DispatcherClientContainerRuntime(
                         : new Dictionary<string, string>(ws.Files),
                 }
                 : null,
+            // D3a: context workspace — agent-definition.yaml + tenant-config.json
+            // at /spring/context/ per D1 spec § 2.2.2.
+            ContextWorkspace = config.ContextWorkspace is { } cw
+                ? new DispatcherWorkspace
+                {
+                    MountPath = cw.MountPath,
+                    Files = cw.Files is IDictionary<string, string> mutableCw
+                        ? mutableCw
+                        : new Dictionary<string, string>(cw.Files),
+                }
+                : null,
         };
     }
 
@@ -559,6 +570,15 @@ public class DispatcherClientContainerRuntime(
         /// means the worker is asking for a plain run with no workspace.
         /// </summary>
         public DispatcherWorkspace? Workspace { get; init; }
+
+        /// <summary>
+        /// D3a: per-invocation context workspace materialised at
+        /// <c>/spring/context/</c> inside the container (D1 spec § 2.2.2).
+        /// Carries <c>agent-definition.yaml</c> and <c>tenant-config.json</c>.
+        /// <c>null</c> means no context mount.
+        /// </summary>
+        [JsonPropertyName("contextWorkspace")]
+        public DispatcherWorkspace? ContextWorkspace { get; init; }
     }
 
     /// <summary>

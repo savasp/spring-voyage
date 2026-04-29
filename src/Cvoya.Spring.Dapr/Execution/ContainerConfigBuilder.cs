@@ -135,7 +135,16 @@ public static class ContainerConfigBuilder
                 ?? (spec.WorkspaceFiles.Count > 0 ? spec.WorkspaceMountPath : null),
             Workspace: new ContainerWorkspace(
                 MountPath: spec.WorkspaceMountPath,
-                Files: spec.WorkspaceFiles));
+                Files: spec.WorkspaceFiles),
+            // D3a: context files — agent-definition.yaml, tenant-config.json —
+            // materialised at /spring/context/ per D1 spec § 2.2.2. Only emit
+            // the ContextWorkspace when the launcher provides at least one file;
+            // an empty mount adds overhead without benefit.
+            ContextWorkspace: spec.ContextFiles is { Count: > 0 }
+                ? new ContainerWorkspace(
+                    MountPath: spec.ContextMountPath,
+                    Files: spec.ContextFiles)
+                : null);
     }
 
     private static IReadOnlyDictionary<string, string> MergeEnvironment(
