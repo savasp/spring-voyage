@@ -690,6 +690,108 @@ public class A2AExecutionDispatcherTests
         await _dispatcher.DispatchAsync(message, context: null, TestContext.Current.CancellationToken);
         await _containerRuntime.Received(1).StartAsync(Arg.Any<ContainerConfig>(), Arg.Any<CancellationToken>());
     }
+
+    [Fact]
+    public async Task WaitForA2AReadyAsync_ReadinessTimeoutExpires_ThrowsSpringExceptionAndTearsDownContainer()
+    {
+        // Arrange: readiness probe always returns not-ready. The dispatcher's
+        // internal timeout is shortened to 10 ms so the test completes in
+        // well under a second without relying on real wall-clock sleep.
+        var message = CreateMessage();
+        _promptAssembler.AssembleAsync(message, Arg.Any<PromptAssemblyContext?>(), Arg.Any<CancellationToken>())
+            .Returns("prompt");
+
+        _containerRuntime.StartAsync(Arg.Any<ContainerConfig>(), Arg.Any<CancellationToken>())
+            .Returns(ContainerId);
+
+        // ProbeContainerHttpAsync never returns healthy — the loop runs until
+        // the internal CancelAfter fires the timeout token.
+        _containerRuntime.ProbeContainerHttpAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(false));
+
+        // Override the effective timeout so the internal CTS fires at 10 ms
+        // rather than 60 s. The outer CancellationToken is not cancelled, so
+        // the exception that surfaces must come from the timeout branch (not
+        // the caller's cancel), which the dispatcher maps to SpringException.
+        _dispatcher.EffectiveReadinessTimeout = TimeSpan.FromMilliseconds(10);
+
+        // Act
+        var act = () => _dispatcher.DispatchAsync(message, context: null, TestContext.Current.CancellationToken);
+        var ex = await Should.ThrowAsync<SpringException>(act);
+
+        // Assert: correct exception text from the timeout branch
+        ex.Message.ShouldContain("did not become A2A-ready");
+
+        // Assert: container teardown fires exactly once via the registry's
+        // release path (StopAsync), even though no outer token was cancelled.
+        await _containerRuntime.Received(1).StopAsync(ContainerId, Arg.Any<CancellationToken>());
+        _ephemeralRegistry.GetAllEntries().ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task PollTaskUntilTerminalAsync_TaskPollingTimeoutExpires_ReturnsNonTerminalPayloadAndTearsDownContainer()
+    {
+        // Arrange: readiness probe returns healthy immediately; every
+        // message/send and tasks/get call returns a non-terminal (Submitted)
+        // task. The task-terminal timeout is shortened to 10 ms so the
+        // polling loop's internal CancelAfter fires before the first
+        // TaskPollInterval delay (500 ms) elapses.
+        var message = CreateMessage();
+        _promptAssembler.AssembleAsync(message, Arg.Any<PromptAssemblyContext?>(), Arg.Any<CancellationToken>())
+            .Returns("prompt");
+
+        _containerRuntime.StartAsync(Arg.Any<ContainerConfig>(), Arg.Any<CancellationToken>())
+            .Returns(ContainerId);
+
+        // Readiness probe passes immediately so dispatch proceeds to the A2A roundtrip.
+        _containerRuntime.ProbeContainerHttpAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(true));
+
+        // Every SendHttpJsonAsync call (both message/send and tasks/get)
+        // returns a Submitted (non-terminal) task so the polling loop never
+        // exits on its own — only the internal timeout breaks it.
+        const string submittedTaskJson =
+            """
+            {
+              "jsonrpc": "2.0",
+              "id": 1,
+              "result": {
+                "kind": "task",
+                "id": "task-polling-timeout",
+                "contextId": "ctx",
+                "status": { "state": "submitted" }
+              }
+            }
+            """;
+        _containerRuntime.SendHttpJsonAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<byte[]>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromResult(new ContainerHttpResponse(
+                200,
+                System.Text.Encoding.UTF8.GetBytes(submittedTaskJson))));
+
+        // Override the task-terminal timeout to 10 ms. The readiness timeout
+        // can stay default — the probe succeeds on the first attempt anyway.
+        _dispatcher.EffectiveTaskTerminalTimeout = TimeSpan.FromMilliseconds(10);
+
+        // Act: dispatch completes (no exception — timeout in the polling loop
+        // is not fatal; the dispatcher returns the last-known non-terminal task
+        // mapped through MapA2AResponseToMessage).
+        var result = await _dispatcher.DispatchAsync(
+            message, context: null, TestContext.Current.CancellationToken);
+
+        // Assert: the non-terminal task maps to ExitCode = 1.
+        result.ShouldNotBeNull();
+        var payload = result!.Payload.Deserialize<System.Text.Json.JsonElement>();
+        payload.GetProperty("ExitCode").GetInt32().ShouldBe(1);
+
+        // Assert: container teardown fires exactly once via the registry —
+        // the finally block in DispatchEphemeralAsync always releases the
+        // lease regardless of polling outcome.
+        await _containerRuntime.Received(1).StopAsync(ContainerId, Arg.Any<CancellationToken>());
+        _ephemeralRegistry.GetAllEntries().ShouldBeEmpty();
+    }
 }
 
 /// <summary>

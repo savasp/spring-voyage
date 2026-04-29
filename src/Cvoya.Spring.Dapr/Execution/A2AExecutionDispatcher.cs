@@ -80,6 +80,14 @@ public class A2AExecutionDispatcher(
     /// </summary>
     internal static readonly TimeSpan ReadinessProbeInterval = TimeSpan.FromMilliseconds(200);
 
+    /// <summary>
+    /// Effective readiness timeout used by the probe loop. Defaults to
+    /// <see cref="ReadinessTimeout"/>. Tests may override this field
+    /// after construction to exercise the timeout-expiry branch without
+    /// real wall-clock sleep.
+    /// </summary>
+    internal TimeSpan EffectiveReadinessTimeout = ReadinessTimeout;
+
     /// <inheritdoc />
     public async Task<SvMessage?> DispatchAsync(
         SvMessage message,
@@ -228,15 +236,15 @@ public class A2AExecutionDispatcher(
             var endpoint = new Uri($"http://localhost:{spec.A2APort}/");
 
             var ready = await WaitForA2AReadyAsync(
-                containerId, endpoint, ReadinessTimeout, cancellationToken);
+                containerId, endpoint, EffectiveReadinessTimeout, cancellationToken);
 
             if (!ready)
             {
                 _logger.LogWarning(
                     "Ephemeral agent {AgentId} (container {ContainerId}) did not become ready within {Timeout}",
-                    agentId, containerId, ReadinessTimeout);
+                    agentId, containerId, EffectiveReadinessTimeout);
                 throw new SpringException(
-                    $"Ephemeral agent '{agentId}' did not become A2A-ready within {ReadinessTimeout}.");
+                    $"Ephemeral agent '{agentId}' did not become A2A-ready within {EffectiveReadinessTimeout}.");
             }
 
             return await SendA2AMessageAsync(endpoint, agentId, containerId, message, prompt, cancellationToken);
@@ -464,13 +472,13 @@ public class A2AExecutionDispatcher(
 
         var endpoint = new Uri($"http://localhost:{spec.A2APort}/");
 
-        var ready = await WaitForA2AReadyAsync(containerId, endpoint, ReadinessTimeout, cancellationToken);
+        var ready = await WaitForA2AReadyAsync(containerId, endpoint, EffectiveReadinessTimeout, cancellationToken);
 
         if (!ready)
         {
             _logger.LogError(
                 "Persistent agent {AgentId} did not become ready within {Timeout}. Stopping container.",
-                agentId, ReadinessTimeout);
+                agentId, EffectiveReadinessTimeout);
             if (useDaprSidecar && sidecarId is not null && lifecycleNetworkName is not null)
             {
                 await containerLifecycleManager.TeardownAsync(
@@ -482,7 +490,7 @@ public class A2AExecutionDispatcher(
             }
 
             throw new SpringException(
-                $"Persistent agent '{agentId}' did not become ready within {ReadinessTimeout}.");
+                $"Persistent agent '{agentId}' did not become ready within {EffectiveReadinessTimeout}.");
         }
 
         // Register in the persistent registry.
@@ -598,6 +606,14 @@ public class A2AExecutionDispatcher(
     /// </summary>
     internal static readonly TimeSpan TaskPollInterval = TimeSpan.FromMilliseconds(500);
 
+    /// <summary>
+    /// Effective task-terminal timeout used by the polling loop. Defaults to
+    /// <see cref="TaskTerminalTimeout"/>. Tests may override this field
+    /// after construction to exercise the timeout-expiry branch without
+    /// real wall-clock sleep.
+    /// </summary>
+    internal TimeSpan EffectiveTaskTerminalTimeout = TaskTerminalTimeout;
+
     private async Task<A2AResponse> PollTaskUntilTerminalAsync(
         A2AClient a2aClient,
         AgentTask initialTask,
@@ -610,7 +626,7 @@ public class A2AExecutionDispatcher(
             initialTask.Id, initialTask.Status.State, agentId, containerId);
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeoutCts.CancelAfter(TaskTerminalTimeout);
+        timeoutCts.CancelAfter(EffectiveTaskTerminalTimeout);
 
         var current = initialTask;
         var attempts = 0;
@@ -624,7 +640,7 @@ public class A2AExecutionDispatcher(
             {
                 _logger.LogWarning(
                     "A2A task {TaskId} did not reach a terminal state within {Timeout} (last state={State}, attempts={Attempts}) — agent {AgentId} container {ContainerId}",
-                    current.Id, TaskTerminalTimeout, current.Status.State, attempts, agentId, containerId);
+                    current.Id, EffectiveTaskTerminalTimeout, current.Status.State, attempts, agentId, containerId);
                 break;
             }
 
@@ -636,8 +652,8 @@ public class A2AExecutionDispatcher(
             catch (OperationCanceledException) when (timeoutCts.Token.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
             {
                 _logger.LogWarning(
-                    "A2A task {TaskId} polling timed out mid-poll (last state={State}, attempts={Attempts}) — agent {AgentId} container {ContainerId}",
-                    current.Id, current.Status.State, attempts, agentId, containerId);
+                    "A2A task {TaskId} polling timed out within {Timeout} mid-poll (last state={State}, attempts={Attempts}) — agent {AgentId} container {ContainerId}",
+                    current.Id, EffectiveTaskTerminalTimeout, current.Status.State, attempts, agentId, containerId);
                 break;
             }
         }
