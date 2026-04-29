@@ -42,33 +42,39 @@ The OpenAPI spec is **code-first** with a committed snapshot.
 
 ## Resource surface
 
-The API namespace is single-versioned at `/api/v1/...`. There is no minor versioning today (no `v1.1`), no version negotiation header, and no deprecated-but-kept endpoints.
+The API namespace is single-versioned at `/api/v1/...`, scope-split into `/api/v1/platform/...`, `/api/v1/tenant/...`, and `/api/v1/webhooks/...`. There is no minor versioning today (no `v1.1`), no version negotiation header, and no deprecated-but-kept endpoints. The v0.1 freeze of this surface is recorded under [v1 freeze for v0.1](#v1-freeze-for-v01); `openapi.json` at the merge of [#1250](https://github.com/cvoya-com/spring-voyage/issues/1250) is the freeze artifact.
 
-The 20 resource groups (counts as of the v0.1 audit; check the spec for the live numbers):
+The resource groups (counts taken from the committed `openapi.json` at the v0.1 freeze; check the spec for live numbers as additive changes ship):
 
-| Group | Endpoints | Verbs | What it covers |
-| --- | ---: | --- | --- |
-| Units | 30 | GET / POST / PATCH / DELETE | Tenant execution containers (orchestration roots), configuration, lifecycle |
-| Connectors | 22 | GET / POST / PATCH / DELETE | External integrations (GitHub, ArXiv, web-search), credential management, unit bindings |
-| Agents | 18 | GET / POST / PUT / DELETE | Agent definitions, lifecycle (deploy / undeploy), execution, logs, skills, budget |
-| Tenant | 8 | GET / POST / PUT | Tenant-scoped secrets, budget, cloning policy, hierarchy tree, cost time series |
-| Agent Runtimes | 8 | GET / POST / DELETE | LLM provider registration (Claude, OpenAI, Google, Ollama), credential health, model list |
-| Platform | 5 | GET / POST / DELETE | Anonymous metadata (info / version), operator secrets, secret versioning |
-| Dashboard | 4 | GET | Summary, unit KPIs, agent metrics, cost rollup |
-| Conversations | 4 | GET / POST | Conversation CRUD, message list, close |
-| Directory | 3 | GET | Tenant user / role directory, search |
-| Costs | 3 | GET | Per-agent, per-unit, per-tenant cost queries |
-| Auth | 3 | GET / POST / DELETE | API token CRUD, identity verification |
-| System | 2 | GET | Configuration report (startup probes), provider credential status |
-| Analytics | 2 | GET | Throughput histogram, wait-time percentiles |
-| Activity | 2 | GET | Audit log, SSE stream of tenant activity |
-| Messages | 2 | GET | Conversation message query, routing history |
-| Webhooks | 1 | POST | GitHub webhook ingest |
-| Skills | 1 | GET | MCP endpoint URLs + schema |
-| Inbox | 1 | GET | Tenant inbox (unread messages, action items) |
-| Ollama | 1 | GET | Model availability — under review per [ADR 0028 amendment](../decisions/0028-tenant-scoped-runtime-topology.md), the LLM service is platform-level, not Ollama-specific |
+| Group | Tag | Endpoints | Verbs | What it covers |
+| --- | --- | ---: | --- | --- |
+| Units | `Units` | 23 | GET / POST / PATCH / DELETE | Tenant execution containers (orchestration roots), members, lifecycle, memberships, connector pointer, human permissions |
+| Connectors (tenant) | `Connectors`, `Connectors.GitHub`, `Connectors.GitHub.OAuth`, `Connectors.Arxiv`, `Connectors.WebSearch` | 22 | GET / POST / PUT / PATCH / DELETE | External integrations (GitHub, ArXiv, web-search), per-tenant install / bind, per-unit config, credential validation |
+| Agents | `Agents` | 13 | GET / POST / PATCH / PUT / DELETE | Agent definitions, lifecycle (deploy / scale / undeploy), execution, logs, skills, memberships, memories |
+| Agent Runtimes (install) | `AgentRuntimes` | 9 | GET / POST / PATCH / DELETE | Per-tenant install rows for LLM-provider runtimes (Claude, OpenAI, Google, Ollama), config, credential health, model catalog |
+| Secrets | `Secrets` | 14 | GET / POST / PUT / DELETE | Unit / tenant / platform-scoped secret CRUD + versioning + prune (uniform shape across all three scopes) |
+| Initiative | `Initiative` | 5 | GET / PUT | Per-agent and per-unit initiative policy + agent's effective level |
+| Threads | `Threads` | 4 | GET / POST | Tenant timeline of threads (participant-set per [ADR-0030](../decisions/0030-thread-model.md)), single-thread read, post-message, close |
+| Cost & Budget | `Costs`, `Tenant`, `Budgets` | 8 | GET / PUT | Per-agent, per-unit, per-tenant cost; cost time series; per-agent / per-unit / per-tenant budgets |
+| Cloning | `Clones`, `CloningPolicy` | 9 | GET / POST / PUT / DELETE | Per-agent clones; per-agent + tenant-wide cloning policy |
+| Expertise | `Expertise` | 5 | GET / PUT | Per-agent expertise, per-unit own + aggregated expertise |
+| Unit governance | `UnitPolicy`, `UnitBoundary`, `UnitOrchestration`, `UnitExecution` | 11 | GET / PUT / DELETE | Unit policy, boundary projection rules, orchestration strategy, execution defaults |
+| Platform tenants | `PlatformTenants` | 4 | GET / POST / PATCH / DELETE | Platform-level tenant CRUD (PlatformOperator only) |
+| Dashboard | `Dashboard` | 4 | GET | Summary, unit KPIs, agent metrics, cost rollup |
+| Packages | `Packages` | 4 | GET | Installed-package + unit-template discovery |
+| Activity | `Activity` | 2 | GET | Activity log query + SSE stream of tenant activity |
+| Auth | `Auth` | 3 | GET / POST / DELETE | API token CRUD, current-user identity |
+| System (platform) | `System` | 2 | GET | Provider credential status, startup configuration report |
+| Directory | `Directory` | 3 | GET / POST | Tenant entry list, role lookup, expertise search |
+| Analytics | `Analytics` | 2 | GET | Throughput counters, wait-time rollup |
+| Messages | `Messages` | 2 | GET / POST | Routed message send, single-message lookup |
+| Memories | `Agents`, `Units` | 2 | GET | Per-agent and per-unit memory peek (stub-empty until [ADR-0029](../decisions/0029-tenant-execution-boundary.md) Stage 4) |
+| Skills | `Skills` | 1 | GET | Skill catalog (registered MCP-tool surface) |
+| Inbox | `Inbox` | 1 | GET | Per-human inbox over the activity stream |
+| Webhooks | `Webhooks` | 1 | POST | GitHub webhook ingest (HMAC-auth, not bearer) |
+| Platform info | `Platform` | 1 | GET | Anonymous version / build-hash / license metadata |
 
-Verb distribution: 92 GET, 32 POST, 22 PUT, 20 DELETE, 5 PATCH — read-dominant.
+Verbs are dominated by GET (read-dominant surface). The above table is grouped by OpenAPI tag; some tags fan out across multiple resource paths (e.g., `Units` covers `/api/v1/tenant/units`, `/api/v1/tenant/units/{id}/members`, `/api/v1/tenant/units/{id}/memberships`, etc.). The committed `openapi.json` is the canonical enumeration.
 
 ## Roles and URL scope
 
@@ -78,7 +84,7 @@ The public API is gated by **three authz roles**, applied per endpoint:
 | --- | --- | --- |
 | `PlatformOperator` | The Spring Voyage platform itself | tenant CRUD, system credentials, platform secrets, runtime registration |
 | `TenantOperator` | A tenant's configuration | runtimes / connectors install, secrets, GitHub App, BYOI, cloning policy, budget |
-| `TenantUser` | Using SV in a tenant | messaging, observing, units / agents, dashboard, conversations |
+| `TenantUser` | Using SV in a tenant | messaging, observing, units / agents, dashboard, threads |
 
 OSS overlay: every authenticated caller is granted all three claims (single-user OSS deployments). Cloud overlay: per-identity scoping.
 
@@ -93,7 +99,7 @@ The URL space is grouped by **scope**, with the major version *outside* the scop
 
 **Principle: if the CLI consumes an endpoint, it lives on the public API.** The CLI is the canonical mutation surface for operator workflows (per [`CONVENTIONS.md` § "UI / CLI Feature Parity"](../../CONVENTIONS.md)) and builds on the public Web API — there is no CLI-private API. An operator endpoint with no portal exposure still belongs in the public spec, gated to `PlatformOperator` or `TenantOperator`.
 
-The boundary work — role definitions, URL restructure, connector split, tenants endpoint — is tracked under [#1247](https://github.com/cvoya-com/spring-voyage/issues/1247) and its sub-issues [#1257](https://github.com/cvoya-com/spring-voyage/issues/1257) – [#1260](https://github.com/cvoya-com/spring-voyage/issues/1260). Until those land, the live spec still uses the legacy single `/api/v1/...` namespace; this section describes the *target* state.
+The boundary work — role definitions, URL restructure into `{platform,tenant}` scope groups, connector split, platform-tenant CRUD — landed under [#1247](https://github.com/cvoya-com/spring-voyage/issues/1247) and its sub-issues [#1257](https://github.com/cvoya-com/spring-voyage/issues/1257) – [#1260](https://github.com/cvoya-com/spring-voyage/issues/1260). The committed `openapi.json` reflects the scope-split layout the table above describes.
 
 ## Consumers
 
@@ -186,10 +192,30 @@ If an endpoint must be removed before the 90-day window is up (security incident
 - The `openapi-drift` CI job catches accidental shape changes; reviewers catch intentional ones.
 - The freeze of `v1` for v0.1 ([#1250](https://github.com/cvoya-com/spring-voyage/issues/1250)) commits the platform to this policy; once v0.1 ships, breaking the policy means breaking real consumers.
 
+## v1 freeze for v0.1
+
+The merged commit of [#1250](https://github.com/cvoya-com/spring-voyage/issues/1250) is the v1 contract freeze for v0.1. The `openapi.json` artifact at that commit is the authoritative enumeration of every public endpoint shipping in v1; the policy in [Versioning and deprecation](#versioning-and-deprecation) governs every change after the freeze lands.
+
+**What's in v1 (high-level inventory).** The [Resource surface](#resource-surface) table enumerates the v1 surface by tag. Every endpoint in the committed `openapi.json` is *in* v1; nothing is held back as `experimental` / `beta` / `preview` (those tiers do not exist — see [Stability levels](#stability-levels)). Anything that needed to ship after the freeze must follow the [What is *not* a breaking change](#what-is-not-a-breaking-change) rules to land additively inside `v1`, or wait for `v2`.
+
+**What's *not* in v1.** Two adjacent surfaces are deliberately excluded:
+
+- **Bucket-1 SDK contract** (`initialize` / `on_message` / `on_shutdown` lifecycle hooks) per [ADR-0029](../decisions/0029-tenant-execution-boundary.md) is an embeddable agent-side contract, *not* a public Web API surface. The [agent-runtime boundary spec](../specs/agent-runtime-boundary.md) carries its own version posture (currently `v0.1 (initial)` per its § 7 changelog) and does not ride the `/api/v1/...` URL space.
+- **Bucket-2 send endpoint** at `POST /api/v1/threads/{thread_id}/messages` is in v1 today — see the `Threads` row of the [Resource surface](#resource-surface) table — and any future MCP tool surfaces (memory `store` / `recall`, `peek_pending`, `message.retract`, future timers / pub-sub / cloning per ADR-0029 § "Capabilities reached through MCP") will be added additively inside `v1` as they land per the [agent-runtime boundary spec § 6](../specs/agent-runtime-boundary.md#6-out-of-scope).
+
+**Deprecation status at the freeze.** No endpoint in the v1 freeze carries `deprecated: true` or a `Sunset` header. This is deliberate: per [ADR-0030](../decisions/0030-thread-model.md) Q10 ("no migration to v0.1") the schema and URL surface took full freedom inside v0.1, so the freeze ships clean. The legacy `/conversations` URL space was never aliased on `v1` — `/api/v1/tenant/threads/...` is the canonical (and only) URL surface for the thread model.
+
+**What this commits the platform to.** Once the freeze lands:
+
+- Removing any endpoint, removing a property from any response schema, or making any other change in the [What counts as a breaking change](#what-counts-as-a-breaking-change) list waits for `v2`.
+- Adding new endpoints, adding optional request properties, adding response properties, and adding new enum values (per [What is *not* a breaking change](#what-is-not-a-breaking-change)) ship transparently inside `v1`.
+- The next consumer-facing publication step is C2.2 ([#1251](https://github.com/cvoya-com/spring-voyage/issues/1251)) — publish the spec for external consumers — which picks up the frozen `openapi.json` as its starting input.
+
 ## Cross-references
 
-- Endpoint surface is enumerated in [`src/Cvoya.Spring.Host.Api/openapi.json`](../../src/Cvoya.Spring.Host.Api/openapi.json).
-- Tenant→platform interface contract: [ADR 0029](../decisions/0029-tenant-execution-boundary.md).
+- Endpoint surface is enumerated in [`src/Cvoya.Spring.Host.Api/openapi.json`](../../src/Cvoya.Spring.Host.Api/openapi.json) (the v1 freeze artifact at the merge of [#1250](https://github.com/cvoya-com/spring-voyage/issues/1250)).
+- Tenant→platform interface contract: [ADR 0029](../decisions/0029-tenant-execution-boundary.md), [agent-runtime boundary spec](../specs/agent-runtime-boundary.md).
+- Thread / Engagement / Collaboration framing the URL surface anchors on: [ADR 0030](../decisions/0030-thread-model.md), [thread-model design](thread-model.md).
 - LLM access via the API (platform-level, not per-tenant): [ADR 0028 amendment](../decisions/0028-tenant-scoped-runtime-topology.md).
 - Operator carve-out: [`CONVENTIONS.md` § "UI / CLI Feature Parity"](../../CONVENTIONS.md), [`AGENTS.md` § "Operator surfaces"](../../AGENTS.md).
-- Open Area C work: [#1216](https://github.com/cvoya-com/spring-voyage/issues/1216) (umbrella) and its sub-issues.
+- Open Area C work: [#1216](https://github.com/cvoya-com/spring-voyage/issues/1216) (umbrella) and its sub-issues; consumer-facing publication of the frozen spec is [#1251](https://github.com/cvoya-com/spring-voyage/issues/1251) (C2.2).
