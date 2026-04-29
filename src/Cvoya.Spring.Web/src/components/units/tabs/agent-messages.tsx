@@ -22,7 +22,7 @@ import { Button } from "@/components/ui/button";
 import { ConversationDetailPane } from "@/components/conversation/conversation-detail-pane";
 import { NewConversationDialog } from "@/components/conversation/new-conversation-dialog";
 import { cn } from "@/lib/utils";
-import { useConversations } from "@/lib/api/queries";
+import { useThreads } from "@/lib/api/queries";
 
 import { ConversationList } from "./unit-messages";
 import { registerTab, type TabContentProps } from "./index";
@@ -31,7 +31,7 @@ function AgentMessagesTab({ node }: TabContentProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { data, isLoading, error } = useConversations({ agent: node.id });
+  const { data, isLoading, error } = useThreads({ agent: node.id });
   const [composerOpen, setComposerOpen] = useState(false);
 
   const selectedId = searchParams.get("conversation");
@@ -128,7 +128,7 @@ function AgentMessagesTab({ node }: TabContentProps) {
           >
             {selectedId ? (
               <ConversationDetailPane
-                conversationId={selectedId}
+                threadId={selectedId}
                 selfAddress={`agent://${node.id}`}
               />
             ) : (
@@ -145,9 +145,9 @@ function AgentMessagesTab({ node }: TabContentProps) {
         onClose={() => setComposerOpen(false)}
         targetScheme="agent"
         targetPath={node.id}
-        onCreated={(conversationId) => {
+        onCreated={(threadId) => {
           setComposerOpen(false);
-          setSelected(conversationId);
+          setSelected(threadId);
         }}
       />
     </div>

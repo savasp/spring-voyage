@@ -43,14 +43,14 @@ function Wrapper({ children }: { children: ReactNode }) {
 
 const rows = [
   {
-    conversationId: "conv-1",
+    threadId: "conv-1",
     from: "agent://engineering-team/ada",
     human: "human://savas",
     pendingSince: new Date(Date.now() - 1000 * 60 * 10).toISOString(),
     summary: "Need your call on the migration plan",
   },
   {
-    conversationId: "conv-2",
+    threadId: "conv-2",
     from: "unit://design",
     human: "human://savas",
     pendingSince: new Date(Date.now() - 1000 * 60 * 30).toISOString(),

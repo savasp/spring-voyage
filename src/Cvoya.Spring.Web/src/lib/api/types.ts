@@ -202,20 +202,20 @@ export type AnalyticsScope =
   | { kind: "agent"; name: string };
 
 // ---------------------------------------------------------------------------
-// Conversations & inbox (#410, #452, #456)
+// Threads & inbox (#410, #452, #456)
 // ---------------------------------------------------------------------------
 
-/** Row in the conversation list (`GET /api/v1/conversations`). */
-export type ConversationSummary = Schemas["ConversationSummary"];
+/** Row in the thread list (`GET /api/v1/threads`). */
+export type ThreadSummary = Schemas["ThreadSummary"];
 
-/** Conversation thread payload (`GET /api/v1/conversations/{id}`). */
-export type ConversationDetail = Schemas["ConversationDetail"];
+/** Thread payload (`GET /api/v1/threads/{id}`). */
+export type ThreadDetail = Schemas["ThreadDetail"];
 
-/** One event row inside a conversation thread (see ConversationDetail.events). */
-export type ConversationEvent = Schemas["ConversationEvent"];
+/** One event row inside a thread (see ThreadDetail.events). */
+export type ThreadEvent = Schemas["ThreadEvent"];
 
-/** Request body for `POST /api/v1/conversations/{id}/messages`. */
-export type ConversationMessageRequest = Schemas["ConversationMessageRequest"];
+/** Request body for `POST /api/v1/threads/{id}/messages`. */
+export type ThreadMessageRequest = Schemas["ThreadMessageRequest"];
 
 /** Request body for `POST /api/v1/messages` — free-form message routing. */
 export type SendMessageRequest = Schemas["SendMessageRequest"];
@@ -226,8 +226,8 @@ export type MessageResponse = Schemas["MessageResponse"];
 /** Row in the awaiting-me queue (`GET /api/v1/inbox`). */
 export type InboxItem = Schemas["InboxItem"];
 
-/** Query-string filters accepted by `GET /api/v1/conversations`. */
-export interface ConversationListFilters {
+/** Query-string filters accepted by `GET /api/v1/threads`. */
+export interface ThreadListFilters {
   unit?: string;
   agent?: string;
   status?: "active" | "completed";
@@ -605,8 +605,8 @@ export interface DashboardSummary {
 export type ActivityEventType =
   | "MessageReceived"
   | "MessageSent"
-  | "ConversationStarted"
-  | "ConversationCompleted"
+  | "ThreadStarted"
+  | "ThreadCompleted"
   | "DecisionMade"
   | "ErrorOccurred"
   | "StateChanged"

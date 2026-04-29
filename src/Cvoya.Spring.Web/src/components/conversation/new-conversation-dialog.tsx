@@ -17,20 +17,20 @@ interface NewConversationDialogProps {
   targetPath: string;
   /**
    * Called with the new conversation id once the server round-trips a
-   * `MessageResponse` with `conversationId` populated. The caller is
+   * `MessageResponse` with `threadId` populated. The caller is
    * expected to route to the thread view so the user lands on the
    * freshly-opened conversation.
    */
-  onCreated: (conversationId: string) => void;
+  onCreated: (threadId: string) => void;
 }
 
 /**
  * Modal composer for the Explorer Messages tab's "+ New conversation"
  * affordance (#980 item 2). Posts to `POST /api/v1/messages` with the
  * hosting unit/agent as the `to` address, `type: "Domain"`, and the
- * typed body as the `payload`; no `conversationId` is supplied — the
+ * typed body as the `payload`; no `threadId` is supplied — the
  * server's #985 auto-gen assigns a fresh UUID and returns it on
- * `MessageResponse.conversationId`.
+ * `MessageResponse.threadId`.
  */
 export function NewConversationDialog({
   open,
@@ -51,7 +51,7 @@ export function NewConversationDialog({
       return api.sendMessage({
         to: { scheme: targetScheme, path: targetPath },
         type: "Domain",
-        conversationId: null,
+        threadId: null,
         payload: trimmed,
       });
     },
@@ -59,11 +59,11 @@ export function NewConversationDialog({
       // The server auto-assigns a conversation id for Domain messages
       // that didn't carry one — trust it, but guard the branch so a
       // future wire change doesn't throw here.
-      if (data.conversationId) {
-        queryClient.invalidateQueries({ queryKey: queryKeys.conversations.all });
+      if (data.threadId) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.threads.all });
         queryClient.invalidateQueries({ queryKey: queryKeys.activity.all });
         setBody("");
-        onCreated(data.conversationId);
+        onCreated(data.threadId);
       }
     },
   });

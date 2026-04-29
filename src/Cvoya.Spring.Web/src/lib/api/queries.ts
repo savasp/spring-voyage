@@ -38,9 +38,9 @@ import type {
   BudgetResponse,
   CloneResponse,
   InstalledConnectorResponse,
-  ConversationDetail,
-  ConversationListFilters,
-  ConversationSummary,
+  ThreadDetail,
+  ThreadListFilters,
+  ThreadSummary,
   CostDashboardSummary,
   CostSummaryResponse,
   DashboardSummary,
@@ -720,34 +720,34 @@ export function useAnalyticsWaits(
 // don't collide. Detail keeps its own per-id slice so the live SSE
 // stream can patch a single thread without touching unrelated rows.
 
-export function useConversations(
-  filters?: ConversationListFilters,
-  opts?: SliceOptions<ConversationSummary[]>,
-): UseQueryResult<ConversationSummary[], Error> {
+export function useThreads(
+  filters?: ThreadListFilters,
+  opts?: SliceOptions<ThreadSummary[]>,
+): UseQueryResult<ThreadSummary[], Error> {
   return useQuery({
-    queryKey: queryKeys.conversations.list(
+    queryKey: queryKeys.threads.list(
       filters as Record<string, unknown> | undefined,
     ),
-    queryFn: () => api.listConversations(filters),
+    queryFn: () => api.listThreads(filters),
     ...opts,
   });
 }
 
 /**
- * Read one conversation thread — events + participants + status.
- * Mirrors `spring conversation show`. Surfaces a 404 as `null` so the
+ * Read one thread — events + participants + status.
+ * Mirrors `spring thread show`. Surfaces a 404 as `null` so the
  * Messages-tab detail pane can render a clean "not found / deleted"
  * state instead of bubbling an ApiError.
  */
-export function useConversation(
+export function useThread(
   id: string,
-  opts?: SliceOptions<ConversationDetail | null>,
-): UseQueryResult<ConversationDetail | null, Error> {
+  opts?: SliceOptions<ThreadDetail | null>,
+): UseQueryResult<ThreadDetail | null, Error> {
   return useQuery({
-    queryKey: queryKeys.conversations.detail(id),
+    queryKey: queryKeys.threads.detail(id),
     queryFn: async () => {
       try {
-        return await api.getConversation(id);
+        return await api.getThread(id);
       } catch (err) {
         if (err instanceof Error && /API error 404/.test(err.message)) {
           return null;
@@ -765,7 +765,7 @@ export function useInbox(
   opts?: SliceOptions<InboxItem[]>,
 ): UseQueryResult<InboxItem[], Error> {
   return useQuery({
-    queryKey: queryKeys.conversations.inbox(),
+    queryKey: queryKeys.threads.inbox(),
     queryFn: () => api.listInbox(),
     ...opts,
   });

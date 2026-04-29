@@ -133,7 +133,7 @@ export default function InboxPage() {
           data-testid="inbox-list"
         >
           {items.map((item) => (
-            <InboxCard key={item.conversationId} item={item} />
+            <InboxCard key={item.threadId} item={item} />
           ))}
         </div>
       ) : null}

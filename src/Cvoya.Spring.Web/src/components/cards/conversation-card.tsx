@@ -56,7 +56,7 @@ const statusVariant: Record<
  * when no unit/agent anchor is available.
  */
 function resolveMessagesHref(
-  conversationId: string,
+  threadId: string,
   participants: readonly string[],
 ): string {
   for (const p of participants) {
@@ -65,12 +65,12 @@ function resolveMessagesHref(
     const scheme = p.slice(0, idx).toLowerCase();
     const path = p.slice(idx + 3);
     if (scheme === "unit" || scheme === "agent") {
-      return `/units?node=${encodeURIComponent(path)}&tab=Messages&conversation=${encodeURIComponent(conversationId)}`;
+      return `/units?node=${encodeURIComponent(path)}&tab=Messages&conversation=${encodeURIComponent(threadId)}`;
     }
   }
   // No unit/agent anchor — send the user to inbox with the selection
   // carried as a hint; the inbox card already renders a matching URL.
-  return `/inbox?conversation=${encodeURIComponent(conversationId)}`;
+  return `/inbox?conversation=${encodeURIComponent(threadId)}`;
 }
 
 export function ConversationCard({

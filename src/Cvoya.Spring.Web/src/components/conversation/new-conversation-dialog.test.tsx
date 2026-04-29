@@ -5,7 +5,7 @@
  *   - Blocks submit while the body is empty and renders a validation
  *     error if the user forces a send.
  *   - POSTs the expected `SendMessageRequest` shape (scheme/path, type,
- *     null conversationId) and forwards the server-assigned
+ *     null threadId) and forwards the server-assigned
  *     conversation id to the caller.
  *   - Surfaces server errors inline without throwing the dialog open
  *     state away.
@@ -64,7 +64,7 @@ describe("NewConversationDialog", () => {
   it("POSTs the expected shape and forwards the server conversation id", async () => {
     sendMessageMock.mockResolvedValue({
       messageId: "msg-1",
-      conversationId: "conv-42",
+      threadId: "conv-42",
       responsePayload: null,
     });
     const onCreated = vi.fn();
@@ -93,7 +93,7 @@ describe("NewConversationDialog", () => {
     expect(sendMessageMock).toHaveBeenCalledWith({
       to: { scheme: "agent", path: "ada" },
       type: "Domain",
-      conversationId: null,
+      threadId: null,
       payload: "hello",
     });
     await waitFor(() => {
@@ -104,7 +104,7 @@ describe("NewConversationDialog", () => {
   it("trims leading/trailing whitespace off the payload", async () => {
     sendMessageMock.mockResolvedValue({
       messageId: "msg-1",
-      conversationId: "conv-9",
+      threadId: "conv-9",
       responsePayload: null,
     });
     render(

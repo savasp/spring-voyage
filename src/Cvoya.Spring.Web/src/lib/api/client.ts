@@ -5,8 +5,8 @@ import type {
   AgentDetailResponse,
   AgentExecutionResponse,
   AgentResponse,
-  ConversationListFilters,
-  ConversationMessageRequest,
+  ThreadListFilters,
+  ThreadMessageRequest,
   CreateAgentRequest,
   CreateCloneRequest,
   CreateSecretRequest,
@@ -667,7 +667,7 @@ export const api = {
   // these endpoints are the typed surface the CLI's `spring conversation
   // {list,show,send}` commands use, and the portal mirrors that 1:1 per
   // CONVENTIONS.md § ui-cli-parity.
-  listConversations: async (filters?: ConversationListFilters) => {
+  listThreads: async (filters?: ThreadListFilters) => {
     // The OpenAPI binder uses TitleCase property names (Unit, Agent,
     // Status, Participant, Limit) for [AsParameters] queries. Translate
     // the camelCase shape we expose to call sites.
@@ -678,13 +678,13 @@ export const api = {
     if (filters?.participant) query.Participant = filters.participant;
     if (filters?.limit !== undefined) query.Limit = filters.limit;
     return unwrap(
-      await fetchClient.GET("/api/v1/tenant/conversations", {
+      await fetchClient.GET("/api/v1/tenant/threads", {
         params: { query: query as never },
       }),
     );
   },
-  getConversation: async (id: string) => {
-    const result = await fetchClient.GET("/api/v1/tenant/conversations/{id}", {
+  getThread: async (id: string) => {
+    const result = await fetchClient.GET("/api/v1/tenant/threads/{id}", {
       params: { path: { id } },
     });
     if (result.response.status === 404) {
@@ -692,12 +692,12 @@ export const api = {
     }
     return unwrap(result);
   },
-  sendConversationMessage: async (
+  sendThreadMessage: async (
     id: string,
-    body: ConversationMessageRequest,
+    body: ThreadMessageRequest,
   ) =>
     unwrap(
-      await fetchClient.POST("/api/v1/tenant/conversations/{id}/messages", {
+      await fetchClient.POST("/api/v1/tenant/threads/{id}/messages", {
         params: { path: { id } },
         body,
       }),
@@ -705,8 +705,8 @@ export const api = {
   /**
    * Free-form message send (#985). POSTs to `/api/v1/messages` which
    * routes through the MessageRouter and, for Domain messages without a
-   * supplied `conversationId`, auto-generates a fresh UUID that's
-   * returned on `MessageResponse.conversationId`. The portal's
+   * supplied `threadId`, auto-generates a fresh UUID that's
+   * returned on `MessageResponse.threadId`. The portal's
    * "+ New conversation" affordance (#980 item 2) uses this so the user
    * lands on a brand-new thread after a successful send.
    */

@@ -19,7 +19,7 @@ vi.mock("next/link", () => ({
 }));
 
 const baseItem = {
-  conversationId: "conv-42",
+  threadId: "conv-42",
   from: "agent://engineering-team/ada",
   human: "human://savas",
   pendingSince: new Date(Date.now() - 1000 * 60 * 5).toISOString(),

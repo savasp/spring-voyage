@@ -12,7 +12,7 @@ import { queryKeys } from "@/lib/api/query-keys";
 import { parseConversationSource } from "./role";
 
 interface ConversationComposerProps {
-  conversationId: string;
+  threadId: string;
   /**
    * Default `scheme://path` recipient pre-selected in the picker. The
    * Messages tab picks the most-recently-active non-self participant
@@ -42,7 +42,7 @@ interface ConversationComposerProps {
  * disabled.
  */
 export function ConversationComposer({
-  conversationId,
+  threadId,
   defaultRecipient,
   participants = [],
 }: ConversationComposerProps) {
@@ -70,7 +70,7 @@ export function ConversationComposer({
           "Recipient must be in scheme://path form (e.g. agent://ada).",
         );
       }
-      return api.sendConversationMessage(conversationId, {
+      return api.sendThreadMessage(threadId, {
         to: { scheme, path },
         text: trimmed,
       });
@@ -78,9 +78,9 @@ export function ConversationComposer({
     onSuccess: () => {
       setText("");
       queryClient.invalidateQueries({
-        queryKey: queryKeys.conversations.detail(conversationId),
+        queryKey: queryKeys.threads.detail(threadId),
       });
-      queryClient.invalidateQueries({ queryKey: queryKeys.conversations.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.threads.all });
       queryClient.invalidateQueries({ queryKey: queryKeys.activity.all });
     },
     onError: (err) => {

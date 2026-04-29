@@ -12,11 +12,11 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import type { ConversationEvent } from "@/lib/api/types";
+import type { ThreadEvent } from "@/lib/api/types";
 
 import { ConversationEventRow } from "./conversation-event-row";
 
-function makeEvent(overrides: Partial<ConversationEvent> = {}): ConversationEvent {
+function makeEvent(overrides: Partial<ThreadEvent> = {}): ThreadEvent {
   return {
     id: "00000000-0000-0000-0000-000000000001",
     timestamp: "2026-04-26T12:00:00Z",

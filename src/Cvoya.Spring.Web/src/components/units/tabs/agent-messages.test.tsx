@@ -37,15 +37,15 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/components/conversation/conversation-detail-pane", () => ({
   ConversationDetailPane: ({
-    conversationId,
+    threadId,
     selfAddress,
   }: {
-    conversationId: string;
+    threadId: string;
     selfAddress?: string;
   }) => (
     <div
       data-testid="detail-pane-stub"
-      data-conversation-id={conversationId}
+      data-thread-id={threadId}
       data-self-address={selfAddress ?? ""}
     />
   ),
@@ -76,9 +76,9 @@ vi.mock("@/components/conversation/new-conversation-dialog", () => ({
   },
 }));
 
-const useConversationsMock = vi.fn();
+const useThreadsMock = vi.fn();
 vi.mock("@/lib/api/queries", () => ({
-  useConversations: (filters: unknown) => useConversationsMock(filters),
+  useThreads: (filters: unknown) => useThreadsMock(filters),
 }));
 
 import AgentMessagesTab from "./agent-messages";
@@ -93,20 +93,20 @@ describe("AgentMessagesTab", () => {
 
   it("filters conversations by agent id", () => {
     searchParamsStateMock.value = "";
-    useConversationsMock.mockReturnValueOnce({
+    useThreadsMock.mockReturnValueOnce({
       data: [],
       isLoading: false,
       error: null,
     });
     render(<AgentMessagesTab node={node} path={[node]} />);
-    expect(useConversationsMock).toHaveBeenCalledWith({ agent: "ada" });
+    expect(useThreadsMock).toHaveBeenCalledWith({ agent: "ada" });
     expect(screen.getByTestId("tab-agent-messages-empty")).toBeInTheDocument();
     expect(screen.getByTestId("new-conversation-trigger")).toBeInTheDocument();
   });
 
   it("opens the composer targeted at this agent", () => {
     searchParamsStateMock.value = "";
-    useConversationsMock.mockReturnValue({
+    useThreadsMock.mockReturnValue({
       data: [],
       isLoading: false,
       error: null,
@@ -121,7 +121,7 @@ describe("AgentMessagesTab", () => {
   it("routes to the new thread when the composer reports success", () => {
     searchParamsStateMock.value = "";
     routerReplaceMock.mockReset();
-    useConversationsMock.mockReturnValue({
+    useThreadsMock.mockReturnValue({
       data: [],
       isLoading: false,
       error: null,
@@ -144,7 +144,7 @@ describe("AgentMessagesTab", () => {
 
   it("mounts the detail pane when the URL carries ?conversation=<id>", () => {
     searchParamsStateMock.value = "conversation=abc";
-    useConversationsMock.mockReturnValueOnce({
+    useThreadsMock.mockReturnValueOnce({
       data: [
         {
           id: "abc",
@@ -158,13 +158,13 @@ describe("AgentMessagesTab", () => {
     });
     render(<AgentMessagesTab node={node} path={[node]} />);
     const pane = screen.getByTestId("detail-pane-stub");
-    expect(pane.dataset.conversationId).toBe("abc");
+    expect(pane.dataset.threadId).toBe("abc");
     expect(pane.dataset.selfAddress).toBe("agent://ada");
   });
 
   it("does not link to the retired /conversations/<id> route", () => {
     searchParamsStateMock.value = "";
-    useConversationsMock.mockReturnValueOnce({
+    useThreadsMock.mockReturnValueOnce({
       data: [
         {
           id: "abc",

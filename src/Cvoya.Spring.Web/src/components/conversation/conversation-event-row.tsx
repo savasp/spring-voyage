@@ -6,7 +6,7 @@ import Link from "next/link";
 
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import type { ConversationEvent } from "@/lib/api/types";
+import type { ThreadEvent } from "@/lib/api/types";
 
 import {
   parseConversationSource,
@@ -32,7 +32,7 @@ function isCollapsibleByDefault(eventType: string, role: ConversationRole) {
 }
 
 interface ConversationEventRowProps {
-  event: ConversationEvent;
+  event: ThreadEvent;
 }
 
 /**

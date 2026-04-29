@@ -39,15 +39,15 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/components/conversation/conversation-detail-pane", () => ({
   ConversationDetailPane: ({
-    conversationId,
+    threadId,
     selfAddress,
   }: {
-    conversationId: string;
+    threadId: string;
     selfAddress?: string;
   }) => (
     <div
       data-testid="detail-pane-stub"
-      data-conversation-id={conversationId}
+      data-thread-id={threadId}
       data-self-address={selfAddress ?? ""}
     />
   ),
@@ -83,9 +83,9 @@ vi.mock("@/components/conversation/new-conversation-dialog", () => ({
   },
 }));
 
-const useConversationsMock = vi.fn();
+const useThreadsMock = vi.fn();
 vi.mock("@/lib/api/queries", () => ({
-  useConversations: (filters: unknown) => useConversationsMock(filters),
+  useThreads: (filters: unknown) => useThreadsMock(filters),
 }));
 
 import UnitMessagesTab from "./unit-messages";
@@ -100,7 +100,7 @@ describe("UnitMessagesTab", () => {
 
   it("renders the empty state plus a '+ New conversation' trigger when there are no threads", () => {
     searchParamsStateMock.value = "";
-    useConversationsMock.mockReturnValueOnce({
+    useThreadsMock.mockReturnValueOnce({
       data: [],
       isLoading: false,
       error: null,
@@ -114,7 +114,7 @@ describe("UnitMessagesTab", () => {
 
   it("filters conversations by unit id and renders the list", () => {
     searchParamsStateMock.value = "";
-    useConversationsMock.mockReturnValueOnce({
+    useThreadsMock.mockReturnValueOnce({
       data: [
         {
           id: "abc",
@@ -127,7 +127,7 @@ describe("UnitMessagesTab", () => {
       error: null,
     });
     render(<UnitMessagesTab node={node} path={[node]} />);
-    expect(useConversationsMock).toHaveBeenCalledWith({ unit: "engineering" });
+    expect(useThreadsMock).toHaveBeenCalledWith({ unit: "engineering" });
     expect(screen.getByText("Ada asks about build")).toBeInTheDocument();
     // No selection yet — detail pane stub should not render.
     expect(screen.queryByTestId("detail-pane-stub")).toBeNull();
@@ -135,7 +135,7 @@ describe("UnitMessagesTab", () => {
 
   it("renders the '+ New conversation' trigger even with existing threads", () => {
     searchParamsStateMock.value = "";
-    useConversationsMock.mockReturnValueOnce({
+    useThreadsMock.mockReturnValueOnce({
       data: [
         {
           id: "abc",
@@ -153,7 +153,7 @@ describe("UnitMessagesTab", () => {
 
   it("opens the composer dialog on '+ New conversation' click and targets the unit", () => {
     searchParamsStateMock.value = "";
-    useConversationsMock.mockReturnValue({
+    useThreadsMock.mockReturnValue({
       data: [],
       isLoading: false,
       error: null,
@@ -169,7 +169,7 @@ describe("UnitMessagesTab", () => {
   it("routes to the new thread when the composer reports success", () => {
     searchParamsStateMock.value = "";
     routerReplaceMock.mockReset();
-    useConversationsMock.mockReturnValue({
+    useThreadsMock.mockReturnValue({
       data: [],
       isLoading: false,
       error: null,
@@ -192,7 +192,7 @@ describe("UnitMessagesTab", () => {
 
   it("mounts the detail pane when the URL carries ?conversation=<id>", () => {
     searchParamsStateMock.value = "conversation=abc";
-    useConversationsMock.mockReturnValueOnce({
+    useThreadsMock.mockReturnValueOnce({
       data: [
         {
           id: "abc",
@@ -206,13 +206,13 @@ describe("UnitMessagesTab", () => {
     });
     render(<UnitMessagesTab node={node} path={[node]} />);
     const pane = screen.getByTestId("detail-pane-stub");
-    expect(pane.dataset.conversationId).toBe("abc");
+    expect(pane.dataset.threadId).toBe("abc");
     expect(pane.dataset.selfAddress).toBe("unit://engineering");
   });
 
   it("does not link to the retired /conversations/<id> route", () => {
     searchParamsStateMock.value = "";
-    useConversationsMock.mockReturnValueOnce({
+    useThreadsMock.mockReturnValueOnce({
       data: [
         {
           id: "abc",
