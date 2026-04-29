@@ -104,7 +104,40 @@ public static class ContainersEndpoints
             }
         }
 
-        var mounts = BuildEffectiveMounts(request.Mounts, materialized);
+        // D3a: materialise the context workspace (/spring/context/) when the
+        // request carries one. Lifecycle is identical to the main workspace —
+        // cleanup on run completion or on DELETE for detached starts. Errors
+        // from a bad context-workspace request must clean up any already-
+        // materialised main workspace to avoid host directory leaks.
+        MaterializedWorkspace? materializedContext = null;
+        if (request.ContextWorkspace is { } contextWorkspaceRequest)
+        {
+            try
+            {
+                materializedContext = await workspaceMaterializer.MaterializeAsync(
+                    contextWorkspaceRequest, cancellationToken);
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+            {
+                // Clean up the main workspace if we already created it.
+                if (materialized is not null)
+                {
+                    workspaceMaterializer.Cleanup(materialized);
+                }
+
+                logger.LogWarning(
+                    EventIds.DispatcherRejected,
+                    ex,
+                    "Rejected container run: context workspace request is invalid");
+                return Results.BadRequest(new DispatcherErrorResponse
+                {
+                    Code = "context_workspace_invalid",
+                    Message = ex.Message,
+                });
+            }
+        }
+
+        var mounts = BuildEffectiveMounts(request.Mounts, materialized, materializedContext);
         // Only default the workdir to the materialised mount path when the
         // workspace actually contains files. Launchers like DaprAgentLauncher
         // bind-mount an empty workspace just to keep the launch shape uniform
@@ -159,15 +192,24 @@ public static class ContainersEndpoints
                     // Detached starts: defer cleanup until DELETE /v1/containers/{id}.
                     workspaceMaterializer.TrackForContainer(id, materialized);
                 }
+                if (materializedContext is not null)
+                {
+                    // D3a: also track the context workspace for deferred cleanup.
+                    workspaceMaterializer.TrackForContainer(id, materializedContext);
+                }
                 return Results.Ok(new RunContainerResponse { Id = id });
             }
             catch
             {
-                // The runtime never owned the workspace, so a start failure means
-                // we leak the host dir unless we sweep it here.
+                // The runtime never owned the workspaces, so a start failure means
+                // we leak the host dirs unless we sweep them here.
                 if (materialized is not null)
                 {
                     workspaceMaterializer.Cleanup(materialized);
+                }
+                if (materializedContext is not null)
+                {
+                    workspaceMaterializer.Cleanup(materializedContext);
                 }
                 throw;
             }
@@ -196,24 +238,41 @@ public static class ContainersEndpoints
             {
                 workspaceMaterializer.Cleanup(materialized);
             }
+            // D3a: clean up context workspace on the same lifecycle as the main workspace.
+            if (materializedContext is not null)
+            {
+                workspaceMaterializer.Cleanup(materializedContext);
+            }
         }
     }
 
     private static IReadOnlyList<string>? BuildEffectiveMounts(
         IReadOnlyList<string>? requested,
-        MaterializedWorkspace? materialized)
+        MaterializedWorkspace? materialized,
+        MaterializedWorkspace? materializedContext = null)
     {
-        if (materialized is null)
+        if (materialized is null && materializedContext is null)
         {
             return requested;
         }
 
-        var mounts = new List<string>(requested?.Count + 1 ?? 1);
+        var capacity = (requested?.Count ?? 0)
+            + (materialized is not null ? 1 : 0)
+            + (materializedContext is not null ? 1 : 0);
+        var mounts = new List<string>(capacity);
         if (requested is { Count: > 0 })
         {
             mounts.AddRange(requested);
         }
-        mounts.Add(materialized.MountSpec);
+        if (materialized is not null)
+        {
+            mounts.Add(materialized.MountSpec);
+        }
+        // D3a: append the /spring/context/ bind-mount after the main workspace.
+        if (materializedContext is not null)
+        {
+            mounts.Add(materializedContext.MountSpec);
+        }
         return mounts;
     }
 

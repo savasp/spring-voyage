@@ -327,6 +327,17 @@ public interface IContainerRuntime
 /// host" failure mode in containerised dispatcher deployments — see issue
 /// #1042.
 /// </param>
+/// <param name="ContextWorkspace">
+/// Optional per-invocation context workspace materialised at
+/// <c>/spring/context/</c> inside the container (D1 spec § 2.2.2 — D3a).
+/// Carries structured bootstrap files (e.g. <c>agent-definition.yaml</c>,
+/// <c>tenant-config.json</c>) the agent SDK reads during
+/// <c>initialize(context)</c>. When non-null the dispatcher writes the files
+/// into a fresh per-invocation directory alongside the main workspace and
+/// bind-mounts it at <see cref="ContainerWorkspace.MountPath"/> (typically
+/// <c>/spring/context/</c>). Lifecycle (create / cleanup) mirrors
+/// <see cref="Workspace"/>.
+/// </param>
 public record ContainerConfig(
     string Image,
     IReadOnlyList<string>? Command = null,
@@ -343,7 +354,8 @@ public record ContainerConfig(
     IReadOnlyList<string>? ExtraHosts = null,
     string? WorkingDirectory = null,
     ContainerWorkspace? Workspace = null,
-    string? ContainerName = null);
+    string? ContainerName = null,
+    ContainerWorkspace? ContextWorkspace = null);
 
 /// <summary>
 /// A per-invocation set of text files the dispatcher must materialise into a

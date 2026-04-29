@@ -106,6 +106,20 @@ public record RunContainerRequest
     /// </summary>
     [JsonPropertyName("workspace")]
     public WorkspaceRequest? Workspace { get; init; }
+
+    /// <summary>
+    /// D3a: optional per-invocation context workspace the dispatcher must
+    /// materialise on its own host filesystem and bind-mount into the
+    /// container at <see cref="WorkspaceRequest.MountPath"/> (canonical:
+    /// <c>/spring/context/</c> per D1 spec § 2.2.2). Carries structured
+    /// context files such as <c>agent-definition.yaml</c> and
+    /// <c>tenant-config.json</c>. The dispatcher appends the synthesised
+    /// mount to <see cref="Mounts"/> and cleans up the materialised directory
+    /// on the same lifecycle as <see cref="Workspace"/>. <c>null</c> means
+    /// no context mount. See issue #1270.
+    /// </summary>
+    [JsonPropertyName("contextWorkspace")]
+    public WorkspaceRequest? ContextWorkspace { get; init; }
 }
 
 /// <summary>
