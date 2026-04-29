@@ -15,14 +15,14 @@ import { useMemo } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useConversation } from "@/lib/api/queries";
+import { useThread } from "@/lib/api/queries";
 
 import { ConversationComposer } from "./conversation-composer";
 import { ConversationEventRow } from "./conversation-event-row";
 import { parseConversationSource } from "./role";
 
 interface ConversationDetailPaneProps {
-  conversationId: string;
+  threadId: string;
   /**
    * Address of the node hosting the Messages tab (scheme://path). Used
    * to pick a sensible default reply recipient (the most-recently-
@@ -32,10 +32,10 @@ interface ConversationDetailPaneProps {
 }
 
 export function ConversationDetailPane({
-  conversationId,
+  threadId,
   selfAddress,
 }: ConversationDetailPaneProps) {
-  const query = useConversation(conversationId);
+  const query = useThread(threadId);
 
   const detail = query.data;
   // Memoize the participants array so downstream `useMemo` deps don't
@@ -108,7 +108,7 @@ export function ConversationDetailPane({
     >
       <header className="flex items-center gap-2 border-b border-border px-3 py-2 text-xs">
         <span className="font-mono text-muted-foreground">
-          {conversationId}
+          {threadId}
         </span>
         {detail.summary?.status ? (
           <Badge variant="outline">{detail.summary.status}</Badge>
@@ -138,7 +138,7 @@ export function ConversationDetailPane({
       </div>
 
       <ConversationComposer
-        conversationId={conversationId}
+        threadId={threadId}
         defaultRecipient={defaultRecipient}
         participants={participants}
       />

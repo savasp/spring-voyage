@@ -105,12 +105,12 @@ export const queryKeys = {
     }) => ["analytics", "waits", params] as const,
   },
 
-  conversations: {
-    all: ["conversations"] as const,
+  threads: {
+    all: ["threads"] as const,
     list: (filters?: Record<string, unknown>) =>
-      ["conversations", "list", filters ?? {}] as const,
-    detail: (id: string) => ["conversations", "detail", id] as const,
-    inbox: () => ["conversations", "inbox"] as const,
+      ["threads", "list", filters ?? {}] as const,
+    detail: (id: string) => ["threads", "detail", id] as const,
+    inbox: () => ["threads", "inbox"] as const,
   },
 
   tenant: {
@@ -222,17 +222,17 @@ export function queryKeysAffectedBySource(source: {
     return [
       queryKeys.activity.all,
       queryKeys.dashboard.all,
-      queryKeys.conversations.all,
+      queryKeys.threads.all,
       queryKeys.units.detail(source.path),
       queryKeys.units.cost(source.path),
-      queryKeys.conversations.all,
+      queryKeys.threads.all,
     ];
   }
   if (scheme === "agent") {
     return [
       queryKeys.activity.all,
       queryKeys.dashboard.all,
-      queryKeys.conversations.all,
+      queryKeys.threads.all,
       queryKeys.agents.detail(source.path),
       queryKeys.agents.cost(source.path),
       // Lifecycle (#396) rides the same activity SSE — container health
@@ -240,27 +240,27 @@ export function queryKeysAffectedBySource(source: {
       // Invalidating here keeps the lifecycle panel fresh without a
       // separate poller.
       queryKeys.agents.deployment(source.path),
-      queryKeys.conversations.all,
+      queryKeys.threads.all,
     ];
   }
   if (scheme === "conversation") {
     return [
       queryKeys.activity.all,
-      queryKeys.conversations.all,
-      queryKeys.conversations.detail(source.path),
+      queryKeys.threads.all,
+      queryKeys.threads.detail(source.path),
     ];
   }
   if (scheme === "human") {
     return [
       queryKeys.activity.all,
       queryKeys.dashboard.all,
-      queryKeys.conversations.all,
-      queryKeys.conversations.inbox(),
+      queryKeys.threads.all,
+      queryKeys.threads.inbox(),
     ];
   }
   return [
     queryKeys.activity.all,
     queryKeys.dashboard.all,
-    queryKeys.conversations.all,
+    queryKeys.threads.all,
   ];
 }

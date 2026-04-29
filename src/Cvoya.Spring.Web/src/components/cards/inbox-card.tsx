@@ -51,14 +51,14 @@ export function InboxCard({ item, className }: InboxCardProps) {
   // surface lands, the card navigates back to `/inbox` so the click
   // is never a 404. The query string preserves the conversation id so
   // future routing can scroll/highlight the corresponding row.
-  const href = `/inbox?conversation=${encodeURIComponent(item.conversationId)}`;
+  const href = `/inbox?conversation=${encodeURIComponent(item.threadId)}`;
   const from = parseConversationSource(item.from);
   const fromLink = fromHref(from);
-  const title = item.summary?.trim() || item.conversationId;
+  const title = item.summary?.trim() || item.threadId;
 
   return (
     <Card
-      data-testid={`inbox-card-${item.conversationId}`}
+      data-testid={`inbox-card-${item.threadId}`}
       className={cn(
         "relative h-full transition-colors hover:border-primary/50 hover:bg-muted/30 focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2",
         className,
@@ -81,7 +81,7 @@ export function InboxCard({ item, className }: InboxCardProps) {
               <Link
                 href={fromLink}
                 className="hover:text-foreground hover:underline"
-                data-testid={`inbox-from-link-${item.conversationId}`}
+                data-testid={`inbox-from-link-${item.threadId}`}
               >
                 {item.from}
               </Link>
@@ -106,12 +106,12 @@ export function InboxCard({ item, className }: InboxCardProps) {
         <Link
           href={href}
           aria-label={`Open conversation ${title}`}
-          data-testid={`inbox-card-link-${item.conversationId}`}
+          data-testid={`inbox-card-link-${item.threadId}`}
           className="mt-2 block rounded-sm focus-visible:outline-none after:absolute after:inset-0 after:content-['']"
         >
           <h3 className="truncate text-sm font-semibold">{title}</h3>
           <p className="mt-0.5 truncate text-xs text-muted-foreground font-mono">
-            {item.conversationId}
+            {item.threadId}
           </p>
         </Link>
 
@@ -126,7 +126,7 @@ export function InboxCard({ item, className }: InboxCardProps) {
           <Link
             href={href}
             className="relative z-[1] inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-primary hover:underline"
-            data-testid={`inbox-open-${item.conversationId}`}
+            data-testid={`inbox-open-${item.threadId}`}
           >
             Open thread
             <ExternalLink className="h-3 w-3" aria-hidden="true" />

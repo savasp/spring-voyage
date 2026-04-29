@@ -82,8 +82,8 @@ const severityDot: Record<ActivitySeverity, string> = {
 const eventTypes: ActivityEventType[] = [
   "MessageReceived",
   "MessageSent",
-  "ConversationStarted",
-  "ConversationCompleted",
+  "ThreadStarted",
+  "ThreadCompleted",
   "DecisionMade",
   "ErrorOccurred",
   "StateChanged",

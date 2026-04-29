@@ -25,7 +25,7 @@ import { Button } from "@/components/ui/button";
 import { ConversationDetailPane } from "@/components/conversation/conversation-detail-pane";
 import { NewConversationDialog } from "@/components/conversation/new-conversation-dialog";
 import { cn, timeAgo } from "@/lib/utils";
-import { useConversations } from "@/lib/api/queries";
+import { useThreads } from "@/lib/api/queries";
 
 import { registerTab, type TabContentProps } from "./index";
 
@@ -37,7 +37,7 @@ function UnitMessagesTab({ node }: TabContentProps) {
   // dispatches to `lookupTab(kind, tab)` with `kind` narrowed before
   // this component renders. The belt-and-braces narrowing happens
   // after the hook calls so react-hooks/rules-of-hooks stays happy.
-  const { data, isLoading, error } = useConversations({ unit: node.id });
+  const { data, isLoading, error } = useThreads({ unit: node.id });
   const [composerOpen, setComposerOpen] = useState(false);
 
   const selectedId = searchParams.get("conversation");
@@ -134,7 +134,7 @@ function UnitMessagesTab({ node }: TabContentProps) {
           >
             {selectedId ? (
               <ConversationDetailPane
-                conversationId={selectedId}
+                threadId={selectedId}
                 selfAddress={`unit://${node.id}`}
               />
             ) : (
@@ -151,9 +151,9 @@ function UnitMessagesTab({ node }: TabContentProps) {
         onClose={() => setComposerOpen(false)}
         targetScheme="unit"
         targetPath={node.id}
-        onCreated={(conversationId) => {
+        onCreated={(threadId) => {
           setComposerOpen(false);
-          setSelected(conversationId);
+          setSelected(threadId);
         }}
       />
     </div>
