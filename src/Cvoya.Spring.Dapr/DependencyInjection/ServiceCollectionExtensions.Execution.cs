@@ -96,6 +96,15 @@ internal static class ServiceCollectionExtensionsExecution
         // assignment on per-tenant allowlists) without touching this registration.
         services.TryAddSingleton<IAgentStateCoordinator, AgentStateCoordinator>();
 
+        // Agent execution-dispatch coordinator (#1336 / #1276 concern 3).
+        // Singleton: stateless across agents; IExecutionDispatcher and
+        // MessageRouter are injected as singleton constructor parameters;
+        // activity-emission and active-conversation-clearing flow through
+        // per-call delegates so no Dapr actor types are captured. TryAdd so
+        // the private cloud repo can substitute a tenant-aware coordinator
+        // (e.g. one that layers cost attribution or custom retry logic).
+        services.TryAddSingleton<IAgentDispatchCoordinator, AgentDispatchCoordinator>();
+
         // Agent-runtime plugin registry (#678, cornerstone of the #674
         // refactor). Enumerates every DI-registered IAgentRuntime so the
         // API layer, wizard, and CLI can resolve runtimes by id without
