@@ -22,7 +22,11 @@ Examples of the participant-set invariant:
 
 A participant may belong to many threads.
 
-Memory has two layers: **per-thread** ("what we've done together") and **agent-level spanning** ("what I've learned across everyone"). Cross-thread flow between the two is policy-governed. Rationale and the broader vision live in #1123 — this document does not restate it.
+Every thread has an ordered, timestamped **Timeline** of all artifacts it accumulates — messages (user / agent / initiative), task lifecycle events, participant state changes, and system events. The Timeline is append-only at the platform level; it is the canonical record of what happened in the thread, in what order. Per-question detail belongs in Q7.
+
+Memory has two named layers per agent: **`AgentMemory`** (a single persistent store that spans every thread the agent participates in) and **`AgentThreadMemory`** (per-(agent, thread); one for each thread the agent is in). Promotion from `AgentThreadMemory` into `AgentMemory` is governed per-thread by a **`MemoryPromotionPolicy`** (default: disabled). Detail belongs in Q4.
+
+A thread's identity is its permanent membership set, but per-thread state may transition for individual participants (`added → active → removed → re-added`); a removed participant does not see new activity until re-added. Detail belongs in Q6.
 
 This document answers the ten F1 design questions that have to settle before F2 (doc revisions), F3 (the new ADR), and the F execution plan can begin.
 
@@ -69,7 +73,7 @@ A user opens a **collaboration** to work; the system records it under the releva
 - F2's doc-revision pass sweeps `Conversation*` → `Thread*` across `docs/architecture/messaging.md`, `docs/architecture/units.md`, `docs/architecture/agent-runtime.md`, and the glossary. The glossary entries for **Thread** / **Engagement** / **Collaboration** ship in this PR (alongside this doc) so F2 has the canonical anchors to point at.
 - A code-level rename follows: `IConversationQueryService`, `ConversationId`, `Message.ConversationId`, the activity-event projection's `CorrelationId == ConversationId` mapping, and every repository / actor / test that mentions `Conversation*`. This is Area G / D scope, not F1's; flagging here so the cost is visible.
 - The CLI's `spring conversation …` verb becomes `spring thread …` (Area E1's call to schedule).
-- The current public Web API exposes `/api/v1/conversations`. The new canonical surface is `/api/v1/threads`; `/conversations` may stay as a backwards-compatibility alias. C2 owns the URL story and the deprecation window; flagging the implication here, not deciding it.
+- The current public Web API exposes `/api/v1/conversations`. The new canonical surface is `/api/v1/threads`. There is no `/conversations` alias — Q10 settles that there is nothing to be backwards-compatible with. C2 owns the URL story.
 - This file was renamed from `conversation-model.md` to `thread-model.md` in the same PR that landed this terminology decision. Anyone with an older link should follow the redirect; the architecture index already points at the new path.
 - The cost is real and load-bearing — a sweep across multiple architecture docs plus a code rename — but the terminology clarity wins are worth it. Paying the cost once now beats paying interpretation cost every time someone reads "conversation" and has to decide which of three meanings is in play.
 
@@ -101,6 +105,8 @@ A user opens a **collaboration** to work; the system records it under the releva
 
 **Decision:** The platform delivers **one message per `on_message` invocation**. Multiple queued messages on the same thread are **not** auto-batched by the platform; the agent's SDK exposes a `peek_pending(thread_id)` accessor (mirroring the existing `checkMessages` tool) so the agent **chooses** whether to drain pending messages into the current turn or process them sequentially. Default agent behaviour, where an SDK provides a default, is sequential — one-message-per-turn — with the agent free to opt into batching.
 
+**Sub-decision — concurrent threads per agent.** An agent processes **multiple threads concurrently by default.** An agent participating in N threads may have up to N `on_message` calls in flight simultaneously — one per thread. Per-thread FIFO is preserved within each thread; concurrency is across distinct threads only. The agent / unit definition carries a **`concurrent_threads: bool`** field (default **`true`**). When set to `false`, the agent processes threads serially: at most one `on_message` call is in flight across all threads the agent participates in.
+
 **Rationale.**
 
 - Auto-batching sounds like a free latency win but it shapes agent reasoning in a way the platform should not impose. An agent that is mid-tool-call for message N may want to finish before reading N+1 (correctness); a chat-shaped agent may want to immediately collapse N+1 into the working context (latency); an LLM doing structured planning may want to read all pending messages once and re-plan (token efficiency). The right answer differs per agent. The platform should not pick.
@@ -108,127 +114,174 @@ A user opens a **collaboration** to work; the system records it under the releva
 - An agent peeking the queue at a checkpoint is exactly the existing `checkMessages` semantics from ADR-0018 / `messaging.md`. Lifting it to a first-class SDK accessor formalises a pattern delegated agents already use; it is a small surface, not a new mechanism.
 - Ordering is preserved: per-thread messages dequeue in arrival order, FIFO. The platform does not promise causal ordering across threads (different participant sets can race) but does promise per-thread FIFO, which is the only ordering an agent reasoning about "what just happened in this thread" can sensibly use.
 - Suspension semantics from ADR-0018 (an agent can suspend the active thread, run another, resume) carry forward unchanged. Suspension is at thread-grain, which is the right grain for "I am blocked on user input here, let me work on something else."
+- Concurrent-threads-by-default reflects the common case: most agents handle independent threads independently and benefit from doing work in parallel rather than head-of-line blocking on a single slow turn. The `concurrent_threads: false` opt-out covers the agents that actually need serialization — resource-bound agents, LLM-context-bound agents that cannot multiplex cleanly, agents with strict ordering needs across threads. Making this a definition-time toggle (not a per-message flag) keeps the dispatch contract simple: the runtime knows the answer at the agent level.
 
 **Consequences.**
 
-- D1's `on_message` contract carries a thread-identifying field, `message_id`, and a `pending_count` hint (cheap signal that more messages are queued — agent decides what to do with it). The on-the-wire field name (currently `conversation_id`) should be renamed to `thread_id` to align with the new terminology; D1 owns the call on exact field shape and migration window.
+- D1's `on_message` contract carries a thread-identifying field, `message_id`, and a `pending_count` hint (cheap signal that more messages are queued — agent decides what to do with it). The on-the-wire field name is `thread_id` (no `conversation_id` alias — Q10 settles that there is no migration to perform).
+- The SDK / runtime must explicitly support **re-entrancy of `on_message` across distinct `thread_id` values** — D1's contract documents this explicitly. The `concurrent_threads: bool` flag on the agent / unit definition controls whether the runtime allows that re-entrancy.
 - The control-channel / observation-channel model from ADR-0018 stays as-is: control still pre-empts thread work; observations still arrive as a batched digest. (These channel names refer to mailbox channels, not to the Thread / Engagement / Collaboration trio; they are unaffected by Q1.) The Q3 decision is about per-thread message-channel shape only.
-- F2 updates `messaging.md` to clarify that "active thread" semantics are unchanged but that the per-thread FIFO contract is now a documented promise (not just an emergent property of the actor turn model).
+- F2 updates `messaging.md` to clarify that "active thread" semantics are unchanged but that the per-thread FIFO contract is now a documented promise (not just an emergent property of the actor turn model), and to document the `concurrent_threads` agent-definition flag.
 
 ---
 
-## 4. Cross-thread memory flow defaults
+## 4. Memory model
 
-**Decision:** **Default is asymmetric and conservative.**
+**Decision:** Two named layers per agent, one promotion direction, one policy, one default.
 
-- **Up (per-thread → spanning):** the platform extracts and lifts **only durable identity facts** that the agent itself flags via a `learn(...)` SDK call (replaces today's `storeLearning` MCP tool). The platform never introspects message content to auto-promote. Spontaneous learnings don't escape a thread unless the agent declares them.
-- **Down (spanning → per-thread):** the agent's spanning memory is **always available for retrieval** (via a `recall(...)` SDK call mirroring `recallMemory`) but is **never auto-injected** into a thread's prompt context. The agent decides per turn whether to pull spanning memory in.
-- **Extensibility seam:** a tenant-, unit-, or agent-scoped **`MemoryFlowPolicy`** can override defaults along three axes: `auto_promote` (what classes of fact may be promoted without the agent flagging — default `none`), `auto_recall` (whether to pre-warm spanning memory into Layer-2/3 prompt context — default `off`), and `cross_thread_visibility` (per-thread memory readable from sibling threads — default `false`). The `MemoryFlowPolicy` name stays as-is; "Memory" in the name refers to the memory subsystem, not to the Thread / Engagement / Collaboration trio.
+- An agent has **`AgentMemory`**, a single persistent store that spans every thread the agent participates in.
+- For each thread the agent participates in, the agent has a separate **`AgentThreadMemory`** scoped to that (agent, thread) pair.
+- An agent operating in thread T sees: its own `AgentMemory` + its own `AgentThreadMemory` for T. **It cannot read `AgentThreadMemory` from any other thread.** It cannot read another agent's memory of any kind.
+- Per-thread **`MemoryPromotionPolicy`** (default: **`disabled`**) controls whether that agent's `AgentThreadMemory` for this thread may be promoted into its `AgentMemory`. When disabled, nothing leaves the thread.
+
+**MCP tool surface (renamed from prior draft):**
+
+- **`learn(fact)`** — promote a fact from the current thread's `AgentThreadMemory` into the agent's `AgentMemory`. Gated by `MemoryPromotionPolicy`. Replaces today's `storeLearning`.
+- **`recall(query)`** — read from the agent's `AgentMemory`. Always available; not policy-gated. Replaces today's `recallMemory`.
+- There is no MCP tool for reading another thread's `AgentThreadMemory`. Cross-thread reads are not a v0.1 feature.
 
 **Rationale.**
 
-- "Default conservative" is the only safe default for a multi-tenant platform. The cost of a leak (information from thread A surfacing in thread B without the user's expectation) is much higher than the cost of an agent occasionally having to call `recall()` to find a fact it could have remembered automatically. Latency is recoverable; trust loss is not.
-- Asymmetric default (up needs an explicit flag; down is read-on-demand) maps to how existing CLI tools (Claude Code, Codex) treat their own state: the agent commits to memory deliberately; reads from it freely.
-- A policy seam is necessary because consumer products and enterprise deployments will want different defaults. A consumer agent for a personal user wants aggressive auto-recall; an enterprise compliance-bound deployment wants strict isolation. We do not pick one — we ship the safe default and the lever.
+- The asymmetric-defaults model in the prior draft (auto-recall down, agent-flagged learn up, three policy axes) was too clever. The new model is two layers, one promotion direction, one policy, one default — a model engineers and operators can hold in their heads.
+- Default `disabled` is the safe-by-default position: no information escapes a thread unless the operator explicitly enables promotion. The cost of a leak (information from thread A surfacing in thread B without the user's expectation) is much higher than the cost of an agent occasionally having to do without a fact it learned in another thread.
+- The agent always sees both layers when operating in a thread — there is no read-side gating, no `auto_recall` toggle. Read access is determined by **which thread the agent is operating in**; the policy gates only the **write-side promotion** from `AgentThreadMemory` into `AgentMemory`.
 - Layering matches ADR-0029's "memory deferred" hold: memory is **not** at the SDK boundary. `learn` / `recall` are MCP tools the platform offers via the public Web API (per ADR-0029's "capabilities reach via MCP" pattern), not bucket-1 SDK hooks. Agents invoke them; the platform stores and policy-gates them.
 
+**Cloning interaction.**
+
+- A clone is a new agent identity. At clone time, the clone receives a snapshot of the parent's `AgentMemory` (which itself contains only what the parent's policies had permitted to be promoted up to that point — possibly empty if all of the parent's per-thread policies were `disabled`).
+- The clone's `AgentThreadMemory` for any thread starts empty: the clone has not participated in any thread yet.
+- `MemoryPromotionPolicy` does not transfer. The clone is a fresh policy subject; each thread it joins carries its own policy.
+- **Cloning is not blocked by policy.** A `disabled`-policy parent can be cloned freely; the clone inherits an `AgentMemory` snapshot and the parent's `AgentThreadMemory` does not transfer. There is no leak.
+
 **Consequences.**
 
-- F3's ADR ratifies the two-layer memory model and the default policy. The actual storage shape (per-agent volume? per-tenant store? both?) is left to D1's memory contract under ADR-0029 Stage 4 — F1 does not pre-empt it.
-- The existing `storeLearning` / `recallMemory` MCP tools are renamed and re-spec'd as `learn` / `recall` in the public-API surface. The semantic shift is small but real (the platform now distinguishes per-thread from spanning storage). C1 / C2 own the Web API surface change.
-- The `MemoryFlowPolicy` resolution chain (agent → unit → tenant) follows the same precedence rules as cloning policy (ADR-0029 + the agent-cloning-policy precedent in `units.md`): tightest non-null value wins; allow-lists intersect.
-- **Per-thread privacy / reuse policy** — flagged but deliberately not specified here. The user has indicated a thread-level toggle controlling whether participants may reuse information captured or inferred inside a thread beyond the thread's boundaries is a design question to revisit. F1 does not pre-empt that policy; see the follow-ups list at the end of this doc.
-- **Hosted-service foundation:** the conservative default and the policy lever are exactly what a hosted service needs — safe by default, configurable for paying tiers.
+- F3's ADR ratifies the two-layer memory model and the `MemoryPromotionPolicy` (per-thread, default disabled).
+- The renamed MCP tools (`learn`, `recall`) replace `storeLearning` and `recallMemory` in the public Web API surface. C1 / C2 own the surface change.
+- F2's doc revisions (`messaging.md`, `units.md`, `agent-runtime.md`) sweep `MemoryFlowPolicy` (which never landed in code, but was named in the prior F1 draft) → `MemoryPromotionPolicy`, and rename the layers per the canonical names above.
+- D1 sees a smaller surface: the SDK and contract carry only `learn` and `recall` MCP tools for memory; there is no `peek_other_thread`, no recursive read, no cross-thread visibility flag in v0.1.
+- **Hosted-service foundation:** safe-by-default + a single per-thread policy knob is exactly what a hosted service needs — no information leaves a thread without explicit operator opt-in.
+
+**Deferred from v0.1.** Three things this design intentionally leaves out:
+
+1. **Unit recursion** — a unit reading its members' `AgentThreadMemory` from threads the unit itself is not in.
+2. **Cross-thread reads of any kind** — by any agent or unit.
+3. **Multi-human permission gating on memory access** — the case where a unit's recursive read might surface information from a thread the asking human did not have permission to see.
+
+The simple v0.1 model — agent sees its own `AgentMemory` + its own `AgentThreadMemory` for the current thread, gated only by `MemoryPromotionPolicy` — does not need any of these. Each is a real concern for richer multi-human / multi-unit deployments and warrants design when there's a forcing case. Filed as a single follow-up.
 
 ---
 
-## 5. Cross-thread task visibility default
+## 5. Tasks as thread artifacts
 
-**Decision:** Tasks are **agent-level** entities by default — a task lives in the agent's task store, not in any one thread. **The default visibility is: a task is referenceable from any thread in which the agent participates with the same primary user**, and is **not** referenceable from a thread that does not include the user who originated it. The override surface is the same `MemoryFlowPolicy` from Q4, with a `task_visibility` axis: `originator-only` (default), `thread-only` (one specific thread; the legacy ADR-0018-shaped read), or `agent-wide` (every thread can see every task).
+**Decision:** Tasks are **thread-associated artifacts**, not agent-scoped entities.
+
+- A task lives in the thread's **Timeline** (Q7) alongside messages and system events. A task does not exist outside a thread.
+- A task's visibility to the agent is governed by the same `MemoryPromotionPolicy` from Q4 — because a task created in a thread is part of that thread's `AgentThreadMemory` from each participating agent's perspective. Promoting a task to `AgentMemory` follows the same policy as promoting any other fact.
+- Cross-thread task references are **not** a v0.1 feature. A task `#name` resolves within the current thread only. Cross-thread `#task` reference is part of the deferred memory features in Q4.
+- The `MemoryPromotionPolicy` does not need a separate `task_visibility` axis — tasks are subject to the policy like any other thread-scoped knowledge.
 
 **Rationale.**
 
-- The reframing in #1123 explicitly decouples tasks from threads: tasks are referenced by `#name`, have lifecycles driven by actual work, and outlive any one message exchange. A task is something the agent is doing; the thread is the channel through which the work was requested.
-- "Visible only to participant set A" (the conservative read of the invariant) breaks a real and common case: I ask my coding agent to "fix that flaky test #flaky-test-fix" in our 1:1 engagement. I then add my colleague to it — that's a different participant set, hence a different thread. The task should still be there. Forcing the user to re-introduce the task in the new thread is bad UX and breaks the task-panel framing.
-- "Visible across every thread including those with other users" is too leaky — it means a task I asked my coding agent to do at home shows up when my agent is working with my employer in a different engagement. That violates the trust boundary the participant set is supposed to express.
-- The originator-anchored default ("all engagements that include the originating user") threads the needle: tasks follow the human who asked for them, regardless of which other peers are in the room. A user-private agent (no other participants) sees only that user's tasks. A user adding a colleague to an engagement brings their own tasks; the colleague's tasks from a different engagement do not appear.
-- The default can be overridden in either direction by `MemoryFlowPolicy`. Enterprises that want strict per-thread isolation set `thread-only`; agents whose tasks are inherently shared (a team unit's task board) can set `agent-wide`.
+- The prior "tasks decoupled from threads" framing broke privacy: a secret-project task initiated in thread T1 (policy: disabled) should not be visible to the same agent operating in another thread T2. The current model achieves that automatically — the agent in T2 cannot read T1's `AgentThreadMemory`, hence cannot see T1's tasks.
+- Threads-as-the-unit-of-artifact-aggregation is consistent with the Timeline concept (Q7): messages, tasks, system events all live on the timeline. Tasks are not a separate concept that floats above the thread.
+- Simpler. One policy controls one direction of flow. No special-case visibility rules for tasks. The originator-anchored / participant-set-only / agent-wide enum from the prior draft is removed entirely. There is one knob: `MemoryPromotionPolicy`.
 
 **Consequences.**
 
-- The `IAgentActor` task store becomes a first-class concept, not a derived projection over thread events. F3's ADR captures this. F2 updates `messaging.md` to note that tasks are now agent-scoped, not thread-scoped.
-- The task `#name` reference resolves through the task store with the originating user as the lookup key; multi-user threads require disambiguation only when two users share a task name (`#flaky-test-fix` from user A vs. from user B). UX rules for disambiguation are E2's call.
-- Task initiation telemetry needs to record the originating user explicitly; without it the visibility check is impossible. D1 adds `originator_user` to the task initiation contract.
+- D1's task contract: `task.create`, `task.update`, `task.cancel`, `task.revise` operations all carry an implicit `thread_id` — the thread the calling agent is operating in. A task does not exist outside a thread.
+- Tasks appear on the thread Timeline as ordered, timestamped artifacts (Q7).
+- Cross-thread task surfaces (e.g., "all my open tasks across all my engagements") are a UX projection over the agent's `AgentMemory` — they show only tasks that have been **promoted**, not raw `AgentThreadMemory` contents. Scope is UX (E2), not platform.
+- F2 updates `messaging.md` to note that tasks are thread-scoped artifacts on the Timeline and removes any prior framing of a separate "agent task store."
 
 ---
 
-## 6. Participant-set changes UX
+## 6. Participant-set changes — state machine
 
-**Decision:** The user sees **one continuous engagement with the agent**; under the hood the platform records a **transition** from thread A (participant set X) to thread B (participant set Y) and renders both in the same engagement timeline with a visible **system message marker** ("Alex joined this engagement" / "Sam left this engagement"). Both threads remain queryable by id; the engagement stitches them. Specifically:
+**Decision:** A thread's identity is its permanent membership set. Membership changes within an existing set are **per-(thread, participant) state transitions**, not new threads. Membership-set changes (a new participant joins for the first time) are new threads.
 
-- **Adding a participant** ends the active thread A and begins a new thread B. The old A's per-thread memory is **referenceable but not auto-injected** into B's context. The agent (or the user) can pull A's history into B explicitly via the same `recall()` mechanism from Q4. The engagement timeline shows both, separated by the join marker. Tasks initiated in A remain visible in B per Q5.
-- **Removing a participant** ends the active thread A and begins a new thread B with the smaller participant set. A is **archived**, not deleted; the engagement timeline shows the leave marker and continues with B.
-- **No "branching" semantics** — the platform never holds two live threads with overlapping participant subsets in the same engagement. Removing-then-re-adding the same participant produces a new thread each time (two transitions); the engagement stitches all three.
+- A thread with members `{H1, A1, A2}` always lists those three as members, regardless of who is currently active. **Threads don't end.** A thread persists across all participant state changes; it is the canonical lifelong record.
+- Each `(thread, participant)` pair has a per-thread state machine: `added → active → removed → re-added (active)`. Re-add is allowed and does **not** create a new thread.
+- A removed participant **does not receive new messages** while removed. On re-add, they see only messages and other timeline artifacts from periods when they were active. There is a clearly-defined **blackout window** between `removed` and the next `added` event during which the participant sees nothing.
+- **Adding a participant who has never been a member of this thread** is a different operation: it produces a *different participant set*, hence a *different thread*. The engagement (UX) may absorb this transition transparently for the user (see below), but the underlying threads are distinct.
+- The Timeline event for a state change is **`ParticipantStateChanged(thread, participant, from_state, to_state, timestamp)`**. (Replaces the earlier draft's `ThreadTransitioned` / `ConversationTransitioned`.)
+
+**Engagement absorbs the change.**
+
+- The engagement (UX) is the user-visible relationship surface. It may stitch together state changes within a single thread (membership transitions on the timeline) and, separately, may stitch *across distinct threads* when the user adds a new participant who wasn't in the original membership (creating a new thread).
+- Concretely: a user Hm has an engagement view with their writing agent A1. The engagement starts on thread T1 = `{Hm, A1}`. Hm adds a colleague Hm2 to the conversation — this is a new participant set, hence a new thread T2 = `{Hm, A1, Hm2}`. The engagement timeline renders both threads with a "Hm2 joined" system marker, but the underlying threads T1 and T2 are distinct.
+- Within a single thread, participant state changes (e.g., A2 told to leave T1, then later re-added to T1) render on T1's timeline as `ParticipantStateChanged` events.
 
 **Rationale.**
 
-- The participant-set invariant is non-negotiable (it is the whole framing). The user-visible surface has to absorb the fact that the kernel's identity changes; "one continuous engagement" is the absorption.
-- "Continuity of context vs. clean break" is a false binary. The kernel does a clean break (new thread, separate per-thread memory); the surface shows continuity (one engagement, transition markers, opt-in pull of old history). This matches how iMessage / Slack handle group changes — the surface continues; system messages mark the membership change; the underlying topic key changes silently.
-- Auto-injecting A's full context into B is the wrong default for the same reason as Q4: the new participant did not consent to receiving A's history just by joining the engagement. Pulling history is an explicit act, either by the user ("show me what we discussed before Alex joined") or by the agent ("I will remind everyone of the prior context").
-- Archiving (vs. deleting) on removal is necessary for audit, recall, and the not-uncommon case of re-adding the same participant — even though re-add is a new thread per the invariant, the prior history should still be referenceable.
-- This is the **single piece of UX behaviour where the kernel invariant most visibly strains the user model.** Flagging it: the strain is intentional and well-bounded — the engagement absorbs it cleanly — but E2's UX work has to prototype the transition markers and the recall-prior-context affordance carefully. If user testing later shows the markers are confusing, the fallback is "implicit auto-recall of the previous thread's last N messages into B," which is still consistent with the invariant.
+- The participant-set invariant is non-negotiable (it is the whole framing). The previous draft tried to honour it by ending thread A and starting thread B on every membership change — but that conflated two genuinely different operations (a state change inside an existing set vs. a change in the set itself), inflated the thread count, and made every leave-then-rejoin produce a new thread record. Folding intra-set transitions into a per-participant state machine on a single thread keeps the lifelong-record promise crisp without violating the invariant.
+- Threads don't end is the load-bearing simplification. The thread is the canonical permanent record of "the participants who were ever part of this conversation"; the per-participant state field tells you *when* each was active. Audit, recall, re-add are all simple reads on a stable record.
+- The blackout window is a clear, enforceable read-side rule: the platform serves the participant only the timeline slices for periods they were `active`. The agent does not have to hand-filter; the platform filters at the read.
+- A removed participant's `AgentThreadMemory` is **not** purged — it is frozen at the moment of removal and resumes when re-added. The blackout-window timeline content is unreachable to that agent on re-add.
 
 **Consequences.**
 
-- Engagement is a **first-class persisted concept** at the API surface, not just a UX projection — it stores the ordered list of thread ids it stitches, plus participant-change markers. C2 / D1 own the contract.
-- The activity-event projection (`messaging.md` § Thread Surfaces, post-F2-rename) gets a new event type: `ThreadTransitioned(from, to, reason: "participant_added"|"participant_removed", participant)`. F2 documents this.
-- **Web Portal continuity:** the portal currently treats `conversation` as the user-visible surface (`/conversations/<id>`). The portal must keep working. F2 / C2 call: the existing `/conversations/<id>` route in the portal becomes an engagement view that stitches multiple underlying threads transparently for the user; whether the canonical URL flips to `/engagements/<id>` (or `/threads/<id>` for the system-level view) is C2's call, with backwards-compat on the legacy URL preserved.
-- **Hosted-service foundation:** the engagement projection is cheap to render and cheap to host; no problem.
+- D1's contract carries thread membership as the permanent set + a per-(thread, participant) state field. The state machine and its allowed transitions are documented at the contract level.
+- The activity-event projection adds `ParticipantStateChanged` events; removes any `ThreadTransitioned` event from the prior draft.
+- E2's UX work covers two distinct cases: (a) state changes within a thread (timeline marker, no thread-id change in URL); (b) participant-set changes that create a new thread (engagement timeline stitches multiple thread URLs together transparently).
+- The engagement stitching across distinct threads (case b) is a UX projection, not a new persisted entity at the API surface. The engagement is a relationship narrative; the threads it spans are the persisted records.
+- **Hosted-service foundation:** the per-(thread, participant) state field is cheap to store and cheap to filter on; no problem.
+
+**Settled rejection — subset memory access.** During PR review the user explored a "subset memory access" idea: if T2's participant set is a subset of T1's, agents in T2 would get read-side access to their T1 `AgentThreadMemory`. **Rejected for v0.1** because it sidesteps `MemoryPromotionPolicy` and re-introduces leakage the policy is meant to prevent. The continuity story for users moving between threads relies on the standard primitives: `AgentMemory` promotion (when policy allows) or explicit user-driven manual quoting / referencing of prior thread content. This is a settled rejection, not an open question.
 
 ---
 
-## 7. Initiative messages
+## 7. Initiative messages and the Timeline
 
-**Decision:** An initiative-driven agent message (task completed; reminder fired; observation digest summary) is sent as a normal message into the appropriate engagement and carries a **`context` envelope field** identifying what triggered it. Specifically: `context = { kind: "task_update" | "reminder" | "observation" | "spontaneous", task: "#name"?, originating_message: <id>?, summary: <short text> }`. The collaboration surface renders the context as a small inline header on the message ("re: #flaky-test-fix" / "scheduled reminder" / "while you were away"), giving the user a click target back to the relevant task or to the originating message.
+**Decision:** An initiative-driven agent message (task completed; reminder fired; observation digest summary) is a **normal thread message** posted onto the thread's Timeline. It is not a separate primitive at the platform level. The message may carry **optional UX-hint metadata** in the payload's `context` field: `{ kind: "task_update" | "reminder" | "observation" | "spontaneous", task: "#name"?, originating_message: <id>? }`. The metadata is a hint for the engagement / collaboration surface to render a header or grouping cue. **The platform does not branch on `context`.**
+
+### Timeline
+
+Every thread has a single, ordered, timestamped **Timeline** of artifacts. The Timeline is the unifying concept Q5, Q6, Q7, and Q8 reference.
+
+- Artifact types: **Message** (user / agent / initiative), **Task lifecycle event** (created / updated / cancelled / completed), **`ParticipantStateChanged`** (Q6), **Retraction** (Q8), and **system events**.
+- The Timeline is **append-only at the platform level.** Edits and retractions (Q8) appear as new Timeline events that reference the prior artifact, not as in-place mutations.
+- **Per-thread FIFO** (Q3) is the ordering invariant on the Timeline.
+- Initiative messages, user messages, and agent reply messages are all Messages on the same Timeline — distinguishable only by sender role and by the optional `context` UX hint.
 
 **Rationale.**
 
-- Without a sub-thread / sub-conversation concept, the agent cannot say "in our previous chat we discussed X." It has to say "here is a message" and tag the message with metadata that lets the UI render an unambiguous "what is this about" hint. The metadata is the substitute for in-engagement navigation.
-- Anchoring on `#task` references is the right primary handle: tasks are the user-visible work units (#1123, Q5 above) and the collaboration already supports `#name` as a referenceable token. A click on "re: #flaky-test-fix" opens the task pane.
-- For initiative messages that don't have a task anchor (a reminder; an observation digest), the `context.kind` is enough on its own. The UI renders a generic prefix; the user knows the agent is volunteering, not responding.
-- Putting the context in the **envelope** rather than encoding it in the message text means the user's reading flow is not interrupted by metadata-as-prose, and the agent's prose can stay clean. The platform is what makes the surface legible; the agent does not have to learn a markup convention.
-- This is the same principle as the OS-level "notification" model in mobile platforms: the system frames the notification (icon + app name + grouping) so the app's content can be the actual content.
+- Conflating "initiative messages have a separate envelope" with "the platform branches on initiative" was overreach in the prior draft. The platform doesn't need to branch; the UX renders the hint differently. Strip the platform-level distinction and let the surface do the framing.
+- The Timeline gives Q5 (tasks), Q6 (participant state), Q7 (initiative), and Q8 (retraction) a single shared concept to reference. Tasks-on-timeline, state-changes-on-timeline, retractions-on-timeline, initiative-messages-on-timeline are all uniform — different artifact types, same ordering, same persistence rules.
+- The `context` hint is still useful: a task-update reply shown next to its originating user message reads cleanly when the surface can show a "re: #flaky-test-fix" prefix; reminders / observations want a different visual register than direct replies. But this is the surface's job, not the platform's.
+- Append-only at the platform level matches the "lifelong record" promise on the thread: the canonical record of what happened never mutates; corrections (Q8) and retractions are new events that reference the originals.
 
 **Consequences.**
 
-- D1's outbound message contract carries an optional `context` envelope field as defined above. The exact JSON shape is D1's call; this design pins only the semantics.
-- F2 updates `messaging.md` to document the `context` field on the message envelope and the activity-event projection consequence: `ContextualMessageReceived` events surface the `context.kind` so observers (other agents, dashboards) can filter on it.
-- Hosted-service foundation: notification grouping and unread-state semantics on the engagement surface depend on `context.kind` being a small enumerable set. Platform-imposed enum, not free-form string. F3's ADR pins the enum.
+- D1's outbound message contract carries optional `context` metadata; the platform does not enforce or interpret it beyond passing it through to clients.
+- F2's `messaging.md` revision documents the **Timeline as a first-class concept** (it currently doesn't have one) — artifact types, ordering, append-only rule.
+- The activity-event projection is the implementation of the Timeline; F2 reconciles the naming.
+- E2 renders `context` hints on the collaboration surface (e.g. "re: #flaky-test-fix" header on a task-update message). The set of `kind` values is a UX vocabulary for now; if it needs to be a typed enum at the contract level later, F3 / D1 can pin it.
 
 ---
 
 ## 8. Misinference and correction UX
 
-**Decision:** Correction is **a normal user message** that the agent interprets, not a separate API verb or a special "undo" lifecycle. The platform supplies three primitives the agent / SDK can use to **act** on the correction once interpreted, plus a UX affordance in the collaboration that pre-templates the correction message:
+**Decision:** Correction is **a normal user message** that the agent interprets, not a separate API verb or a special "undo" lifecycle. The platform supplies three primitives the agent / SDK can use to **act** on the correction once interpreted, plus a **collaboration affordance** that pre-templates the correction message:
 
-1. **`task.cancel(#name, reason)`** — the agent abandons in-flight work for a task. Stops execution; emits a `TaskCancelled` event; preserves audit trail. Same semantics as ADR-0018's existing cancel — surfaced through the task primitive rather than through a control-channel message.
-2. **`task.revise(#name, new_scope)`** — the agent re-scopes a task (replace its goal / instructions) and either restarts it or continues from the current checkpoint. The agent decides which.
-3. **`message.retract(message_id, reason)`** — the agent marks one of its own previously-sent messages as retracted. The message stays in the engagement timeline (audit) but renders with a strikethrough + the agent's stated reason. This is for "I told the user something wrong; let me say so explicitly" correction, distinct from task-level correction.
+1. **`task.cancel(#name, reason)`** — the agent abandons in-flight work for a task in the current thread. Stops execution; appends a `TaskCancelled` event to the thread Timeline; preserves audit trail. Same semantics as ADR-0018's existing cancel — surfaced through the task primitive rather than through a control-channel message. Tasks are thread-scoped (Q5), so `task.cancel` operates on the calling agent's task within the current thread.
+2. **`task.revise(#name, new_scope)`** — the agent re-scopes a task in the current thread (replace its goal / instructions) and either restarts it or continues from the current checkpoint. The agent decides which.
+3. **`message.retract(message_id, reason)`** — the agent marks one of its own previously-sent messages as retracted. Per the Timeline append-only rule (Q7), the retraction is a **new Timeline event** that references the prior message; the original message remains on the Timeline (audit) and the surface renders it with a strikethrough + the agent's stated reason. This is for "I told the user something wrong; let me say so explicitly" correction, distinct from task-level correction.
 
-The collaboration gives the user a **"this isn't what I meant" affordance** on any message that triggered an in-flight task — a one-click action that prefills a templated message ("re: #flaky-test-fix — I meant the integration test, not the unit test. Please redo with that scope.") and leaves the user free to edit before sending. The agent receives the message normally and interprets it (typically calling `task.revise`).
+The **collaboration affordance** gives the user a "this isn't what I meant" one-click action on any message that triggered an in-flight task — it prefills a templated message ("re: #flaky-test-fix — I meant the integration test, not the unit test. Please redo with that scope.") and leaves the user free to edit before sending. The agent receives the message normally and interprets it (typically calling `task.revise`).
 
 **Rationale.**
 
-- The platform should not invent a "correction" wire format the user (or the agent) has to learn. Corrections are how humans naturally communicate — "wait, I meant…" — and the agent's strength is exactly interpreting that. The platform's job is to give the agent the **primitives** to act on the interpretation cleanly (cancel, revise, retract) and to give the user a **shortcut** for the common case (the affordance).
-- Distinguishing `task.cancel` / `task.revise` from `message.retract` matters. The first two affect work; the third affects record. An agent that confidently told the user "the test is fixed" and was wrong should be able to retract that statement explicitly (otherwise the engagement history is misleading), even if there is no task to cancel.
+- The platform should not invent a "correction" wire format the user (or the agent) has to learn. Corrections are how humans naturally communicate — "wait, I meant…" — and the agent's strength is exactly interpreting that. The platform's job is to give the agent the **primitives** to act on the interpretation cleanly (cancel, revise, retract) and to give the user a **shortcut** for the common case (the collaboration affordance).
+- Distinguishing `task.cancel` / `task.revise` from `message.retract` matters. The first two affect work; the third affects record. An agent that confidently told the user "the test is fixed" and was wrong should be able to retract that statement explicitly (otherwise the thread Timeline is misleading), even if there is no task to cancel.
 - "Discard / redo / re-scope" maps cleanly: `discard = task.cancel`; `redo = task.revise(same scope)`; `re-scope = task.revise(new scope)`. All three are the same primitive.
-- The affordance avoids the user having to remember the right phrasing or the task tag. A click pre-fills it; the user only has to add the corrected content. This is the same pattern as a "reply" button in a chat client.
+- The collaboration affordance avoids the user having to remember the right phrasing or the task tag. A click pre-fills it; the user only has to add the corrected content. This is the same pattern as a "reply" button in a chat client.
 
 **Consequences.**
 
 - D1 / the public Web API exposes `task.cancel`, `task.revise`, `message.retract` as MCP tools the agent calls. The collaboration affordance is a pure E2 deliverable that calls existing send-message endpoints; no new endpoint required.
-- The `TaskRevised` event needs to thread the prior scope and the new scope so observers can audit. F2 includes it in the activity-event taxonomy.
-- The "retract" semantics are deliberately soft (strikethrough + reason, not delete). Hard delete is a separate compliance concern (right-to-be-forgotten), out of scope for v0.1.
+- The `TaskRevised` Timeline event needs to thread the prior scope and the new scope so observers can audit. F2 includes it in the activity-event taxonomy.
+- The "retract" semantics are deliberately soft (Timeline event + strikethrough render, not delete). Hard delete is a separate compliance concern (right-to-be-forgotten), out of scope for v0.1.
 
 ---
 
@@ -236,8 +289,8 @@ The collaboration gives the user a **"this isn't what I meant" affordance** on a
 
 **Decision:**
 
-- **Empty collaboration's task panel, no tasks yet:** show a short, agent-authored **standing offer** rather than empty state. The text is the agent's `instructions.opening_offer` field (a new optional field on the agent definition) or, absent that, a platform-default templated from the agent's role and capabilities ("I can help with: backend code, debugging, code review. Mention #task to start one."). Empty state is a hint, not an error.
-- **Engagement on first contact with a new participant set:** show a **single agent-authored greeting message** as the first message rendered inside the new collaboration that opens, computed by the agent on the first turn (the `on_message` for the user's first message returns the greeting + the actual response, optionally as a streamed pair). For purely outbound first contact (initiative-driven; the agent reaches out first to a new user), the first message itself is the greeting + offer; same shape.
+- **Empty task panel inside the collaboration (no tasks yet):** show a short, agent-authored **standing offer** rather than empty state. The text is the agent's `instructions.opening_offer` field (a new optional field on the agent definition) or, absent that, a platform-default templated from the agent's role and capabilities ("I can help with: backend code, debugging, code review. Mention #task to start one."). Empty state is a hint, not an error.
+- **First contact in a new engagement:** show a **single agent-authored greeting message** as the first message rendered inside the new collaboration that opens, computed by the agent on the first turn (the `on_message` for the user's first message returns the greeting + the actual response, optionally as a streamed pair). For purely outbound first contact (initiative-driven; the agent reaches out first to a new user), the first message itself is the greeting + offer; same shape.
 
 **Rationale.**
 
@@ -250,30 +303,31 @@ The collaboration gives the user a **"this isn't what I meant" affordance** on a
 
 - Agent definition gains an optional `instructions.opening_offer: string` field. The field name is intentionally not coupled to the Thread / Engagement / Collaboration trio — it's an agent-author-facing config field. F3's ADR notes it; the actual schema change is D1's. The CLI / portal create-agent flows surface the field; absent value falls back to the platform default.
 - D1's `on_message` SDK contract gets an optional `is_first_contact: bool` hint passed to the agent on the first message of a new engagement. Agents can ignore it; SDK defaults wire it into a "preface with greeting" template.
-- "First contact" is **per-engagement, not per-thread.** A participant-set transition inside the same engagement (Q6) creates a new thread B but is **not** treated as first-contact for greeting purposes — the user already has prior history with the agent in the same engagement. The engagement is the source of truth for "first contact"; B inheriting from A inside the same engagement means no greeting.
+- **"First contact" is per-engagement, not per-thread.** A participant-set change that creates a new thread inside the same engagement (Q6) is **not** first-contact for greeting purposes — the user already has prior history with the agent in the same engagement. Likewise, re-adding a participant in an existing thread (Q6's state-machine transition) is not first-contact. The engagement is the source of truth for "first contact."
 
 ---
 
 ## 10. Migration
 
-**Decision:** **Clean-slate-on-upgrade for v0.1.** Existing `conversationId`-keyed data is **archived in place (read-only)** under the existing schema; the new participant-set thread model starts from an empty state on the day v0.1 ships. No deterministic merge, no user-mediated collapse. Pre-v0.1 threads (the data being archived under the new framing) remain queryable through the existing `/conversations/{id}` API for audit and historical reference, but no new messages can be appended to them; new traffic creates new participant-set-conformant threads. A **scheduled archival sweep** (operator-initiated, not automatic) can move pre-v0.1 thread data to cold storage at the operator's discretion; v0.1 ships with the read-only freeze, not the sweep.
+**Decision:** **v0.1 is not migrated to.** There is no live deployment to preserve; pre-OSS internal usage produced no production data the platform owes migration to. The platform is free to change schemas, API surfaces, wire formats, MCP tool names, and identifier shapes for v0.1 without backwards-compat constraints — no legacy partition, no `/conversations` URL alias, no field-name aliasing.
+
+**Forward-looking migration strategy.** Future schema / API changes (v0.1 → v0.2 → ...) will be migrated through the standard versioning + deprecation policy on the public Web API per `docs/architecture/web-api.md`, not through partition-of-old-data tactics. v0.1 establishes the post-rename shape; subsequent releases evolve from there.
 
 **Rationale.**
 
-- v0.1 is the first **public** release; all prior usage was internal-only or pre-public. There is no production data we owe migration to in the sense a public-release-N→N+1 migration would imply. The "existing data" is internal usage data — important for the developers who generated it, not for end users. (See `docs/plan/v0.1/decisions.md` for the release history this rests on.)
-- Deterministic collapse (group existing records by computed participant set; merge messages in timestamp order into one new thread) sounds elegant but is wrong in practice: the existing data was authored under "many conversations per participant set" semantics, so the records were intentionally separate **work episodes**, not artificial fragments of one underlying thread. Merging them collapses meaningful structure (different work, different time periods) into one undifferentiated stream.
-- User-mediated collapse (prompt the user to choose which records belong together) does not scale and asks users to reason about a kernel concept they did not opt into.
-- Clean-slate respects the invariant absolutely from day one. The kernel never has to handle pre-invariant data inline; the new model is uniform. Pre-v0.1 data stays addressable via the same `/conversations/{id}` route (Web Portal continuity preserved for archival reading) but is moved to a clearly-labeled "legacy" partition.
-- #1123 anticipated a reset on the next release boundary; v0.1 is that boundary. This is the call.
+- There is no live OSS deployment of Spring Voyage prior to v0.1. (See `docs/plan/v0.1/decisions.md` for the release history this rests on.)
+- Internal-only usage data is the developers' problem, not the platform's. Developers can re-create their state under the new model; no automation is needed.
+- The legacy-partition design from the prior draft was solving a problem that doesn't exist. Dropping it removes a real complexity tax — alias routing, dual schema reads, deprecation timer, "is this thread legacy?" checks — for no benefit.
+- Reserving back-compat for the standard Web API versioning policy keeps the migration story uniform across releases, rather than baking a one-off legacy-partition mechanism that exists solely for a v0.1 reset.
 
 **Consequences.**
 
-- F3's ADR documents the freeze + archival semantics. F2 updates `messaging.md` and the related projection docs (post-rename) to flag the legacy partition.
-- The release notes for v0.1 must call out the data-handling change explicitly: pre-v0.1 records remain read-only; new traffic generates new threads under the new model. This is a release-engineering deliverable, not an F1 design item.
-- The on-disk field name `conversationId` survives in the legacy partition because the data was written under that name. A code-level rename to `ThreadId` (Area G / D scope; flagged in the follow-ups list) does not retroactively rewrite the legacy column; the legacy partition keeps its original schema.
-- The `/conversations/{id}` URL for archival reading **remains frozen for backwards compatibility.** Whether the canonical surface for new threads becomes `/threads/{id}` (with `/conversations/{id}` aliased for compat) is C2's call; flagging here, not deciding.
-- **Web Portal continuity:** the portal must show legacy threads as read-only (no compose box, "this is a legacy archive" banner). E2 / portal team owns the affordance.
-- **Hosted-service foundation:** the legacy partition is operator-deletable on schedule. Hosted operators can run a retention policy on the legacy data; OSS operators can leave it indefinitely.
+- The `/conversations/{id}` URL is **not preserved.** C2 introduces `/threads/{id}` as the canonical URL; no alias.
+- Pre-v0.1 data is the developers' concern; if they want to re-enter it, they re-enter it under the new model.
+- The on-disk field name `conversationId` does not survive — there is no legacy partition to host it. The code-level rename `ConversationId` → `ThreadId` is full and uniform.
+- Forward migrations (v0.1 → v0.2, etc.) follow the public Web API versioning + deprecation policy.
+- **Web Portal continuity:** the portal renders against `/api/v1/threads/{id}` directly; no "legacy archive" banner is needed because there is no legacy archive.
+- **Hosted-service foundation:** clean schema from day one means the hosted operator does not inherit a dual-schema burden.
 
 ---
 
@@ -281,13 +335,13 @@ The collaboration gives the user a **"this isn't what I meant" affordance** on a
 
 This design unblocks the following work, none of which is in scope for the F1 PR:
 
-- **F2 — doc revisions.** Sweep `Conversation*` → `Thread*` terminology across `docs/architecture/messaging.md`, `docs/architecture/units.md`, `docs/architecture/agent-runtime.md`, and the glossary; the canonical glossary entries for **Thread**, **Engagement**, and **Collaboration** ship in this PR alongside this doc to anchor F2. Same pass updates the docs to reflect the participant-set model, the Engagement / Collaboration UX surfaces, the per-thread FIFO contract, the message `context` envelope (Q7), the `ThreadTransitioned` event (Q6), the agent-scoped task store (Q5), the legacy data partition (Q10), and the rename of MCP tools (`learn` / `recall`, Q4). Mark ADR-0018 as **Superseded by** F3's new ADR in the same PR.
-- **F3 — new ADR.** Author the participant-set + Engagement / Collaboration UX ADR using the new terminology throughout. Cites ADR-0029 (boundary), ADR-0026 (per-agent container), ADR-0018 (superseded), and this design doc. Anchors the long-form rationale; this doc anchors the per-question decisions.
-- **D1 — `on_message` contract.** Specify the thread-metadata field shape on inbound messages (Q3) — the `conversation_id` field on the wire **should be renamed to `thread_id`**, with D1 owning the call on the exact field shape and migration window — plus the `context` envelope on outbound messages (Q7); add the `is_first_contact` hint (Q9) and the `originator_user` task field (Q5). Surface `task.cancel`, `task.revise`, `message.retract`, `learn`, `recall`, `peek_pending` as MCP tools. **MCP tool names themselves are unchanged in surface name** — the rename is at the field level, not the tool level.
-- **Memory contract (ADR-0029 Stage 4).** Pick up the two-layer memory model (per-thread + spanning), the conservative default policy (Q4), and the `MemoryFlowPolicy` precedence chain (Q4 + Q5).
-- **C2 — public Web API target shape.** The `/conversations` vs `/threads` URL story is now explicit: the new canonical surface is `/threads`; `/conversations` may stay as a backwards-compat alias for existing portal links and the legacy partition (Q10). C2 owns the deprecation window. The Engagement-as-first-class-resource surface (Q6) sits on top.
-- **E2 — new unit/agent UX.** The user-facing surfaces are explicitly **Engagement** (the navigation list / relationship view, Q6) and **Collaboration** (the active workspace where the user works, Q7-Q9), not "dialog." Build the engagement view with participant-change markers (Q6), the cold-start standing-offer + greeting affordances inside the collaboration (Q9), the "this isn't what I meant" affordance in the collaboration (Q8), the `#task` reference inline rendering (Q7), and the legacy-archive read-only banner (Q10).
-- **Code-level rename — Area G / D scope.** `IConversationQueryService` → `IThreadQueryService`, `ConversationId` → `ThreadId`, `Message.ConversationId` → `Message.ThreadId`, the activity-event projection's `CorrelationId == ConversationId` mapping, and every repository / actor / test that references `Conversation*`. **Not in scope for F1.** Tracked in the follow-ups list below.
+- **F2 — doc revisions.** Sweep `Conversation*` → `Thread*` terminology across `docs/architecture/messaging.md`, `docs/architecture/units.md`, `docs/architecture/agent-runtime.md`, and the glossary; the canonical glossary entries for **Thread**, **Engagement**, and **Collaboration** ship in this PR alongside this doc to anchor F2. Introduce the **Timeline** as a first-class concept in `messaging.md`. Rename `MemoryFlowPolicy` (named in the prior F1 draft, never landed in code) → **`MemoryPromotionPolicy`** and rename the layers to `AgentMemory` / `AgentThreadMemory` per Q4. Same pass updates the docs to reflect the participant-set model, the Engagement / Collaboration UX surfaces, the per-thread FIFO contract, the optional `context` UX-hint metadata on messages (Q7), the `ParticipantStateChanged` Timeline event and per-(thread, participant) state machine (Q6), tasks as Timeline artifacts (Q5), and the renamed MCP tools (`learn` / `recall`, Q4). Mark ADR-0018 as **Superseded by** F3's new ADR in the same PR.
+- **F3 — new ADR.** Author the participant-set + state machine + memory model ADR using the new terminology throughout. Cites this doc, ADR-0026 (per-agent container), and ADR-0029 (boundary), and supersedes ADR-0018. Anchors the long-form rationale; this doc anchors the per-question decisions.
+- **D1 — wire contract.** Specify: `thread_id` field on inbound messages (Q3); optional `context` metadata on outbound messages (Q7); `is_first_contact` hint (Q9); per-(thread, participant) state field (Q6); `concurrent_threads: bool` agent / unit definition flag (Q3); explicit task-thread coupling (every task carries the calling agent's current `thread_id`, Q5). Surface `learn`, `recall`, `task.cancel`, `task.revise`, `message.retract`, `peek_pending` as MCP tools.
+- **C2 — public Web API target shape.** Introduce `/api/v1/threads/{id}` as the canonical URL surface. **No `/conversations` alias and no backwards-compat needed** (Q10). The Engagement-as-stitching-projection surface (Q6) sits on top — engagements are a UX projection, not a separately persisted entity at the API.
+- **E2 — engagement and collaboration UX.** The user-facing surfaces are explicitly **Engagement** (the navigation list / relationship view, Q6) and **Collaboration** (the active workspace where the user works, Q7-Q9), not "dialog." Build: the engagement view that absorbs participant-set transitions across distinct threads (Q6); per-(thread, participant) state markers on the Timeline within a thread (Q6); the cold-start standing-offer + first-contact greeting affordances inside the collaboration (Q9); the "this isn't what I meant" collaboration affordance (Q8); the `#task` reference inline rendering and `context` UX-hint header rendering (Q7).
+- **Code-level rename — Area G.** `IConversationQueryService` → `IThreadQueryService`, `ConversationId` → `ThreadId`, `Message.ConversationId` → `Message.ThreadId`, the activity-event projection's `CorrelationId == ConversationId` mapping, and every repository / actor / test that references `Conversation*`. **Not in scope for F1.** Tracked in the follow-ups list below (#1287).
+- **Deferred memory features — single follow-up.** Unit recursion, cross-thread reads of any kind, and multi-human permission gating on memory access. Not part of v0.1; warrant design when there's a forcing case (Q4 deferral note).
 - **F execution plan.** The execution-plan issue (deliberately deferred per the plan-of-record) opens once F3's ADR lands.
 
 ---
@@ -296,14 +350,19 @@ This design unblocks the following work, none of which is in scope for the F1 PR
 
 The following adjacent items surfaced during this design but are out of scope for F1 / F2 / F3 / D1 / C2 / E2 above. Listing here for the orchestrator to triage; do not widen any current PR for them.
 
-1. **Hard-delete / right-to-be-forgotten on retracted messages and archived threads.** Q8 leaves retract as soft (strikethrough + reason); Q10 leaves legacy data as read-only-archive. Compliance regimes (GDPR, CCPA) require hard delete on user request. Out of scope for v0.1; needs an architectural decision on how erasure interacts with the activity-event projection (the projection is append-only today).
-2. **`#task` namespace collision rules in multi-user collaborations.** Q5 notes that two users in the same collaboration may both have a task named `#flaky-test-fix`; disambiguation is "E2's call." E2 should explicitly file the UX rule before building the collaboration surface.
-3. **MCP tool rename migration (`storeLearning` / `recallMemory` → `learn` / `recall`).** Existing agent containers calling the old tool names will break when the rename ships. Need a deprecation window + alias on the public Web API. Probably C2's call but worth confirming.
-4. **Operator tooling for the legacy-thread archival sweep (Q10).** v0.1 ships with the read-only freeze only. The sweep verb (move-to-cold-storage / purge) is a follow-up release.
-5. **Standing-offer template authoring (Q9).** Agents can specify `instructions.opening_offer` but agent-author guidance on what makes a good offer is documentation work, not platform work. Worth filing for the docs overhaul (Area B) once F3 lands.
-6. **`MemoryFlowPolicy` precedence + UI for operators.** Q4 + Q5 introduce a new policy type. Needs the same operator-surface treatment as `AgentCloningPolicy` (HTTP, CLI, portal). File once D1's memory contract settles under ADR-0029 Stage 4.
-7. **Code-level rename `Conversation*` → `Thread*` types and properties.** `IConversationQueryService`, `ConversationId`, `Message.ConversationId`, the activity-event projection's `CorrelationId == ConversationId` mapping, and every repository / actor / test that references `Conversation*`. Area G scope; sequence with the F2 doc rename.
-8. **CLI verb rename `spring conversation …` → `spring thread …`.** Area E1 scope; ship once the code rename (#7) settles to avoid a half-renamed surface.
-9. **New long-form positioning doc `docs/concepts/threads.md`.** Captures the full UX positioning writeup — Engagement vs. Collaboration, example copy, when to use which term, the user-facing narrative. Area B (docs overhaul) scope. F1 / F2 / F3 ship the architecture and the glossary anchors; the long-form positioning is a separate piece of writing.
-10. **Per-thread privacy / reuse policy (flagged in Q4).** A thread-level toggle controlling whether participants may reuse information captured or inferred inside the thread beyond the thread's boundaries. F1 does not pre-empt this; sequence under D Stage 4 memory contract once the storage shape settles.
-11. **Web Portal URL backwards-compat story for `/conversations/{id}` reads.** Q6 + Q10 leave the legacy URL frozen for archival reading; whether the canonical surface for new threads becomes `/threads/{id}` (with `/conversations/{id}` aliased) is C2's call with an explicit deprecation window. File when C2 picks up the URL story.
+**Folded into the design (no longer follow-ups):**
+
+- *Per-thread privacy / reuse policy.* The prior draft flagged this as a separate follow-up; it is now `MemoryPromotionPolicy` (Q4).
+- *Web Portal URL backwards-compat for `/conversations/{id}`.* Q10 reverses to "no migration"; there is no legacy URL to preserve.
+- *Operator tooling for the legacy archival sweep.* Q10 reverses; there is no legacy partition.
+- *MCP tool rename migration (`storeLearning` / `recallMemory` → `learn` / `recall`).* Q10 reverses; there is no deprecation window to manage.
+
+**Still open:**
+
+1. **Code-level rename `Conversation*` → `Thread*` types and properties.** `IConversationQueryService`, `ConversationId`, `Message.ConversationId`, the activity-event projection's `CorrelationId == ConversationId` mapping, and every repository / actor / test that references `Conversation*`. Area G scope; sequence with the F2 doc rename. Already filed as #1287.
+2. **CLI verb rename `spring conversation …` → `spring thread …`.** Area E1 scope; ship once the code rename (#1287) settles to avoid a half-renamed surface. Already filed as #1288.
+3. **New long-form positioning doc `docs/concepts/threads.md`.** Captures the full UX positioning writeup — Engagement vs. Collaboration, example copy, when to use which term, the user-facing narrative. Area B (docs overhaul) scope. F1 / F2 / F3 ship the architecture and the glossary anchors; the long-form positioning is a separate piece of writing. Already filed as #1289.
+4. **Hard-delete / right-to-be-forgotten on retracted messages and removed-participant blackout-window content.** Q8 leaves retract as soft (Timeline event + strikethrough render); Q6 leaves a removed participant's `AgentThreadMemory` frozen rather than purged, and the blackout-window Timeline content unreachable but undeleted. Compliance regimes (GDPR, CCPA) require hard delete on user request. Out of scope for v0.1; needs an architectural decision on how erasure interacts with the append-only Timeline.
+5. **`#task` namespace collision rules in multi-participant threads.** Q5 simplifies tasks to a single thread-scoped artifact governed by `MemoryPromotionPolicy`, but the namespace-collision question (two participants in a thread both reference `#flaky-test-fix`) remains a UX-rules item. E2 should file the UX rule before building the collaboration surface.
+6. **Standing-offer authoring guidance (Q9).** Agents can specify `instructions.opening_offer` but agent-author guidance on what makes a good offer is documentation work, not platform work. Worth filing for the docs overhaul (Area B) once F3 lands.
+7. **v0.1 deferred memory features.** Single follow-up covering: (a) unit recursion (a unit reading its members' `AgentThreadMemory` from threads the unit itself is not in); (b) cross-thread reads of any kind by any agent or unit; (c) multi-human permission gating on memory access. The simple v0.1 model (Q4) does not need any of these; design when a forcing case appears.

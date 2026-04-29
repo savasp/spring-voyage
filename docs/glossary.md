@@ -19,6 +19,12 @@ An autonomous AI-powered entity. The fundamental building block of the platform.
 **Agent Actor (AgentActor)**
 The Dapr virtual actor implementing an agent. Manages runtime state, AI cognition, pub/sub subscriptions, and the mailbox.
 
+**AgentMemory**
+The persistent memory an agent maintains across all threads it participates in. Populated by promotion from **AgentThreadMemory**, gated per-thread by **MemoryPromotionPolicy**. The agent always reads from `AgentMemory` when operating in any thread. See `docs/architecture/thread-model.md` § Q4.
+
+**AgentThreadMemory**
+The per-(agent, thread) memory an agent maintains while participating in a specific thread. An agent can only read its own `AgentThreadMemory` for the thread it is currently operating in; it cannot read `AgentThreadMemory` from other threads. Promoted into **AgentMemory** only if the thread's **MemoryPromotionPolicy** allows. See `docs/architecture/thread-model.md` § Q4.
+
 **Boundary**
 The interface a unit exposes when acting as a member of a parent unit. Controls what is visible (transparent, translucent, or opaque) and what operations are projected, filtered, or synthesized.
 
@@ -38,7 +44,7 @@ A pluggable adapter bridging an external system (GitHub, Slack, Figma, etc.) to 
 The Dapr virtual actor implementing a connector. Manages event translation, outbound skills, and connection lifecycle.
 
 **Conversation**
-**Superseded by Thread.** The pre-v0.1 term for what is now a thread; the field name `ConversationId` survives in pre-v0.1 data but new work uses Thread terminology. See **Thread**.
+**Superseded by Thread.** The pre-v0.1 term for what is now a thread. v0.1 leaves a free hand on schema and API change (see `docs/architecture/thread-model.md` § Q10 — no migration, no legacy partition), so there is no `ConversationId` field surviving on disk; the rename is uniform. See **Thread**.
 
 **Conversation Channel**
 **Superseded — now described as the per-thread queue inside the agent's mailbox.** See `docs/architecture/messaging.md` (F2 will refresh) and **Thread**.
@@ -82,6 +88,9 @@ An agent's capacity to autonomously decide to act without external triggers. Ran
 **Mailbox**
 An agent's inbound message system, logically partitioned into control, conversation, and observation channels.
 
+**MemoryPromotionPolicy**
+Per-thread policy controlling whether an agent's **AgentThreadMemory** for that thread may be promoted into the agent's **AgentMemory**. Default: **disabled** (no promotion). The only memory-flow knob in v0.1. See `docs/architecture/thread-model.md` § Q4.
+
 **Message**
 A typed communication between addressable entities. Contains an ID, sender, recipient, type, conversation ID, payload, and timestamp.
 
@@ -111,6 +120,9 @@ The second tier of the initiative cognition model. The agent's primary LLM (Clau
 
 **Thread**
 The unique, persistent, system-level record for a set of two or more participants, containing their lifelong shared exchanges and activity. The participant set IS the identity: there is exactly one thread per unique participant set; adding or removing a participant produces a different thread. This is the system / architectural concept — used in code, schema, APIs, and architecture docs. Users do not see threads directly: the product presents the thread as an **Engagement**, and the user works inside it as a **Collaboration**. See `docs/architecture/thread-model.md`.
+
+**Timeline**
+The ordered, timestamped record of all artifacts within a thread: messages (user / agent / initiative), task lifecycle events, **ParticipantStateChanged** events, retractions, and system events. Append-only at the platform level; corrections and retractions are new Timeline events that reference prior artifacts, not in-place mutations. Per-thread FIFO is the ordering invariant. See `docs/architecture/thread-model.md` § Q7.
 
 **Topic**
 A named pub/sub channel for event distribution. Namespaced by unit.
