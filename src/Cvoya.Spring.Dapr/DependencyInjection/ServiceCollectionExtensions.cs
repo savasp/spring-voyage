@@ -462,6 +462,12 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IAgentToolLauncher, CodexLauncher>();
         services.AddSingleton<IAgentToolLauncher, GeminiLauncher>();
         services.AddSingleton<IAgentToolLauncher, DaprAgentLauncher>();
+        // D3c: per-agent workspace volume manager. Provisions volumes before
+        // agent containers start, reclaims them on agent delete / ephemeral
+        // completion, and emits volume-level telemetry (size, growth rate).
+        // Registered as a singleton so all dispatch paths share the in-process
+        // tracking map; registered as IHostedService for the metric timer.
+        services.TryAddSingleton<AgentVolumeManager>();
         services.TryAddSingleton<PersistentAgentRegistry>();
         // Per-thread registry for ephemeral agent containers. PR 5 of
         // the #1087 series: the unified A2A dispatch path starts ephemeral
@@ -487,6 +493,7 @@ public static class ServiceCollectionExtensions
 
         if (!isDocGen)
         {
+            services.AddHostedService(sp => sp.GetRequiredService<AgentVolumeManager>());
             services.AddHostedService(sp => sp.GetRequiredService<PersistentAgentRegistry>());
             services.AddHostedService(sp => sp.GetRequiredService<EphemeralAgentRegistry>());
             services.AddHostedService(sp => sp.GetRequiredService<McpServer>());

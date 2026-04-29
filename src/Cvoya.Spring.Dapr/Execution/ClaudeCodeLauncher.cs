@@ -110,7 +110,12 @@ public class ClaudeCodeLauncher(ILoggerFactory loggerFactory) : IAgentToolLaunch
             // deployment/agent-sidecar/src/config.ts. Hand-rolling the
             // encoding is forbidden (see issue text); JsonSerializer
             // gives us stable, double-quoted output.
-            ["SPRING_AGENT_ARGV"] = JsonSerializer.Serialize(DefaultClaudeArgv)
+            ["SPRING_AGENT_ARGV"] = JsonSerializer.Serialize(DefaultClaudeArgv),
+            // D3c: canonical path where the per-agent workspace volume is
+            // mounted. The dispatcher provisions the volume and adds the
+            // -v mount; the env var tells the in-container SDK where to find
+            // it (D1 spec § 2.2.1, `SPRING_WORKSPACE_PATH`).
+            [AgentVolumeManager.WorkspacePathEnvVar] = AgentVolumeManager.WorkspaceMountPath,
         };
 
         return Task.FromResult(new AgentLaunchSpec(

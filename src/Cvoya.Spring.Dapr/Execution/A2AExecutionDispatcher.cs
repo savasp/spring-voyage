@@ -44,6 +44,7 @@ public class A2AExecutionDispatcher(
     PersistentAgentRegistry persistentAgentRegistry,
     EphemeralAgentRegistry ephemeralAgentRegistry,
     ContainerLifecycleManager containerLifecycleManager,
+    AgentVolumeManager volumeManager,
     IOptions<DaprSidecarOptions> daprSidecarOptions,
     ILoggerFactory loggerFactory) : IExecutionDispatcher
 {
@@ -152,7 +153,20 @@ public class A2AExecutionDispatcher(
             Model: definition.Execution.Model);
 
         var spec = await launcher.PrepareAsync(launchContext, cancellationToken);
-        var baseConfig = ContainerConfigBuilder.Build(definition.Execution.Image, spec);
+
+        // D3c: provision the per-agent workspace volume before starting the
+        // container. The volume survives container restarts and mid-flight
+        // crashes — only ephemeral completion (ReleaseAsync) triggers
+        // reclamation, per ADR-0029 § "Durable state: a per-agent persistent
+        // volume".
+        var volumeName = await volumeManager.EnsureAsync(agentId, cancellationToken);
+        var volumeMount = AgentVolumeManager.BuildVolumeMount(volumeName);
+        var specWithVolume = spec with
+        {
+            ExtraVolumeMounts = MergeVolumeMounts(spec.ExtraVolumeMounts, volumeMount),
+        };
+
+        var baseConfig = ContainerConfigBuilder.Build(definition.Execution.Image, specWithVolume);
         var useDaprSidecar = string.Equals(
             definition.Execution.Tool, DaprAgentLauncher.ToolId, StringComparison.OrdinalIgnoreCase);
 
@@ -255,6 +269,27 @@ public class A2AExecutionDispatcher(
     }
 
     private static string BuildEphemeralDaprAppId() => $"e{Guid.NewGuid():N}";
+
+    /// <summary>
+    /// Appends <paramref name="additionalMount"/> to an existing mount list,
+    /// returning a new list. Used to inject the per-agent workspace volume
+    /// mount into a launcher's <see cref="AgentLaunchSpec"/> without mutating
+    /// the launcher's immutable record.
+    /// </summary>
+    private static IReadOnlyList<string> MergeVolumeMounts(
+        IReadOnlyList<string>? existing,
+        string additionalMount)
+    {
+        if (existing is null || existing.Count == 0)
+        {
+            return [additionalMount];
+        }
+
+        var merged = new List<string>(existing.Count + 1);
+        merged.AddRange(existing);
+        merged.Add(additionalMount);
+        return merged;
+    }
 
     /// <summary>
     /// Produces a stable, short Dapr <c>app-id</c> for a persistent
@@ -376,7 +411,17 @@ public class A2AExecutionDispatcher(
             "Starting persistent agent {AgentId} with image {Image}",
             agentId, definition.Execution.Image);
 
-        var baseConfig = ContainerConfigBuilder.Build(definition.Execution.Image, spec);
+        // D3c: provision the per-agent workspace volume before starting the
+        // container. For persistent agents the volume survives restarts —
+        // reclamation only happens on explicit undeploy (UndeployAsync).
+        var volumeName = await volumeManager.EnsureAsync(agentId, cancellationToken);
+        var volumeMount = AgentVolumeManager.BuildVolumeMount(volumeName);
+        var specWithVolume = spec with
+        {
+            ExtraVolumeMounts = MergeVolumeMounts(spec.ExtraVolumeMounts, volumeMount),
+        };
+
+        var baseConfig = ContainerConfigBuilder.Build(definition.Execution.Image, specWithVolume);
         var useDaprSidecar = string.Equals(
             definition.Execution.Tool, DaprAgentLauncher.ToolId, StringComparison.OrdinalIgnoreCase);
 

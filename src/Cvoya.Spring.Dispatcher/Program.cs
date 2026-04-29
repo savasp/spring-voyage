@@ -103,6 +103,7 @@ app.MapGet("/health", () => Results.Ok(new { Status = "Healthy" }))
 
 app.MapContainerEndpoints();
 app.MapNetworkEndpoints();
+app.MapVolumeEndpoints();
 app.MapImageEndpoints();
 app.MapLlmEndpoints();
 app.MapProbeEndpoints();

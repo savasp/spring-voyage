@@ -59,6 +59,7 @@ public class PersistentAgentRegistryTests : IDisposable
         services.AddSingleton(_mcpServer);
         services.AddSingleton(_launcher);
         services.AddSingleton<IEnumerable<IAgentToolLauncher>>(_ => new[] { _launcher });
+        services.AddSingleton<AgentVolumeManager>();
         services.AddSingleton<PersistentAgentRegistry>();
         services.AddSingleton<PersistentAgentLifecycle>();
         _registry = services.BuildServiceProvider().GetRequiredService<PersistentAgentRegistry>();

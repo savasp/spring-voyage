@@ -76,4 +76,21 @@ public class GeminiLauncherTests
         prep.ExtraVolumeMounts.ShouldBeNull();
         prep.WorkingDirectory.ShouldBeNull();
     }
+
+    [Fact]
+    public async Task PrepareAsync_SetsSpringWorkspacePath_ToCanonicalMountPath()
+    {
+        var context = new AgentLaunchContext(
+            AgentId: "gemini-agent",
+            ThreadId: "conv-1",
+            Prompt: "Be helpful.",
+            McpEndpoint: "http://host.docker.internal:9999/mcp/",
+            McpToken: "gemini-secret-token");
+
+        var prep = await _launcher.PrepareAsync(context, TestContext.Current.CancellationToken);
+
+        prep.EnvironmentVariables.ShouldContainKey(AgentVolumeManager.WorkspacePathEnvVar);
+        prep.EnvironmentVariables[AgentVolumeManager.WorkspacePathEnvVar]
+            .ShouldBe(AgentVolumeManager.WorkspaceMountPath);
+    }
 }

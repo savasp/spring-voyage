@@ -41,6 +41,7 @@ using Microsoft.Extensions.Logging;
 public class EphemeralAgentRegistry(
     IContainerRuntime containerRuntime,
     ContainerLifecycleManager containerLifecycleManager,
+    AgentVolumeManager volumeManager,
     ILoggerFactory loggerFactory) : IHostedService
 {
     private readonly ILogger _logger = loggerFactory.CreateLogger<EphemeralAgentRegistry>();
@@ -83,9 +84,17 @@ public class EphemeralAgentRegistry(
     }
 
     /// <summary>
-    /// Removes the entry for the given lease and stops the underlying
-    /// container. Idempotent — a second call with the same lease is a no-op.
+    /// Removes the entry for the given lease, stops the underlying container,
+    /// and reclaims the agent's workspace volume. Idempotent — a second call
+    /// with the same lease is a no-op.
     /// </summary>
+    /// <remarks>
+    /// Volume reclamation happens only after the container has been stopped —
+    /// this is the "ephemeral done" path per ADR-0029. Mid-flight container
+    /// crashes must NOT trigger reclamation; the registry entry survives the
+    /// crash and is only released when the dispatcher's finally-block calls
+    /// this method after the turn (success, failure, or cancellation).
+    /// </remarks>
     public async Task ReleaseAsync(EphemeralAgentLease lease, CancellationToken cancellationToken = default)
     {
         if (!_entries.TryRemove(lease.Token, out var entry))
@@ -116,6 +125,11 @@ public class EphemeralAgentRegistry(
                 "Failed to stop ephemeral container {ContainerId} for agent {AgentId}",
                 entry.ContainerId, entry.AgentId);
         }
+
+        // Reclaim the workspace volume now that the container is stopped.
+        // Detached from the caller's cancellation token — reclamation is
+        // a best-effort cleanup and should not be cancelled mid-flight.
+        await volumeManager.ReclaimAsync(entry.AgentId, CancellationToken.None);
     }
 
     /// <summary>

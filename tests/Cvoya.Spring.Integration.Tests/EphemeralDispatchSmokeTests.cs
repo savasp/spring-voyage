@@ -74,7 +74,8 @@ public class EphemeralDispatchSmokeTests
         var dapr = Substitute.For<IDaprSidecarManager>();
         var clm = new ContainerLifecycleManager(
             runtime, dapr, Options.Create(new DaprSidecarOptions()), loggerFactory);
-        var registry = new EphemeralAgentRegistry(runtime, clm, loggerFactory);
+        var volumeManager = new AgentVolumeManager(runtime, loggerFactory);
+        var registry = new EphemeralAgentRegistry(runtime, clm, volumeManager, loggerFactory);
 
         // Pull alpine:latest first so StartAsync below doesn't race the
         // implicit pull. PullImageAsync is idempotent on cached images.

@@ -320,6 +320,18 @@ public sealed class UnitValidationCredentialLeakTests : IDisposable
         public Task<ContainerHttpResponse> SendHttpJsonAsync(
             string containerId, string url, byte[] body, CancellationToken ct = default)
             => throw new NotSupportedException("canary harness does not proxy A2A messages");
+
+        // D3c (#1274): volume ops. The canary never provisions agent workspaces,
+        // so all three surfaces throw so a future test routing through this stub
+        // doesn't silently succeed.
+        public Task EnsureVolumeAsync(string volumeName, CancellationToken ct = default)
+            => throw new NotSupportedException("canary harness does not provision volumes");
+
+        public Task RemoveVolumeAsync(string volumeName, CancellationToken ct = default)
+            => throw new NotSupportedException("canary harness does not remove volumes");
+
+        public Task<VolumeMetrics?> GetVolumeMetricsAsync(string volumeName, CancellationToken ct = default)
+            => throw new NotSupportedException("canary harness does not query volume metrics");
     }
 
     /// <summary>

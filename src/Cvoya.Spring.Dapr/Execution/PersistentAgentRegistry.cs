@@ -26,6 +26,7 @@ public class PersistentAgentRegistry(
     IContainerRuntime containerRuntime,
     IHttpClientFactory httpClientFactory,
     ContainerLifecycleManager containerLifecycleManager,
+    AgentVolumeManager volumeManager,
     IServiceScopeFactory serviceScopeFactory,
     ILoggerFactory loggerFactory) : IHostedService, IDisposable
 {
@@ -157,6 +158,12 @@ public class PersistentAgentRegistry(
     /// intent is "this agent should not be running" and a dangling container
     /// is recoverable via the runtime's own cleanup tools.
     /// </summary>
+    /// <remarks>
+    /// Per ADR-0029 § "Durable state: a per-agent persistent volume", the
+    /// workspace volume is reclaimed when the persistent agent is deleted
+    /// (this method). Container crashes do NOT trigger reclamation — the
+    /// health-check loop restarts the container and the volume survives.
+    /// </remarks>
     /// <param name="agentId">The agent identifier.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     public async Task<bool> UndeployAsync(string agentId, CancellationToken cancellationToken = default)
@@ -175,6 +182,9 @@ public class PersistentAgentRegistry(
             EventIds.AgentUnregistered,
             "Persistent agent {AgentId} undeployed (container {ContainerId})",
             agentId, entry.ContainerId);
+
+        // Reclaim the workspace volume on agent delete.
+        await volumeManager.ReclaimAsync(agentId, CancellationToken.None);
 
         return true;
     }

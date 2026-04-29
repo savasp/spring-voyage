@@ -113,6 +113,9 @@ public class DaprAgentLauncher(
             // enough headroom for a single LLM turn while still bounding
             // a hung sidecar.
             ["DAPR_API_TIMEOUT_SECONDS"] = "600",
+            // D3c: canonical path where the per-agent workspace volume is
+            // mounted (D1 spec § 2.2.1, `SPRING_WORKSPACE_PATH`).
+            [AgentVolumeManager.WorkspacePathEnvVar] = AgentVolumeManager.WorkspaceMountPath,
         };
 
         // Pass the Ollama base URL so the Dapr Conversation component inside

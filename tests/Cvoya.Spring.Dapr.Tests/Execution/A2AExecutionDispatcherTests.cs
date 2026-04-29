@@ -68,8 +68,9 @@ public class A2AExecutionDispatcherTests
         var daprOptions = new DaprSidecarOptions();
         var clmEph = new ContainerLifecycleManager(
             _containerRuntime, daprEph, Options.Create(daprOptions), _loggerFactory);
+        var volumeManager = new AgentVolumeManager(_containerRuntime, _loggerFactory);
         _ephemeralRegistry = new EphemeralAgentRegistry(
-            _containerRuntime, clmEph, _loggerFactory);
+            _containerRuntime, clmEph, volumeManager, _loggerFactory);
 
         var persistentServices = new ServiceCollection();
         persistentServices.AddSingleton(_persistentContainerRuntime);
@@ -78,6 +79,7 @@ public class A2AExecutionDispatcherTests
         persistentServices.AddSingleton(Substitute.For<IDaprSidecarManager>());
         persistentServices.AddSingleton(Options.Create(daprOptions));
         persistentServices.AddSingleton<ContainerLifecycleManager>();
+        persistentServices.AddSingleton<AgentVolumeManager>();
         persistentServices.AddSingleton(Substitute.For<IAgentDefinitionProvider>());
         persistentServices.AddSingleton(Substitute.For<IMcpServer>());
         persistentServices.AddSingleton(_launcher);
@@ -115,6 +117,7 @@ public class A2AExecutionDispatcherTests
         var daprD = Substitute.For<IDaprSidecarManager>();
         var clmD = new ContainerLifecycleManager(
             _containerRuntime, daprD, Options.Create(daprOptions), _loggerFactory);
+        var volumeManagerForDispatcher = new AgentVolumeManager(_containerRuntime, _loggerFactory);
 
         _dispatcher = new A2AExecutionDispatcher(
             _containerRuntime,
@@ -125,6 +128,7 @@ public class A2AExecutionDispatcherTests
             _persistentRegistry,
             _ephemeralRegistry,
             clmD,
+            volumeManagerForDispatcher,
             Options.Create(daprOptions),
             _loggerFactory);
     }
