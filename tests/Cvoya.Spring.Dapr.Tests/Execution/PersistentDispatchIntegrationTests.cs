@@ -73,6 +73,7 @@ public class PersistentDispatchIntegrationTests
         persistentServices.AddSingleton(Substitute.For<IDaprSidecarManager>());
         persistentServices.AddSingleton(Options.Create(daprOptions));
         persistentServices.AddSingleton<ContainerLifecycleManager>();
+        persistentServices.AddSingleton<AgentVolumeManager>();
         persistentServices.AddSingleton(Substitute.For<IAgentDefinitionProvider>());
         persistentServices.AddSingleton(_mcpServer);
         persistentServices.AddSingleton(_launcher);
@@ -90,6 +91,7 @@ public class PersistentDispatchIntegrationTests
         var daprD = Substitute.For<IDaprSidecarManager>();
         var clmD = new ContainerLifecycleManager(
             _containerRuntime, daprD, Options.Create(daprOptions), _loggerFactory);
+        var volumeManager = new AgentVolumeManager(_containerRuntime, _loggerFactory);
 
         var transportFactory = new DispatcherProxyA2ATransportFactory(_containerRuntime);
 
@@ -100,8 +102,9 @@ public class PersistentDispatchIntegrationTests
             _mcpServer,
             [_launcher],
             _persistentRegistry,
-            new EphemeralAgentRegistry(_containerRuntime, clmEph, _loggerFactory),
+            new EphemeralAgentRegistry(_containerRuntime, clmEph, volumeManager, _loggerFactory),
             clmD,
+            volumeManager,
             Options.Create(daprOptions),
             transportFactory,
             _loggerFactory);

@@ -163,6 +163,55 @@ public interface IContainerRuntime
         CancellationToken ct = default);
 
     /// <summary>
+    /// Ensures a named volume exists, creating it if it does not already.
+    /// Idempotent — a volume that already exists is treated as success.
+    /// Used by the agent workspace volume provisioning path (D3c) to
+    /// guarantee the per-agent persistent volume is present before the
+    /// agent container is started.
+    /// </summary>
+    /// <param name="volumeName">
+    /// The name of the volume to create. Must be a non-empty, runtime-valid
+    /// identifier. The caller is responsible for choosing a stable, unique
+    /// name — see <see cref="AgentVolumeNaming"/> for the platform convention.
+    /// </param>
+    /// <param name="ct">A token to cancel the operation.</param>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when the runtime reports a non-zero exit that is not the
+    /// "already exists" sentinel.
+    /// </exception>
+    Task EnsureVolumeAsync(string volumeName, CancellationToken ct = default);
+
+    /// <summary>
+    /// Removes a named volume. Idempotent — a volume that does not exist is
+    /// treated as success so reclamation paths are safe to call after a
+    /// partial-failure boot.
+    /// </summary>
+    /// <param name="volumeName">The name of the volume to remove.</param>
+    /// <param name="ct">A token to cancel the operation.</param>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when the runtime reports a non-zero exit that is not the
+    /// "no such volume" sentinel and is not a "volume is in use" condition
+    /// (implementations SHOULD treat in-use as a warning and return rather
+    /// than throwing, to avoid blocking reclamation of the registry entry).
+    /// </exception>
+    Task RemoveVolumeAsync(string volumeName, CancellationToken ct = default);
+
+    /// <summary>
+    /// Returns volume-level metrics (size in bytes, last-write timestamp)
+    /// for the named volume. The platform collects these to emit
+    /// volume-size and growth-rate telemetry per ADR-0029 — the content of
+    /// the volume is never inspected.
+    /// </summary>
+    /// <param name="volumeName">The name of the volume to inspect.</param>
+    /// <param name="ct">A token to cancel the operation.</param>
+    /// <returns>
+    /// Metrics for the volume, or <c>null</c> when the volume does not
+    /// exist or the runtime cannot determine the size (e.g. a remote
+    /// volume driver). Callers MUST NOT throw on <c>null</c>.
+    /// </returns>
+    Task<VolumeMetrics?> GetVolumeMetricsAsync(string volumeName, CancellationToken ct = default);
+
+    /// <summary>
     /// Forwards a JSON HTTP <c>POST</c> into the named container's network
     /// namespace and returns the response. The dispatcher executes the
     /// request from inside the container (via <c>podman exec -i ... curl</c>)
@@ -349,3 +398,21 @@ public record ContainerResult(
     int ExitCode,
     string StandardOutput,
     string StandardError);
+
+/// <summary>
+/// Volume-level metrics collected by
+/// <see cref="IContainerRuntime.GetVolumeMetricsAsync"/>. The content of
+/// the volume is never inspected — these are filesystem-metadata fields only,
+/// suitable for size / growth-rate / last-write telemetry per ADR-0029.
+/// </summary>
+/// <param name="SizeBytes">
+/// Current disk usage of the volume in bytes as reported by the container
+/// runtime. May be <c>null</c> when the runtime cannot determine the size
+/// (e.g. a remote or encrypted volume driver that does not expose usage).
+/// </param>
+/// <param name="LastWrite">
+/// Timestamp of the most recent write to the volume's mount point as
+/// reported by the container runtime inspection. May be <c>null</c> when
+/// not available.
+/// </param>
+public record VolumeMetrics(long? SizeBytes, DateTimeOffset? LastWrite);

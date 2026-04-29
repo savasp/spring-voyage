@@ -433,6 +433,125 @@ public class ProcessContainerRuntime(
     }
 
     /// <inheritdoc />
+    public async Task EnsureVolumeAsync(string volumeName, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(volumeName);
+
+        _logger.LogInformation(
+            "Ensuring volume {VolumeName} exists using {Binary}", volumeName, binaryName);
+
+        var (exitCode, _, stderr) = await RunProcessAsync(
+            binaryName, ["volume", "create", volumeName], ct);
+
+        if (exitCode == 0)
+        {
+            return;
+        }
+
+        // Idempotency: both podman and docker emit "already exists" on stderr
+        // when the volume is already present.
+        if (stderr.Contains("already exists", StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogInformation(
+                "Volume {VolumeName} already exists; treating create as no-op", volumeName);
+            return;
+        }
+
+        throw new InvalidOperationException(
+            $"Failed to create volume {volumeName}. Exit code: {exitCode}. Stderr: {stderr}");
+    }
+
+    /// <inheritdoc />
+    public async Task RemoveVolumeAsync(string volumeName, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(volumeName);
+
+        _logger.LogInformation(
+            "Removing volume {VolumeName} using {Binary}", volumeName, binaryName);
+
+        var (exitCode, _, stderr) = await RunProcessAsync(
+            binaryName, ["volume", "rm", volumeName], ct);
+
+        if (exitCode == 0)
+        {
+            return;
+        }
+
+        // Idempotency: volume does not exist is success.
+        if (stderr.Contains("no such volume", StringComparison.OrdinalIgnoreCase)
+            || stderr.Contains("not found", StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogInformation(
+                "Volume {VolumeName} did not exist; treating remove as no-op", volumeName);
+            return;
+        }
+
+        // Volume still in use — warn and return instead of throwing so the
+        // registry entry can still be reclaimed. The volume will be cleaned
+        // up when the last container using it stops, or via operator tooling.
+        if (stderr.Contains("in use", StringComparison.OrdinalIgnoreCase)
+            || stderr.Contains("volume is in use", StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogWarning(
+                "Volume {VolumeName} is still in use; deferring removal", volumeName);
+            return;
+        }
+
+        throw new InvalidOperationException(
+            $"Failed to remove volume {volumeName}. Exit code: {exitCode}. Stderr: {stderr}");
+    }
+
+    /// <inheritdoc />
+    public async Task<VolumeMetrics?> GetVolumeMetricsAsync(string volumeName, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(volumeName);
+
+        // Use `volume inspect --format` to extract the Mountpoint and CreatedAt
+        // fields without parsing full JSON. Content is never read; we only need
+        // the filesystem path to call `du`.
+        var (inspectExit, mountpoint, _) = await RunProcessAsync(
+            binaryName,
+            ["volume", "inspect", "--format", "{{.Mountpoint}}", volumeName],
+            ct);
+
+        if (inspectExit != 0)
+        {
+            // Volume does not exist or inspect failed — return null per the contract.
+            return null;
+        }
+
+        mountpoint = mountpoint.Trim();
+        if (string.IsNullOrEmpty(mountpoint))
+        {
+            return null;
+        }
+
+        // `du -sb` gives bytes (GNU coreutils); `du -sk` × 1024 is a POSIX
+        // fallback. We accept null SizeBytes when du is unavailable on the host.
+        long? sizeBytes = null;
+        try
+        {
+            var (duExit, duOut, _) = await RunProcessAsync(
+                "du", ["-sb", mountpoint], ct);
+
+            if (duExit == 0)
+            {
+                var parts = duOut.Split('\t', 2, StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length >= 1 && long.TryParse(parts[0].Trim(), out var bytes))
+                {
+                    sizeBytes = bytes;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Could not determine size for volume {VolumeName}", volumeName);
+        }
+
+        return new VolumeMetrics(sizeBytes, LastWrite: null);
+    }
+
+    /// <inheritdoc />
     public async Task RemoveNetworkAsync(string name, CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);

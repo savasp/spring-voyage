@@ -260,6 +260,78 @@ public class DispatcherClientContainerRuntime(
     }
 
     /// <inheritdoc />
+    public async Task EnsureVolumeAsync(string volumeName, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(volumeName);
+
+        var httpClient = CreateClient();
+        var request = new DispatcherCreateVolumeRequest { Name = volumeName };
+
+        _logger.LogInformation(
+            "Requesting dispatcher to ensure volume {VolumeName}", volumeName);
+
+        using var response = await httpClient.PostAsJsonAsync(
+            "v1/volumes", request, JsonOptions, ct);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await SafeReadBodyAsync(response, ct);
+            throw new InvalidOperationException(
+                $"Dispatcher returned {(int)response.StatusCode} ensuring volume {volumeName}: {body}");
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task RemoveVolumeAsync(string volumeName, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(volumeName);
+
+        var httpClient = CreateClient();
+        var uri = $"v1/volumes/{Uri.EscapeDataString(volumeName)}";
+
+        _logger.LogInformation(
+            "Requesting dispatcher to remove volume {VolumeName}", volumeName);
+
+        using var response = await httpClient.DeleteAsync(uri, ct);
+        if (!response.IsSuccessStatusCode && response.StatusCode != System.Net.HttpStatusCode.NotFound)
+        {
+            var body = await SafeReadBodyAsync(response, ct);
+            throw new InvalidOperationException(
+                $"Dispatcher returned {(int)response.StatusCode} removing volume {volumeName}: {body}");
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<VolumeMetrics?> GetVolumeMetricsAsync(string volumeName, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(volumeName);
+
+        var httpClient = CreateClient();
+        var uri = $"v1/volumes/{Uri.EscapeDataString(volumeName)}/metrics";
+
+        using var response = await httpClient.GetAsync(uri, ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            // Metrics are best-effort: return null on any error rather than
+            // surfacing a hard failure to the metrics sweep.
+            _logger.LogDebug(
+                "Dispatcher returned {StatusCode} querying volume metrics for {VolumeName}; skipping",
+                (int)response.StatusCode, volumeName);
+            return null;
+        }
+
+        var parsed = await response.Content.ReadFromJsonAsync<DispatcherVolumeMetricsResponse>(JsonOptions, ct);
+        return parsed is null
+            ? null
+            : new VolumeMetrics(parsed.SizeBytes, parsed.LastWrite);
+    }
+
+    /// <inheritdoc />
     public async Task CreateNetworkAsync(string name, CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
@@ -594,5 +666,26 @@ public class DispatcherClientContainerRuntime(
 
         [JsonPropertyName("stderr")]
         public string? StandardError { get; init; }
+    }
+
+    /// <summary>
+    /// Wire shape sent to <c>POST /v1/volumes</c> — request the dispatcher to
+    /// create a named volume idempotently. Duplicated from the dispatcher's own
+    /// model so the worker package stays free of dispatcher build dependencies.
+    /// </summary>
+    internal record DispatcherCreateVolumeRequest
+    {
+        public required string Name { get; init; }
+    }
+
+    /// <summary>
+    /// Wire shape returned by <c>GET /v1/volumes/{name}/metrics</c>.
+    /// Fields mirror <see cref="VolumeMetrics"/> so the client can construct one
+    /// without deserialising the full inspect blob.
+    /// </summary>
+    internal record DispatcherVolumeMetricsResponse
+    {
+        public long? SizeBytes { get; init; }
+        public DateTimeOffset? LastWrite { get; init; }
     }
 }

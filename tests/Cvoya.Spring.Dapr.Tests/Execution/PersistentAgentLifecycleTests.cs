@@ -50,6 +50,7 @@ public class PersistentAgentLifecycleTests
         services.AddSingleton(Substitute.For<IDaprSidecarManager>());
         services.AddSingleton(Options.Create(daprOptions));
         services.AddSingleton<ContainerLifecycleManager>();
+        services.AddSingleton<AgentVolumeManager>();
         services.AddSingleton(_agentProvider);
         services.AddSingleton(_mcpServer);
         services.AddSingleton(_launcher);

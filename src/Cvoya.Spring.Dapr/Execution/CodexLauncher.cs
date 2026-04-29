@@ -73,7 +73,10 @@ public class CodexLauncher(ILoggerFactory loggerFactory) : IAgentToolLauncher
             ["SPRING_THREAD_ID"] = context.ThreadId,
             ["SPRING_MCP_ENDPOINT"] = context.McpEndpoint,
             ["SPRING_AGENT_TOKEN"] = context.McpToken,
-            ["SPRING_SYSTEM_PROMPT"] = context.Prompt
+            ["SPRING_SYSTEM_PROMPT"] = context.Prompt,
+            // D3c: canonical path where the per-agent workspace volume is
+            // mounted (D1 spec § 2.2.1, `SPRING_WORKSPACE_PATH`).
+            [AgentVolumeManager.WorkspacePathEnvVar] = AgentVolumeManager.WorkspaceMountPath,
         };
 
         return Task.FromResult(new AgentLaunchSpec(

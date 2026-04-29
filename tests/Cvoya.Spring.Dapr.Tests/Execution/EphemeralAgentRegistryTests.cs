@@ -36,7 +36,8 @@ public class EphemeralAgentRegistryTests
         var dapr = Substitute.For<IDaprSidecarManager>();
         var clm = new ContainerLifecycleManager(
             _runtime, dapr, Options.Create(new DaprSidecarOptions()), _loggerFactory);
-        _registry = new EphemeralAgentRegistry(_runtime, clm, _loggerFactory);
+        var volumeManager = new AgentVolumeManager(_runtime, _loggerFactory);
+        _registry = new EphemeralAgentRegistry(_runtime, clm, volumeManager, _loggerFactory);
     }
 
     [Fact]
@@ -99,5 +100,18 @@ public class EphemeralAgentRegistryTests
         await _registry.ReleaseAsync(lease, TestContext.Current.CancellationToken);
 
         _registry.GetAllEntries().ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ReleaseAsync_ReclaimsWorkspaceVolume()
+    {
+        // D3c (#1274): ephemeral completion must reclaim the workspace volume
+        // so it does not accumulate on the host indefinitely.
+        var lease = _registry.Register("agent-reclaim", "conv-reclaim", "container-reclaim");
+
+        await _registry.ReleaseAsync(lease, TestContext.Current.CancellationToken);
+
+        await _runtime.Received(1).RemoveVolumeAsync(
+            "spring-ws-agent-reclaim", Arg.Any<CancellationToken>());
     }
 }

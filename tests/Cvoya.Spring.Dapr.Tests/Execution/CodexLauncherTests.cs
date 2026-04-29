@@ -76,4 +76,21 @@ public class CodexLauncherTests
         prep.ExtraVolumeMounts.ShouldBeNull();
         prep.WorkingDirectory.ShouldBeNull();
     }
+
+    [Fact]
+    public async Task PrepareAsync_SetsSpringWorkspacePath_ToCanonicalMountPath()
+    {
+        var context = new AgentLaunchContext(
+            AgentId: "codex-agent",
+            ThreadId: "conv-1",
+            Prompt: "Be helpful.",
+            McpEndpoint: "http://host.docker.internal:9999/mcp/",
+            McpToken: "codex-secret-token");
+
+        var prep = await _launcher.PrepareAsync(context, TestContext.Current.CancellationToken);
+
+        prep.EnvironmentVariables.ShouldContainKey(AgentVolumeManager.WorkspacePathEnvVar);
+        prep.EnvironmentVariables[AgentVolumeManager.WorkspacePathEnvVar]
+            .ShouldBe(AgentVolumeManager.WorkspaceMountPath);
+    }
 }

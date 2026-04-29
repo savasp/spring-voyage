@@ -35,6 +35,7 @@ public class PersistentAgentLifecycle(
     IEnumerable<IAgentToolLauncher> launchers,
     PersistentAgentRegistry persistentAgentRegistry,
     ContainerLifecycleManager containerLifecycleManager,
+    AgentVolumeManager volumeManager,
     IOptions<DaprSidecarOptions> daprSidecarOptions,
     ILoggerFactory loggerFactory)
 {
@@ -133,6 +134,16 @@ public class PersistentAgentLifecycle(
             "Deploying persistent agent {AgentId} with image {Image}",
             agentId, image);
 
+        // D3c: provision the per-agent workspace volume before starting the
+        // container. Volume survives restarts; reclamation happens on
+        // UndeployAsync (which delegates to PersistentAgentRegistry.UndeployAsync).
+        var volumeName = await volumeManager.EnsureAsync(agentId, cancellationToken);
+        var volumeMount = AgentVolumeManager.BuildVolumeMount(volumeName);
+        var prepWithVolume = prep with
+        {
+            ExtraVolumeMounts = MergeVolumeMounts(prep.ExtraVolumeMounts, volumeMount),
+        };
+
         // We pass the (possibly overridden) image into the ContainerConfig so
         // the override path only affects this single deployment — the stored
         // AgentExecutionConfig.Image is untouched. Workspace materialisation
@@ -140,7 +151,7 @@ public class PersistentAgentLifecycle(
         // describes the workspace files + mount path here. The shared
         // ContainerConfigBuilder is the single seam that translates the
         // launch spec into a container config across all dispatch paths.
-        var baseConfig = ContainerConfigBuilder.Build(image, prep);
+        var baseConfig = ContainerConfigBuilder.Build(image, prepWithVolume);
         var useDaprSidecar = string.Equals(
             definition.Execution!.Tool, DaprAgentLauncher.ToolId, StringComparison.OrdinalIgnoreCase);
 
@@ -278,6 +289,21 @@ public class PersistentAgentLifecycle(
         // replicas == 1 is equivalent to "ensure deployed". Reuse the deploy
         // path with no image override.
         return await DeployAsync(agentId, imageOverride: null, cancellationToken);
+    }
+
+    private static IReadOnlyList<string> MergeVolumeMounts(
+        IReadOnlyList<string>? existing,
+        string additionalMount)
+    {
+        if (existing is null || existing.Count == 0)
+        {
+            return [additionalMount];
+        }
+
+        var merged = new List<string>(existing.Count + 1);
+        merged.AddRange(existing);
+        merged.Add(additionalMount);
+        return merged;
     }
 
     /// <summary>Matches <see cref="A2AExecutionDispatcher"/>'s stable app-id for persistent dapr agents.</summary>

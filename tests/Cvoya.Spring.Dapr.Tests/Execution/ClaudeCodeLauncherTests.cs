@@ -140,6 +140,16 @@ public class ClaudeCodeLauncherTests
         prep.ResponseCapture.ShouldBe(AgentResponseCapture.A2A);
     }
 
+    [Fact]
+    public async Task PrepareAsync_SetsSpringWorkspacePath_ToCanonicalMountPath()
+    {
+        var prep = await _launcher.PrepareAsync(CreateContext(), TestContext.Current.CancellationToken);
+
+        prep.EnvironmentVariables.ShouldContainKey(AgentVolumeManager.WorkspacePathEnvVar);
+        prep.EnvironmentVariables[AgentVolumeManager.WorkspacePathEnvVar]
+            .ShouldBe(AgentVolumeManager.WorkspaceMountPath);
+    }
+
     private static AgentLaunchContext CreateContext() =>
         new(
             AgentId: "ada",
