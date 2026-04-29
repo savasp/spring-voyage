@@ -15,6 +15,7 @@ using Cvoya.Spring.Core.Skills;
 using Cvoya.Spring.Core.Units;
 using Cvoya.Spring.Dapr.Actors;
 using Cvoya.Spring.Dapr.Auth;
+using Cvoya.Spring.Dapr.Initiative;
 using Cvoya.Spring.Dapr.Routing;
 using Cvoya.Spring.Dapr.Tests.TestHelpers;
 
@@ -174,6 +175,13 @@ public class AgentActorSeedExpertiseTests
         var policyEnforcer = Substitute.For<IUnitPolicyEnforcer>();
         policyEnforcer.WithAllowByDefault();
 
+        // Wire the real AgentLifecycleCoordinator so that OnActivateAsync
+        // exercises the coordinator's seeding logic end-to-end. Scoped seams
+        // (StateManager, IExpertiseSeedProvider) are injected as delegates by
+        // the actor on each activation — the coordinator itself is stateless.
+        var lifecycleCoordinator = new AgentLifecycleCoordinator(
+            Substitute.For<ILogger<AgentLifecycleCoordinator>>());
+
         var actor = new AgentActor(
             host,
             Substitute.For<IActivityEventBus>(),
@@ -186,6 +194,7 @@ public class AgentActorSeedExpertiseTests
             policyEnforcer,
             Substitute.For<IAgentInitiativeEvaluator>(),
             loggerFactory,
+            lifecycleCoordinator,
             seedProvider);
 
         typeof(Actor).GetField("<StateManager>k__BackingField", BindingFlags.NonPublic | BindingFlags.Instance)!

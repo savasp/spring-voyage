@@ -91,7 +91,8 @@ public class AgentActorUnitPolicyDispatchTests
             _membershipRepository,
             _enforcer,
             Substitute.For<IAgentInitiativeEvaluator>(),
-            loggerFactory);
+            loggerFactory,
+            Substitute.For<IAgentLifecycleCoordinator>());
 
         SetStateManager(_actor, _stateManager);
 
