@@ -31,7 +31,7 @@ For open design questions that have **not** yet been decided, see [`../architect
 | [0015](0015-dapr-as-infrastructure-runtime.md) | Dapr as the infrastructure runtime for actors / pub-sub / state / workflows | Accepted — pluggable backends, virtual actors, sidecar pattern |
 | [0016](0016-net-for-infrastructure-layer.md) | .NET 10 / C# for the platform infrastructure layer | Accepted — type safety where it matters, mature Dapr SDK, language-agnostic agents |
 | [0017](0017-unit-is-an-agent-composite.md) | A Unit IS an Agent (composite pattern) | Accepted — recursive composition, single dispatch path |
-| [0018](0018-partitioned-mailbox.md) | Three-channel partitioned mailbox per agent (control / conversation / observation) | Accepted — platform-controlled priority by `MessageType` |
+| [0018](0018-partitioned-mailbox.md) | Three-channel partitioned mailbox per agent (control / conversation / observation) | Superseded by [0030](0030-thread-model.md) |
 | [0019](0019-workflow-as-container.md) | Domain workflows run as containers, not in-process | Accepted — decoupled releases, in-flight safety |
 | [0020](0020-tiered-cognition-for-initiative.md) | Two-tier cognition model for initiative | Accepted — Tier 1 screens, Tier 2 reflects only on `Act` verdicts |
 | [0021](0021-spring-voyage-is-not-an-agent-runtime.md) | Spring Voyage is not an agent runtime | Accepted — coordinate external runtimes, no in-platform tool-use loop |
@@ -41,7 +41,8 @@ For open design questions that have **not** yet been decided, see [`../architect
 | [0025](0025-unified-agent-launch-contract.md) | Unified agent launch contract (single dispatch path, response-capture as a property) | Accepted — `AgentLaunchSpec` + single A2A path; ephemeral is a retention policy |
 | [0026](0026-per-agent-container-scope.md) | Per-agent container scope (one container per agent, not per unit) | Accepted — `Pooled` reserved for [#362](https://github.com/cvoya-com/spring-voyage/issues/362) |
 | [0027](0027-agent-image-conformance-contract.md) | Agent-image conformance contract (A2A 0.3.x on `:8999`, three conformance paths) | Accepted — bridge ships via OCI base, npm, and SEA binary |
-| [0029](0029-tenant-execution-boundary.md) | Tenant execution boundary and agent runtime execution contract | Proposed — V2.1; two directional buckets, A2A 0.3.x wire, per-agent volume |
+| [0029](0029-tenant-execution-boundary.md) | Tenant execution boundary and agent runtime execution contract | Accepted — v0.1; two directional buckets, A2A 0.3.x wire, per-agent volume |
+| [0030](0030-thread-model.md) | Thread model: participant-set identity, single AgentMemory, per-thread visibility policy | Accepted — supersedes [0018](0018-partitioned-mailbox.md) |
 
 ## Format
 

@@ -1,6 +1,6 @@
 # 0018 — Three-channel partitioned mailbox per agent
 
-- **Status:** Accepted — every agent has a control / conversation / observation mailbox; sender priority does not exist.
+- **Status:** Superseded by [0030 — Thread model](0030-thread-model.md) (2026-04-29). The control-channel and observation-channel partitioning carries forward unchanged (control still pre-empts work; observations still arrive as a batched digest). The conversation-channel single-active-slot semantics is replaced by the per-thread FIFO + concurrent-threads model in 0030.
 - **Date:** 2026-04-21
 - **Related code:** `src/Cvoya.Spring.Core/Messaging/`, `src/Cvoya.Spring.Dapr/Actors/AgentActor.cs` (mailbox processing).
 - **Related docs:** [`docs/architecture/messaging.md`](../architecture/messaging.md), [`docs/concepts/messaging.md`](../concepts/messaging.md).
