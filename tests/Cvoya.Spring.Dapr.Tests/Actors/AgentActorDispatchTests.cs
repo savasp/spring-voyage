@@ -88,7 +88,8 @@ public class AgentActorDispatchTests
             _membershipRepository,
             unitPolicyEnforcer,
             Substitute.For<IAgentInitiativeEvaluator>(),
-            loggerFactory);
+            loggerFactory,
+            Substitute.For<IAgentLifecycleCoordinator>());
         SetStateManager(_actor, _stateManager);
 
         _stateManager.TryGetStateAsync<ThreadChannel>(StateKeys.ActiveConversation, Arg.Any<CancellationToken>())

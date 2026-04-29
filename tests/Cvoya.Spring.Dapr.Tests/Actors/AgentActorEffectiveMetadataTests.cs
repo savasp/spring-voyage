@@ -85,7 +85,8 @@ public class AgentActorEffectiveMetadataTests
             _membershipRepository,
             unitPolicyEnforcer,
             Substitute.For<IAgentInitiativeEvaluator>(),
-            loggerFactory);
+            loggerFactory,
+            Substitute.For<IAgentLifecycleCoordinator>());
 
         SetStateManager(_actor, _stateManager);
 

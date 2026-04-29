@@ -72,6 +72,13 @@ internal static class ServiceCollectionExtensionsExecution
         // tenant-aware decorator without touching this registration.
         services.TryAddSingleton<IAgentObservationCoordinator, AgentObservationCoordinator>();
 
+        // Agent lifecycle / activation coordinator (concern 7 of #1276).
+        // Singleton: stateless across agents; uses per-call delegates for
+        // StateManager access and the optional IExpertiseSeedProvider. TryAdd
+        // so the private cloud repo can substitute a tenant-aware coordinator
+        // (e.g. one that layers audit logging on every seeding event).
+        services.TryAddSingleton<IAgentLifecycleCoordinator, AgentLifecycleCoordinator>();
+
         // Agent-runtime plugin registry (#678, cornerstone of the #674
         // refactor). Enumerates every DI-registered IAgentRuntime so the
         // API layer, wizard, and CLI can resolve runtimes by id without

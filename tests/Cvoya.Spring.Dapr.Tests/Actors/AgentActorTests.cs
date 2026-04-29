@@ -78,7 +78,8 @@ public class AgentActorTests
             _membershipRepository,
             _unitPolicyEnforcer,
             Substitute.For<IAgentInitiativeEvaluator>(),
-            _loggerFactory);
+            _loggerFactory,
+            Substitute.For<IAgentLifecycleCoordinator>());
         SetStateManager(_actor, _stateManager);
 
         // Default: no active conversation, no pending conversations.
