@@ -24,7 +24,7 @@ A participant may belong to many threads.
 
 Every thread has an ordered, timestamped **Timeline** of all artifacts it accumulates — messages (user / agent / initiative), task lifecycle events, participant state changes, and system events. The Timeline is append-only at the platform level; it is the canonical record of what happened in the thread, in what order. Per-question detail belongs in Q7.
 
-Memory has two named layers per agent: **`AgentMemory`** (a single persistent store that spans every thread the agent participates in) and **`AgentThreadMemory`** (per-(agent, thread); one for each thread the agent is in). Promotion from `AgentThreadMemory` into `AgentMemory` is governed per-thread by a **`MemoryPromotionPolicy`** (default: disabled). Detail belongs in Q4.
+Each agent has a single **`AgentMemory`** — an ordered, append-only memory store. Entries are **`MemoryEntry`** records with optional `thread_id` and `threadOnly` attributes; per-thread visibility is enforced at the recall filter, governed by the thread's **`ThreadMemoryPolicy`**. Detail belongs in Q4.
 
 A thread's identity is its permanent membership set, but per-thread state may transition for individual participants (`added → active → removed → re-added`); a removed participant does not see new activity until re-added. Detail belongs in Q6.
 
@@ -127,48 +127,109 @@ A user opens a **collaboration** to work; the system records it under the releva
 
 ## 4. Memory model
 
-**Decision:** Two named layers per agent, one promotion direction, one policy, one default.
+**Decision:** A single per-agent memory store with per-entry visibility attributes, one per-thread policy, one safe default.
 
-- An agent has **`AgentMemory`**, a single persistent store that spans every thread the agent participates in.
-- For each thread the agent participates in, the agent has a separate **`AgentThreadMemory`** scoped to that (agent, thread) pair.
-- An agent operating in thread T sees: its own `AgentMemory` + its own `AgentThreadMemory` for T. **It cannot read `AgentThreadMemory` from any other thread.** It cannot read another agent's memory of any kind.
-- Per-thread **`MemoryPromotionPolicy`** (default: **`disabled`**) controls whether that agent's `AgentThreadMemory` for this thread may be promoted into its `AgentMemory`. When disabled, nothing leaves the thread.
+### Single store
 
-**MCP tool surface (renamed from prior draft):**
+- Each agent has **one `AgentMemory`** — the agent's complete memory store. There is no separate `AgentThreadMemory` type, store, or concept.
+- `AgentMemory` is structurally an ordered, append-only sequence of **memory entries** (`MemoryEntry`). Each entry has the shape:
 
-- **`learn(fact)`** — promote a fact from the current thread's `AgentThreadMemory` into the agent's `AgentMemory`. Gated by `MemoryPromotionPolicy`. Replaces today's `storeLearning`.
-- **`recall(query)`** — read from the agent's `AgentMemory`. Always available; not policy-gated. Replaces today's `recallMemory`.
-- There is no MCP tool for reading another thread's `AgentThreadMemory`. Cross-thread reads are not a v0.1 feature.
+  ```
+  { id, timestamp, payload, thread_id?, threadOnly? }
+  ```
+
+  - `id` — entry identifier.
+  - `timestamp` — when the entry was created.
+  - `payload` — the artifact content. May be a fact, a lesson, a generalised pattern, an observation, a reference to a thread event, an inferred conclusion — any **memory artifact**. (See artifact uniformity below.)
+  - `thread_id` — nullable. Set when the entry was created in a thread context; null for thread-less entries (e.g., platform-generated agent-definition activity).
+  - `threadOnly` — only meaningful when `thread_id` is set. Stamped from the thread's **`ThreadMemoryPolicy`** at write time. `true` = the entry is visible to this agent only when operating in this thread. `false` = the entry is visible to this agent across all of its threads.
+
+- "Per-thread memory" (the prior `AgentThreadMemory` framing) is now a **filter view** over `AgentMemory`: the subset of entries with `thread_id == T`. Not a separate store.
+
+### Artifact uniformity
+
+A "memory artifact" is the general term. **Lessons, facts, messages, tasks, reasoning steps, generalised patterns, and inferred conclusions are all memory artifacts** — there is no special "lesson" or "fact" type at the contract level. The platform stores them uniformly; the agent's cognition decides what each artifact represents.
+
+### Policy
+
+- **`ThreadMemoryPolicy`** — per-thread policy that sets the default `threadOnly` value for memory entries stored by an agent operating in that thread.
+- **Default: `threadOnly: true`** (entries do not leave the thread).
+- This is the operator's privacy / trust knob. It is the only memory-flow knob in v0.1.
+- Per-thread setting; resolution chain (tenant → unit → agent → thread) deferred — for v0.1, the policy lives on the thread.
+
+### MCP tool surface
+
+Two tools, both implicit in the agent's current operating context (the platform knows which thread the agent is operating in via `IAgentContext`):
+
+- **`store(memory)`** — appends a new memory entry to the agent's `AgentMemory`. Platform stamps:
+  - `thread_id` from the agent's current operating thread (always set in v0.1; see "Forward-looking" below).
+  - `threadOnly` from the thread's `ThreadMemoryPolicy`.
+  - `id`, `timestamp`.
+
+  The agent passes only the `memory` payload. Replaces the prior `learn` / `storeLearning` tool.
+
+- **`recall(query)`** — reads the visible subset of the agent's `AgentMemory` for its current operating context. The visibility filter returns:
+  - All entries with `thread_id == current_thread` (always visible to a participating agent).
+  - All entries from other threads where `threadOnly == false`.
+  - All entries with `thread_id == null` (thread-less, always visible).
+
+  Replaces the prior `recall` / `recallMemory` tool.
+
+### Reading vs. operating context
+
+- The agent always reads its `AgentMemory` while operating in any thread; the visibility filter is the only restriction.
+- The agent does **not** read another agent's memory of any kind.
+- Cross-thread reads happen via the `threadOnly: false` mechanism — entries with `threadOnly: false` are visible across the agent's threads; entries with `threadOnly: true` are not.
+
+### Cloning
+
+- A clone is a new agent identity. At clone time, the clone receives a snapshot of the parent's `AgentMemory` (the entries plus their attributes — including `thread_id`, `threadOnly`).
+- The clone does not participate in any threads at clone time; subsequent participation generates new entries with the new thread context.
+- `ThreadMemoryPolicy` does not transfer (it lives on the thread, not the agent). When the clone joins a new thread, that thread's policy applies.
+- Cloning is not blocked by policy.
+
+### Authoring guidance
+
+When designing or instructing an agent, the design intent is to make memory artifacts **as widely useful as the thread's policy allows**. The agent's cognition is the judge of cross-thread relevance — the platform does not impose. This is *guidance*, not enforcement; the policy remains the operator's privacy call, and `threadOnly: true` is the safe default.
+
+| Artifact has cross-thread value? | Thread's `ThreadMemoryPolicy` | Stored as |
+|---|---|---|
+| Yes | `threadOnly: false` | Visible across the agent's threads after `store()` |
+| Yes | `threadOnly: true` | Stored with `threadOnly: true`; not visible outside this thread (may surface later if policy is relaxed for new entries, but old entries keep their stamped value) |
+| No | Either | Stored with whatever `threadOnly` the thread's policy dictates; the agent doesn't reason about cross-thread value |
+
+Note on the third row: the agent's cognition decides cross-thread value; even if the policy permits cross-thread visibility, the agent should not reach for it for genuinely thread-local artifacts (a task scoped to this collaboration, a transient observation). Cross-thread visibility is not a default — it's earned by relevance.
+
+### Forward-looking — what the schema reserves room for
+
+The shape is designed to allow these future moves without restructuring `AgentMemory`:
+
+- The `thread_id` field is nullable to allow thread-less entries from future inference operations (deferral 4 below) and from platform-generated agent-level activity (e.g., agent definition updates).
+- The single-store / attribute-based shape allows future relationship-style metadata (e.g., `inferred_from`) to be added as additional optional fields without restructuring `AgentMemory`.
 
 **Rationale.**
 
-- The asymmetric-defaults model in the prior draft (auto-recall down, agent-flagged learn up, three policy axes) was too clever. The new model is two layers, one promotion direction, one policy, one default — a model engineers and operators can hold in their heads.
-- Default `disabled` is the safe-by-default position: no information escapes a thread unless the operator explicitly enables promotion. The cost of a leak (information from thread A surfacing in thread B without the user's expectation) is much higher than the cost of an agent occasionally having to do without a fact it learned in another thread.
-- The agent always sees both layers when operating in a thread — there is no read-side gating, no `auto_recall` toggle. Read access is determined by **which thread the agent is operating in**; the policy gates only the **write-side promotion** from `AgentThreadMemory` into `AgentMemory`.
-- Layering matches ADR-0029's "memory deferred" hold: memory is **not** at the SDK boundary. `learn` / `recall` are MCP tools the platform offers via the public Web API (per ADR-0029's "capabilities reach via MCP" pattern), not bucket-1 SDK hooks. Agents invoke them; the platform stores and policy-gates them.
-
-**Cloning interaction.**
-
-- A clone is a new agent identity. At clone time, the clone receives a snapshot of the parent's `AgentMemory` (which itself contains only what the parent's policies had permitted to be promoted up to that point — possibly empty if all of the parent's per-thread policies were `disabled`).
-- The clone's `AgentThreadMemory` for any thread starts empty: the clone has not participated in any thread yet.
-- `MemoryPromotionPolicy` does not transfer. The clone is a fresh policy subject; each thread it joins carries its own policy.
-- **Cloning is not blocked by policy.** A `disabled`-policy parent can be cloned freely; the clone inherits an `AgentMemory` snapshot and the parent's `AgentThreadMemory` does not transfer. There is no leak.
+- The two-store model (`AgentMemory` + `AgentThreadMemory` with promotion between them) was conceptually clean but overweight: it required the agent to make a write-time choice about *which* store, which conflated "where to store" with "what should be visible later." The single-store + attribute model collapses these: the agent stores; the policy decides visibility; the recall filter enforces it. Smaller mental model, smaller API.
+- Default `threadOnly: true` is the safe-by-default position: no information leaves a thread unless the operator explicitly opts in.
+- Visibility-as-attribute (rather than store-membership) supports future enhancements cleanly: inferences with explicit provenance, thread-less entries, richer policy attributes — all become additional fields on `MemoryEntry` rather than new stores or new APIs.
+- Layering matches ADR-0029's "memory deferred" hold: memory is **not** at the SDK boundary. `store` / `recall` are MCP tools the platform offers via the public Web API, not bucket-1 SDK hooks.
 
 **Consequences.**
 
-- F3's ADR ratifies the two-layer memory model and the `MemoryPromotionPolicy` (per-thread, default disabled).
-- The renamed MCP tools (`learn`, `recall`) replace `storeLearning` and `recallMemory` in the public Web API surface. C1 / C2 own the surface change.
-- F2's doc revisions (`messaging.md`, `units.md`, `agent-runtime.md`) sweep `MemoryFlowPolicy` (which never landed in code, but was named in the prior F1 draft) → `MemoryPromotionPolicy`, and rename the layers per the canonical names above.
-- D1 sees a smaller surface: the SDK and contract carry only `learn` and `recall` MCP tools for memory; there is no `peek_other_thread`, no recursive read, no cross-thread visibility flag in v0.1.
-- **Hosted-service foundation:** safe-by-default + a single per-thread policy knob is exactly what a hosted service needs — no information leaves a thread without explicit operator opt-in.
+- F3's ADR ratifies the single-store memory model and `ThreadMemoryPolicy`.
+- The renamed MCP tools (`store`, `recall`) replace `storeLearning` and `recallMemory` in the public Web API surface. C1 / C2 own the surface change.
+- F2's doc revisions sweep `MemoryFlowPolicy` (prior draft term) and the now-retired `MemoryPromotionPolicy` (also prior draft term — never landed in code) → `ThreadMemoryPolicy`. The two-store framing in `messaging.md` / `units.md` is replaced with the single-store + attribute-based view.
+- D1 sees a smaller surface: `store` and `recall` MCP tools, the `MemoryEntry` shape, the `ThreadMemoryPolicy` attached to threads.
+- **Hosted-service foundation:** safe-by-default (`threadOnly: true`) + a single per-thread policy knob is exactly what a hosted service needs.
 
-**Deferred from v0.1.** Three things this design intentionally leaves out:
+**Deferred from v0.1.** Four things this design intentionally leaves out:
 
-1. **Unit recursion** — a unit reading its members' `AgentThreadMemory` from threads the unit itself is not in.
-2. **Cross-thread reads of any kind** — by any agent or unit.
-3. **Multi-human permission gating on memory access** — the case where a unit's recursive read might surface information from a thread the asking human did not have permission to see.
+1. **Unit recursion** — a unit reading its members' memory entries from threads the unit itself is not in.
+2. **Cross-thread reads at the recall API level** — by any agent or unit. (The `threadOnly: false` mechanism is the only way memory crosses threads in v0.1.)
+3. **Multi-human permission gating on memory access** — surface filtering based on the asking human's permissions on the source thread.
+4. **Inferences with explicit provenance** — agent-driven thread-less entries that synthesise across multiple sources, with a relationship structure linking inferred entries to their source entries (a hypergraph). v0.1 has no inference operation; agents may produce derivative entries via `store(memory)` but cannot record that they were inferred from specific source entries. A separate follow-up issue captures the design space.
 
-The simple v0.1 model — agent sees its own `AgentMemory` + its own `AgentThreadMemory` for the current thread, gated only by `MemoryPromotionPolicy` — does not need any of these. Each is a real concern for richer multi-human / multi-unit deployments and warrants design when there's a forcing case. Filed as a single follow-up.
+Each is a real concern for richer multi-human / multi-unit deployments (1–3) or for richer cognition models (4) and warrants design when there's a forcing case. Filed as a single follow-up.
 
 ---
 
@@ -177,21 +238,21 @@ The simple v0.1 model — agent sees its own `AgentMemory` + its own `AgentThrea
 **Decision:** Tasks are **thread-associated artifacts**, not agent-scoped entities.
 
 - A task lives in the thread's **Timeline** (Q7) alongside messages and system events. A task does not exist outside a thread.
-- A task's visibility to the agent is governed by the same `MemoryPromotionPolicy` from Q4 — because a task created in a thread is part of that thread's `AgentThreadMemory` from each participating agent's perspective. Promoting a task to `AgentMemory` follows the same policy as promoting any other fact.
+- A task's visibility to the agent is governed by the same `ThreadMemoryPolicy` from Q4 — a task created in a thread is, from each participating agent's perspective, a memory entry scoped to that thread. The entry's `threadOnly` attribute is stamped from the thread's policy like any other entry.
 - Cross-thread task references are **not** a v0.1 feature. A task `#name` resolves within the current thread only. Cross-thread `#task` reference is part of the deferred memory features in Q4.
-- The `MemoryPromotionPolicy` does not need a separate `task_visibility` axis — tasks are subject to the policy like any other thread-scoped knowledge.
+- The `ThreadMemoryPolicy` does not need a separate `task_visibility` axis — tasks are subject to the policy like any other thread-scoped knowledge.
 
 **Rationale.**
 
-- The prior "tasks decoupled from threads" framing broke privacy: a secret-project task initiated in thread T1 (policy: disabled) should not be visible to the same agent operating in another thread T2. The current model achieves that automatically — the agent in T2 cannot read T1's `AgentThreadMemory`, hence cannot see T1's tasks.
+- The prior "tasks decoupled from threads" framing broke privacy: a secret-project task initiated in thread T1 (policy: `threadOnly: true`) should not be visible to the same agent operating in another thread T2. The current model achieves that automatically — the task entry is stamped `threadOnly: true`, so the recall filter hides it from the agent operating in T2.
 - Threads-as-the-unit-of-artifact-aggregation is consistent with the Timeline concept (Q7): messages, tasks, system events all live on the timeline. Tasks are not a separate concept that floats above the thread.
-- Simpler. One policy controls one direction of flow. No special-case visibility rules for tasks. The originator-anchored / participant-set-only / agent-wide enum from the prior draft is removed entirely. There is one knob: `MemoryPromotionPolicy`.
+- Simpler. One policy controls visibility. No special-case visibility rules for tasks. The originator-anchored / participant-set-only / agent-wide enum from the prior draft is removed entirely. There is one knob: `ThreadMemoryPolicy`.
 
 **Consequences.**
 
 - D1's task contract: `task.create`, `task.update`, `task.cancel`, `task.revise` operations all carry an implicit `thread_id` — the thread the calling agent is operating in. A task does not exist outside a thread.
 - Tasks appear on the thread Timeline as ordered, timestamped artifacts (Q7).
-- Cross-thread task surfaces (e.g., "all my open tasks across all my engagements") are a UX projection over the agent's `AgentMemory` — they show only tasks that have been **promoted**, not raw `AgentThreadMemory` contents. Scope is UX (E2), not platform.
+- Cross-thread task surfaces (e.g., "all my open tasks across all my engagements") are a UX projection over the agent's `AgentMemory` — they show only tasks whose entries are visible across threads (`threadOnly: false`). Scope is UX (E2), not platform.
 - F2 updates `messaging.md` to note that tasks are thread-scoped artifacts on the Timeline and removes any prior framing of a separate "agent task store."
 
 ---
@@ -217,7 +278,7 @@ The simple v0.1 model — agent sees its own `AgentMemory` + its own `AgentThrea
 - The participant-set invariant is non-negotiable (it is the whole framing). The previous draft tried to honour it by ending thread A and starting thread B on every membership change — but that conflated two genuinely different operations (a state change inside an existing set vs. a change in the set itself), inflated the thread count, and made every leave-then-rejoin produce a new thread record. Folding intra-set transitions into a per-participant state machine on a single thread keeps the lifelong-record promise crisp without violating the invariant.
 - Threads don't end is the load-bearing simplification. The thread is the canonical permanent record of "the participants who were ever part of this conversation"; the per-participant state field tells you *when* each was active. Audit, recall, re-add are all simple reads on a stable record.
 - The blackout window is a clear, enforceable read-side rule: the platform serves the participant only the timeline slices for periods they were `active`. The agent does not have to hand-filter; the platform filters at the read.
-- A removed participant's `AgentThreadMemory` is **not** purged — it is frozen at the moment of removal and resumes when re-added. The blackout-window timeline content is unreachable to that agent on re-add.
+- A removed participant's memory entries scoped to that thread are **not** purged — they are frozen at the moment of removal and resume accumulating when re-added. The blackout-window timeline content is unreachable to that agent on re-add.
 
 **Consequences.**
 
@@ -227,7 +288,7 @@ The simple v0.1 model — agent sees its own `AgentMemory` + its own `AgentThrea
 - The engagement stitching across distinct threads (case b) is a UX projection, not a new persisted entity at the API surface. The engagement is a relationship narrative; the threads it spans are the persisted records.
 - **Hosted-service foundation:** the per-(thread, participant) state field is cheap to store and cheap to filter on; no problem.
 
-**Settled rejection — subset memory access.** During PR review the user explored a "subset memory access" idea: if T2's participant set is a subset of T1's, agents in T2 would get read-side access to their T1 `AgentThreadMemory`. **Rejected for v0.1** because it sidesteps `MemoryPromotionPolicy` and re-introduces leakage the policy is meant to prevent. The continuity story for users moving between threads relies on the standard primitives: `AgentMemory` promotion (when policy allows) or explicit user-driven manual quoting / referencing of prior thread content. This is a settled rejection, not an open question.
+**Settled rejection — subset memory access.** During PR review the user explored a "subset memory access" idea: if T2's participant set is a subset of T1's, agents in T2 would get read-side access to their T1-scoped memory entries. **Rejected for v0.1** because it sidesteps `ThreadMemoryPolicy` and re-introduces leakage the policy is meant to prevent. The continuity story for users moving between threads relies on the standard primitives: cross-thread visibility via `threadOnly: false` (when policy allows), or explicit user-driven manual quoting / referencing of prior thread content. This is a settled rejection, not an open question.
 
 ---
 
@@ -335,13 +396,13 @@ The **collaboration affordance** gives the user a "this isn't what I meant" one-
 
 This design unblocks the following work, none of which is in scope for the F1 PR:
 
-- **F2 — doc revisions.** Sweep `Conversation*` → `Thread*` terminology across `docs/architecture/messaging.md`, `docs/architecture/units.md`, `docs/architecture/agent-runtime.md`, and the glossary; the canonical glossary entries for **Thread**, **Engagement**, and **Collaboration** ship in this PR alongside this doc to anchor F2. Introduce the **Timeline** as a first-class concept in `messaging.md`. Rename `MemoryFlowPolicy` (named in the prior F1 draft, never landed in code) → **`MemoryPromotionPolicy`** and rename the layers to `AgentMemory` / `AgentThreadMemory` per Q4. Same pass updates the docs to reflect the participant-set model, the Engagement / Collaboration UX surfaces, the per-thread FIFO contract, the optional `context` UX-hint metadata on messages (Q7), the `ParticipantStateChanged` Timeline event and per-(thread, participant) state machine (Q6), tasks as Timeline artifacts (Q5), and the renamed MCP tools (`learn` / `recall`, Q4). Mark ADR-0018 as **Superseded by** F3's new ADR in the same PR.
+- **F2 — doc revisions.** Sweep `Conversation*` → `Thread*` terminology across `docs/architecture/messaging.md`, `docs/architecture/units.md`, `docs/architecture/agent-runtime.md`, and the glossary; the canonical glossary entries for **Thread**, **Engagement**, and **Collaboration** ship in this PR alongside this doc to anchor F2. Introduce the **Timeline** as a first-class concept in `messaging.md`. Sweep `MemoryFlowPolicy` (named in the prior F1 draft, never landed in code) and the now-retired `MemoryPromotionPolicy` (also a prior-draft term) → **`ThreadMemoryPolicy`**, and replace the two-store framing in `messaging.md` / `units.md` with the single-store `AgentMemory` + `MemoryEntry` view per Q4. Same pass updates the docs to reflect the participant-set model, the Engagement / Collaboration UX surfaces, the per-thread FIFO contract, the optional `context` UX-hint metadata on messages (Q7), the `ParticipantStateChanged` Timeline event and per-(thread, participant) state machine (Q6), tasks as Timeline artifacts (Q5), and the renamed MCP tools (`store` / `recall`, Q4). Mark ADR-0018 as **Superseded by** F3's new ADR in the same PR.
 - **F3 — new ADR.** Author the participant-set + state machine + memory model ADR using the new terminology throughout. Cites this doc, ADR-0026 (per-agent container), and ADR-0029 (boundary), and supersedes ADR-0018. Anchors the long-form rationale; this doc anchors the per-question decisions.
-- **D1 — wire contract.** Specify: `thread_id` field on inbound messages (Q3); optional `context` metadata on outbound messages (Q7); `is_first_contact` hint (Q9); per-(thread, participant) state field (Q6); `concurrent_threads: bool` agent / unit definition flag (Q3); explicit task-thread coupling (every task carries the calling agent's current `thread_id`, Q5). Surface `learn`, `recall`, `task.cancel`, `task.revise`, `message.retract`, `peek_pending` as MCP tools.
+- **D1 — wire contract.** Specify: `thread_id` field on inbound messages (Q3); optional `context` metadata on outbound messages (Q7); `is_first_contact` hint (Q9); per-(thread, participant) state field (Q6); `concurrent_threads: bool` agent / unit definition flag (Q3); explicit task-thread coupling (every task carries the calling agent's current `thread_id`, Q5); the `MemoryEntry` shape and the `ThreadMemoryPolicy` attached to threads (Q4). Surface `store`, `recall`, `task.cancel`, `task.revise`, `message.retract`, `peek_pending` as MCP tools.
 - **C2 — public Web API target shape.** Introduce `/api/v1/threads/{id}` as the canonical URL surface. **No `/conversations` alias and no backwards-compat needed** (Q10). The Engagement-as-stitching-projection surface (Q6) sits on top — engagements are a UX projection, not a separately persisted entity at the API.
 - **E2 — engagement and collaboration UX.** The user-facing surfaces are explicitly **Engagement** (the navigation list / relationship view, Q6) and **Collaboration** (the active workspace where the user works, Q7-Q9), not "dialog." Build: the engagement view that absorbs participant-set transitions across distinct threads (Q6); per-(thread, participant) state markers on the Timeline within a thread (Q6); the cold-start standing-offer + first-contact greeting affordances inside the collaboration (Q9); the "this isn't what I meant" collaboration affordance (Q8); the `#task` reference inline rendering and `context` UX-hint header rendering (Q7).
 - **Code-level rename — Area G.** `IConversationQueryService` → `IThreadQueryService`, `ConversationId` → `ThreadId`, `Message.ConversationId` → `Message.ThreadId`, the activity-event projection's `CorrelationId == ConversationId` mapping, and every repository / actor / test that references `Conversation*`. **Not in scope for F1.** Tracked in the follow-ups list below (#1287).
-- **Deferred memory features — single follow-up.** Unit recursion, cross-thread reads of any kind, and multi-human permission gating on memory access. Not part of v0.1; warrant design when there's a forcing case (Q4 deferral note).
+- **Deferred memory features — single follow-up.** Unit recursion; cross-thread reads at the recall API level; multi-human permission gating on memory access; inferences with explicit provenance (thread-less entries linked to source entries). Not part of v0.1; warrant design when there's a forcing case (Q4 deferral note).
 - **F execution plan.** The execution-plan issue (deliberately deferred per the plan-of-record) opens once F3's ADR lands.
 
 ---
@@ -352,17 +413,18 @@ The following adjacent items surfaced during this design but are out of scope fo
 
 **Folded into the design (no longer follow-ups):**
 
-- *Per-thread privacy / reuse policy.* The prior draft flagged this as a separate follow-up; it is now `MemoryPromotionPolicy` (Q4).
+- *Per-thread privacy / reuse policy.* The prior draft flagged this as a separate follow-up; it is now `ThreadMemoryPolicy` (Q4).
 - *Web Portal URL backwards-compat for `/conversations/{id}`.* Q10 reverses to "no migration"; there is no legacy URL to preserve.
 - *Operator tooling for the legacy archival sweep.* Q10 reverses; there is no legacy partition.
-- *MCP tool rename migration (`storeLearning` / `recallMemory` → `learn` / `recall`).* Q10 reverses; there is no deprecation window to manage.
+- *MCP tool rename migration (`storeLearning` / `recallMemory` → `store` / `recall`).* Q10 reverses; there is no deprecation window to manage.
 
 **Still open:**
 
 1. **Code-level rename `Conversation*` → `Thread*` types and properties.** `IConversationQueryService`, `ConversationId`, `Message.ConversationId`, the activity-event projection's `CorrelationId == ConversationId` mapping, and every repository / actor / test that references `Conversation*`. Area G scope; sequence with the F2 doc rename. Already filed as #1287.
 2. **CLI verb rename `spring conversation …` → `spring thread …`.** Area E1 scope; ship once the code rename (#1287) settles to avoid a half-renamed surface. Already filed as #1288.
 3. **New long-form positioning doc `docs/concepts/threads.md`.** Captures the full UX positioning writeup — Engagement vs. Collaboration, example copy, when to use which term, the user-facing narrative. Area B (docs overhaul) scope. F1 / F2 / F3 ship the architecture and the glossary anchors; the long-form positioning is a separate piece of writing. Already filed as #1289.
-4. **Hard-delete / right-to-be-forgotten on retracted messages and removed-participant blackout-window content.** Q8 leaves retract as soft (Timeline event + strikethrough render); Q6 leaves a removed participant's `AgentThreadMemory` frozen rather than purged, and the blackout-window Timeline content unreachable but undeleted. Compliance regimes (GDPR, CCPA) require hard delete on user request. Out of scope for v0.1; needs an architectural decision on how erasure interacts with the append-only Timeline.
-5. **`#task` namespace collision rules in multi-participant threads.** Q5 simplifies tasks to a single thread-scoped artifact governed by `MemoryPromotionPolicy`, but the namespace-collision question (two participants in a thread both reference `#flaky-test-fix`) remains a UX-rules item. E2 should file the UX rule before building the collaboration surface.
+4. **Hard-delete / right-to-be-forgotten on retracted messages and removed-participant blackout-window content.** Q8 leaves retract as soft (Timeline event + strikethrough render); Q6 leaves a removed participant's thread-scoped memory entries frozen rather than purged, and the blackout-window Timeline content unreachable but undeleted. Compliance regimes (GDPR, CCPA) require hard delete on user request. Out of scope for v0.1; needs an architectural decision on how erasure interacts with the append-only Timeline.
+5. **`#task` namespace collision rules in multi-participant threads.** Q5 simplifies tasks to a single thread-scoped artifact governed by `ThreadMemoryPolicy`, but the namespace-collision question (two participants in a thread both reference `#flaky-test-fix`) remains a UX-rules item. E2 should file the UX rule before building the collaboration surface.
 6. **Standing-offer authoring guidance (Q9).** Agents can specify `instructions.opening_offer` but agent-author guidance on what makes a good offer is documentation work, not platform work. Worth filing for the docs overhaul (Area B) once F3 lands.
-7. **v0.1 deferred memory features.** Single follow-up covering: (a) unit recursion (a unit reading its members' `AgentThreadMemory` from threads the unit itself is not in); (b) cross-thread reads of any kind by any agent or unit; (c) multi-human permission gating on memory access. The simple v0.1 model (Q4) does not need any of these; design when a forcing case appears.
+7. **v0.1 deferred memory features (cross-thread / multi-human).** Unit recursion (a unit reading its members' thread-scoped memory entries from threads the unit itself is not in); cross-thread reads at the recall API level by any agent or unit; multi-human permission gating on memory access. The simple v0.1 model (Q4) does not need any of these; design when a forcing case appears. Already filed as **#1292**.
+8. **v0.1 deferred memory features (inferences with explicit provenance).** Agent-driven entries that synthesise across multiple sources, with relationship-style metadata linking inferred entries to their source entries — likely as first-class memory relationships forming a hypergraph (relationship type as a label, sets of source / destination entries, directed traversal, depth control). Out of scope for v0.1; design when a forcing case appears. Already filed as **#1293**.
