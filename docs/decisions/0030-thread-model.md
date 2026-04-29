@@ -18,7 +18,7 @@ Two operational pain points kept surfacing. The agent mailbox conflated message 
 ## Decision
 
 - **Identity = the participant set.** A thread is uniquely identified by its set of two-or-more participants. There is exactly one thread per unique participant set; adding or removing a member produces a different set, hence a different thread. The thread is the canonical lifelong record for that set.
-- **Membership is permanent; participant state is per-(thread, participant).** Each `(thread, participant)` pair has a state machine `added → active → removed → re-added`. Re-add does not create a new thread. A removed participant does not see new activity until re-added; the read-side Timeline filter (specified in F1 §6) enforces the blackout window.
+- **Membership is permanent; participant state is per-(thread, participant).** Each `(thread, participant)` pair has a state machine `added → active → removed → re-added`. Re-add does not create a new thread. A removed participant does not see new activity until re-added; the platform enforces a blackout window via a read-time Timeline filter.
 - **Three terms with clean separation.** **Thread** is the system / architectural concept (used in code, schema, APIs); **Engagement** is the UX product narrative (the enduring relationship surface in navigation); **Collaboration** is the UX active workspace (where the user works today). The system stores a thread; the product presents it as an engagement; the user works inside a collaboration.
 - **One container per agent**, unchanged from [ADR-0026](0026-per-agent-container-scope.md). An agent processes its threads concurrently by default, governed by a `concurrent_threads: bool` flag on the agent / unit definition (default `true`); per-thread FIFO is preserved, concurrency is across distinct threads only. Auto-batching is not imposed: the platform delivers one message per `on_message` invocation; the SDK exposes a `peek_pending(thread_id)` accessor for agents that want to drain.
 - **Single per-agent `AgentMemory` with a per-thread visibility policy.** Each agent has one ordered, append-only memory store. Entries are `MemoryEntry` records of shape `{ id, timestamp, payload, thread_id?, threadOnly? }`. Visibility is a recall-time filter governed by the thread's **`ThreadMemoryPolicy`** (default `threadOnly: true`). The MCP tool surface collapses to **`store(memory)`** and **`recall(query)`**; the platform stamps `thread_id` and `threadOnly` from the agent's operating context.
@@ -43,11 +43,11 @@ Two operational pain points kept surfacing. The agent mailbox conflated message 
 
 - No "active conversation slot" gate (concurrent threads default); no head-of-line blocking across an agent's threads.
 - No two-store / promotion API, no `task.*` MCP tools, no cold-start fields. The MCP surface collapses to `store`, `recall`, `message.retract`, `peek_pending`.
-- The Timeline is one concept that Q5 / Q6 / Q7 / Q8 all reference; per-participant views are filters, not copies.
+- The Timeline is the single shared concept covering messages, participant state changes, retractions, and system events; per-participant views are read-time filters, not copies.
 
 ### Harder
 
-- The per-(thread, participant) state machine + Timeline visibility filter has to be implemented carefully; the boundary semantics at `t_leave` are subtle (strict-less-than against state-change timestamps; see F1 §6 for the precise rule and pseudocode).
+- The per-(thread, participant) state machine + Timeline visibility filter has to be implemented carefully; the boundary semantics at the moment of removal are subtle (strict-less-than against state-change timestamps). The long-form design doc carries the precise rule and pseudocode.
 - The Engagement-as-stitching projection across distinct threads (when membership-set changes create a new thread) is a UX concept that has no persisted entity at the API surface; E2 owns the affordance.
 
 ### Policy-governed
