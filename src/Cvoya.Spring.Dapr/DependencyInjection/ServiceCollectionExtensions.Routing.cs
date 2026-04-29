@@ -1,0 +1,120 @@
+// Copyright CVOYA LLC. Licensed under the Business Source License 1.1.
+// See LICENSE.md in the project root for full license terms.
+
+namespace Cvoya.Spring.Dapr.DependencyInjection;
+
+using Cvoya.Spring.Connectors;
+using Cvoya.Spring.Core.Capabilities;
+using Cvoya.Spring.Core.Directory;
+using Cvoya.Spring.Core.Execution;
+using Cvoya.Spring.Core.Messaging;
+using Cvoya.Spring.Core.Skills;
+using Cvoya.Spring.Core.Units;
+using Cvoya.Spring.Dapr.Capabilities;
+using Cvoya.Spring.Dapr.Connectors;
+using Cvoya.Spring.Dapr.Routing;
+using Cvoya.Spring.Dapr.Skills;
+
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+
+/// <summary>
+/// Routing and directory registrations: directory cache, message router,
+/// expertise aggregation, boundary stores, connector persistence, and
+/// directory-based skills.
+/// </summary>
+internal static class ServiceCollectionExtensionsRouting
+{
+    internal static IServiceCollection AddCvoyaSpringRouting(
+        this IServiceCollection services)
+    {
+        // Agents-as-skills surface (#359 — rework of closed #532). The
+        // catalog derives the skill surface live from the expertise
+        // directory (#487 / #498) rather than from a startup snapshot, so
+        // directory mutations (agent gains expertise, unit boundary
+        // changes) propagate on the next enumeration. The invoker is the
+        // protocol-agnostic seam that skill callers use instead of
+        // IMessageRouter directly — the default implementation routes
+        // through the bus so the boundary / permission / policy / activity
+        // chain runs end-to-end; the future A2A gateway (#539) will slot in
+        // here as an alternative implementation. TryAdd* so downstream
+        // hosts (test harnesses, tenant-scoped wrappers, #539 gateway) can
+        // pre-register their own catalog / invoker and keep it.
+        services.TryAddSingleton<IExpertiseSkillCatalog, ExpertiseSkillCatalog>();
+        services.TryAddSingleton<ISkillInvoker, MessageRouterSkillInvoker>();
+        services.TryAddSingleton<ExpertiseSkillRegistry>();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<ISkillRegistry, ExpertiseSkillRegistry>(
+            sp => sp.GetRequiredService<ExpertiseSkillRegistry>()));
+
+        // Directory-search meta-skill registry (#542). Advertises
+        // `directory/search` alongside the `expertise/*` surface so planners
+        // can call it BEFORE any other skill to resolve "I need something
+        // that does X" into a concrete slug. Registered via
+        // TryAddEnumerable so the cloud host can add its own search registry
+        // (e.g. a tenant-scoped variant) without displacing this one.
+        services.TryAddSingleton<DirectorySearchSkillRegistry>();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<ISkillRegistry, DirectorySearchSkillRegistry>(
+            sp => sp.GetRequiredService<DirectorySearchSkillRegistry>()));
+
+        // Routing
+        services.AddSingleton<DirectoryCache>();
+        services.TryAddSingleton<IDirectoryService, DirectoryService>();
+        services.TryAddSingleton<IAgentProxyResolver, AgentProxyResolver>();
+        services.TryAddSingleton<MessageRouter>();
+        services.TryAddSingleton<IMessageRouter>(sp => sp.GetRequiredService<MessageRouter>());
+
+        // Expertise aggregation (#412). TryAdd so the private cloud repo can
+        // decorate with tenant filters or a different cache implementation
+        // without forking the OSS default. The store reads from the
+        // existing agent / unit actor state keys — no new persistence.
+        services.TryAddSingleton<IExpertiseStore, ActorBackedExpertiseStore>();
+
+        // Boundary store (#413) — backed by the unit actor's own state.
+        services.TryAddSingleton<IUnitBoundaryStore, ActorBackedUnitBoundaryStore>();
+
+        // Connector persistence ports. Connector packages (GitHub, Arxiv,
+        // WebSearch, …) consume these abstractions via constructor
+        // injection — including from skills that both the API and the
+        // Worker host register — so the defaults must live in the shared
+        // Dapr module rather than in a host-specific composition root.
+        // TryAdd so the private cloud repo can substitute tenant-scoped
+        // implementations.
+        services.TryAddSingleton<IUnitConnectorConfigStore, UnitActorConnectorConfigStore>();
+        services.TryAddSingleton<IUnitConnectorRuntimeStore, UnitActorConnectorRuntimeStore>();
+
+        // Register the base aggregator as a concrete singleton so the
+        // boundary decorator can take a typed inner reference. Tests that
+        // want the raw (unfiltered) aggregator can resolve the concrete
+        // type directly.
+        services.TryAddSingleton<ExpertiseAggregator>();
+
+        // Boundary-filtering decorator wraps the base aggregator by default
+        // (#413). Registered with TryAdd so the private cloud repo can pre-
+        // register its own IExpertiseAggregator (e.g. a tenant-scoped
+        // decorator) and keep it — this registration is skipped. Call sites
+        // that resolve IExpertiseAggregator get the boundary-aware view for
+        // free; call sites that want the raw aggregator resolve the concrete
+        // ExpertiseAggregator instead.
+        services.TryAddSingleton<IExpertiseAggregator>(sp =>
+            new BoundaryFilteringExpertiseAggregator(
+                sp.GetRequiredService<ExpertiseAggregator>(),
+                sp.GetRequiredService<IUnitBoundaryStore>(),
+                sp.GetRequiredService<TimeProvider>(),
+                sp.GetRequiredService<Microsoft.Extensions.Logging.ILoggerFactory>()));
+
+        // Expertise directory search (#542). Lexical / full-text default; a
+        // private-cloud host or a future OSS follow-up can swap in a
+        // Postgres-FTS or embedding-backed implementation by pre-registering
+        // an alternative IExpertiseSearch before calling AddCvoyaSpringDapr.
+        services.TryAddSingleton<IExpertiseSearch, InMemoryExpertiseSearch>();
+
+        // Seed expertise from persisted AgentDefinition / UnitDefinition YAML
+        // on actor activation (#488). TryAdd so a tenant-scoped host can swap
+        // in a store-specific reader without forking. The agent/unit actors
+        // depend on this via optional resolution so pre-#488 test harnesses
+        // that construct actors manually keep working.
+        services.TryAddSingleton<IExpertiseSeedProvider, DbExpertiseSeedProvider>();
+
+        return services;
+    }
+}
