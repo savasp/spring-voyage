@@ -1254,10 +1254,12 @@ public class SpringApiClientTests
         handler.WasCalled.ShouldBeTrue();
     }
 
-    // --- #1038 — `spring conversation close <id>` API path ---
+    // --- #1038 / #1288 — `spring thread close <id>` API path ---
+    // TODO(#1291): expectedPath will change to /api/v1/tenant/threads/c-1/close
+    // once the API URL rename (#1291) lands.
 
     [Fact]
-    public async Task CloseConversationAsync_PostsCloseEndpointWithReason()
+    public async Task CloseThreadAsync_PostsCloseEndpointWithReason()
     {
         var handler = new MockHttpMessageHandler(
             expectedPath: "/api/v1/tenant/conversations/c-1/close",
@@ -1272,7 +1274,7 @@ public class SpringApiClientTests
         var httpClient = new HttpClient(handler);
         var client = new SpringApiClient(httpClient, BaseUrl);
 
-        var result = await client.CloseConversationAsync(
+        var result = await client.CloseThreadAsync(
             "c-1", reason: "operator request", ct: TestContext.Current.CancellationToken);
 
         result.Summary!.Id.ShouldBe("c-1");

@@ -907,13 +907,16 @@ public class SpringApiClient
             $"Server returned an empty response for message '{messageId}'.");
     }
 
-    // Conversations (#452)
+    // Threads (#452 / renamed per ADR-0030 / #1288)
+    // TODO(#1291): the underlying API URL is still /api/v1/tenant/conversations.
+    // Once #1291 lands (API URL rename to /api/v1/tenant/threads) regenerate
+    // the Kiota client and update _client.Api.V1.Tenant.Conversations → Threads below.
 
     /// <summary>
-    /// Lists conversation summaries, optionally filtered by unit, agent,
-    /// status, or participant. Backs <c>spring conversation list</c>.
+    /// Lists thread summaries, optionally filtered by unit, agent,
+    /// status, or participant. Backs <c>spring thread list</c>.
     /// </summary>
-    public async Task<IReadOnlyList<ConversationSummary>> ListConversationsAsync(
+    public async Task<IReadOnlyList<ConversationSummary>> ListThreadsAsync(
         string? unit = null,
         string? agent = null,
         string? status = null,
@@ -939,21 +942,21 @@ public class SpringApiClient
 
     /// <summary>
     /// Fetches the detail view (summary + ordered events) for a single
-    /// conversation. Backs <c>spring conversation show</c>.
+    /// thread. Backs <c>spring thread show</c>.
     /// </summary>
-    public async Task<ConversationDetail> GetConversationAsync(string id, CancellationToken ct = default)
+    public async Task<ConversationDetail> GetThreadAsync(string id, CancellationToken ct = default)
     {
         var result = await _client.Api.V1.Tenant.Conversations[id].GetAsync(cancellationToken: ct);
-        return result ?? throw new InvalidOperationException($"Server returned an empty response for conversation '{id}'.");
+        return result ?? throw new InvalidOperationException($"Server returned an empty response for thread '{id}'.");
     }
 
     /// <summary>
-    /// Threads a new message into an existing conversation. The CLI's
-    /// <c>spring conversation send --conversation &lt;id&gt;</c> (and its
+    /// Sends a new message into an existing thread. The CLI's
+    /// <c>spring thread send --thread &lt;id&gt;</c> (and its
     /// <c>spring inbox respond</c> alias) both ride this single endpoint.
     /// </summary>
-    public async Task<ConversationMessageResponse> SendConversationMessageAsync(
-        string conversationId,
+    public async Task<ConversationMessageResponse> SendThreadMessageAsync(
+        string threadId,
         string toScheme,
         string toPath,
         string text,
@@ -964,20 +967,20 @@ public class SpringApiClient
             To = new AddressDto { Scheme = toScheme, Path = toPath },
             Text = text,
         };
-        var result = await _client.Api.V1.Tenant.Conversations[conversationId].Messages.PostAsync(request, cancellationToken: ct);
+        var result = await _client.Api.V1.Tenant.Conversations[threadId].Messages.PostAsync(request, cancellationToken: ct);
         return result ?? throw new InvalidOperationException(
-            $"Server returned an empty message response for conversation '{conversationId}'.");
+            $"Server returned an empty message response for thread '{threadId}'.");
     }
 
     /// <summary>
-    /// Closes (aborts) a conversation across every participating agent
-    /// (#1038). Backs <c>spring conversation close &lt;id&gt;</c>. Returns
-    /// the (now-closed) conversation detail so the CLI can render a
+    /// Closes (aborts) a thread across every participating agent
+    /// (#1038). Backs <c>spring thread close &lt;id&gt;</c>. Returns
+    /// the (now-closed) thread detail so the CLI can render a
     /// confirmation and the trailing event timeline including the
     /// <c>ConversationClosed</c> events the actors just emitted.
     /// </summary>
-    public async Task<ConversationDetail> CloseConversationAsync(
-        string conversationId,
+    public async Task<ConversationDetail> CloseThreadAsync(
+        string threadId,
         string? reason = null,
         CancellationToken ct = default)
     {
@@ -985,9 +988,9 @@ public class SpringApiClient
         {
             Reason = string.IsNullOrWhiteSpace(reason) ? null : reason,
         };
-        var result = await _client.Api.V1.Tenant.Conversations[conversationId].Close.PostAsync(request, cancellationToken: ct);
+        var result = await _client.Api.V1.Tenant.Conversations[threadId].Close.PostAsync(request, cancellationToken: ct);
         return result ?? throw new InvalidOperationException(
-            $"Server returned an empty close response for conversation '{conversationId}'.");
+            $"Server returned an empty close response for thread '{threadId}'.");
     }
 
     // Inbox (#456)

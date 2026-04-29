@@ -769,4 +769,130 @@ public class CommandParsingTests
         // ("--file" here, with "-f" as an alias); look up by primary name.
         parseResult.GetValue<string>("--file").ShouldBe("my-policy.yaml");
     }
+
+    // --- #1288: `spring thread` verb tree (renamed from `spring conversation`) ---
+
+    [Fact]
+    public void ThreadList_ParsesWithNoFilters()
+    {
+        // #1288: `spring thread list` with no filters should parse without
+        // errors. Verifies the verb rename landed and the command tree is wired.
+        var outputOption = CreateOutputOption();
+        var threadCommand = ThreadCommand.Create(outputOption);
+        var rootCommand = new RootCommand { Options = { outputOption } };
+        rootCommand.Subcommands.Add(threadCommand);
+
+        var parseResult = rootCommand.Parse("thread list");
+
+        parseResult.Errors.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void ThreadList_ParsesAllFilters()
+    {
+        var outputOption = CreateOutputOption();
+        var threadCommand = ThreadCommand.Create(outputOption);
+        var rootCommand = new RootCommand { Options = { outputOption } };
+        rootCommand.Subcommands.Add(threadCommand);
+
+        var parseResult = rootCommand.Parse(
+            "thread list --unit eng-team --agent ada --status active --participant agent://ada --limit 25");
+
+        parseResult.Errors.ShouldBeEmpty();
+        parseResult.GetValue<string>("--unit").ShouldBe("eng-team");
+        parseResult.GetValue<string>("--agent").ShouldBe("ada");
+        parseResult.GetValue<string>("--status").ShouldBe("active");
+        parseResult.GetValue<string>("--participant").ShouldBe("agent://ada");
+        parseResult.GetValue<int?>("--limit").ShouldBe(25);
+    }
+
+    [Fact]
+    public void ThreadList_RejectsUnknownStatus()
+    {
+        var outputOption = CreateOutputOption();
+        var threadCommand = ThreadCommand.Create(outputOption);
+        var rootCommand = new RootCommand { Options = { outputOption } };
+        rootCommand.Subcommands.Add(threadCommand);
+
+        var parseResult = rootCommand.Parse("thread list --status pending");
+
+        parseResult.Errors.ShouldNotBeEmpty();
+    }
+
+    [Fact]
+    public void ThreadShow_ParsesIdArgument()
+    {
+        var outputOption = CreateOutputOption();
+        var threadCommand = ThreadCommand.Create(outputOption);
+        var rootCommand = new RootCommand { Options = { outputOption } };
+        rootCommand.Subcommands.Add(threadCommand);
+
+        var parseResult = rootCommand.Parse("thread show t-42");
+
+        parseResult.Errors.ShouldBeEmpty();
+        parseResult.GetValue<string>("id").ShouldBe("t-42");
+    }
+
+    [Fact]
+    public void ThreadSend_ParsesThreadIdAddressAndText()
+    {
+        var outputOption = CreateOutputOption();
+        var threadCommand = ThreadCommand.Create(outputOption);
+        var rootCommand = new RootCommand { Options = { outputOption } };
+        rootCommand.Subcommands.Add(threadCommand);
+
+        var parseResult = rootCommand.Parse(
+            "thread send --thread t-42 agent://ada \"Ship it.\"");
+
+        parseResult.Errors.ShouldBeEmpty();
+        parseResult.GetValue<string>("--thread").ShouldBe("t-42");
+        parseResult.GetValue<string>("address").ShouldBe("agent://ada");
+        parseResult.GetValue<string>("text").ShouldBe("Ship it.");
+    }
+
+    [Fact]
+    public void ThreadSend_MissingThreadOption_ProducesError()
+    {
+        // --thread is required on `thread send`; omitting it must produce a
+        // parse-time error before the action can run.
+        var outputOption = CreateOutputOption();
+        var threadCommand = ThreadCommand.Create(outputOption);
+        var rootCommand = new RootCommand { Options = { outputOption } };
+        rootCommand.Subcommands.Add(threadCommand);
+
+        var parseResult = rootCommand.Parse("thread send agent://ada \"Hello\"");
+
+        parseResult.Errors.ShouldNotBeEmpty();
+        parseResult.Errors.ShouldContain(e => e.Message.Contains("--thread"));
+    }
+
+    [Fact]
+    public void ThreadClose_ParsesIdArgument()
+    {
+        var outputOption = CreateOutputOption();
+        var threadCommand = ThreadCommand.Create(outputOption);
+        var rootCommand = new RootCommand { Options = { outputOption } };
+        rootCommand.Subcommands.Add(threadCommand);
+
+        var parseResult = rootCommand.Parse("thread close t-42");
+
+        parseResult.Errors.ShouldBeEmpty();
+        parseResult.GetValue<string>("id").ShouldBe("t-42");
+    }
+
+    [Fact]
+    public void ThreadClose_ParsesReasonOption()
+    {
+        var outputOption = CreateOutputOption();
+        var threadCommand = ThreadCommand.Create(outputOption);
+        var rootCommand = new RootCommand { Options = { outputOption } };
+        rootCommand.Subcommands.Add(threadCommand);
+
+        var parseResult = rootCommand.Parse(
+            "thread close t-42 --reason \"Container exited 125\"");
+
+        parseResult.Errors.ShouldBeEmpty();
+        parseResult.GetValue<string>("id").ShouldBe("t-42");
+        parseResult.GetValue<string>("--reason").ShouldBe("Container exited 125");
+    }
 }

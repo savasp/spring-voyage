@@ -12,21 +12,21 @@ using Cvoya.Spring.Cli.Utilities;
 /// <summary>
 /// Builds the <c>spring inbox</c> verb family (#456). The inbox is the
 /// "awaiting me" surface described in <c>docs/design/portal-exploration.md</c>
-/// § 3.4: conversations whose most recent event targeted the caller's
+/// § 3.4: threads whose most recent event targeted the caller's
 /// <c>human://</c> address and where the caller has not yet replied.
 /// <para>
 /// <c>list</c> enumerates rows; <c>show &lt;id&gt;</c> is a thin alias over
-/// <see cref="ConversationCommand"/>'s <c>show</c> (same thread view, just
+/// <see cref="ThreadCommand"/>'s <c>show</c> (same thread view, just
 /// reachable from the inbox verb so operators don't have to switch verbs mid-
 /// flow); <c>respond &lt;id&gt;</c> is the corresponding thin wrapper over
-/// <see cref="ConversationCommand"/>'s <c>send</c>.
+/// <see cref="ThreadCommand"/>'s <c>send</c>.
 /// </para>
 /// </summary>
 public static class InboxCommand
 {
     private static readonly OutputFormatter.Column<InboxItem>[] ListColumns =
     {
-        new("conversation", r => r.ConversationId),
+        new("thread", r => r.ConversationId),
         new("from", r => r.From),
         new("human", r => r.Human),
         new("pendingSince", r => FormatTimestamp(r.PendingSince)),
@@ -38,7 +38,7 @@ public static class InboxCommand
     /// </summary>
     public static Command Create(Option<string> outputOption)
     {
-        var cmd = new Command("inbox", "Inspect and respond to conversations awaiting the current human");
+        var cmd = new Command("inbox", "Inspect and respond to threads awaiting the current human");
         cmd.Subcommands.Add(CreateListCommand(outputOption));
         cmd.Subcommands.Add(CreateShowCommand(outputOption));
         cmd.Subcommands.Add(CreateRespondCommand(outputOption));
@@ -47,7 +47,7 @@ public static class InboxCommand
 
     private static Command CreateListCommand(Option<string> outputOption)
     {
-        var command = new Command("list", "List conversations awaiting a response from the current human");
+        var command = new Command("list", "List threads awaiting a response from the current human");
 
         command.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
         {
@@ -75,13 +75,13 @@ public static class InboxCommand
 
     private static Command CreateShowCommand(Option<string> outputOption)
     {
-        var idArg = new Argument<string>("conversation-id")
+        var idArg = new Argument<string>("thread-id")
         {
-            Description = "The conversation id of the inbox row to open",
+            Description = "The thread id of the inbox row to open",
         };
         var command = new Command(
             "show",
-            "Show an inbox item — the conversation thread pending a response. Alias for `spring conversation show`.");
+            "Show an inbox item — the thread pending a response. Alias for `spring thread show`.");
         command.Arguments.Add(idArg);
 
         command.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
@@ -92,7 +92,7 @@ public static class InboxCommand
 
             try
             {
-                var detail = await client.GetConversationAsync(id, ct);
+                var detail = await client.GetThreadAsync(id, ct);
 
                 if (output == "json")
                 {
@@ -110,15 +110,15 @@ public static class InboxCommand
                     Console.WriteLine();
                 }
 
-                // #1209: thin alias of `spring conversation show` — share
+                // #1209: thin alias of `spring thread show` — share
                 // the renderer so message bodies surface inline on inbox
                 // show too.
                 var events = detail.Events ?? new List<ConversationEvent>();
-                ConversationCommand.RenderConversationEvents(events);
+                ThreadCommand.RenderThreadEvents(events);
             }
             catch (Microsoft.Kiota.Abstractions.ApiException ex)
             {
-                await Console.Error.WriteLineAsync($"Failed to load inbox item '{id}': {ProblemDetailsFormatter.Format(ex)}");
+                await Console.Error.WriteLineAsync($"Failed to load inbox thread '{id}': {ProblemDetailsFormatter.Format(ex)}");
                 Environment.Exit(1);
             }
         });
@@ -128,9 +128,9 @@ public static class InboxCommand
 
     private static Command CreateRespondCommand(Option<string> outputOption)
     {
-        var idArg = new Argument<string>("conversation-id")
+        var idArg = new Argument<string>("thread-id")
         {
-            Description = "The conversation id to respond to",
+            Description = "The thread id to respond to",
         };
         var addressOption = new Option<string?>("--to")
         {
@@ -142,7 +142,7 @@ public static class InboxCommand
 
         var command = new Command(
             "respond",
-            "Reply to an inbox conversation. Thin wrapper over `spring conversation send --conversation <id>`.");
+            "Reply to an inbox thread. Thin wrapper over `spring thread send --thread <id>`.");
         command.Arguments.Add(idArg);
         command.Arguments.Add(textArg);
         command.Options.Add(addressOption);
@@ -170,7 +170,7 @@ public static class InboxCommand
                 if (match is null || string.IsNullOrEmpty(match.From))
                 {
                     await Console.Error.WriteLineAsync(
-                        $"No inbox row found for conversation '{id}'. Pass --to <address> to force a reply target.");
+                        $"No inbox row found for thread '{id}'. Pass --to <address> to force a reply target.");
                     Environment.Exit(1);
                     return;
                 }
@@ -181,10 +181,10 @@ public static class InboxCommand
 
             try
             {
-                var result = await client.SendConversationMessageAsync(id, scheme, path, text, ct);
+                var result = await client.SendThreadMessageAsync(id, scheme, path, text, ct);
                 Console.WriteLine(output == "json"
                     ? OutputFormatter.FormatJson(result)
-                    : $"Replied to {targetAddress} in conversation {result.ConversationId}. (id: {result.MessageId?.ToString() ?? "n/a"})");
+                    : $"Replied to {targetAddress} in thread {result.ConversationId}. (id: {result.MessageId?.ToString() ?? "n/a"})");
             }
             catch (Microsoft.Kiota.Abstractions.ApiException ex)
             {
