@@ -1264,9 +1264,14 @@ export default function CreateUnitPage() {
           setImageHistory(loadImageHistory());
         }
         // Invalidate the lists that render the new unit so the detail
-        // page and dashboards pick it up on navigation.
+        // page and dashboards pick it up on navigation. The tenant
+        // tree (consumed by `/units` Explorer) is cached client-side
+        // with a 15 s window — without explicit invalidation the
+        // wizard's post-create redirect lands on the explorer before
+        // the tree refreshes, and the unit isn't yet visible.
         queryClient.invalidateQueries({ queryKey: queryKeys.units.all });
         queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all });
+        queryClient.invalidateQueries({ queryKey: queryKeys.tenant.tree() });
         toast({ title: "Unit created", description: createdName });
         // Transition into the Validating view on the Finalize step.
         // The unit is in `Draft` right now; the effect below POSTs to
@@ -1292,8 +1297,16 @@ export default function CreateUnitPage() {
   // cache, so the polling interval is a fallback — short enough to
   // feel responsive when SSE is unavailable but not so short that it
   // hammers the API while a long image-pull is in flight.
-  const startMutation = useMutation({
-    mutationFn: (name: string) => api.startUnit(name),
+  //
+  // #1450: when the create endpoint leaves the unit in Draft (the
+  // credential-free runtime path — Ollama's `IsFullyConfigured…` falls
+  // through because the secret resolver short-circuits), we kick off
+  // validation by POSTing `/revalidate`, not `/start`. The actor's
+  // transition table forbids `Draft → Starting` (#939) so the old
+  // `/start`-from-Draft path landed every Ollama unit in a stuck
+  // "Couldn't start validation: 409" pre-final screen.
+  const revalidateOnDraftMutation = useMutation({
+    mutationFn: (name: string) => api.revalidateUnit(name),
   });
 
   // Poll the newly-created unit until it reaches a terminal status.
@@ -1306,36 +1319,33 @@ export default function CreateUnitPage() {
     enabled: createdUnitName !== null,
   });
 
-  // Auto-start gate. The create endpoint may already have moved the
-  // unit out of `Draft` (it transitions to `Validating` or directly to
-  // `Error` when the persisted execution defaults are sufficient — or
-  // demonstrably broken). Calling `/start` from `Validating` would
-  // 409, which is the noisy "API error 409: Conflict — cannot
-  // transition from Validating to Starting" the operator used to see
-  // when validation got wedged. So: only POST `/start` when the first
-  // poll observation says the unit is still in `Draft`. For any other
-  // status we just observe — the unit has already been handed off to
-  // the validation workflow (or its terminal state) by the create
-  // path.
+  // Auto-validation gate. The create endpoint may already have moved
+  // the unit out of `Draft` (it transitions to `Validating` directly
+  // when the persisted execution defaults are sufficient AND a
+  // credential resolves). For the no-credential / Ollama path the
+  // unit stays in Draft and the wizard kicks off validation via
+  // `/revalidate`. Any non-Draft status means the create path has
+  // already handed the unit off to the validation workflow (or its
+  // terminal state) — just observe.
   useEffect(() => {
     if (!createdUnitName || startRequested) return;
     if (!createdUnit) return; // Wait for the first poll result.
     if (createdUnit.status !== "Draft") {
-      // Already past Draft — nothing to start. Mark requested so we
+      // Already past Draft — nothing to do. Mark requested so we
       // don't reconsider on every poll.
       setStartRequested(true);
       return;
     }
     setStartRequested(true);
-    startMutation.mutate(createdUnitName, {
+    revalidateOnDraftMutation.mutate(createdUnitName, {
       onError: (err) => {
         const message = err instanceof Error ? err.message : String(err);
         setStartError(message);
       },
     });
-    // We only want to fire start once per created unit. `startMutation`
-    // identity is stable within a render cycle for our purposes; the
-    // guard is `startRequested`.
+    // We only want to fire validation once per created unit. The
+    // mutation identity is stable within a render cycle for our
+    // purposes; the guard is `startRequested`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [createdUnitName, createdUnit, startRequested]);
 

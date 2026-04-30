@@ -35,15 +35,19 @@ test.describe("connectors — clear unit binding", () => {
       isTopLevel: true,
     });
 
-    await page.goto(`/units/${name}`);
-    // Connector tab / panel — exists on the unit detail page.
-    const connectorTab = page.getByRole("tab", { name: /^connector$|^integrations?$/i });
-    if (await connectorTab.first().isVisible().catch(() => false)) {
-      await connectorTab.first().click();
-    }
-    // The "no binding" state surfaces a clear copy block.
+    // Connector lives under Config → Connector subtab. The unbound state
+    // renders a "Not configured" badge and "not wired to any connector
+    // yet" copy block.
+    await page.goto(
+      `/units?node=${encodeURIComponent(name)}&tab=Config&subtab=Connector`,
+    );
+    await expect(page.getByText(/not configured/i).first()).toBeVisible({
+      timeout: 10_000,
+    });
     await expect(
-      page.getByText(/no connector|not bound|connect (this )?unit/i).first(),
+      page
+        .getByText(/not wired to any connector|no connectors? are installed/i)
+        .first(),
     ).toBeVisible({ timeout: 10_000 });
 
     // API confirms.

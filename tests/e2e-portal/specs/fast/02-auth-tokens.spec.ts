@@ -17,49 +17,39 @@ test.describe("settings — auth tokens", () => {
   test("create + list + revoke roundtrip", async ({ page, tracker }) => {
     const name = tracker.token(tokenName("auth-rt"));
 
+    // The Settings page renders the Account / API-tokens panel inline —
+    // there is no card to click into. Go straight to the panel actions
+    // by their dedicated test ids (see `auth-panel.tsx`).
     await page.goto("/settings");
-    // The Settings page lists panels; click into "Account" / "Auth" panel.
-    // The card test id is `settings-panel-card-account` per page.tsx + tests.
-    const authPanel = page
-      .getByTestId(/settings-panel-card-(account|auth|api-tokens)/)
-      .first();
-    if (await authPanel.isVisible().catch(() => false)) {
-      await authPanel.click();
-    } else {
-      // Some layouts surface tokens on the Settings root.
-    }
 
-    // Create a token. The button label is "Create token" or "New token".
-    await page.getByRole("button", { name: /^(create token|new token|create api token)$/i }).first().click();
-    await page.getByRole("textbox", { name: /token name|name/i }).first().fill(name);
-    await page.getByRole("button", { name: /^create$/i }).first().click();
+    // Open the create form.
+    await page.getByTestId("settings-auth-token-create-open").click();
+    await page.getByTestId("settings-auth-token-name-input").fill(name);
+    await page.getByTestId("settings-auth-token-create-submit").click();
 
-    // The plaintext is revealed exactly once. The reveal pattern shows a
-    // copy-to-clipboard button alongside the token text.
-    const reveal = page.getByText(/sv_|spring_/).first();
-    await expect(reveal).toBeVisible({ timeout: 10_000 });
+    // The plaintext is revealed exactly once inside the
+    // `settings-auth-token-reveal` block; the copyable token sits at
+    // `settings-auth-token-value`. Raw tokens are unprefixed base64url.
+    const tokenValue = page.getByTestId("settings-auth-token-value");
+    await expect(tokenValue).toBeVisible({ timeout: 10_000 });
+    const tokenText = (await tokenValue.textContent())?.trim() ?? "";
+    expect(tokenText.length).toBeGreaterThanOrEqual(20);
 
-    // Dismiss the reveal dialog.
-    const dismiss = page
-      .getByRole("button", { name: /^(done|close|dismiss|i.?ve copied|got it)$/i })
-      .first();
-    await dismiss.click();
+    // Dismiss the reveal pill.
+    await page.getByRole("button", { name: /dismiss token reveal/i }).click();
 
-    // List asserts the token name is present.
-    await expect(page.getByText(name)).toBeVisible({ timeout: 10_000 });
+    // The created row is keyed off the token name.
+    const row = page.getByTestId(`settings-auth-token-row-${name}`);
+    await expect(row).toBeVisible({ timeout: 10_000 });
 
-    // Revoke. The row exposes a revoke button; matching by accessible name
-    // alongside the token name keeps the click scoped to the right row.
-    const row = page.locator("tr,li,div").filter({ hasText: name }).first();
-    await row.getByRole("button", { name: /revoke|delete/i }).first().click();
+    // Revoke via the per-row button (also test-id'd off the token name).
+    // The first click swaps the trash icon for an inline two-button
+    // confirm pair ("Revoke" + "Cancel"), aria-labelled by the panel.
+    await page.getByTestId(`settings-auth-revoke-${name}`).click();
+    await page
+      .getByRole("button", { name: new RegExp(`Confirm revoke ${name}`, "i") })
+      .click();
 
-    // Confirmation dialog (destructive op).
-    const confirm = page.getByRole("button", { name: /^(revoke|delete|confirm)$/i });
-    if (await confirm.first().isVisible().catch(() => false)) {
-      await confirm.first().click();
-    }
-
-    // The row should disappear from the list.
-    await expect(page.getByText(name)).toHaveCount(0, { timeout: 10_000 });
+    await expect(row).toHaveCount(0, { timeout: 10_000 });
   });
 });

@@ -8,18 +8,31 @@ import { expect, test } from "../../fixtures/test.js";
  *
  * The detail page lazy-loads each tab's data; this spec proves none of
  * them blow up against a freshly-created unit (no agents, no secrets,
- * no orchestration overrides).
+ * no orchestration overrides). Boundary / Execution / Secrets are now
+ * sub-tabs of Config (QUALITY-unit-config-subtabs) — exercise them
+ * via deep-links so the spec is robust to layout shuffles.
  */
 
-const TAB_LABELS = [
+const TOP_LEVEL_TABS = [
   "Overview",
   "Agents",
-  "Boundary",
-  "Execution",
   "Orchestration",
   "Policies",
-  "Secrets",
-  "Memberships",
+  "Config",
+] as const;
+
+const PANEL_TEST_IDS: Record<(typeof TOP_LEVEL_TABS)[number], string | null> = {
+  Overview: null,
+  Agents: null,
+  Orchestration: "orchestration-tab",
+  Policies: "policies-tab-effective",
+  Config: "tab-unit-config",
+};
+
+const CONFIG_SUBTABS = [
+  { name: "Boundary", panelTestId: "boundary-tab" },
+  { name: "Execution", panelTestId: "execution-tab" },
+  { name: "Secrets", panelTestId: null }, // panel testid is unit-secret-row-* per row
 ] as const;
 
 test.describe("units — detail page tabs", () => {
@@ -39,35 +52,38 @@ test.describe("units — detail page tabs", () => {
       isTopLevel: true,
     });
 
-    await page.goto(`/units/${name}`);
-    await expect(page.getByRole("heading", { name })).toBeVisible();
-
-    for (const label of TAB_LABELS) {
-      const tab = page.getByRole("tab", { name: new RegExp(`^${label}$`, "i") });
-      // Some tabs may be hidden on smaller layouts; fall back to a button match.
-      const target = (await tab.isVisible().catch(() => false))
-        ? tab
-        : page.getByRole("button", { name: new RegExp(`^${label}$`, "i") });
-      await target.first().click();
-      // Tab panel for the corresponding panel — match by data-testid that the tab impl exposes.
-      const panelTestIds: Record<(typeof TAB_LABELS)[number], string | null> = {
-        Overview: null,
-        Agents: null,
-        Boundary: "boundary-tab",
-        Execution: "execution-tab",
-        Orchestration: "orchestration-tab",
-        Policies: "policies-tab-effective",
-        Secrets: null,
-        Memberships: null,
-      };
-      const tid = panelTestIds[label];
+    // Deep-link into each top-level tab. Clicking the TabStrip works
+    // too, but it depends on the explorer's ?tab= writeback round-trip
+    // — going directly removes the race and keeps the spec focused on
+    // "does the panel render?".
+    for (const label of TOP_LEVEL_TABS) {
+      await page.goto(
+        `/units?node=${encodeURIComponent(name)}&tab=${label}`,
+      );
+      await expect(page.getByRole("heading", { name })).toBeVisible();
+      const tid = PANEL_TEST_IDS[label];
       if (tid) {
         await expect(page.getByTestId(tid)).toBeVisible({ timeout: 10_000 });
-      } else {
-        // For tabs without a panel-level testid, just assert no error message
-        // appears within the page after switching.
-        await expect(page.getByRole("alert").filter({ hasText: /failed|error/i })).toHaveCount(0, { timeout: 5_000 });
       }
+      await expect(
+        page.getByRole("alert").filter({ hasText: /failed|error/i }),
+      ).toHaveCount(0, { timeout: 5_000 });
+    }
+
+    // Config sub-tabs round-trip via the URL. Hit each one and confirm
+    // the panel renders without an alert.
+    for (const sub of CONFIG_SUBTABS) {
+      await page.goto(
+        `/units?node=${encodeURIComponent(name)}&tab=Config&subtab=${sub.name}`,
+      );
+      if (sub.panelTestId) {
+        await expect(page.getByTestId(sub.panelTestId)).toBeVisible({
+          timeout: 10_000,
+        });
+      }
+      await expect(
+        page.getByRole("alert").filter({ hasText: /failed|error/i }),
+      ).toHaveCount(0, { timeout: 5_000 });
     }
   });
 });

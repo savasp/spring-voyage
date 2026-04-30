@@ -10,7 +10,9 @@ import { expect, test } from "../../fixtures/test.js";
  */
 
 interface BudgetResponse {
-  cap?: { amount?: number; currency?: string } | number | null;
+  // GET /api/v1/tenant/agents/{id}/budget returns BudgetResponse with
+  // a single `dailyBudget` decimal. 404 means "no envelope set".
+  dailyBudget?: number;
 }
 
 test.describe("agents — budget panel", () => {
@@ -32,12 +34,16 @@ test.describe("agents — budget panel", () => {
       isTopLevel: true,
     });
     await apiPost("/api/v1/tenant/agents", {
-      id: aId,
+      name: aId,
       displayName: aId,
+      description: "Budget spec (e2e-portal)",
       unitIds: [unit],
     });
 
-    await page.goto(`/agents/${aId}`);
+    // Agent Config tab stacks Execution + Budget + Expertise panels.
+    await page.goto(
+      `/units?node=${encodeURIComponent(aId)}&tab=Config`,
+    );
     await expect(page.getByTestId("agent-budget-panel")).toBeVisible({ timeout: 10_000 });
 
     await page.getByTestId("agent-budget-input").fill("12.5");
@@ -48,9 +54,9 @@ test.describe("agents — budget panel", () => {
         async () => {
           const budget = await apiGet<BudgetResponse>(
             `/api/v1/tenant/agents/${encodeURIComponent(aId)}/budget`,
+            { expect: [200, 404] },
           );
-          if (typeof budget.cap === "number") return budget.cap;
-          return budget.cap?.amount ?? null;
+          return budget?.dailyBudget ?? null;
         },
         { timeout: 10_000 },
       )

@@ -932,11 +932,17 @@ public static class UnitEndpoints
     }
 
     /// <summary>
-    /// Handler for <c>POST /api/v1/units/{id}/revalidate</c>. Allowed only
-    /// from <see cref="UnitStatus.Error"/> or <see cref="UnitStatus.Stopped"/>
-    /// per the design approved on #942 — any other status returns 409 with a
-    /// structured <c>currentStatus</c> detail so the client can surface
-    /// guidance. The handler returns 202 immediately; the workflow's terminal
+    /// Handler for <c>POST /api/v1/units/{id}/revalidate</c>. Allowed
+    /// from <see cref="UnitStatus.Draft"/>, <see cref="UnitStatus.Error"/>,
+    /// or <see cref="UnitStatus.Stopped"/> — every state from which the
+    /// actor's transition table allows entering
+    /// <see cref="UnitStatus.Validating"/>. <c>Draft</c> covers the
+    /// first-time validation path the wizard's <c>Validate</c> button
+    /// drives when the create endpoint left the unit in Draft (the
+    /// credential-free / no-credential runtime case, e.g. Ollama),
+    /// per #1451. Any other status returns 409 with a structured
+    /// <c>currentStatus</c> detail so the client can surface guidance.
+    /// The handler returns 202 immediately; the workflow's terminal
     /// activity drives the follow-up <see cref="UnitStatus.Validating"/> →
     /// <see cref="UnitStatus.Stopped"/> or <see cref="UnitStatus.Error"/>
     /// transition via <see cref="IUnitActor.CompleteValidationAsync"/>.
@@ -959,11 +965,11 @@ public static class UnitEndpoints
         }
 
         var status = await TryGetUnitStatusAsync(actorProxyFactory, entry.ActorId, logger, id, cancellationToken);
-        if (status != UnitStatus.Error && status != UnitStatus.Stopped)
+        if (status != UnitStatus.Draft && status != UnitStatus.Error && status != UnitStatus.Stopped)
         {
             return Results.Problem(
                 title: "Invalid state",
-                detail: $"Unit '{id}' is {status}; revalidation is only allowed from Error or Stopped.",
+                detail: $"Unit '{id}' is {status}; revalidation is only allowed from Draft, Error, or Stopped.",
                 statusCode: StatusCodes.Status409Conflict,
                 extensions: new Dictionary<string, object?>
                 {

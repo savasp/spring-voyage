@@ -76,8 +76,9 @@ async function request<T>(
   }
 }
 
-/** GET a path. Throws ApiError on non-2xx. */
-export const apiGet = <T>(path: string) => request<T>("GET", path);
+/** GET a path. Throws ApiError on non-2xx (override via `expect`). */
+export const apiGet = <T>(path: string, init?: { expect?: number[] }) =>
+  request<T>("GET", path, init);
 
 /** POST JSON. Throws ApiError on non-2xx. */
 export const apiPost = <T>(path: string, body?: unknown) =>
@@ -172,6 +173,10 @@ export async function listOwnedTokens(prefix: string): Promise<{ name: string }[
 
 export async function listOwnedTenantSecrets(prefix: string): Promise<{ name: string }[]> {
   type SecretListItem = { name: string };
-  const list = await apiGet<SecretListItem[]>("/api/v1/tenant/secrets");
+  // The API wraps the list in `{ secrets: [...] }` (TenantSecretListResponse).
+  const response = await apiGet<{ secrets: SecretListItem[] } | SecretListItem[]>(
+    "/api/v1/tenant/secrets",
+  );
+  const list = Array.isArray(response) ? response : (response.secrets ?? []);
   return list.filter((s) => s.name.startsWith(`${prefix}-`));
 }

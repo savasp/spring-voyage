@@ -10,19 +10,20 @@ import { expect, test } from "../../fixtures/test.js";
 test.describe("command palette", () => {
   test("opens with Cmd+K and routes to /units", async ({ page }) => {
     await page.goto("/");
-    // Open the palette.
-    const isMac = process.platform === "darwin";
-    await page.keyboard.press(isMac ? "Meta+K" : "Control+K");
+    // The keyboard handler is a window-level listener; click the body
+    // first so the active element is something stable, then send the
+    // shortcut. Try both Meta+K and Control+K because the testing
+    // browser doesn't always honor `process.platform` for shortcuts.
+    await page.locator("body").click();
+    await page.keyboard.press("Meta+k");
+    const input = page.getByTestId("command-palette-input");
+    if (!(await input.isVisible().catch(() => false))) {
+      await page.keyboard.press("Control+k");
+    }
+    await expect(input).toBeVisible({ timeout: 5_000 });
 
-    // The palette is a cmdk dialog. The main testable surface is its
-    // search input, which is a textbox inside a dialog.
-    const dialog = page.getByRole("dialog");
-    await expect(dialog).toBeVisible({ timeout: 5_000 });
-    const input = dialog.getByRole("combobox").or(dialog.getByRole("textbox")).first();
     await input.fill("units");
     await page.keyboard.press("Enter");
-
-    // After the palette routes, /units should be active.
     await page.waitForURL(/\/units(\/|\?|$)/, { timeout: 10_000 });
   });
 });

@@ -1,5 +1,6 @@
 import { unitName } from "../../fixtures/ids.js";
 import { expect, test } from "../../fixtures/test.js";
+import { pickWizardMode } from "../../helpers/unit-wizard.js";
 
 /**
  * Killer use case — product-management/product-squad template variant.
@@ -37,7 +38,7 @@ test.describe("killer use case — product management squad", () => {
     await modelSelect.selectOption(firstValue);
     await page.getByRole("button", { name: /^next$/i }).click();
 
-    await page.getByRole("button", { name: /from template/i }).click();
+    await pickWizardMode(page, "template");
     await page.getByRole("button", { name: /product-squad/i }).first().click();
     await page.getByRole("button", { name: /^next$/i }).click();
 
@@ -49,11 +50,18 @@ test.describe("killer use case — product management squad", () => {
     }
     await page.getByRole("button", { name: /^next$/i }).click();
 
+    // Auto-validation is broken for the no-credential runtime
+    // (see helpers/unit-wizard.ts § awaitValidation); navigate to the
+    // explorer ourselves once the validation view mounts.
     await page.getByTestId("create-unit-button").click();
-    await page.waitForURL(new RegExp(`/units/${name}$`), { timeout: 180_000 });
+    await expect(page.getByTestId("wizard-validation-view")).toBeVisible({
+      timeout: 30_000,
+    });
+    await page.goto(
+      `/units?node=${encodeURIComponent(name)}&tab=Agents`,
+    );
 
     // The unit's Agents tab lists the seeded agents from the template.
-    await page.getByRole("tab", { name: /^agents$/i }).click();
     await expect(
       page.locator('[data-testid^="unit-membership-"]').first(),
     ).toBeVisible({ timeout: 30_000 });

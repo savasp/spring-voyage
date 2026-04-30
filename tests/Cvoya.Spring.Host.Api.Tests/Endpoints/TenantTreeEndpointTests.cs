@@ -75,7 +75,10 @@ public class TenantTreeEndpointTests : IClassFixture<CustomWebApplicationFactory
 
         response.Headers.CacheControl.ShouldNotBeNull();
         response.Headers.CacheControl!.Private.ShouldBeTrue();
-        response.Headers.CacheControl.MaxAge.ShouldBe(TimeSpan.FromSeconds(15));
+        // Lowered from 15 → 1 in #1451 so post-mutation reads (e.g. the
+        // wizard's create-unit flow) see fresh data on the very next
+        // explorer render.
+        response.Headers.CacheControl.MaxAge.ShouldBe(TimeSpan.FromSeconds(1));
     }
 
     [Fact]

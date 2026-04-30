@@ -23,8 +23,10 @@ using Xunit;
 
 /// <summary>
 /// Integration tests for <c>POST /api/v1/units/{id}/revalidate</c> (#947 /
-/// T-05). The endpoint is allowed from <see cref="UnitStatus.Error"/> and
-/// <see cref="UnitStatus.Stopped"/> only; every other status rejects with a
+/// T-05). The endpoint is allowed from <see cref="UnitStatus.Draft"/>,
+/// <see cref="UnitStatus.Error"/>, and <see cref="UnitStatus.Stopped"/>
+/// — every state from which the actor's transition table allows entering
+/// <see cref="UnitStatus.Validating"/>. Every other status rejects with a
 /// 409 containing a structured <c>currentStatus</c> detail so the client
 /// can surface the mismatch.
 /// </summary>
@@ -43,6 +45,7 @@ public class UnitRevalidateEndpointTests : IClassFixture<CustomWebApplicationFac
     }
 
     [Theory]
+    [InlineData(UnitStatus.Draft)]
     [InlineData(UnitStatus.Error)]
     [InlineData(UnitStatus.Stopped)]
     public async Task Revalidate_FromAllowedStatus_Returns202_TransitionsToValidating(
@@ -64,7 +67,6 @@ public class UnitRevalidateEndpointTests : IClassFixture<CustomWebApplicationFac
     }
 
     [Theory]
-    [InlineData(UnitStatus.Draft)]
     [InlineData(UnitStatus.Validating)]
     [InlineData(UnitStatus.Running)]
     [InlineData(UnitStatus.Starting)]

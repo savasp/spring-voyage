@@ -34,16 +34,19 @@ test.describe("agents — detail page panels", () => {
       isTopLevel: true,
     });
     await apiPost("/api/v1/tenant/agents", {
-      id: aId,
+      name: aId,
       displayName: "Detail Spec Agent",
+      description: "Agent detail spec (e2e-portal)",
       unitIds: [unit],
       // Persistent-agent panel only renders for hosting=persistent agents;
       // this spec keeps to ephemeral so the lifecycle panel surfaces the
       // "ephemeral" copy path rather than the deploy/undeploy controls.
     });
 
-    await page.goto(`/agents/${aId}`);
-    await expect(page.getByRole("heading", { name: /Detail Spec Agent|ada-detail/i })).toBeVisible();
+    // Agent detail lives inside the unit explorer; deep-link via the
+    // tenant-tree node id (the agent's address path is the id).
+    await page.goto(`/units?node=${encodeURIComponent(aId)}`);
+    await expect(page.getByRole("heading", { name: /Detail Spec Agent/i })).toBeVisible();
 
     // Each panel may live behind its own tab. Enumerate likely tabs and
     // click them; each click should land on a panel that renders without

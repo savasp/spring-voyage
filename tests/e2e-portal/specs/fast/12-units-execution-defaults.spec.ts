@@ -31,8 +31,10 @@ test.describe("units — execution defaults", () => {
       isTopLevel: true,
     });
 
-    await page.goto(`/units/${name}`);
-    await page.getByRole("tab", { name: /^execution$/i }).click();
+    // Execution moved under Config (subtab) per QUALITY-unit-config-subtabs.
+    await page.goto(
+      `/units?node=${encodeURIComponent(name)}&tab=Config&subtab=Execution`,
+    );
     await expect(page.getByTestId("execution-tab")).toBeVisible();
     await expect(page.getByTestId("unit-execution-card")).toBeVisible();
 

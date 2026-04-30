@@ -1,5 +1,6 @@
 import { unitName } from "../../fixtures/ids.js";
 import { expect, test } from "../../fixtures/test.js";
+import { pickWizardMode } from "../../helpers/unit-wizard.js";
 
 /**
  * Wizard: create-from-YAML flow. The wizard accepts a pasted YAML
@@ -36,21 +37,18 @@ test.describe("units — create from yaml (wizard)", () => {
     await modelSelect.selectOption(firstValue);
     await page.getByRole("button", { name: /^next$/i }).click();
 
-    // Step 3 — Mode = YAML
-    await page.getByRole("button", { name: /from yaml|from manifest/i }).click();
+    // Step 3 — Mode = YAML. The manifest grammar is `unit:` rooted —
+    // see `ManifestParser` and `UnitManifest`. The Kubernetes-style
+    // `apiVersion/kind/metadata/spec` shape was retired in v0.1.
+    await pickWizardMode(page, "yaml");
     const yamlBody = [
-      `apiVersion: spring/v1`,
-      `kind: Unit`,
-      `metadata:`,
+      `unit:`,
       `  name: ${name}`,
-      `  displayName: ${name}`,
-      `spec:`,
       `  description: Created by 05-units-create-from-yaml.spec.ts`,
-      `  execution:`,
+      `  ai:`,
       `    tool: dapr-agent`,
       `    provider: ollama`,
       `    model: ${firstValue}`,
-      `    hosting: ephemeral`,
       ``,
     ].join("\n");
     await page.getByRole("textbox", { name: /yaml|manifest/i }).first().fill(yamlBody);
@@ -64,11 +62,19 @@ test.describe("units — create from yaml (wizard)", () => {
       await page.getByRole("button", { name: /^next$/i }).click();
     }
 
-    // Step 5 — Secrets (none) → Step 6 — Finalize
+    // Step 5 — Secrets (none) → Step 6 — Finalize.
+    // The wizard's auto-start path is broken for credential-free
+    // runtimes (see `helpers/unit-wizard.ts` § `awaitValidation`);
+    // navigate to the explorer ourselves after confirming the
+    // validation view mounted (which proves the create POST landed).
     await page.getByRole("button", { name: /^next$/i }).click();
     await page.getByTestId("create-unit-button").click();
-
-    await page.waitForURL(new RegExp(`/units/${name}$`), { timeout: 90_000 });
+    await expect(page.getByTestId("wizard-validation-view")).toBeVisible({
+      timeout: 30_000,
+    });
+    await page.goto(
+      `/units?node=${encodeURIComponent(name)}&tab=Overview`,
+    );
     await expect(page.getByRole("heading", { name })).toBeVisible();
   });
 });

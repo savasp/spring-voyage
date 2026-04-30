@@ -29,8 +29,11 @@ test.describe("units — boundary tab", () => {
       isTopLevel: true,
     });
 
-    await page.goto(`/units/${name}`);
-    await page.getByRole("tab", { name: /^boundary$/i }).click();
+    // Boundary moved under Config (subtab) per QUALITY-unit-config-subtabs.
+    // Deep-link straight to it; the explorer round-trips ?subtab=.
+    await page.goto(
+      `/units?node=${encodeURIComponent(name)}&tab=Config&subtab=Boundary`,
+    );
     await expect(page.getByTestId("boundary-tab")).toBeVisible();
 
     // The YAML upload card has its own testid.

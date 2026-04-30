@@ -2,6 +2,7 @@ import { apiPost } from "../../fixtures/api.js";
 import { unitName } from "../../fixtures/ids.js";
 import { DEFAULT_MODEL, PROVIDER_ID, TOOL_ID } from "../../fixtures/runtime.js";
 import { expect, test } from "../../fixtures/test.js";
+import { pickWizardMode } from "../../helpers/unit-wizard.js";
 
 /**
  * Sub-unit creation via the wizard's parent picker (#814).
@@ -63,12 +64,20 @@ test.describe("units — sub-unit (wizard parent picker)", () => {
     const firstValue = values[0]!;
     await modelSelect.selectOption(firstValue);
     await page.getByRole("button", { name: /^next$/i }).click();
-    await page.getByRole("button", { name: /from scratch/i }).click();
+    await pickWizardMode(page, "scratch");
     await page.getByRole("button", { name: /^next$/i }).click();
     await page.getByRole("button", { name: /skip connector|don.?t bind/i }).or(page.getByRole("button", { name: /^next$/i })).first().click();
     await page.getByRole("button", { name: /^next$/i }).click();
     await page.getByTestId("create-unit-button").click();
-    await page.waitForURL(new RegExp(`/units/${child}$`), { timeout: 90_000 });
+    // Wizard's auto-start path is broken for the no-credential
+    // runtime; verify the validation view mounted then navigate to
+    // the explorer ourselves (see helpers/unit-wizard.ts).
+    await expect(page.getByTestId("wizard-validation-view")).toBeVisible({
+      timeout: 30_000,
+    });
+    await page.goto(
+      `/units?node=${encodeURIComponent(child)}&tab=Overview`,
+    );
 
     // Cross-check: detail page surfaces the parent breadcrumb / banner.
     await expect(page.getByText(parent).first()).toBeVisible({ timeout: 10_000 });

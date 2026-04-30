@@ -21,10 +21,14 @@ test.describe("budgets", () => {
   test("tenant budget API responds with the expected shape", async ({}) => {
     // No UI assertion — the editor lives inside /analytics/costs and is
     // covered by 25-analytics.spec.ts. This sub-spec just sanity-checks
-    // that the API endpoint the editor reads is reachable, so a 500
-    // surfaces here rather than as a vague UI failure.
-    await expect(async () => {
-      await apiGet<TenantBudgetResponse>("/api/v1/tenant/budget");
-    }).not.toThrow();
+    // that the endpoint is reachable: 200 (budget set) or 404 (no
+    // budget for the tenant — happy-path on a fresh stack) are both
+    // acceptable; 5xx is the regression we want to catch.
+    const data = await apiGet<TenantBudgetResponse>("/api/v1/tenant/budget", {
+      expect: [200, 404],
+    });
+    if (data) {
+      expect(data).toBeDefined();
+    }
   });
 });

@@ -30,22 +30,27 @@ test.describe("agents — expertise editor", () => {
       isTopLevel: true,
     });
     await apiPost("/api/v1/tenant/agents", {
-      id: aId,
+      name: aId,
       displayName: aId,
+      description: "Expertise spec (e2e-portal)",
       unitIds: [unit],
     });
 
-    await page.goto(`/agents/${aId}`);
-    // Click into an "Expertise" tab if present, otherwise scroll/find the editor.
-    const tab = page.getByRole("tab", { name: /^expertise$/i });
-    if (await tab.first().isVisible().catch(() => false)) {
-      await tab.first().click();
-    }
+    // Agent Config tab stacks Execution + Budget + Expertise panels.
+    await page.goto(
+      `/units?node=${encodeURIComponent(aId)}&tab=Config`,
+    );
 
-    // Add a domain via the editor's text input + add button.
-    const input = page.getByRole("textbox", { name: /domain|expertise|topic/i }).first();
-    await input.fill("rust");
-    await page.getByRole("button", { name: /^(add|save)$/i }).first().click();
+    // Editor starts empty — click "Add domain" to spawn a row, fill the
+    // row's name field, then Save. The Config tab stacks Execution +
+    // Budget + Expertise panels, each with its own Save button, so
+    // scope to the Expertise section by its `aria-label`.
+    const expertiseSection = page.getByLabel("Expertise", { exact: true });
+    await expertiseSection.getByRole("button", { name: /^Add domain$/i }).click();
+    await expertiseSection
+      .getByRole("textbox", { name: /Domain name \(row 1\)/i })
+      .fill("rust");
+    await expertiseSection.getByRole("button", { name: /^Save$/i }).click();
 
     await expect
       .poll(

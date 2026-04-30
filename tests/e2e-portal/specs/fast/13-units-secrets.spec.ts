@@ -12,6 +12,9 @@ import { expect, test } from "../../fixtures/test.js";
 interface UnitSecretListItem {
   name: string;
 }
+interface UnitSecretListResponse {
+  secrets: UnitSecretListItem[];
+}
 
 test.describe("units — secrets tab", () => {
   test("create + list + delete a unit-scoped secret", async ({
@@ -32,34 +35,34 @@ test.describe("units — secrets tab", () => {
       isTopLevel: true,
     });
 
-    await page.goto(`/units/${name}`);
-    await page.getByRole("tab", { name: /^secrets$/i }).click();
+    // Secrets moved under Config (subtab) per QUALITY-unit-config-subtabs.
+    await page.goto(
+      `/units?node=${encodeURIComponent(name)}&tab=Config&subtab=Secrets`,
+    );
 
-    // The Secrets tab exposes a "Add secret" affordance.
-    await page.getByRole("button", { name: /^(add secret|new secret|create secret)$/i }).first().click();
-    await page.getByLabel(/secret name|name/i).first().fill(sName);
-    await page.getByLabel(/value|secret value/i).first().fill("not-a-real-secret");
-    await page.getByRole("button", { name: /^(save|create|add)$/i }).first().click();
+    // The Add-secret form is rendered inline (no toggle button); just fill
+    // it and submit. The form lives inside a Card whose CardTitle is
+    // "Add secret" — we can scope to that section by hosting it in the
+    // overall Config panel and clicking the submit button labelled
+    // "Add secret".
+    await page.getByLabel(/^name$/i).fill(sName);
+    await page.getByLabel(/^value/i).fill("not-a-real-secret");
+    await page.getByRole("button", { name: /^Add secret$/i }).click();
 
     // The new row should render with the secret-row testid.
     await expect(page.getByTestId(`unit-secret-row-${sName}`)).toBeVisible({ timeout: 10_000 });
 
     // Cross-check via API (NEVER returns plaintext, but does return the metadata row).
-    const secrets = await apiGet<UnitSecretListItem[]>(
+    const response = await apiGet<UnitSecretListResponse>(
       `/api/v1/tenant/units/${encodeURIComponent(name)}/secrets`,
     );
-    expect(secrets.find((s) => s.name === sName)).toBeDefined();
+    expect(response.secrets.find((s) => s.name === sName)).toBeDefined();
 
-    // Delete via UI.
+    // Delete via UI — the row's delete button is aria-labelled
+    // `Delete <name>` and there is no confirmation dialog.
     await page
-      .getByTestId(`unit-secret-row-${sName}`)
-      .getByRole("button", { name: /delete|remove/i })
-      .first()
+      .getByRole("button", { name: new RegExp(`Delete ${sName}`, "i") })
       .click();
-    const confirm = page.getByRole("button", { name: /^(delete|confirm|remove)$/i });
-    if (await confirm.first().isVisible().catch(() => false)) {
-      await confirm.first().click();
-    }
     await expect(page.getByTestId(`unit-secret-row-${sName}`)).toHaveCount(0, { timeout: 10_000 });
   });
 });
