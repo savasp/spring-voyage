@@ -613,5 +613,30 @@ public class DefaultUnitPolicyEnforcerTests
             string bucketLabel,
             CancellationToken cancellationToken = default) =>
             Task.FromResult(new CostTimeseries(from, to, bucketLabel, Array.Empty<CostTimeseriesBucket>()));
+
+        public Task<CostTimeseries> GetAgentCostTimeseriesAsync(
+            string agentId,
+            DateTimeOffset from,
+            DateTimeOffset to,
+            TimeSpan bucket,
+            string bucketLabel,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new CostTimeseries(from, to, bucketLabel, Array.Empty<CostTimeseriesBucket>()));
+
+        public Task<CostTimeseries> GetUnitCostTimeseriesAsync(
+            string unitId,
+            DateTimeOffset from,
+            DateTimeOffset to,
+            TimeSpan bucket,
+            string bucketLabel,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new CostTimeseries(from, to, bucketLabel, Array.Empty<CostTimeseriesBucket>()));
+
+        public Task<IReadOnlyList<CostBreakdownEntry>> GetAgentCostBreakdownAsync(
+            string agentId,
+            DateTimeOffset from,
+            DateTimeOffset to,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<CostBreakdownEntry>>(Array.Empty<CostBreakdownEntry>());
     }
 }
