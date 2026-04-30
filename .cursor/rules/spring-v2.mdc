@@ -5,7 +5,7 @@ globs: "**"
 
 # Spring Voyage V2
 
-AI agent orchestration platform built on .NET 10 and Dapr. Namespace: `Cvoya.Spring.*`.
+An open-source collaboration platform for teams of AI agents — and the humans they work with. Built on .NET 10 and Dapr. Namespace: `Cvoya.Spring.*`.
 
 **This is the open-source core platform.** A private repository (Spring Voyage Cloud) extends it via git submodule and DI to add multi-tenancy, OAuth, billing, and premium features. Design every change for clean extensibility — the private repo must be able to override, wrap, or compose OSS behavior without forking or patching.
 

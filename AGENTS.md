@@ -1,6 +1,6 @@
 # Spring Voyage — Project Rules
 
-AI agent orchestration platform — general-purpose, domain-agnostic. Built on .NET 10 and Dapr. Namespace: `Cvoya.Spring.*`.
+An open-source collaboration platform for teams of AI agents — and the humans they work with. General-purpose, domain-agnostic. Built on .NET 10 and Dapr. Namespace: `Cvoya.Spring.*`.
 
 ## Coding conventions
 
