@@ -2,11 +2,17 @@
   "name": "spring-voyage-workspace",
   "private": true,
   "description": "npm workspace root. Exists ONLY to hoist node_modules so connector packages can ship their own web UI (src/Cvoya.Spring.Connector.*/web/) and still resolve shared dependencies (react, lucide-react, @/* from the web project). See src/Cvoya.Spring.Web/next.config.ts and the Web project's tsconfig paths for the full picture. #198.",
+  "engines": {
+    "node": ">=20",
+    "npm": ">=10"
+  },
+  "packageManager": "npm@10.9.2",
   "workspaces": [
     "src/Cvoya.Spring.Web",
     "src/Cvoya.Spring.Connector.*/web"
   ],
   "scripts": {
+    "preinstall": "node scripts/enforce-npm.cjs",
     "lint": "npm run --workspace=spring-voyage-dashboard generate-api && eslint src/Cvoya.Spring.Web src/Cvoya.Spring.Connector.*/web --max-warnings 0 --report-unused-disable-directives --cache --cache-location .eslintcache",
     "lint:fix": "npm run --workspace=spring-voyage-dashboard generate-api && eslint src/Cvoya.Spring.Web src/Cvoya.Spring.Connector.*/web --max-warnings 0 --report-unused-disable-directives --cache --cache-location .eslintcache --fix"
   }
