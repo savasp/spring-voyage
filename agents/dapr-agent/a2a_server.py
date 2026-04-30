@@ -100,14 +100,17 @@ def create_a2a_app(
         queue_manager=queue_manager,
     )
 
-    # create_agent_card_routes registers /.well-known/agent-card.json (SDK 1.x
-    # canonical path). Also register the legacy /.well-known/agent.json path so
-    # the smoke contract (smoke-agent-images.sh) and any existing consumers
-    # continue to work without modification.
+    # Order matters. create_rest_routes registers a /{tenant}/{path:.*} mount
+    # that matches every two-segment path — including /.well-known/agent-card.json
+    # and /.well-known/agent.json — so the agent-card routes MUST be registered
+    # first. The second create_agent_card_routes call adds the legacy
+    # /.well-known/agent.json alias that the smoke contract
+    # (smoke-agent-images.sh) and existing consumers expect alongside the SDK 1.x
+    # canonical /.well-known/agent-card.json path.
     routes = (
-        create_rest_routes(handler)
-        + create_agent_card_routes(card)
+        create_agent_card_routes(card)
         + create_agent_card_routes(card, card_url="/.well-known/agent.json")
+        + create_rest_routes(handler)
     )
     app = Starlette(routes=routes)
 

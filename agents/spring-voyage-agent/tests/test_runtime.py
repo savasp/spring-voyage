@@ -374,3 +374,55 @@ class TestBareStartup:
         assert runtime._initialize_done.is_set()
         assert len(initialized_with) == 1
         assert initialized_with[0].tenant_id == "t1"
+
+
+class TestAgentCardRoutes:
+    """Regression: both /.well-known/agent-card.json (SDK 1.x canonical) and
+    /.well-known/agent.json (legacy alias the smoke contract relies on) must
+    return 200. They are easy to break by route ordering — create_rest_routes
+    registers a /{tenant}/{path:.*} mount that swallows every two-segment path,
+    so the agent-card routes have to come first.
+    """
+
+    def test_well_known_paths_return_200(self):
+        from a2a.server.events import InMemoryQueueManager
+        from a2a.server.request_handlers import DefaultRequestHandler
+        from a2a.server.routes import (
+            create_agent_card_routes,
+            create_rest_routes,
+        )
+        from a2a.server.tasks import InMemoryTaskStore
+        from starlette.applications import Starlette
+        from starlette.testclient import TestClient
+
+        from spring_voyage_agent.runtime import _build_agent_card, _SdkAgentExecutor
+
+        card = _build_agent_card(8999)
+        executor = _SdkAgentExecutor(
+            hooks=_make_hooks(),
+            concurrent_threads=True,
+            initialize_done=asyncio.Event(),
+        )
+        handler = DefaultRequestHandler(
+            agent_executor=executor,
+            task_store=InMemoryTaskStore(),
+            agent_card=card,
+            queue_manager=InMemoryQueueManager(),
+        )
+        # Mirror the live composition in AgentRuntime._serve.
+        routes = (
+            create_agent_card_routes(card)
+            + create_agent_card_routes(card, card_url="/.well-known/agent.json")
+            + create_rest_routes(handler)
+        )
+        client = TestClient(Starlette(routes=routes))
+
+        canonical = client.get("/.well-known/agent-card.json")
+        assert canonical.status_code == 200, (
+            f"SDK canonical agent-card path 404'd — likely the /{{tenant}} mount is "
+            f"swallowing it. Body: {canonical.text!r}"
+        )
+        legacy = client.get("/.well-known/agent.json")
+        assert legacy.status_code == 200, (
+            f"Legacy agent.json alias 404'd — smoke contract broken. Body: {legacy.text!r}"
+        )

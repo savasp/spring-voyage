@@ -172,9 +172,7 @@ class _SdkAgentExecutor(AgentExecutor):
                 await self._run_on_message(context, updater)
         except Exception as exc:
             logger.exception("on_message hook raised an unhandled exception")
-            await updater.failed(
-                updater.new_agent_message([Part(text=f"Agent error: {exc}")])
-            )
+            await updater.failed(updater.new_agent_message([Part(text=f"Agent error: {exc}")]))
 
     async def _run_on_message(self, context: RequestContext, updater: TaskUpdater) -> None:
         """Invoke the on_message hook and stream its responses.
@@ -222,9 +220,7 @@ class _SdkAgentExecutor(AgentExecutor):
                     text_chunks.append(response.text)
 
         if error_text is not None:
-            await updater.failed(
-                updater.new_agent_message([Part(text=error_text)])
-            )
+            await updater.failed(updater.new_agent_message([Part(text=error_text)]))
             return
 
         full_text = "".join(text_chunks)
@@ -241,9 +237,7 @@ class _SdkAgentExecutor(AgentExecutor):
         task_id = context.task_id or ""
         context_id = context.context_id or ""
         updater = TaskUpdater(event_queue, task_id, context_id)
-        await updater.cancel(
-            updater.new_agent_message([Part(text="Task canceled.")])
-        )
+        await updater.cancel(updater.new_agent_message([Part(text="Task canceled.")]))
 
 
 def _build_agent_card(port: int) -> AgentCard:
@@ -418,13 +412,17 @@ class AgentRuntime:
         )
         # In a2a-sdk 1.x A2AStarletteApplication is gone; compose a plain
         # Starlette application from the A2A route builders.
-        # create_agent_card_routes registers /.well-known/agent-card.json (SDK
-        # 1.x canonical path). Also register the legacy /.well-known/agent.json
-        # path so the smoke contract and existing consumers continue to work.
+        # Order matters. create_rest_routes registers a /{tenant}/{path:.*} mount
+        # that matches every two-segment path — including
+        # /.well-known/agent-card.json and /.well-known/agent.json — so the
+        # agent-card routes MUST be registered first. The second
+        # create_agent_card_routes call adds the legacy /.well-known/agent.json
+        # alias the smoke contract and existing consumers expect alongside the
+        # SDK 1.x canonical /.well-known/agent-card.json path.
         routes = (
-            create_rest_routes(handler)
-            + create_agent_card_routes(card)
+            create_agent_card_routes(card)
             + create_agent_card_routes(card, card_url="/.well-known/agent.json")
+            + create_rest_routes(handler)
         )
         app = Starlette(routes=routes)
 
