@@ -9,6 +9,7 @@ using System.Linq;
 using Cvoya.Spring.Core.Configuration;
 using Cvoya.Spring.Dapr.Configuration;
 using Cvoya.Spring.Dapr.Data;
+using Cvoya.Spring.Dapr.DependencyInjection;
 using Cvoya.Spring.Dapr.Execution;
 
 using Microsoft.AspNetCore.Hosting;
@@ -84,6 +85,13 @@ public class OllamaLegacyBindingTests
 
                 builder.ConfigureServices(services =>
                 {
+                    // Strip the Dapr WorkflowWorker IHostedService — same #568
+                    // workaround as CustomWebApplicationFactory. Program.cs
+                    // calls AddDaprWorkflow via AddCvoyaSpringDapr; the worker
+                    // would surface ObjectDisposedException on factory disposal
+                    // when no sidecar is present.
+                    services.RemoveDaprWorkflowWorker();
+
                     // Swap the real Postgres DbContext for in-memory so the
                     // factory boots without a live database.
                     var dbDescriptors = services

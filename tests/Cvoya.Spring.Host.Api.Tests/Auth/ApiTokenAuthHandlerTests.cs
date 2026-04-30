@@ -11,6 +11,7 @@ using Cvoya.Spring.Core.State;
 using Cvoya.Spring.Dapr.Auth;
 using Cvoya.Spring.Dapr.Data;
 using Cvoya.Spring.Dapr.Data.Entities;
+using Cvoya.Spring.Dapr.DependencyInjection;
 using Cvoya.Spring.Dapr.Routing;
 using Cvoya.Spring.Host.Api.Auth;
 
@@ -114,15 +115,7 @@ public class ApiTokenAuthHandlerTests : IDisposable
                     // ObjectDisposedException race on host teardown (#568). The
                     // tests don't drive workflow execution, so the worker's
                     // background gRPC stream is dead weight.
-                    var workflowWorkerDescriptors = services
-                        .Where(d => d.ServiceType == typeof(Microsoft.Extensions.Hosting.IHostedService)
-                            && d.ImplementationType?.FullName?.Contains(
-                                "Dapr.Workflow", StringComparison.Ordinal) == true)
-                        .ToList();
-                    foreach (var d in workflowWorkerDescriptors)
-                    {
-                        services.Remove(d);
-                    }
+                    services.RemoveDaprWorkflowWorker();
 
                     // Remove and re-register ICostTracker.
                     var costDescriptors = services
