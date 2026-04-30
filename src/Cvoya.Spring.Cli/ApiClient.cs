@@ -1022,6 +1022,104 @@ public class SpringApiClient
             $"Server returned an empty close response for thread '{threadId}'.");
     }
 
+    // Engagements (E2.2 / #1414) — SSE stream
+
+    /// <summary>
+    /// Streams live activity events for an engagement by connecting to the
+    /// platform-wide SSE endpoint (<c>GET /api/v1/tenant/activity/stream</c>)
+    /// and filtering each line to those that reference the specified
+    /// <paramref name="threadId"/>.
+    ///
+    /// <para>
+    /// The server does not yet expose a thread-scoped SSE endpoint, so
+    /// client-side filtering is the only option today. Each raw SSE line
+    /// is forwarded verbatim to <paramref name="onEvent"/>; the caller is
+    /// responsible for stripping the <c>data: </c> prefix and parsing JSON
+    /// if needed. The stream runs until the <paramref name="ct"/> is
+    /// cancelled (Ctrl+C) or the server closes the connection.
+    /// </para>
+    /// </summary>
+    /// <param name="threadId">Engagement (thread) id to filter on.</param>
+    /// <param name="source">
+    /// Optional additional <c>?source=</c> query param to pass to the server
+    /// (e.g. <c>agent://ada</c>). The server applies this filter before
+    /// events reach the wire; the client still further filters by threadId.
+    /// </param>
+    /// <param name="onEvent">
+    /// Callback invoked with each non-empty SSE line. The line may include the
+    /// <c>data: </c> prefix — callers must strip it before JSON parsing.
+    /// </param>
+    /// <param name="ct">Cancellation token; cancel to stop streaming.</param>
+    public async Task StreamEngagementAsync(
+        string threadId,
+        string? source,
+        Action<string> onEvent,
+        CancellationToken ct = default)
+    {
+        var url = $"{_baseUrl}/api/v1/tenant/activity/stream";
+        if (!string.IsNullOrWhiteSpace(source))
+        {
+            url += $"?source={Uri.EscapeDataString(source)}";
+        }
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Accept.ParseAdd("text/event-stream");
+
+        // HttpCompletionOption.ResponseHeadersRead — do not buffer the body;
+        // stream it line-by-line so events appear as soon as they arrive.
+        using var response = await _httpClient.SendAsync(
+            request,
+            HttpCompletionOption.ResponseHeadersRead,
+            ct).ConfigureAwait(false);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            throw new HttpRequestException(
+                $"Activity stream request failed: {(int)response.StatusCode} {response.ReasonPhrase}. {body}");
+        }
+
+        await using var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+        using var reader = new System.IO.StreamReader(stream);
+
+        while (!ct.IsCancellationRequested)
+        {
+            var line = await reader.ReadLineAsync(ct).ConfigureAwait(false);
+
+            // null means EOF — the server closed the connection.
+            if (line is null)
+            {
+                break;
+            }
+
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                continue;
+            }
+
+            // Each SSE event line looks like `data: <json>`.
+            // Skip control lines that are not data lines.
+            if (!line.StartsWith("data:", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            // Client-side filter: only forward events that reference the
+            // requested thread id. The threadId field may appear as
+            // "threadId" on the activity event wire (the server stamps it
+            // when the event is thread-scoped). If the json does not mention
+            // the thread id at all we skip it — the platform stream includes
+            // events from all threads.
+            var json = line["data:".Length..].TrimStart();
+            if (!json.Contains(threadId, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            onEvent(line);
+        }
+    }
+
     // Inbox (#456)
 
     /// <summary>
