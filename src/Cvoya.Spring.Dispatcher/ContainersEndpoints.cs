@@ -442,7 +442,9 @@ public static class ContainersEndpoints
             EventIds.ContainerProbeRequested,
             "Probing container id={ContainerId} url={Url}", id, request.Url);
 
+#pragma warning disable CS0618 // ProbeContainerHttpAsync is deprecated; this dispatcher endpoint is the explicit backward-compat call site (#1351).
         var healthy = await runtime.ProbeContainerHttpAsync(id, request.Url, cancellationToken);
+#pragma warning restore CS0618
         return Results.Ok(new ProbeContainerHttpResponse { Healthy = healthy });
     }
 

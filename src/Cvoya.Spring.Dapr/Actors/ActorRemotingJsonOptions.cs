@@ -59,6 +59,12 @@ public static class ActorRemotingJsonOptions
     private static JsonSerializerOptions Create()
     {
         var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        // #956: enums must serialize by name, not ordinal, so that future
+        // mid-enum insertions are safe. allowIntegerValues: false matches the
+        // HTTP-surface setting in Program.cs so a misbehaving caller that
+        // sends an ordinal gets a deterministic deserialization failure rather
+        // than silently landing on an adjacent enum value.
+        options.Converters.Add(new JsonStringEnumConverter(allowIntegerValues: false));
         options.Converters.Add(new DetachedJsonElementConverter());
         return options;
     }

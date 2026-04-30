@@ -256,6 +256,7 @@ internal partial class SpringCoreJsonContext : JsonSerializerContext { }
 - Use `[JsonPropertyName("camelCase")]` for external APIs.
 - Internal serialisation (Dapr state) uses PascalCase (default).
 - `JsonElement` for untyped payloads — not `object` or `dynamic`.
+- **Enums that cross actor-remoting or HTTP MUST serialize by name.** Register `JsonStringEnumConverter(allowIntegerValues: false)` on any `JsonSerializerOptions` used at those boundaries. Mid-enum insertion is safe once this is enforced — without it, always append. The `allowIntegerValues: false` setting ensures that a misbehaving caller sending an ordinal receives a deterministic deserialization failure rather than silently landing on an adjacent enum value. See `ActorRemotingJsonOptions` (actor-remoting) and `Program.cs` (HTTP) for the canonical registrations (#956).
 
 ## 9. Logging
 

@@ -6,6 +6,7 @@ namespace Cvoya.Spring.Dapr.Initiative;
 using Cvoya.Spring.Core.Agents;
 using Cvoya.Spring.Core.Capabilities;
 using Cvoya.Spring.Core.Messaging;
+using Cvoya.Spring.Core.Policies;
 
 using Microsoft.Extensions.Logging;
 
@@ -29,6 +30,7 @@ public class AgentMailboxCoordinator(
         string agentId,
         Message message,
         AgentMetadata effective,
+        Func<AgentMetadata, CancellationToken, Task<(AgentMetadata Effective, PolicyVerdict? Verdict)>> applyUnitPolicies,
         Func<CancellationToken, Task<ThreadChannel?>> getActiveConversation,
         Func<ThreadChannel, CancellationToken, Task> setActiveConversation,
         Func<CancellationToken, Task<List<ThreadChannel>?>> getPendingList,
@@ -38,6 +40,62 @@ public class AgentMailboxCoordinator(
         CancellationToken cancellationToken = default)
     {
         var threadId = message.ThreadId!; // Validated by caller before entering the coordinator.
+
+        // Guard 0: membership-disabled check (#1349). When the effective
+        // metadata indicates the membership is disabled, emit a DecisionMade
+        // event and return without routing. This guard was previously in
+        // AgentActor.HandleDomainMessageAsync; it lives here so the actor
+        // contains only message-dispatch logic.
+        if (effective.Enabled == false)
+        {
+            logger.LogInformation(
+                "Actor {ActorId} skipping message {MessageId} from {Sender}: membership Enabled=false.",
+                agentId, message.Id, message.From);
+
+            await emitActivity(
+                BuildEvent(
+                    agentId,
+                    ActivityEventType.DecisionMade,
+                    ActivitySeverity.Info,
+                    $"Skipped message {message.Id} from {message.From}: membership disabled.",
+                    details: System.Text.Json.JsonSerializer.SerializeToElement(new
+                    {
+                        decision = "MembershipDisabled",
+                        sender = new { scheme = message.From.Scheme, path = message.From.Path },
+                        messageId = message.Id,
+                    }),
+                    correlationId: threadId),
+                cancellationToken);
+
+            return;
+        }
+
+        // Guard 1: unit-policy check (#1349). Delegate to the actor-supplied
+        // applyUnitPolicies function so the coordinator remains stateless and
+        // agnostic of IAgentUnitPolicyCoordinator. When a non-null verdict is
+        // returned, the dispatch is refused.
+        (effective, var policyVerdict) = await applyUnitPolicies(effective, cancellationToken);
+        if (policyVerdict is not null)
+        {
+            await emitActivity(
+                BuildEvent(
+                    agentId,
+                    ActivityEventType.DecisionMade,
+                    ActivitySeverity.Info,
+                    $"Skipped message {message.Id} from {message.From}: {policyVerdict.Summary}.",
+                    details: System.Text.Json.JsonSerializer.SerializeToElement(new
+                    {
+                        decision = policyVerdict.DecisionTag,
+                        dimension = policyVerdict.Dimension,
+                        reason = policyVerdict.Decision.Reason,
+                        denyingUnitId = policyVerdict.Decision.DenyingUnitId,
+                        messageId = message.Id,
+                    }),
+                    correlationId: threadId),
+                cancellationToken);
+
+            return;
+        }
 
         var activeConversation = await getActiveConversation(cancellationToken);
 

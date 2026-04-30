@@ -68,12 +68,14 @@ public class DaprAgentLauncherTests
             "SPRING_AGENT_TOKEN superseded by D1-canonical SPRING_MCP_TOKEN (AgentContextBuilder)");
         prep.EnvironmentVariables["SPRING_THREAD_ID"].ShouldBe(context.ThreadId);
         prep.EnvironmentVariables["SPRING_SYSTEM_PROMPT"].ShouldBe(context.Prompt);
-        // SPRING_MODEL / SPRING_LLM_PROVIDER / OLLAMA_ENDPOINT kept until
-        // Dapr component YAML migration (#1327, #1328).
+        // #1327: SPRING_MODEL and SPRING_LLM_PROVIDER are now D1-spec-declared (§ 2.2.1).
         prep.EnvironmentVariables["SPRING_MODEL"].ShouldBe("llama3.2:3b");
         prep.EnvironmentVariables["SPRING_LLM_PROVIDER"].ShouldBe("ollama");
         prep.EnvironmentVariables["AGENT_PORT"].ShouldBe("8999");
-        prep.EnvironmentVariables["OLLAMA_ENDPOINT"].ShouldBe("http://spring-ollama:11434");
+        // #1328: OLLAMA_ENDPOINT removed from launcher; conversation-ollama.yaml now reads SPRING_LLM_PROVIDER_URL.
+        prep.EnvironmentVariables.ShouldNotContainKey("OLLAMA_ENDPOINT",
+            "OLLAMA_ENDPOINT must not be emitted by the launcher after #1328; " +
+            "the Dapr Conversation YAML now reads SPRING_LLM_PROVIDER_URL.");
     }
 
     [Fact]
@@ -104,8 +106,13 @@ public class DaprAgentLauncherTests
         prep.WorkspaceFiles.ShouldBeEmpty();
     }
 
+    /// <summary>
+    /// #1328: OLLAMA_ENDPOINT must never appear in the launcher's env vars —
+    /// the Dapr Conversation component YAML now reads SPRING_LLM_PROVIDER_URL.
+    /// This holds regardless of whether OllamaOptions.BaseUrl is configured.
+    /// </summary>
     [Fact]
-    public async Task PrepareAsync_OmitsOllamaEndpoint_WhenBaseUrlIsNull()
+    public async Task PrepareAsync_NeverEmitsOllamaEndpoint_Regardless_Of_BaseUrl()
     {
         var options = Options.Create(new OllamaOptions { DefaultModel = "phi3:mini", BaseUrl = "" });
         var launcher = new DaprAgentLauncher(options, _loggerFactory);
@@ -113,7 +120,8 @@ public class DaprAgentLauncherTests
 
         var prep = await launcher.PrepareAsync(context, TestContext.Current.CancellationToken);
 
-        prep.EnvironmentVariables.ShouldNotContainKey("OLLAMA_ENDPOINT");
+        prep.EnvironmentVariables.ShouldNotContainKey("OLLAMA_ENDPOINT",
+            "OLLAMA_ENDPOINT must not be emitted by the launcher after #1328.");
         prep.EnvironmentVariables["SPRING_MODEL"].ShouldBe("phi3:mini");
     }
 

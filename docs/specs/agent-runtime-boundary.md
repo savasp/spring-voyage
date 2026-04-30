@@ -268,6 +268,16 @@ The platform **MAY** add additional service endpoints in future revisions (e.g.,
 |---|---|---|---|
 | `workspace_path` | string (filesystem path) | yes | The path inside the container at which the agent's persistent volume is mounted. See § 3. The recommended default is `/spring/workspace/`. |
 
+#### LLM selection (Dapr-agent-specific)
+
+These fields are delivered by the Dapr-agent launcher only. Generic launchers (Claude Code, Gemini, etc.) do not emit them. SDKs that are not Dapr-agent-based MAY ignore them.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `model` | string | no | LLM model name to use for inference (e.g. `llama3.2:3b`, `gpt-4o-mini`). The Dapr Conversation component reads the model from its own metadata (deployed `conversation-*.yaml`); `model` is kept here for telemetry and agent-card rendering. Defaults to `llama3.2:3b` when absent. |
+| `llm_provider` | string | no | Provider type label for telemetry and agent-card description (e.g. `ollama`, `openai`). Defaults to `ollama` when absent. |
+| `llm_component` | string | no | Optional override for the Dapr Conversation component name. Defaults to `llm-provider` when absent. Dapr-agent-specific — other SDKs MUST ignore this field. |
+
 #### Concurrent-threads policy
 
 | Field | Type | Required | Description |
@@ -338,6 +348,9 @@ Both channels **MUST** be readable synchronously at the top of `initialize` — 
 | `SPRING_TELEMETRY_TOKEN` | `telemetry_token` | no |
 | `SPRING_WORKSPACE_PATH` | `workspace_path` | yes |
 | `SPRING_CONCURRENT_THREADS` | `concurrent_threads` (`"true"` or `"false"`) | yes |
+| `SPRING_MODEL` | `model` | no (Dapr-agent only) |
+| `SPRING_LLM_PROVIDER` | `llm_provider` | no (Dapr-agent only) |
+| `SPRING_LLM_COMPONENT` | `llm_component` | no (Dapr-agent only) |
 
 The platform **MUST** populate every required env var before the container's PID 1 begins execution. The SDK **MUST** treat any required env var as missing/empty as a fatal `initialize` error.
 
@@ -656,3 +669,4 @@ The following surfaces are deliberately not specified by this document. Each has
 | v0.1 | 2026-04-28 | Initial specification. Implements ADR-0029 Stage 1; consumes F1 / ADR-0030. |
 | v0.1.1 | 2026-04-28 | § 2.2.3 (Credential rotation): replace "TBD in Stage 2" with the restart-as-rotation-primitive contract — per-launch minting, restart re-injection, no-in-place-mutation, SDK auth-failure contract. § 2.3, § 5 conformance updated. Long-running zero-downtime rotation deferred to a future revision; see [`docs/architecture/agent-credential-rotation.md`](../architecture/agent-credential-rotation.md). Closes #1325 (design phase). |
 | v0.1.2 | 2026-04-29 | § 2.1 static metadata: add `thread_id` field (optional; present when launch originates from a known dispatch thread, absent on supervisor-driven restarts). § 2.2.1 env-var table: add `SPRING_THREAD_ID` (optional). Closes #1300 (propagation) and closes #1347 (D3d implementation: `IAgentContextBuilder.RefreshForRestartAsync`, `SupervisorState` identity fields, `ContainerSupervisorActor.RestartAsync` re-mint). |
+| v0.1.3 | 2026-04-29 | § 2.1: add "LLM selection (Dapr-agent-specific)" subsection — `model`, `llm_provider`, `llm_component` fields (all optional, Dapr-agent only). § 2.2.1 env-var table: add `SPRING_MODEL`, `SPRING_LLM_PROVIDER`, `SPRING_LLM_COMPONENT` (all optional, Dapr-agent only). These were already emitted by `DaprAgentLauncher`; this revision makes them normative so they can be safely removed from launcher-specific code if they migrate into `AgentContextBuilder`. Closes #1327. |

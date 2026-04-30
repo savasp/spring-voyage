@@ -224,7 +224,10 @@ public class ThreadEndpointsTests : IClassFixture<ThreadEndpointsTests.Factory>
         response.StatusCode.ShouldBe(HttpStatusCode.BadGateway);
     }
 
-    // --- #1038 — POST /api/v1/threads/{id}/close ---
+    // --- #1038 + #1207 — POST /api/v1/threads/{id}/close ---
+    // #1207 regression guard: the close path MUST invoke AgentActor.CloseConversationAsync
+    // so the actor clears its ActiveConversation slot. Without this call the actor stays
+    // "bricked" — every subsequent message send queues forever until worker restart.
 
     [Fact]
     public async Task CloseThread_Existing_CallsAgentActorAndReturnsRefreshedDetail()
