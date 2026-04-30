@@ -3,7 +3,9 @@
 
 namespace Cvoya.Spring.Cli;
 
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -372,8 +374,22 @@ public class SpringApiClient
         string? hosting = null,
         IReadOnlyList<string>? parentUnitIds = null,
         bool? isTopLevel = null,
+        UnitConnectorBindingRequest? connector = null,
         CancellationToken ct = default)
     {
+        // Kiota generates a composed-type wrapper for the `connector` field
+        // (CreateUnitFromTemplateRequest_connector) that can hold either a
+        // UnitConnectorBindingRequest or an inline schema variant. We always
+        // use the UnitConnectorBindingRequest branch for the GitHub connector.
+        CreateUnitFromTemplateRequest.CreateUnitFromTemplateRequest_connector? connectorWrapper = null;
+        if (connector is not null)
+        {
+            connectorWrapper = new CreateUnitFromTemplateRequest.CreateUnitFromTemplateRequest_connector
+            {
+                UnitConnectorBindingRequest = connector,
+            };
+        }
+
         var request = new CreateUnitFromTemplateRequest
         {
             Package = package,
@@ -387,10 +403,65 @@ public class SpringApiClient
             Hosting = string.IsNullOrWhiteSpace(hosting) ? null : hosting,
             ParentUnitIds = parentUnitIds is { Count: > 0 } ? parentUnitIds.ToList() : null,
             IsTopLevel = isTopLevel,
+            Connector = connectorWrapper,
         };
         var result = await _client.Api.V1.Tenant.Units.FromTemplate.PostAsync(request, cancellationToken: ct);
         return result ?? throw new InvalidOperationException(
             "Server returned an empty CreateUnitFromTemplate response.");
+    }
+
+    /// <summary>
+    /// Builds a <see cref="UnitConnectorBindingRequest"/> for the GitHub connector from
+    /// the supplied <paramref name="owner"/>, <paramref name="repo"/>, and optional fields.
+    /// The resulting object can be passed directly to
+    /// <see cref="CreateUnitFromTemplateAsync"/> so the unit and its GitHub binding are
+    /// created atomically (#199).
+    /// </summary>
+    /// <remarks>
+    /// The connector type id uses the zero GUID as a lookup fallback — the server
+    /// accepts that form and resolves the concrete type from the slug. This mirrors
+    /// the wizard's <c>buildConnectorBinding()</c> helper, which uses the same sentinel
+    /// when the full type id is unavailable.
+    /// </remarks>
+    public static UnitConnectorBindingRequest BuildGitHubConnectorBinding(
+        string owner,
+        string repo,
+        string? appInstallationId = null,
+        IReadOnlyList<string>? events = null,
+        string? reviewer = null)
+    {
+        // Build the config as a Kiota UntypedObject so it can be serialised by
+        // the Kiota HTTP pipeline alongside the rest of the request body. The
+        // server's GitHub connector deserialises the resulting JsonElement into
+        // its typed UnitGitHubConfigRequest — the exact same path the wizard
+        // follows when it bundles the GitHub wizard-step payload.
+        var props = new Dictionary<string, UntypedNode>(StringComparer.Ordinal)
+        {
+            ["owner"] = new UntypedString(owner),
+            ["repo"] = new UntypedString(repo),
+        };
+        if (!string.IsNullOrWhiteSpace(appInstallationId))
+        {
+            props["appInstallationId"] = new UntypedString(appInstallationId);
+        }
+        if (events is { Count: > 0 })
+        {
+            props["events"] = new UntypedArray(events.Select(e => (UntypedNode)new UntypedString(e)).ToList());
+        }
+        if (!string.IsNullOrWhiteSpace(reviewer))
+        {
+            props["reviewer"] = new UntypedString(reviewer);
+        }
+
+        var configNode = new UntypedObject(props);
+
+        return new UnitConnectorBindingRequest
+        {
+            // Zero GUID: the server uses the slug as the lookup fallback.
+            TypeId = Guid.Empty,
+            TypeSlug = "github",
+            Config = configNode,
+        };
     }
 
     /// <summary>Starts a unit by posting to the /start endpoint.</summary>

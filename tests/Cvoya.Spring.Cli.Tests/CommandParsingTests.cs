@@ -582,6 +582,89 @@ public class CommandParsingTests
         parseResult.GetValue<string>("--name").ShouldBe("pm-team");
     }
 
+    // --- #1419: GitHub connector flags on `spring unit create-from-template` ---
+    // Parity table: wizard Step 4 (Connector) ↔ CLI flags.
+    //
+    // | Wizard input          | CLI flag                    |
+    // |-----------------------|-----------------------------|
+    // | Repository dropdown   | --github-owner + --github-repo |
+    // | (installation id)     | --github-installation-id    |
+    // | Default reviewer      | --github-reviewer           |
+    // | Webhook events        | --github-events             |
+
+    [Fact]
+    public void UnitCreateFromTemplate_ParsesGitHubOwnerAndRepo()
+    {
+        // End-to-end parity with the wizard's Connector step (#1419):
+        // --github-owner / --github-repo bind the GitHub connector at
+        // creation time without a separate `spring connector bind` call.
+        var outputOption = CreateOutputOption();
+        var unitCommand = UnitCommand.Create(outputOption);
+        var rootCommand = new RootCommand { Options = { outputOption } };
+        rootCommand.Subcommands.Add(unitCommand);
+
+        var parseResult = rootCommand.Parse(
+            "unit create-from-template software-engineering/engineering-team " +
+            "--github-owner acme --github-repo platform --top-level");
+
+        parseResult.Errors.ShouldBeEmpty();
+        parseResult.GetValue<string>("target").ShouldBe("software-engineering/engineering-team");
+        parseResult.GetValue<string>("--github-owner").ShouldBe("acme");
+        parseResult.GetValue<string>("--github-repo").ShouldBe("platform");
+    }
+
+    [Fact]
+    public void UnitCreateFromTemplate_ParsesAllGitHubFlags()
+    {
+        // All four GitHub connector flags must parse cleanly. Together
+        // they cover every input the wizard's Connector step exposes
+        // for the GitHub connector (parity table per #1419).
+        var outputOption = CreateOutputOption();
+        var unitCommand = UnitCommand.Create(outputOption);
+        var rootCommand = new RootCommand { Options = { outputOption } };
+        rootCommand.Subcommands.Add(unitCommand);
+
+        var parseResult = rootCommand.Parse(
+            "unit create-from-template product-management/product-squad " +
+            "--github-owner myorg --github-repo myrepo " +
+            "--github-installation-id 12345 " +
+            "--github-events issues --github-events pull_request " +
+            "--github-reviewer bob " +
+            "--top-level");
+
+        parseResult.Errors.ShouldBeEmpty();
+        parseResult.GetValue<string>("--github-owner").ShouldBe("myorg");
+        parseResult.GetValue<string>("--github-repo").ShouldBe("myrepo");
+        parseResult.GetValue<string>("--github-installation-id").ShouldBe("12345");
+        parseResult.GetValue<string[]>("--github-events").ShouldBe(["issues", "pull_request"]);
+        parseResult.GetValue<string>("--github-reviewer").ShouldBe("bob");
+    }
+
+    [Fact]
+    public void UnitCreateFromTemplate_WithoutGitHubFlags_ParsesCleanly()
+    {
+        // GitHub connector flags are optional — operators who want to bind
+        // the connector after creation (or whose template does not require it)
+        // must be able to omit all four flags without any parse error.
+        var outputOption = CreateOutputOption();
+        var unitCommand = UnitCommand.Create(outputOption);
+        var rootCommand = new RootCommand { Options = { outputOption } };
+        rootCommand.Subcommands.Add(unitCommand);
+
+        var parseResult = rootCommand.Parse(
+            "unit create-from-template software-engineering/engineering-team --top-level");
+
+        parseResult.Errors.ShouldBeEmpty();
+        parseResult.GetValue<string?>("--github-owner").ShouldBeNull();
+        parseResult.GetValue<string?>("--github-repo").ShouldBeNull();
+        parseResult.GetValue<string?>("--github-installation-id").ShouldBeNull();
+        // System.CommandLine returns an empty array (not null) for a string[] option
+        // that was not supplied. The action validates nullability by trimming.
+        var events = parseResult.GetValue<string[]?>("--github-events");
+        (events == null || events.Length == 0).ShouldBeTrue();
+        parseResult.GetValue<string?>("--github-reviewer").ShouldBeNull();
+    }
+
     // --- #454: `spring unit humans add|remove|list` -------------------------
 
     [Fact]

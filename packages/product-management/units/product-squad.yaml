@@ -25,6 +25,10 @@ unit:
   execution:
     image: localhost/spring-voyage-agent-claude-code:latest
     runtime: docker
+  connectors:
+    - type: github
+      config:
+        events: ["issues", "issue_comment", "pull_request"]
   policies:
     communication: through-unit
     work_assignment: capability-match
