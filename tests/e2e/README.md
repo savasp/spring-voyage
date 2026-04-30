@@ -117,6 +117,15 @@ counterpart stay on `e2e::http` with a TODO referencing the gap.
 | 15 | unit-policy-roundtrip | fast | CLI + curl | #404: GET empty → PUT (skill + model) → GET round-trip → PUT clear → GET empty; also asserts 404 for an unknown unit. |
 | 16 | cost-api-shape | fast | CLI + curl | #404: fresh agent/unit return the full CostSummaryResponse with zero counters and a valid time window; explicit from/to override is honoured. |
 | 17 | activity-query-filters | fast | curl | #404: asserts the four server-side filters on `/api/v1/activity` (source, eventType, severity, pageSize) actually narrow results — complements the SSE path until a cross-host event bridge lands. |
+| 18 | unit-policy-cli-roundtrip | fast | CLI | #453: per-dimension `spring unit policy <dim> get/set/clear` roundtrip; proves merge doesn't clobber adjacent slots. |
+| 19 | unit-humans-cli | fast | CLI | #454: `spring unit humans add/remove/list` lifecycle. |
+| 20 | persistent-agent-cli | fast | CLI | #396: exercises the error paths for `spring agent deploy/logs/undeploy/scale` without a container runtime. Happy-path tracked by #1390. |
+| 21 | secret-cli | fast | CLI | #432: `spring secret create/list/rotate/versions/prune/get/delete` roundtrip across all three scopes. |
+| 22 | validation-exit-codes | fast | CLI | #990 / #311: asserts exit-code table appears in `--help`; parse-level rejection exits non-zero; server-side validation failure maps to the 20..27 range. |
+| 23 | bootstrap-and-auth | fast | CLI + curl | #311: `spring auth token create/list/revoke` lifecycle; token usability via Bearer header. |
+| 24 | analytics-costs-breakdown | fast | CLI | #554 / E1-A: `spring analytics costs` (scalar total) and `--by-source` / `--breakdown` per-source rollup; `--window` flag accepted; bad window value exits non-zero. |
+| 25 | github-app-rotate | fast | CLI | #636 / E1-A: `spring github-app rotate-key --dry-run` (preamble + dry-run exit 0); `--from-file` PEM validation; missing file exits non-zero; `rotate-webhook-secret --dry-run` generates secret without persisting. |
+| 26 | exit-code-mapping | fast | CLI | #990 / E1-A: `ApiExceptionRenderer.DetermineExitCode` path — 404 on non-existent unit revalidate exits non-zero; revalidate on Draft unit exits non-zero (20..27 if ProblemDetails carries a code extension, 1 otherwise); E1-A canary asserts `--by-source` in analytics costs help. |
 
 ## Authentication
 
@@ -148,6 +157,16 @@ Where it matters for membership counts (e.g. template creation, which adds
 an exact known number of agents), also cross-check `GET /units/{id}/agents`
 so all three read paths (CLI, /memberships, /agents) must agree.
 
+## CI integration
+
+The E2E harness runs via `.github/workflows/e2e-cli.yml` on a **weekly schedule** (Mondays 06:00 UTC) and on **manual trigger** (`workflow_dispatch`). It is intentionally opt-in and not part of the per-PR required-checks gate — standing up Postgres + the API host takes several minutes and would slow every PR merge.
+
+**Gating rationale:** the unit + integration suite in `ci.yml` catches logic regressions quickly (< 2 minutes). The E2E harness catches wiring regressions (actor type-name mismatches, Dapr sidecar misses, serialisation failures) that the mocked suite can't see. Weekly cadence ensures regressions surface before a release window.
+
+To trigger a run manually: Actions → "E2E CLI (scheduled / manual)" → Run workflow.
+
+To run a single scenario in CI: use the `scenario_glob` input (e.g. `22-*`).
+
 ## Adding a scenario
 
 Create `scenarios/{fast,llm}/NN-short-name.sh`, source `../../_lib.sh`, use
@@ -168,3 +187,9 @@ pool is tracked by #330; the secrets, SSE-push, and clone-lifecycle items
 from #404 are deferred until the supporting plumbing (pass-through secret
 encryption defaults, cross-host activity bridging, and workflow-driven
 clone liveness) stabilises on main.
+
+Follow-ups filed alongside #311:
+- #1388 — migration-safety concurrent API+Worker startup race test (infra pool)
+- #1389 — multi-tenant isolation scenarios
+- #1390 — full persistent-agent deploy/logs/undeploy happy-path (requires container runtime)
+- #1391 — full Connector E2E scenarios (bind, webhook, unbind)
