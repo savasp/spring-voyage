@@ -16,6 +16,7 @@ using Cvoya.Spring.Core.Skills;
 using Cvoya.Spring.Core.Units;
 using Cvoya.Spring.Dapr.Actors;
 using Cvoya.Spring.Dapr.Auth;
+using Cvoya.Spring.Dapr.Execution;
 using Cvoya.Spring.Dapr.Initiative;
 using Cvoya.Spring.Dapr.Routing;
 
@@ -120,8 +121,7 @@ public static class ActorTestHost
             activityEventBus,
             observationCoordinator,
             new AgentMailboxCoordinator(Substitute.For<ILogger<AgentMailboxCoordinator>>()),
-            dispatcher,
-            router,
+            new AgentDispatchCoordinator(dispatcher, router, Substitute.For<ILogger<AgentDispatchCoordinator>>()),
             definitionProvider,
             Array.Empty<ISkillRegistry>(),
             membershipRepository,

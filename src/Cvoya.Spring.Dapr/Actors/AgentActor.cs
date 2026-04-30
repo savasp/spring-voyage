@@ -15,7 +15,6 @@ using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Core.Policies;
 using Cvoya.Spring.Core.Skills;
 using Cvoya.Spring.Core.Units;
-using Cvoya.Spring.Dapr.Routing;
 
 using global::Dapr.Actors;
 using global::Dapr.Actors.Client;
@@ -34,8 +33,7 @@ public class AgentActor(
     IActivityEventBus activityEventBus,
     IAgentObservationCoordinator observationCoordinator,
     IAgentMailboxCoordinator mailboxCoordinator,
-    IExecutionDispatcher executionDispatcher,
-    MessageRouter messageRouter,
+    IAgentDispatchCoordinator dispatchCoordinator,
     IAgentDefinitionProvider agentDefinitionProvider,
     IEnumerable<ISkillRegistry> skillRegistries,
     IUnitMembershipRepository membershipRepository,
@@ -556,7 +554,9 @@ public class AgentActor(
             {
                 _activeWorkCancellation = new CancellationTokenSource();
                 var context = await BuildPromptAssemblyContextAsync(ch, eff, ct);
-                PendingDispatchTask = RunDispatchAsync(message, context, _activeWorkCancellation.Token);
+                PendingDispatchTask = dispatchCoordinator.RunDispatchAsync(
+                    Id.GetId(), message, context, EmitActivityEventAsync,
+                    ClearActiveConversationViaSelfAsync, _activeWorkCancellation.Token);
             },
             emitActivity: EmitActivityEventAsync,
             cancellationToken: cancellationToken);
@@ -811,169 +811,10 @@ public class AgentActor(
         return (effective, null);
     }
 
-    /// <summary>
-    /// Runs the dispatcher and routes its response message. Runs outside the
-    /// actor turn, so it MUST NOT touch <see cref="Actor.StateManager"/>. All
-    /// failures are logged and surfaced as activity events. When the dispatch
-    /// terminates abnormally (non-zero container exit per #1036, or an
-    /// exception inside the dispatcher), the active thread is cleared
-    /// via a Dapr self-call to <see cref="ClearActiveConversationAsync"/> so
-    /// the state mutation runs on the actor turn — see #1036/#1038 for why a
-    /// failed dispatch must not leave the agent permanently active.
-    /// </summary>
-    private async Task RunDispatchAsync(
-        Message message, PromptAssemblyContext context, CancellationToken cancellationToken)
-    {
-        try
-        {
-            var response = await executionDispatcher.DispatchAsync(message, context, cancellationToken);
-            if (response is null)
-            {
-                _logger.LogInformation(
-                    "Dispatcher returned no response for thread {ThreadId}; nothing to route.",
-                    message.ThreadId);
-                return;
-            }
-
-            var dispatchExit = TryReadDispatchExit(response);
-            if (dispatchExit is { ExitCode: not 0 } failure)
-            {
-                _logger.LogWarning(
-                    "Dispatch for actor {ActorId} thread {ThreadId} exited with code {ExitCode}: {StdErrFirstLine}",
-                    Id.GetId(), message.ThreadId, failure.ExitCode, failure.StdErrFirstLine);
-
-                var details = JsonSerializer.SerializeToElement(new
-                {
-                    exitCode = failure.ExitCode,
-                    stderr = failure.StdErr,
-                    agentId = Id.GetId(),
-                    threadId = message.ThreadId,
-                });
-
-                await EmitActivityEventAsync(
-                    ActivityEventType.ErrorOccurred,
-                    $"Container exit code {failure.ExitCode}: {failure.StdErrFirstLine}",
-                    CancellationToken.None,
-                    details: details,
-                    correlationId: message.ThreadId);
-
-                // Best-effort: still surface the failure to the caller so an
-                // upstream agent / human sees the error response. We do this
-                // BEFORE clearing the active thread so the response is
-                // ordered correctly in the thread event log.
-                await TryRouteResponseAsync(response, message.ThreadId, cancellationToken);
-
-                await ClearActiveConversationViaSelfAsync(
-                    $"dispatch exit code {failure.ExitCode}");
-                return;
-            }
-
-            await TryRouteResponseAsync(response, message.ThreadId, cancellationToken);
-        }
-        catch (OperationCanceledException)
-        {
-            // A cancelled dispatch leaves the active-thread slot
-            // pointing at a dead turn. Without clearing it, the actor
-            // refuses every subsequent message in any other thread
-            // (Case 3 in HandleDomainMessageAsync queues them as pending
-            // forever) and the agent looks bricked from the user's
-            // perspective. The non-zero exit and generic-exception
-            // branches below already self-call ClearActiveConversationAsync
-            // for exactly this reason; the cancel branch must too.
-            // Discovered post-Stage-2 cutover (#1063 / #522 follow-up):
-            // a worker-side HttpClient timeout surfaced as
-            // OperationCanceledException, the actor logged it but kept
-            // the thread marked Active, and every subsequent
-            // user message was queued as pending and never dispatched.
-            _logger.LogInformation(
-                "Dispatch cancelled for actor {ActorId} thread {ThreadId}.",
-                Id.GetId(), message.ThreadId);
-
-            await ClearActiveConversationViaSelfAsync("dispatch cancelled");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex,
-                "Dispatch failed for actor {ActorId} thread {ThreadId}.",
-                Id.GetId(), message.ThreadId);
-
-            await EmitActivityEventAsync(
-                ActivityEventType.ErrorOccurred,
-                $"Dispatch failed: {ex.Message}",
-                CancellationToken.None,
-                details: JsonSerializer.SerializeToElement(new
-                {
-                    error = ex.Message,
-                    agentId = Id.GetId(),
-                    threadId = message.ThreadId,
-                }),
-                correlationId: message.ThreadId);
-
-            await ClearActiveConversationViaSelfAsync($"dispatch exception: {ex.GetType().Name}");
-        }
-    }
-
-    private async Task TryRouteResponseAsync(Message response, string? threadId, CancellationToken cancellationToken)
-    {
-        try
-        {
-            var routingResult = await messageRouter.RouteAsync(response, cancellationToken);
-            if (!routingResult.IsSuccess)
-            {
-                _logger.LogWarning(
-                    "Failed to route dispatcher response for thread {ThreadId}: {Error}",
-                    threadId, routingResult.Error);
-            }
-        }
-        catch (Exception routeEx)
-        {
-            _logger.LogWarning(routeEx,
-                "Routing dispatcher response failed for thread {ThreadId}.",
-                threadId);
-        }
-    }
-
-    private readonly record struct DispatchExit(int ExitCode, string? StdErr, string StdErrFirstLine);
-
-    private static DispatchExit? TryReadDispatchExit(Message response)
-    {
-        try
-        {
-            if (response.Payload.ValueKind != JsonValueKind.Object)
-            {
-                return null;
-            }
-
-            if (!response.Payload.TryGetProperty("ExitCode", out var exitProp) ||
-                exitProp.ValueKind != JsonValueKind.Number ||
-                !exitProp.TryGetInt32(out var exitCode))
-            {
-                return null;
-            }
-
-            string? stderr = null;
-            if (response.Payload.TryGetProperty("Error", out var errProp) &&
-                errProp.ValueKind == JsonValueKind.String)
-            {
-                stderr = errProp.GetString();
-            }
-
-            var firstLine = stderr is null
-                ? string.Empty
-                : stderr.Split('\n', 2)[0].TrimEnd('\r').Trim();
-
-            return new DispatchExit(exitCode, stderr, firstLine);
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
     private async Task ClearActiveConversationViaSelfAsync(string reason)
     {
-        // RunDispatchAsync runs outside the actor turn, so we can't touch
-        // StateManager directly — see the docstring. When an actor proxy
+        // AgentDispatchCoordinator.RunDispatchAsync runs outside the actor
+        // turn, so we can't touch StateManager directly. When an actor proxy
         // factory was injected (always the case in production wiring) we
         // self-call the actor through Dapr remoting, which queues the call
         // on the actor's turn queue. In tests where no proxy factory is
@@ -1175,7 +1016,9 @@ public class AgentActor(
                 _activeWorkCancellation = new CancellationTokenSource();
                 var context = await BuildPromptAssemblyContextAsync(ch, eff, ct);
                 var head = ch.Messages[0];
-                PendingDispatchTask = RunDispatchAsync(head, context, _activeWorkCancellation.Token);
+                PendingDispatchTask = dispatchCoordinator.RunDispatchAsync(
+                    Id.GetId(), head, context, EmitActivityEventAsync,
+                    ClearActiveConversationViaSelfAsync, _activeWorkCancellation.Token);
             },
             resolveEffectiveMetadata: (msg, ct) => ResolveEffectiveMetadataAsync(msg, ct),
             cancellationToken: cancellationToken);
