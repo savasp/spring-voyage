@@ -100,7 +100,15 @@ def create_a2a_app(
         queue_manager=queue_manager,
     )
 
-    routes = create_rest_routes(handler) + create_agent_card_routes(card)
+    # create_agent_card_routes registers /.well-known/agent-card.json (SDK 1.x
+    # canonical path). Also register the legacy /.well-known/agent.json path so
+    # the smoke contract (smoke-agent-images.sh) and any existing consumers
+    # continue to work without modification.
+    routes = (
+        create_rest_routes(handler)
+        + create_agent_card_routes(card)
+        + create_agent_card_routes(card, card_url="/.well-known/agent.json")
+    )
     app = Starlette(routes=routes)
 
     logger.info("A2A server configured: %s", card.name)

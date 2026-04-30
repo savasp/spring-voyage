@@ -59,7 +59,7 @@ from a2a.types import (
     AgentCard,
     AgentSkill,
 )
-from a2a.types.a2a_pb2 import AgentInterface, Part, TaskState
+from a2a.types.a2a_pb2 import AgentInterface, Part
 from starlette.applications import Starlette
 
 from spring_voyage_agent.context import IAgentContext
@@ -418,7 +418,14 @@ class AgentRuntime:
         )
         # In a2a-sdk 1.x A2AStarletteApplication is gone; compose a plain
         # Starlette application from the A2A route builders.
-        routes = create_rest_routes(handler) + create_agent_card_routes(card)
+        # create_agent_card_routes registers /.well-known/agent-card.json (SDK
+        # 1.x canonical path). Also register the legacy /.well-known/agent.json
+        # path so the smoke contract and existing consumers continue to work.
+        routes = (
+            create_rest_routes(handler)
+            + create_agent_card_routes(card)
+            + create_agent_card_routes(card, card_url="/.well-known/agent.json")
+        )
         app = Starlette(routes=routes)
 
         # Run uvicorn until SIGTERM arrives.
