@@ -14,6 +14,7 @@ using Cvoya.Spring.Core.State;
 using Cvoya.Spring.Dapr.Actors;
 using Cvoya.Spring.Dapr.Auth;
 using Cvoya.Spring.Dapr.Data;
+using Cvoya.Spring.Dapr.DependencyInjection;
 using Cvoya.Spring.Dapr.Routing;
 using Cvoya.Spring.Host.Api.Auth;
 using Cvoya.Spring.Host.Api.Models;
@@ -299,15 +300,11 @@ public class UnitPolicyEndpointsUnauthenticatedTests : IDisposable
                     services.AddSingleton(Substitute.For<DaprClient>());
                     services.AddDaprWorkflow(options => { });
 
-                    var workflowWorkerDescriptors = services
-                        .Where(d => d.ServiceType == typeof(Microsoft.Extensions.Hosting.IHostedService)
-                            && d.ImplementationType?.FullName?.Contains(
-                                "Dapr.Workflow", StringComparison.Ordinal) == true)
-                        .ToList();
-                    foreach (var d in workflowWorkerDescriptors)
-                    {
-                        services.Remove(d);
-                    }
+                    // Strip the Dapr WorkflowWorker IHostedService — same #568
+                    // workaround as CustomWebApplicationFactory. No sidecar in
+                    // tests; the worker would surface ObjectDisposedException on
+                    // factory disposal.
+                    services.RemoveDaprWorkflowWorker();
 
                     var costDescriptors = services
                         .Where(d => d.ServiceType == typeof(ICostTracker))
