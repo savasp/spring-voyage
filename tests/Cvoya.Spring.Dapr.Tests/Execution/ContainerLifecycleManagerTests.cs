@@ -104,6 +104,33 @@ public class ContainerLifecycleManagerTests
     }
 
     [Fact]
+    public async Task TeardownAsync_DoesNotRemoveSharedTenantNetwork()
+    {
+        // The tenant bridge ("spring-tenant-default") is shared, long-lived
+        // topology that must not be torn down on per-dispatch teardown (#1206).
+        // A removal attempt would cause Podman to return 500 ("network in use")
+        // and log a warning on every successful dispatch.
+        await _manager.TeardownAsync(
+            null, null, ContainerConfigBuilder.TenantNetworkName, TestContext.Current.CancellationToken);
+
+        await _containerRuntime.DidNotReceive().RemoveNetworkAsync(
+            ContainerConfigBuilder.TenantNetworkName, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task TeardownAsync_RemovesPerDispatchBridge()
+    {
+        // Per-dispatch ephemeral bridges ("spring-net-<guid>") ARE removed on
+        // teardown — only the shared tenant bridge is skipped.
+        const string ephemeralNetwork = "spring-net-abc123";
+
+        await _manager.TeardownAsync(null, null, ephemeralNetwork, TestContext.Current.CancellationToken);
+
+        await _containerRuntime.Received(1).RemoveNetworkAsync(
+            ephemeralNetwork, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task LaunchWithSidecarAsync_DualAttachesAppContainerToTenantNetwork()
     {
         // Sidecar is healthy on the first probe so the lifecycle proceeds to
