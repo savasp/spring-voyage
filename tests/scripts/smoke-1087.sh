@@ -6,10 +6,10 @@
 # `docs/decisions/0027-agent-image-conformance-contract.md` end-to-end at
 # the wire level: it boots an agent image, polls /.well-known/agent.json
 # until ready, fires an A2A `message/send`, and asserts a real response
-# came back (status.state == "TASK_STATE_COMPLETED", artifact text
-# matches). Enum values follow the proto-style names that the .NET A2A
-# SDK pins via [JsonStringEnumMemberName]; see issue #1115 for the
-# rationale.
+# came back (status.state == "completed", artifact text matches).
+# Enum values follow the kebab-case-lower wire form the .NET A2A V0_3
+# SDK expects via KebabCaseLowerJsonStringEnumConverter; see issue #1198
+# for the rationale.
 #
 # What's exercised today:
 #   - Path 1 (FROM ghcr.io/cvoya-com/agent-base): the claude-code image
@@ -253,27 +253,27 @@ assert_a2a_roundtrip() {
     log "${label} message/send response:"
     printf '%s\n' "${resp}" | jq . >&2 || printf '%s\n' "${resp}" >&2
 
-    # message/send result is the .NET A2A SDK's SendMessageResponse — a
-    # field-presence wrapper around `task` or `message`. The bridge
-    # always returns the AgentTask under `.result.task`, with the
-    # status enum encoded as the proto-style name the .NET SDK pins via
-    # [JsonStringEnumMemberName]. See issue #1115 for the rationale and
-    # for the bridge change that introduced this shape.
-    state="$(printf '%s' "${resp}" | jq -r '.result.task.status.state // empty')"
-    if [[ "${state}" != "TASK_STATE_COMPLETED" ]]; then
-        log "::error::${label}: message/send result.task.status.state='${state}', expected 'TASK_STATE_COMPLETED'"
+    # A2A v0.3: message/send result is the flat AgentTask (kind: "task")
+    # at `.result.*` — NOT wrapped under `.result.task`. The .NET A2A V0_3
+    # SDK's SendMessageAsync deserializes result as A2AResponse via the
+    # kind discriminator (A2AEventConverterViaKindDiscriminator). Status
+    # enums use kebab-case-lower (KebabCaseLowerJsonStringEnumConverter).
+    # See issue #1198 for the rationale.
+    state="$(printf '%s' "${resp}" | jq -r '.result.status.state // empty')"
+    if [[ "${state}" != "completed" ]]; then
+        log "::error::${label}: message/send result.status.state='${state}', expected 'completed'"
         "${DOCKER}" logs "${container}" >&2 || true
         return 1
     fi
 
-    # A2A artifacts can live in either result.task.artifacts[].parts[].text
-    # or result.task.status.message.parts[].text depending on whether the
+    # A2A artifacts can live in either result.artifacts[].parts[].text
+    # or result.status.message.parts[].text depending on whether the
     # bridge attached an error message; check both and assert the prompt
     # shows up somewhere.
     artifact="$(printf '%s' "${resp}" | jq -r '
         [
-          (.result.task.artifacts // [])[].parts[]?.text,
-          (.result.task.status.message.parts // [])[]?.text
+          (.result.artifacts // [])[].parts[]?.text,
+          (.result.status.message.parts // [])[]?.text
         ] | map(select(. != null)) | join("\n")
     ')"
 
@@ -284,7 +284,7 @@ assert_a2a_roundtrip() {
         return 1
     fi
 
-    log "${label}: PASS (protocolVersion=0.3, bridge-version header present, message/send returned TASK_STATE_COMPLETED with echoed prompt)"
+    log "${label}: PASS (protocolVersion=0.3, bridge-version header present, message/send returned completed with echoed prompt)"
 }
 
 # ---- 1. Path 1 — claude-code image, A2A message/send round-trip ---------
