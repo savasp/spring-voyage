@@ -9,7 +9,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Spring Voyage",
-  description: "AI agent orchestration dashboard",
+  description: "Collaboration dashboard for teams of AI agents",
 };
 
 export const viewport: Viewport = {

@@ -3,7 +3,7 @@
 [![CI](https://github.com/savasp/spring-voyage/actions/workflows/ci.yml/badge.svg)](https://github.com/savasp/spring-voyage/actions/workflows/ci.yml)
 [![License: BSL 1.1](https://img.shields.io/badge/License-BSL%201.1-blue.svg)](LICENSE.md)
 
-AI agent orchestration platform built on .NET and Dapr. Agents organize into composable **units**, connect to external systems through pluggable **connectors**, and communicate via typed **messages**.
+An open-source collaboration platform for teams of AI agents — and the humans they work with. Built on .NET and Dapr. Agents organize into composable **units**, connect to external systems through pluggable **connectors**, and communicate via typed **messages**. Orchestration is one mechanism inside a unit, not the whole of the platform.
 
 ## Key Concepts
 
@@ -310,7 +310,7 @@ Spring Voyage is licensed under the [Business Source License 1.1](LICENSE.md).
 **What this means:**
 
 - **Free to use** for personal projects, development, testing, and internal non-production use
-- **Free for production** except for offering it as a competing managed AI agent orchestration service
+- **Free for production** except for offering it as a competing managed AI agent collaboration service
 - **Converts to Apache 2.0** on 2030-04-10 (four years from initial release)
 
 See the [LICENSE](LICENSE.md) file for the full terms and the [NOTICE](NOTICE.md) file for third-party attributions.

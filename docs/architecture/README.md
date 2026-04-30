@@ -38,7 +38,7 @@ Spring Voyage v1 is a working proof-of-concept: Claude-powered agents collaborat
 
 ## 2. Vision & Goals
 
-Spring Voyage is a general-purpose AI agent orchestration platform. It enables autonomous AI agents — organized into composable groups called **units** — to collaborate on any domain: software engineering, product management, creative work, research, operations, and more.
+Spring Voyage is an open-source collaboration platform for teams of AI agents — and the humans they work with. It enables autonomous AI agents — organized into composable groups called **units** — to collaborate on any domain: software engineering, product management, creative work, research, operations, and more.
 
 Agents connect to external systems through pluggable **connectors**, communicate via typed **messages**, take **initiative** to act autonomously, and can be observed by humans and other agents in real-time.
 
