@@ -538,6 +538,171 @@ public class DispatcherClientContainerRuntimeTests
         healthy.ShouldBeFalse();
     }
 
+    // ── GetHealthAsync retry-policy tests (#1379) ────────────────────────────
+
+    [Fact]
+    public async Task GetHealthAsync_HealthyResponse_ReturnsHealthy()
+    {
+        // Baseline: a clean 200 with status="healthy" maps to ContainerHealth.Healthy == true.
+        var handler = new FakeHandler(async (_, _) =>
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = JsonContent.Create(new { status = "healthy", method = "HEALTHCHECK" }),
+            });
+
+        var runtime = CreateRuntime(handler);
+        var result = await runtime.GetHealthAsync("container-1", TestContext.Current.CancellationToken);
+
+        result.Healthy.ShouldBeTrue();
+        result.Detail.ShouldBe("HEALTHCHECK");
+    }
+
+    [Fact]
+    public async Task GetHealthAsync_503WithUnhealthyBody_ReturnsUnhealthyWithoutRetry()
+    {
+        // 503 with a valid body is the dispatcher's documented "unhealthy"
+        // response — it is NOT a transient failure and must never be retried.
+        var callCount = 0;
+        var handler = new FakeHandler(async (_, _) =>
+        {
+            callCount++;
+            return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
+            {
+                Content = JsonContent.Create(new { status = "unhealthy", reason = "exit code 1" }),
+            };
+        });
+
+        var runtime = CreateRuntime(handler);
+        var result = await runtime.GetHealthAsync("container-2", TestContext.Current.CancellationToken);
+
+        result.Healthy.ShouldBeFalse();
+        result.Detail.ShouldBe("exit code 1");
+        // Exactly one HTTP call — the 503 was treated as a semantic response, not a transport failure.
+        callCount.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task GetHealthAsync_404_ThrowsWithoutRetry()
+    {
+        // 404 means the container is not known to the dispatcher. This is a
+        // definitive answer — do NOT retry; that would just hammer the dispatcher
+        // N times for a container it has never seen.
+        var callCount = 0;
+        var handler = new FakeHandler(async (_, _) =>
+        {
+            callCount++;
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var runtime = CreateRuntime(handler);
+
+        await Should.ThrowAsync<InvalidOperationException>(async () =>
+            await runtime.GetHealthAsync("unknown-container", TestContext.Current.CancellationToken));
+
+        callCount.ShouldBe(1, "404 is definitive — no retry");
+    }
+
+    [Fact]
+    public async Task GetHealthAsync_TransientFailureThenSuccess_RetriesAndReturnsHealthy()
+    {
+        // A transient 500 on the first attempt is followed by a successful 200.
+        // The retry policy must recover and return the healthy result.
+        var callCount = 0;
+        var handler = new FakeHandler(async (_, _) =>
+        {
+            callCount++;
+            if (callCount == 1)
+            {
+                return new HttpResponseMessage(HttpStatusCode.InternalServerError)
+                {
+                    Content = new StringContent("dispatcher restarting"),
+                };
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = JsonContent.Create(new { status = "healthy", method = "HEALTHCHECK" }),
+            };
+        });
+
+        var runtime = CreateRuntime(handler);
+        var result = await runtime.GetHealthAsync("container-3", TestContext.Current.CancellationToken);
+
+        result.Healthy.ShouldBeTrue();
+        callCount.ShouldBe(2, "one transient failure followed by success = 2 total calls");
+    }
+
+    [Fact]
+    public async Task GetHealthAsync_PersistentTransientFailures_ExhaustsRetriesAndThrows()
+    {
+        // All attempts return 500. After exhausting the retry budget (3 total
+        // attempts) the method must throw, not loop forever.
+        var callCount = 0;
+        var handler = new FakeHandler(async (_, _) =>
+        {
+            callCount++;
+            return new HttpResponseMessage(HttpStatusCode.InternalServerError)
+            {
+                Content = new StringContent("permanent dispatcher error"),
+            };
+        });
+
+        var runtime = CreateRuntime(handler);
+
+        await Should.ThrowAsync<InvalidOperationException>(async () =>
+            await runtime.GetHealthAsync("container-4", TestContext.Current.CancellationToken));
+
+        // 3 total attempts: initial + 2 retries (matching HealthRetryDelays.Length).
+        callCount.ShouldBe(3, "3 total attempts before giving up");
+    }
+
+    [Fact]
+    public async Task GetHealthAsync_NetworkExceptionThenSuccess_RetriesAndReturnsHealthy()
+    {
+        // A network-level exception (HttpRequestException) on the first call is
+        // treated as transient. The second attempt succeeds.
+        var callCount = 0;
+        var handler = new FakeHandler((_, _) =>
+        {
+            callCount++;
+            if (callCount == 1)
+            {
+                throw new HttpRequestException("connection refused");
+            }
+
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = JsonContent.Create(new { status = "healthy", method = "HEALTHCHECK" }),
+            });
+        });
+
+        var runtime = CreateRuntime(handler);
+        var result = await runtime.GetHealthAsync("container-5", TestContext.Current.CancellationToken);
+
+        result.Healthy.ShouldBeTrue();
+        callCount.ShouldBe(2, "one network failure followed by success = 2 total calls");
+    }
+
+    [Fact]
+    public async Task GetHealthAsync_PersistentNetworkException_ExhaustsRetriesAndThrows()
+    {
+        // All attempts throw HttpRequestException. The method must propagate an
+        // InvalidOperationException wrapping the last network error.
+        var callCount = 0;
+        var handler = new FakeHandler((_, _) =>
+        {
+            callCount++;
+            throw new HttpRequestException($"connection refused (attempt {callCount})");
+        });
+
+        var runtime = CreateRuntime(handler);
+
+        await Should.ThrowAsync<InvalidOperationException>(async () =>
+            await runtime.GetHealthAsync("container-6", TestContext.Current.CancellationToken));
+
+        callCount.ShouldBe(3, "3 total attempts before giving up");
+    }
+
     private static DispatcherClientContainerRuntime CreateRuntime(
         FakeHandler handler,
         string? baseUrl = "http://dispatcher.test/")

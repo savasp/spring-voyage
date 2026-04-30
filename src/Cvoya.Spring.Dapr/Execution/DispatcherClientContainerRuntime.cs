@@ -144,38 +144,101 @@ public class DispatcherClientContainerRuntime(
         return await response.Content.ReadAsStringAsync(ct);
     }
 
+    /// <summary>
+    /// Retry delays for transient failures in <see cref="GetHealthAsync"/>.
+    /// Three attempts total: first failure → 200 ms, second → 600 ms.
+    /// Total added wait ≤ 800 ms — well within any caller's polling budget.
+    /// </summary>
+    private static readonly TimeSpan[] HealthRetryDelays = [
+        TimeSpan.FromMilliseconds(200),
+        TimeSpan.FromMilliseconds(600),
+    ];
+
     /// <inheritdoc />
     public async Task<ContainerHealth> GetHealthAsync(string containerId, CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(containerId);
 
-        var httpClient = CreateClient();
         var uri = $"v1/containers/{Uri.EscapeDataString(containerId)}/health";
 
-        using var response = await httpClient.GetAsync(uri, ct);
-
-        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        // Retry on transient 5xx and network exceptions. 404 (container not
+        // found) and 503-with-body (documented "unhealthy" response) are NOT
+        // transient — they carry semantic meaning and must not be retried.
+        // The attempt loop is bounded by HealthRetryDelays.Length + 1.
+        Exception? lastException = null;
+        for (var attempt = 0; attempt <= HealthRetryDelays.Length; attempt++)
         {
-            throw new InvalidOperationException(
-                $"Container '{containerId}' is not known to the dispatcher.");
+            if (attempt > 0)
+            {
+                _logger.LogDebug(
+                    "GetHealthAsync transient failure on attempt {Attempt} for container {ContainerId}; retrying in {Delay}",
+                    attempt, containerId, HealthRetryDelays[attempt - 1]);
+                await Task.Delay(HealthRetryDelays[attempt - 1], ct);
+            }
+
+            HttpResponseMessage response;
+            try
+            {
+                response = await CreateClient().GetAsync(uri, ct);
+            }
+            catch (HttpRequestException ex)
+            {
+                lastException = ex;
+                // Network-level failure is transient — retry unless exhausted.
+                if (attempt < HealthRetryDelays.Length)
+                {
+                    continue;
+                }
+
+                throw new InvalidOperationException(
+                    $"Dispatcher health call for '{containerId}' failed after {attempt + 1} attempt(s): {ex.Message}", ex);
+            }
+
+            using (response)
+            {
+                // 404 → container not known. Definitive; do not retry.
+                if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                {
+                    throw new InvalidOperationException(
+                        $"Container '{containerId}' is not known to the dispatcher.");
+                }
+
+                // 503 is the documented dispatcher response for an unhealthy
+                // container (the HEALTHCHECK ran and returned "unhealthy"). That
+                // is a successful transport — the payload carries the status. Do
+                // NOT retry; fall through to deserialise the body.
+                if (!response.IsSuccessStatusCode && response.StatusCode != System.Net.HttpStatusCode.ServiceUnavailable)
+                {
+                    // 5xx (other than 503) may be transient dispatcher restarts.
+                    var statusCode = (int)response.StatusCode;
+                    if (statusCode >= 500 && attempt < HealthRetryDelays.Length)
+                    {
+                        // Transient; retry.
+                        continue;
+                    }
+
+                    var body = await SafeReadBodyAsync(response, ct);
+                    throw new InvalidOperationException(
+                        $"Dispatcher returned {statusCode} fetching health for {containerId}: {body}");
+                }
+
+                var parsed = await response.Content.ReadFromJsonAsync<DispatcherContainerHealthResponse>(JsonOptions, ct);
+                if (parsed is null)
+                {
+                    throw new InvalidOperationException(
+                        "Dispatcher returned an empty response body for the container health call.");
+                }
+
+                var healthy = string.Equals(parsed.Status, "healthy", StringComparison.OrdinalIgnoreCase);
+                return new ContainerHealth(Healthy: healthy, Detail: parsed.Reason ?? parsed.Method);
+            }
         }
 
-        if (!response.IsSuccessStatusCode && response.StatusCode != System.Net.HttpStatusCode.ServiceUnavailable)
-        {
-            var body = await SafeReadBodyAsync(response, ct);
-            throw new InvalidOperationException(
-                $"Dispatcher returned {(int)response.StatusCode} fetching health for {containerId}: {body}");
-        }
-
-        var parsed = await response.Content.ReadFromJsonAsync<DispatcherContainerHealthResponse>(JsonOptions, ct);
-        if (parsed is null)
-        {
-            throw new InvalidOperationException(
-                "Dispatcher returned an empty response body for the container health call.");
-        }
-
-        var healthy = string.Equals(parsed.Status, "healthy", StringComparison.OrdinalIgnoreCase);
-        return new ContainerHealth(Healthy: healthy, Detail: parsed.Reason ?? parsed.Method);
+        // Unreachable — all retry paths either return or throw above — but the
+        // compiler cannot prove it. Rethrow the last network exception if any.
+        throw lastException
+            ?? new InvalidOperationException(
+                $"GetHealthAsync for '{containerId}' exhausted all attempts without a conclusive response.");
     }
 
     /// <inheritdoc />
