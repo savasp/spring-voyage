@@ -200,6 +200,8 @@ public class AgentActorSeedExpertiseTests
             loggerFactory,
             lifecycleCoordinator,
             new AgentStateCoordinator(Substitute.For<ILogger<AgentStateCoordinator>>()),
+            new AgentAmendmentCoordinator(Substitute.For<ILogger<AgentAmendmentCoordinator>>()),
+            new AgentUnitPolicyCoordinator(Substitute.For<ILogger<AgentUnitPolicyCoordinator>>()),
             seedProvider);
 
         typeof(Actor).GetField("<StateManager>k__BackingField", BindingFlags.NonPublic | BindingFlags.Instance)!

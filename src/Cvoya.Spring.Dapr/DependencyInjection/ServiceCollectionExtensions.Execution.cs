@@ -11,6 +11,7 @@ using Cvoya.Spring.Core.Configuration;
 using Cvoya.Spring.Core.Execution;
 using Cvoya.Spring.Core.Initiative;
 using Cvoya.Spring.Core.Messaging;
+using Cvoya.Spring.Core.Policies;
 using Cvoya.Spring.Core.Units;
 using Cvoya.Spring.Dapr.AgentRuntimes;
 using Cvoya.Spring.Dapr.Capabilities;
@@ -104,6 +105,23 @@ internal static class ServiceCollectionExtensionsExecution
         // the private cloud repo can substitute a tenant-aware coordinator
         // (e.g. one that layers cost attribution or custom retry logic).
         services.TryAddSingleton<IAgentDispatchCoordinator, AgentDispatchCoordinator>();
+
+        // Agent amendment coordinator (#1337 / #1276 concern 4).
+        // Singleton: stateless across agents; IUnitMembershipRepository and
+        // the actor's CancellationTokenSource flow through per-call delegates
+        // so no scoped services or Dapr actor types are captured. TryAdd so
+        // the private cloud repo can layer tenant-aware amendment handling
+        // (e.g. rate-limiting, audit logging) without touching this registration.
+        services.TryAddSingleton<IAgentAmendmentCoordinator, AgentAmendmentCoordinator>();
+
+        // Agent unit-policy coordinator (#1338 / #1276 concern 5).
+        // Singleton: stateless across agents; IUnitPolicyEnforcer is scoped
+        // and is passed as per-call delegate parameters (evaluateModel /
+        // evaluateCost / resolveExecutionMode) so the singleton coordinator
+        // does not capture a scoped service. TryAdd so the private cloud repo
+        // can substitute a tenant-aware implementation (e.g. one that adds
+        // audit logging or additional policy dimensions).
+        services.TryAddSingleton<IAgentUnitPolicyCoordinator, AgentUnitPolicyCoordinator>();
 
         // Agent-runtime plugin registry (#678, cornerstone of the #674
         // refactor). Enumerates every DI-registered IAgentRuntime so the

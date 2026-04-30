@@ -42,6 +42,8 @@ public class AgentActor(
     ILoggerFactory loggerFactory,
     IAgentLifecycleCoordinator lifecycleCoordinator,
     IAgentStateCoordinator stateCoordinator,
+    IAgentAmendmentCoordinator amendmentCoordinator,
+    IAgentUnitPolicyCoordinator unitPolicyCoordinator,
     IExpertiseSeedProvider? expertiseSeedProvider = null,
     IActorProxyFactory? actorProxyFactory = null) : Actor(host), IAgentActor, IRemindable
 {
@@ -246,191 +248,40 @@ public class AgentActor(
     }
 
     /// <summary>
-    /// Handles a mid-flight amendment message (#142). Amendments are a
-    /// supervisor-originated instruction that nudges a live agent without
-    /// resetting its context. The flow is:
-    /// <list type="bullet">
-    /// <item><description>
-    /// Validate the sender — only the agent itself or a unit the agent is a
-    /// member of may amend. Anyone else is rejected with
-    /// <see cref="ActivityEventType.AmendmentRejected"/>.
-    /// </description></item>
-    /// <item><description>
-    /// Disabled memberships silently log-and-drop: we emit an
-    /// <see cref="ActivityEventType.AmendmentRejected"/> event for
-    /// observability but return an ack so senders cannot use amendments to
-    /// probe the enabled flag.
-    /// </description></item>
-    /// <item><description>
-    /// If no turn is in progress, the amendment is queued anyway — the
-    /// next turn will pick it up — and no cancellation fires.
-    /// </description></item>
-    /// <item><description>
-    /// For <see cref="AmendmentPriority.StopAndWait"/>, cancel the active
-    /// work token, suspend the active thread, and set the
-    /// <see cref="StateKeys.AgentPaused"/> flag.
-    /// </description></item>
-    /// </list>
+    /// Handles a mid-flight amendment message (#142) by delegating to
+    /// <see cref="IAgentAmendmentCoordinator"/>. The coordinator owns
+    /// payload parsing, sender authorisation, enqueueing, stop-and-wait
+    /// semantics, and activity-event emission.
     /// </summary>
     private async Task<Message?> HandleAmendmentAsync(Message message, CancellationToken cancellationToken)
     {
-        AmendmentPayload? payload;
-        try
-        {
-            payload = message.Payload.Deserialize<AmendmentPayload>();
-        }
-        catch (JsonException)
-        {
-            payload = null;
-        }
-
-        if (payload is null || string.IsNullOrWhiteSpace(payload.Text))
-        {
-            await EmitAmendmentRejectedAsync(message, "MalformedPayload",
-                "Amendment payload missing required Text field.", cancellationToken);
-            return CreateAckResponse(message);
-        }
-
-        // Authorisation: amendments are only accepted from the agent itself
-        // or from a unit that contains this agent. Use the existing
-        // membership-repository seam (C2b-1) — we already depend on it for
-        // effective-metadata lookup.
-        var allowed = await IsAmendmentSenderAllowedAsync(message.From, cancellationToken);
-        if (!allowed.Allowed)
-        {
-            await EmitAmendmentRejectedAsync(
-                message,
-                allowed.Reason ?? "Rejected",
-                allowed.Detail ?? "Amendment rejected.",
-                cancellationToken);
-            return CreateAckResponse(message);
-        }
-
-        // Disabled memberships: log-and-drop. Returning an ack keeps the
-        // sender from using the amendment channel as an enabled-flag probe.
-        if (allowed.DisabledMembership)
-        {
-            _logger.LogInformation(
-                "Actor {ActorId} dropping amendment {MessageId} from {Sender}: membership Enabled=false.",
-                Id.GetId(), message.Id, message.From);
-
-            await EmitAmendmentRejectedAsync(message, "MembershipDisabled",
-                "Amendment from a unit in which the agent is disabled.", cancellationToken);
-            return CreateAckResponse(message);
-        }
-
-        var pending = new PendingAmendment(
-            Id: message.Id,
-            From: message.From,
-            Text: payload.Text,
-            Priority: payload.Priority,
-            CorrelationId: payload.CorrelationId ?? message.ThreadId,
-            ReceivedAt: DateTimeOffset.UtcNow);
-
-        await EnqueueAmendmentAsync(pending, cancellationToken);
-
-        await EmitActivityEventAsync(ActivityEventType.AmendmentReceived,
-            $"Amendment accepted from {message.From.Scheme}://{message.From.Path} at priority {payload.Priority}.",
-            cancellationToken,
-            details: JsonSerializer.SerializeToElement(new
+        await amendmentCoordinator.HandleAmendmentAsync(
+            agentId: Id.GetId(),
+            message: message,
+            getMembership: (unitId, ct) =>
+                membershipRepository.GetAsync(unitId: unitId, agentAddress: Id.GetId(), ct),
+            getPendingAmendments: async ct =>
             {
-                messageId = message.Id,
-                priority = payload.Priority.ToString(),
-                correlationId = pending.CorrelationId,
-                text = payload.Text,
-            }),
-            correlationId: pending.CorrelationId);
-
-        if (payload.Priority == AmendmentPriority.StopAndWait)
-        {
-            await ApplyStopAndWaitAsync(cancellationToken);
-        }
+                var v = await StateManager
+                    .TryGetStateAsync<List<PendingAmendment>>(StateKeys.AgentPendingAmendments, ct);
+                return (v.HasValue, v.HasValue ? v.Value : null);
+            },
+            setPendingAmendments: (list, ct) =>
+                StateManager.SetStateAsync(StateKeys.AgentPendingAmendments, list, ct),
+            cancelActiveWork: async () =>
+            {
+                if (_activeWorkCancellation is not null)
+                {
+                    await _activeWorkCancellation.CancelAsync();
+                    _activeWorkCancellation.Dispose();
+                    _activeWorkCancellation = null;
+                }
+            },
+            setPaused: (ct) => StateManager.SetStateAsync(StateKeys.AgentPaused, true, ct),
+            emitActivity: EmitActivityEventAsync,
+            cancellationToken: cancellationToken);
 
         return CreateAckResponse(message);
-    }
-
-    /// <summary>
-    /// Decides whether <paramref name="sender"/> is permitted to amend this
-    /// agent. Returns structured output so the caller can distinguish between
-    /// rejection categories when emitting activity events.
-    /// </summary>
-    private async Task<AmendmentAuthorisation> IsAmendmentSenderAllowedAsync(
-        Address sender, CancellationToken cancellationToken)
-    {
-        // Self-amendment: the agent addresses itself. Always allowed — this
-        // is how a human operator signing on as the agent can push a nudge.
-        if (string.Equals(sender.Scheme, "agent", StringComparison.Ordinal) &&
-            string.Equals(sender.Path, Id.GetId(), StringComparison.Ordinal))
-        {
-            return AmendmentAuthorisation.Allow();
-        }
-
-        // Only parent units may amend. All other schemes are rejected.
-        if (!string.Equals(sender.Scheme, "unit", StringComparison.Ordinal))
-        {
-            return AmendmentAuthorisation.Reject("NotAMember",
-                $"Sender {sender.Scheme}://{sender.Path} is not a parent unit or the agent itself.");
-        }
-
-        UnitMembership? membership;
-        try
-        {
-            membership = await membershipRepository
-                .GetAsync(unitId: sender.Path, agentAddress: Id.GetId(), cancellationToken);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            // Repository failure is treated as reject so a stale/broken
-            // membership store cannot widen the amendment surface.
-            _logger.LogWarning(ex,
-                "Membership lookup failed evaluating amendment sender {Sender} for agent {AgentId}; rejecting.",
-                sender, Id.GetId());
-            return AmendmentAuthorisation.Reject("MembershipLookupFailed", ex.Message);
-        }
-
-        if (membership is null)
-        {
-            return AmendmentAuthorisation.Reject("NotAMember",
-                $"Agent is not a member of unit '{sender.Path}'.");
-        }
-
-        return new AmendmentAuthorisation(
-            Allowed: true,
-            DisabledMembership: membership.Enabled == false,
-            Reason: null,
-            Detail: null);
-    }
-
-    private async Task EnqueueAmendmentAsync(PendingAmendment pending, CancellationToken cancellationToken)
-    {
-        var existing = await StateManager
-            .TryGetStateAsync<List<PendingAmendment>>(StateKeys.AgentPendingAmendments, cancellationToken);
-
-        var list = existing.HasValue ? existing.Value : new List<PendingAmendment>();
-        list.Add(pending);
-
-        await StateManager.SetStateAsync(StateKeys.AgentPendingAmendments, list, cancellationToken);
-    }
-
-    private async Task ApplyStopAndWaitAsync(CancellationToken cancellationToken)
-    {
-        if (_activeWorkCancellation is not null)
-        {
-            await _activeWorkCancellation.CancelAsync();
-            _activeWorkCancellation.Dispose();
-            _activeWorkCancellation = null;
-        }
-
-        await StateManager.SetStateAsync(StateKeys.AgentPaused, true, cancellationToken);
-
-        await EmitActivityEventAsync(ActivityEventType.StateChanged,
-            "State changed to Paused awaiting clarification.",
-            cancellationToken,
-            details: JsonSerializer.SerializeToElement(new { from = "Active", to = "Paused" }));
     }
 
     /// <summary>
@@ -440,41 +291,6 @@ public class AgentActor(
     /// </summary>
     internal Task ResumeFromPauseAsync(CancellationToken cancellationToken = default)
         => StateManager.TryRemoveStateAsync(StateKeys.AgentPaused, cancellationToken);
-
-    private Task EmitAmendmentRejectedAsync(
-        Message message, string reason, string detail, CancellationToken ct)
-    {
-        var details = JsonSerializer.SerializeToElement(new
-        {
-            reason,
-            detail,
-            sender = new { scheme = message.From.Scheme, path = message.From.Path },
-            messageId = message.Id,
-        });
-
-        return EmitActivityEventAsync(
-            ActivityEventType.AmendmentRejected,
-            $"Amendment rejected from {message.From.Scheme}://{message.From.Path}: {reason}",
-            ct,
-            details: details,
-            correlationId: message.ThreadId);
-    }
-
-    /// <summary>
-    /// Internal result type for amendment-sender authorisation. Kept as a
-    /// local record so it never leaks into the public API.
-    /// </summary>
-    private readonly record struct AmendmentAuthorisation(
-        bool Allowed,
-        bool DisabledMembership,
-        string? Reason,
-        string? Detail)
-    {
-        public static AmendmentAuthorisation Allow() => new(true, false, null, null);
-
-        public static AmendmentAuthorisation Reject(string reason, string detail) =>
-            new(false, false, reason, detail);
-    }
 
     /// <summary>
     /// Handles a domain message by routing it to the appropriate thread channel.
@@ -684,131 +500,26 @@ public class AgentActor(
     }
 
     /// <summary>
-    /// Carries a unit-policy denial across the agent-dispatch plumbing.
-    /// Composed by <see cref="ApplyUnitPoliciesAsync"/> and consumed by
-    /// <see cref="HandleDomainMessageAsync"/> to emit a structured
-    /// <c>DecisionMade</c> activity event without threading raw
-    /// <see cref="PolicyDecision"/> values into every caller.
-    /// </summary>
-    internal sealed record PolicyVerdict(
-        string Dimension,
-        string DecisionTag,
-        string Summary,
-        PolicyDecision Decision);
-
-    /// <summary>
     /// Applies unit-level policy dimensions (#247 model, #248 cost, #249
-    /// execution mode) to the per-turn effective metadata. Returns the
-    /// (possibly coerced) metadata plus a non-<c>null</c>
-    /// <see cref="PolicyVerdict"/> when the dispatch must be refused.
+    /// execution mode) to the per-turn effective metadata by delegating to
+    /// <see cref="IAgentUnitPolicyCoordinator"/>. Returns the (possibly
+    /// coerced) metadata plus a non-<c>null</c> <see cref="PolicyVerdict"/>
+    /// when the dispatch must be refused.
     /// </summary>
-    /// <remarks>
-    /// <para>
-    /// Model and cost deny outcomes refuse the turn — silently swapping a
-    /// model mid-turn would break user expectations, and continuing past a
-    /// cost cap defeats the cap's purpose. Execution-mode coercion by a
-    /// forcing unit is treated as an allow (the call proceeds under the
-    /// forced mode); an allow-list miss refuses the turn.
-    /// </para>
-    /// <para>
-    /// Cost evaluation uses a projected cost of <c>0</c>: this seam does not
-    /// know the prompt size yet. It is still meaningful because
-    /// <see cref="DefaultUnitPolicyEnforcer.EvaluateCostAsync"/> sums the
-    /// agent's existing window spend — a unit that already exceeded its hour
-    /// / day cap will deny the turn before it runs.
-    /// </para>
-    /// </remarks>
-    internal virtual async Task<(AgentMetadata Effective, PolicyVerdict? Verdict)> ApplyUnitPoliciesAsync(
+    private Task<(AgentMetadata Effective, PolicyVerdict? Verdict)> ApplyUnitPoliciesAsync(
         AgentMetadata effective, CancellationToken cancellationToken)
     {
         var agentId = Id.GetId();
-
-        // Model caps (#247): deny on block-list hit / whitelist miss. Null
-        // model means the downstream dispatcher picks a default — no cap
-        // applies at this seam.
-        if (!string.IsNullOrWhiteSpace(effective.Model))
-        {
-            PolicyDecision modelDecision;
-            try
-            {
-                modelDecision = await unitPolicyEnforcer.EvaluateModelAsync(
-                    agentId, effective.Model, cancellationToken);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                _logger.LogWarning(ex,
-                    "Unit policy enforcer threw evaluating model '{Model}' for agent {AgentId}; allowing to avoid losing the turn.",
-                    effective.Model, agentId);
-                modelDecision = PolicyDecision.Allowed;
-            }
-
-            if (!modelDecision.IsAllowed)
-            {
-                return (effective, new PolicyVerdict(
-                    Dimension: "model",
-                    DecisionTag: "BlockedByUnitModelPolicy",
-                    Summary: modelDecision.Reason ?? $"model '{effective.Model}' denied",
-                    Decision: modelDecision));
-            }
-        }
-
-        // Cost caps (#248): zero projected cost — the enforcer still checks
-        // whether the current rolling-window sum has already exceeded the cap.
-        PolicyDecision costDecision;
-        try
-        {
-            costDecision = await unitPolicyEnforcer.EvaluateCostAsync(
-                agentId, 0m, cancellationToken);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            _logger.LogWarning(ex,
-                "Unit policy enforcer threw evaluating cost for agent {AgentId}; allowing to avoid losing the turn.",
-                agentId);
-            costDecision = PolicyDecision.Allowed;
-        }
-
-        if (!costDecision.IsAllowed)
-        {
-            return (effective, new PolicyVerdict(
-                Dimension: "cost",
-                DecisionTag: "BlockedByUnitCostPolicy",
-                Summary: costDecision.Reason ?? "cost cap exceeded",
-                Decision: costDecision));
-        }
-
-        // Execution mode (#249): resolve — coercion by a forcing unit wins,
-        // otherwise a non-matching allow-list denies.
-        var requestedMode = effective.ExecutionMode ?? AgentExecutionMode.Auto;
-        ExecutionModeResolution resolution;
-        try
-        {
-            resolution = await unitPolicyEnforcer.ResolveExecutionModeAsync(
-                agentId, requestedMode, cancellationToken);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            _logger.LogWarning(ex,
-                "Unit policy enforcer threw evaluating execution mode for agent {AgentId}; allowing to avoid losing the turn.",
-                agentId);
-            resolution = ExecutionModeResolution.AllowAsIs(requestedMode);
-        }
-
-        if (!resolution.Decision.IsAllowed)
-        {
-            return (effective, new PolicyVerdict(
-                Dimension: "executionMode",
-                DecisionTag: "BlockedByUnitExecutionModePolicy",
-                Summary: resolution.Decision.Reason ?? $"execution mode '{requestedMode}' denied",
-                Decision: resolution.Decision));
-        }
-
-        if (resolution.Mode != requestedMode)
-        {
-            effective = effective with { ExecutionMode = resolution.Mode };
-        }
-
-        return (effective, null);
+        return unitPolicyCoordinator.ApplyUnitPoliciesAsync(
+            agentId: agentId,
+            effective: effective,
+            evaluateModel: (id, model, ct) =>
+                unitPolicyEnforcer.EvaluateModelAsync(id, model, ct),
+            evaluateCost: (id, cost, ct) =>
+                unitPolicyEnforcer.EvaluateCostAsync(id, cost, ct),
+            resolveExecutionMode: (id, mode, ct) =>
+                unitPolicyEnforcer.ResolveExecutionModeAsync(id, mode, ct),
+            cancellationToken: cancellationToken);
     }
 
     private async Task ClearActiveConversationViaSelfAsync(string reason)
