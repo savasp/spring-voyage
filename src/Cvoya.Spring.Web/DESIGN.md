@@ -579,6 +579,30 @@ Tenant-wide agent list at `/agents`. Lists all registered agents via `GET /api/v
 
 **Grid.** `data-testid="agents-grid"`. Each `<AgentCard>` receives a shape adapter (`agentToCardShape`) that maps `AgentResponse → AgentCardAgent`. Cross-links to `/units` for full per-agent detail.
 
+### 12.12 Create-unit wizard — Identity step: parent-unit picker (#814)
+
+Step 1 ("Identity") of `/units/create` requires the operator to declare placement before advancing. Two radio buttons with `data-testid="parent-choice-top-level"` and `data-testid="parent-choice-has-parents"` present the choice; Next is gated until one is selected.
+
+**Shape (no selection):** two `<button>` radio affordances in a `flex gap-3` row. Each button uses `rounded-md border px-3 py-2 text-sm` styling with `border-primary bg-primary/10 text-primary` for selected state and `border-border bg-muted/30 text-foreground/70` for unselected. An `aria-pressed` attribute tracks state. A muted error hint appears below the row when the operator attempts to advance without choosing.
+
+**Shape (has-parents selected):** a scrollable `<div role="listbox" data-testid="parent-unit-picker">` appears below the radio row. It contains one `<div role="option" data-testid="parent-option-{id}">` per unit in the tenant tree (flattened, `kind === "Unit"` only — tenant and agent nodes are excluded). The list allows multi-select; selected items use the primary palette (`border-primary bg-primary/10`). Next is further gated until at least one parent is selected.
+
+**URL-param seeding.** `?parent=<id>` pre-selects "has-parents" and ticks the named unit on mount. The operator can switch to "top-level" or pick additional parents; the URL param only seeds the initial state.
+
+**Wire format.** `isTopLevel: true` when top-level is chosen; `parentUnitIds: string[]` (non-empty) when has-parents is chosen. The legacy `parentUnitId: string | null` URL-seed field remains in `WizardFormSnapshot` for backward-compat snapshot reads but is not sent on the create body.
+
+**Persistence.** `wizard-persistence.ts` schema v2 adds `parentChoice: "top-level" | "has-parents" | null` and `parentUnitIds: string[]` to `WizardFormSnapshot`. Snapshots at schema v1 are silently discarded on load (version mismatch → null → wizard mounts at step 1).
+
+### 12.13 Create-unit wizard — Execution step: image-reference suggestions (#968 / #622)
+
+The container image `<input>` on step 2 ("Execution") is wired to a `<datalist id="image-history-suggestions">` whenever the operator's recently-used image history is non-empty.
+
+**Behaviour.** On successful unit creation, `recordImageReference(image)` appends the submitted container image string to `localStorage` under `spring.image-history.v1`. On next visit the same `<input>` receives a `list="image-history-suggestions"` attribute and a `<datalist>` sibling populated with up to 20 deduplicated entries (FIFO, newest first). When history is empty no `<datalist>` is rendered and the `list` attribute is omitted.
+
+**Storage.** `src/lib/image-history.ts` owns the key (`spring.image-history.v1`), the cap (`MAX_IMAGE_HISTORY = 20`), deduplication logic, and SSR guards (`typeof window` checks). The module is `localStorage`-backed (not `sessionStorage`) — references are useful across sessions.
+
+**No backend.** The list is entirely frontend-managed; no API round-trip is needed. If the image field is blank at submit time, nothing is recorded.
+
 ---
 
 ## 13. Icons, layout primitives, and spacing

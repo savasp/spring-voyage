@@ -45,11 +45,17 @@ import {
   useConnectorTypes,
   useOllamaModels,
   useProviderCredentialStatus,
+  useTenantTree,
   useUnit,
   useUnitExecution,
   useUnitTemplates,
 } from "@/lib/api/queries";
+import {
+  loadImageHistory,
+  recordImageReference,
+} from "@/lib/image-history";
 import { queryKeys } from "@/lib/api/query-keys";
+import type { ValidatedTenantTreeNode } from "@/lib/api/validate-tenant-tree";
 import type {
   InstalledAgentRuntimeResponse,
   UnitConnectorBindingRequest,
@@ -228,11 +234,19 @@ interface FormState {
   // top-level (parent = tenant). Seeded from the `?parent=<id>` query
   // string when an operator launches the wizard from a unit detail
   // pane's "Create sub-unit" button; the Identity step exposes a
-  // banner that lets the operator clear it back to top-level. Wire
-  // shape: the API client maps a non-null value to `parentUnitIds:
-  // [parentUnitId]` and `isTopLevel: false` on every create-unit
-  // endpoint (scratch / template / yaml).
+  // banner that lets the operator clear it back to top-level.
+  // Kept for backward compat with the URL-param flow; the picker-based
+  // flow uses `parentUnitIds` + `parentChoice` (#814).
   parentUnitId: string | null;
+  // #814: explicit top-level vs has-parents choice. `null` = not yet
+  // chosen (blocks Next on step 1). Seeded to "has-parents" when the
+  // `?parent=<id>` URL param is present; otherwise the operator must
+  // pick explicitly. This replaces the silent `isTopLevel=true` default.
+  parentChoice: "top-level" | "has-parents" | null;
+  // #814: the ordered list of parent unit ids when parentChoice is
+  // "has-parents". Multi-select; the API accepts an array. Seeded from
+  // the URL param on mount.
+  parentUnitIds: string[];
 }
 
 /**
@@ -336,6 +350,10 @@ function mergeSnapshotIntoForm(snap: WizardFormSnapshot): FormState {
     connectorTypeId: snap.connectorTypeId,
     connectorConfig: snap.connectorConfig,
     parentUnitId: snap.parentUnitId,
+    // #814: rehydrate the new fields; fall back gracefully when the
+    // snapshot predates schema v2 (parentChoice / parentUnitIds absent).
+    parentChoice: snap.parentChoice ?? (snap.parentUnitId ? "has-parents" : null),
+    parentUnitIds: snap.parentUnitIds ?? (snap.parentUnitId ? [snap.parentUnitId] : []),
   };
 }
 
@@ -367,6 +385,8 @@ function extractWizardFormSnapshot(form: FormState): WizardFormSnapshot {
     connectorTypeId: form.connectorTypeId,
     connectorConfig: form.connectorConfig,
     parentUnitId: form.parentUnitId,
+    parentChoice: form.parentChoice,
+    parentUnitIds: form.parentUnitIds,
   };
 }
 
@@ -396,6 +416,9 @@ const INITIAL_FORM: FormState = {
   saveAsTenantDefault: false,
   credentialOverrideOpen: false,
   parentUnitId: null,
+  // #814: explicit parent-choice toggle and multi-select ids.
+  parentChoice: null,
+  parentUnitIds: [],
 };
 
 /**
@@ -497,7 +520,15 @@ export default function CreateUnitPage() {
       ? mergeSnapshotIntoForm(initialSnapshot.form)
       : INITIAL_FORM;
     if (initialParentFromUrl !== null) {
-      return { ...base, parentUnitId: initialParentFromUrl };
+      // URL param seeds the parent-choice state so the picker reflects the
+      // "Create sub-unit" intent (#814). Also preserves backward compat with
+      // `parentUnitId` for tests / existing banner logic.
+      return {
+        ...base,
+        parentUnitId: initialParentFromUrl,
+        parentChoice: "has-parents" as const,
+        parentUnitIds: [initialParentFromUrl],
+      };
     }
     return base;
   });
@@ -560,23 +591,64 @@ export default function CreateUnitPage() {
   // #1150: when the wizard is creating a sub-unit we fetch the parent
   // unit envelope so the Identity step can show the operator which
   // unit they're nesting under (display name, falling back to the
-  // address). Disabled when `parentUnitId` is `null` — top-level
-  // creation never hits this query. The query is cached behind the
-  // standard `units.detail` key, so a back-button → forward to the
-  // detail pane immediately picks up the cached envelope without a
-  // round-trip.
-  const parentUnitQuery = useUnit(form.parentUnitId ?? "", {
-    enabled: form.parentUnitId !== null,
+  // address). Driven by parentUnitIds[0] when #814 picker is in use;
+  // falls back to parentUnitId for the legacy URL-param-only path.
+  // The query is cached behind the standard `units.detail` key, so a
+  // back-button → forward to the detail pane immediately picks up the
+  // cached envelope without a round-trip.
+  const firstParentId =
+    form.parentChoice === "has-parents" && form.parentUnitIds.length > 0
+      ? form.parentUnitIds[0]
+      : form.parentUnitId;
+  const parentUnitQuery = useUnit(firstParentId ?? "", {
+    enabled: firstParentId !== null,
   });
   const parentUnitName = useMemo<string | null>(() => {
-    if (form.parentUnitId === null) return null;
+    if (firstParentId === null) return null;
     const data = parentUnitQuery.data;
-    if (!data) return form.parentUnitId;
-    return data.displayName?.trim() || data.name || form.parentUnitId;
-  }, [form.parentUnitId, parentUnitQuery.data]);
+    if (!data) return firstParentId;
+    return data.displayName?.trim() || data.name || firstParentId;
+  }, [firstParentId, parentUnitQuery.data]);
   const parentUnitMissing =
-    form.parentUnitId !== null &&
+    firstParentId !== null &&
     parentUnitQuery.isError;
+
+  // #814: tenant tree for the parent-unit picker. Fetched only when
+  // step 1 is active and the operator has not yet chosen "top-level",
+  // so we defer the request until the picker is likely to be shown.
+  const tenantTreeQuery = useTenantTree({ enabled: step === 1 });
+  // Flatten the tree into a list of units (kind === "Unit") for the
+  // picker. The tenant root node itself is filtered out. Agent leaf
+  // nodes are also excluded — only organisational units are valid
+  // parents, matching the server-side validation.
+  const availableParentUnits = useMemo<
+    Array<{ id: string; name: string; displayName: string }>
+  >(() => {
+    if (!tenantTreeQuery.data) return [];
+    const result: Array<{ id: string; name: string; displayName: string }> = [];
+    function walk(node: ValidatedTenantTreeNode) {
+      // The root node has kind "Tenant" — skip it but walk its children.
+      if (node.kind === "Unit") {
+        result.push({
+          id: node.id,
+          name: node.name,
+          displayName: node.desc ? `${node.name} — ${node.desc}` : node.name,
+        });
+      }
+      if (node.children) {
+        for (const child of node.children) walk(child);
+      }
+    }
+    walk(tenantTreeQuery.data);
+    return result;
+  }, [tenantTreeQuery.data]);
+
+  // #622 / #968: recently-used image references. Loaded once on mount
+  // from localStorage; the list grows when the wizard successfully
+  // creates a unit with a non-blank image.
+  const [imageHistory, setImageHistory] = useState<string[]>(() =>
+    loadImageHistory(),
+  );
 
   // Template catalog (#119): cached once per session so revisiting the
   // wizard doesn't round-trip. The key comes from `queryKeys.templates`.
@@ -789,6 +861,17 @@ export default function CreateUnitPage() {
       if (!NAME_PATTERN.test(form.name))
         return "Name must be URL-safe (lowercase letters, digits, and hyphens).";
     }
+    // #814: require an explicit parent-unit choice. The silent
+    // `isTopLevel=true` default is gone — the operator must decide.
+    if (form.parentChoice === null) {
+      return "Choose whether this unit is top-level or has parent units.";
+    }
+    if (
+      form.parentChoice === "has-parents" &&
+      form.parentUnitIds.length === 0
+    ) {
+      return "Select at least one parent unit.";
+    }
     return null;
   };
 
@@ -976,23 +1059,30 @@ export default function CreateUnitPage() {
       const hostingField =
         form.hosting !== DEFAULT_HOSTING_MODE ? form.hosting : undefined;
 
-      // #1150: when the wizard is creating a sub-unit, send the parent
-      // through `parentUnitIds` and pin `isTopLevel: false` so the
-      // server's `ValidateParentRequest` does not silently re-route
-      // the request to "top-level" (the API client's
-      // `withDefaultParentParent` helper would otherwise stamp
-      // `isTopLevel: true` when both fields are absent). When
-      // `parentUnitId` is `null` we omit both fields and the existing
-      // top-level default kicks in unchanged — that is the legacy
-      // behaviour every pre-#1150 wizard call relied on. See
-      // src/Cvoya.Spring.Host.Api/Services/UnitCreationService.cs
-      // (ValidateParentRequest) for the server-side contract.
-      const parentField = form.parentUnitId
-        ? {
-            parentUnitIds: [form.parentUnitId] as string[],
-            isTopLevel: false,
-          }
-        : {};
+      // #814: explicit parent-choice picker drives the wire format.
+      // "has-parents" → parentUnitIds from the picker + isTopLevel:false.
+      // "top-level"   → explicit isTopLevel:true so the server contract
+      //                 is satisfied without relying on the client helper.
+      // Legacy fallback (parentChoice null, shouldn't reach here after
+      // validation, kept for defensive coding) → parentUnitId path.
+      const parentField: {
+        parentUnitIds?: string[];
+        isTopLevel?: boolean;
+      } =
+        form.parentChoice === "has-parents"
+          ? {
+              parentUnitIds: form.parentUnitIds,
+              isTopLevel: false,
+            }
+          : form.parentChoice === "top-level"
+            ? { isTopLevel: true }
+            : // Legacy: URL-param seeded without picker (#1150 compat)
+              form.parentUnitId
+              ? {
+                  parentUnitIds: [form.parentUnitId],
+                  isTopLevel: false,
+                }
+              : {};
 
       // #626: if the operator supplied an API key AND chose "save as
       // tenant default", write the tenant secret BEFORE the unit is
@@ -1166,6 +1256,13 @@ export default function CreateUnitPage() {
     onSuccess: ({ createdName, warnings }) => {
       if (warnings.length > 0) setSubmitWarnings(warnings);
       if (createdName) {
+        // #622 / #968: record the image reference so the next wizard run
+        // surfaces it as an autocomplete suggestion.
+        const submittedImage = form.image.trim();
+        if (submittedImage) {
+          recordImageReference(submittedImage);
+          setImageHistory(loadImageHistory());
+        }
         // Invalidate the lists that render the new unit so the detail
         // page and dashboards pick it up on navigation.
         queryClient.invalidateQueries({ queryKey: queryKeys.units.all });
@@ -1538,13 +1635,13 @@ export default function CreateUnitPage() {
         <div className="flex items-center gap-2">
           <Rocket className="h-5 w-5 text-primary" aria-hidden="true" />
           <h1 className="text-2xl font-bold">
-            {form.parentUnitId !== null
+            {form.parentChoice === "has-parents" || form.parentUnitId !== null
               ? "Create a sub-unit"
               : "Create a unit"}
           </h1>
         </div>
         <p className="text-sm text-muted-foreground">
-          {form.parentUnitId !== null ? (
+          {form.parentChoice === "has-parents" || form.parentUnitId !== null ? (
             <>
               Register a new unit nested under an existing parent. Mirrors{" "}
               <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
@@ -1572,60 +1669,6 @@ export default function CreateUnitPage() {
             <CardTitle>Identity</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {form.parentUnitId !== null && (
-              <div
-                role="status"
-                data-testid="parent-unit-banner"
-                data-parent-id={form.parentUnitId}
-                className={cn(
-                  "flex flex-wrap items-start gap-2 rounded-md border px-3 py-2 text-sm",
-                  parentUnitMissing
-                    ? "border-warning/50 bg-warning/15 text-foreground"
-                    : "border-primary/40 bg-primary/10 text-foreground",
-                )}
-              >
-                {parentUnitMissing ? (
-                  <AlertTriangle
-                    className="mt-0.5 h-4 w-4 shrink-0 text-warning"
-                    aria-hidden
-                  />
-                ) : (
-                  <Sparkles
-                    className="mt-0.5 h-4 w-4 shrink-0 text-primary"
-                    aria-hidden
-                  />
-                )}
-                <div className="flex-1">
-                  {parentUnitMissing ? (
-                    <p>
-                      Could not load the parent unit{" "}
-                      <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
-                        {form.parentUnitId}
-                      </code>
-                      . The new unit will still be created as a sub-unit
-                      of that id; clear the parent to create a top-level
-                      unit instead.
-                    </p>
-                  ) : (
-                    <p>
-                      Creating a sub-unit of{" "}
-                      <strong className="font-semibold">
-                        {parentUnitName ?? form.parentUnitId}
-                      </strong>
-                      .
-                    </p>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  data-testid="parent-unit-clear"
-                  onClick={() => update("parentUnitId", null)}
-                  className="text-xs font-medium underline underline-offset-2 text-foreground/80 hover:text-foreground"
-                >
-                  Clear (create top-level unit)
-                </button>
-              </div>
-            )}
             <label className="block space-y-1">
               <span className="text-sm text-muted-foreground">
                 Name<span className="text-destructive"> *</span>
@@ -1684,6 +1727,207 @@ export default function CreateUnitPage() {
                   />
                 </div>
               </label>
+            </div>
+
+            {/* #814: parent-unit picker — explicit top-level vs has-parents
+                choice. The silent isTopLevel=true default is replaced by a
+                required radio toggle so operators can't accidentally create
+                top-level units when they meant to nest under an existing one. */}
+            <div className="space-y-3 border-t border-border pt-4">
+              <div>
+                <h3 className="text-sm font-semibold">
+                  Parent<span className="text-destructive"> *</span>
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Where does this unit live in the tenant hierarchy?
+                </p>
+              </div>
+
+              <div
+                role="group"
+                aria-label="Parent unit choice"
+                className="flex flex-wrap gap-2"
+              >
+                <button
+                  type="button"
+                  data-testid="parent-choice-top-level"
+                  role="radio"
+                  aria-checked={form.parentChoice === "top-level"}
+                  onClick={() =>
+                    setForm((prev) => ({
+                      ...prev,
+                      parentChoice: "top-level",
+                      parentUnitIds: [],
+                      parentUnitId: null,
+                    }))
+                  }
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm transition-colors",
+                    form.parentChoice === "top-level"
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border text-muted-foreground hover:bg-accent/50",
+                  )}
+                >
+                  Top-level (tenant root)
+                </button>
+                <button
+                  type="button"
+                  data-testid="parent-choice-has-parents"
+                  role="radio"
+                  aria-checked={form.parentChoice === "has-parents"}
+                  onClick={() =>
+                    setForm((prev) => ({
+                      ...prev,
+                      parentChoice: "has-parents",
+                    }))
+                  }
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm transition-colors",
+                    form.parentChoice === "has-parents"
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border text-muted-foreground hover:bg-accent/50",
+                  )}
+                >
+                  Has parent units
+                </button>
+              </div>
+
+              {form.parentChoice === "has-parents" && (
+                <div className="space-y-2" data-testid="parent-unit-picker">
+                  {tenantTreeQuery.isPending && (
+                    <p className="text-xs text-muted-foreground">
+                      Loading units…
+                    </p>
+                  )}
+                  {tenantTreeQuery.isError && (
+                    <p className="text-xs text-destructive">
+                      Could not load the unit list. Type a unit id below or
+                      retry.
+                    </p>
+                  )}
+                  {!tenantTreeQuery.isPending &&
+                    availableParentUnits.length === 0 &&
+                    !tenantTreeQuery.isError && (
+                      <p className="text-xs text-muted-foreground">
+                        No existing units found in this tenant.
+                      </p>
+                    )}
+                  {availableParentUnits.length > 0 && (
+                    <div className="space-y-1.5 max-h-48 overflow-y-auto rounded-md border border-border bg-muted/20 p-2">
+                      {availableParentUnits.map((u) => {
+                        const isSelected = form.parentUnitIds.includes(u.id);
+                        return (
+                          <button
+                            key={u.id}
+                            type="button"
+                            data-testid={`parent-option-${u.id}`}
+                            aria-pressed={isSelected}
+                            onClick={() => {
+                              setForm((prev) => {
+                                const already = prev.parentUnitIds.includes(
+                                  u.id,
+                                );
+                                const next = already
+                                  ? prev.parentUnitIds.filter((id) => id !== u.id)
+                                  : [...prev.parentUnitIds, u.id];
+                                return {
+                                  ...prev,
+                                  parentUnitIds: next,
+                                  // Keep parentUnitId in sync for backward
+                                  // compat with the banner / query above.
+                                  parentUnitId: next[0] ?? null,
+                                };
+                              });
+                            }}
+                            className={cn(
+                              "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm transition-colors",
+                              isSelected
+                                ? "bg-primary/10 text-primary"
+                                : "text-foreground hover:bg-accent/50",
+                            )}
+                          >
+                            <span
+                              className={cn(
+                                "flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[10px]",
+                                isSelected
+                                  ? "border-primary bg-primary text-primary-foreground"
+                                  : "border-border",
+                              )}
+                              aria-hidden
+                            >
+                              {isSelected && (
+                                <Check className="h-3 w-3" aria-hidden />
+                              )}
+                            </span>
+                            <span className="flex-1 font-mono text-xs">
+                              {u.name}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Backward compat: if a URL param seeded a parent not
+                      visible in the tree (e.g. it was deleted), show a
+                      warning banner so the operator can clear or proceed. */}
+                  {parentUnitMissing && firstParentId && (
+                    <div
+                      role="status"
+                      data-testid="parent-unit-banner"
+                      data-parent-id={firstParentId}
+                      className="flex flex-wrap items-start gap-2 rounded-md border border-warning/50 bg-warning/15 px-3 py-2 text-sm text-foreground"
+                    >
+                      <AlertTriangle
+                        className="mt-0.5 h-4 w-4 shrink-0 text-warning"
+                        aria-hidden
+                      />
+                      <p className="flex-1">
+                        Could not load the parent unit{" "}
+                        <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+                          {firstParentId}
+                        </code>
+                        . The new unit will still be created as a sub-unit
+                        of that id; clear the parent to create a top-level
+                        unit instead.
+                      </p>
+                      <button
+                        type="button"
+                        data-testid="parent-unit-clear"
+                        onClick={() =>
+                          setForm((prev) => ({
+                            ...prev,
+                            parentUnitId: null,
+                            parentUnitIds: [],
+                            parentChoice: "top-level",
+                          }))
+                        }
+                        className="text-xs font-medium underline underline-offset-2 text-foreground/80 hover:text-foreground"
+                      >
+                        Clear (create top-level unit)
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Happy-path summary when at least one parent is chosen. */}
+                  {!parentUnitMissing &&
+                    form.parentUnitIds.length > 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        <Sparkles
+                          className="mr-1 inline h-3 w-3 text-primary"
+                          aria-hidden
+                        />
+                        Sub-unit of{" "}
+                        <strong className="font-semibold">
+                          {form.parentUnitIds.length === 1
+                            ? (parentUnitName ?? form.parentUnitIds[0])
+                            : `${form.parentUnitIds.length} units`}
+                        </strong>
+                        .
+                      </p>
+                    )}
+                </div>
+              )}
             </div>
 
             {stepError && (
@@ -1867,19 +2111,41 @@ export default function CreateUnitPage() {
                 </p>
               </div>
 
+              {/* #622 / #968: datalist provides recently-used image references
+                  as browser-native autocomplete suggestions. The operator can
+                  still type any arbitrary value — the datalist is hints only.
+                  History is persisted to localStorage and grows on each
+                  successful unit creation (see recordImageReference). */}
+              {imageHistory.length > 0 && (
+                <datalist id="image-history-suggestions">
+                  {imageHistory.map((ref) => (
+                    <option key={ref} value={ref} />
+                  ))}
+                </datalist>
+              )}
+
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <label className="block space-y-1">
                   <span className="text-sm text-muted-foreground">
                     Image (default)
                   </span>
-                  <Input
+                  <input
+                    list={
+                      imageHistory.length > 0
+                        ? "image-history-suggestions"
+                        : undefined
+                    }
                     value={form.image}
                     onChange={(e) => update("image", e.target.value)}
                     placeholder="ghcr.io/... or localhost/spring-voyage-agent-claude-code:latest"
                     aria-label="Execution image"
+                    className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                   />
                   <span className="block text-xs text-muted-foreground">
                     Default container image used to launch member agents.
+                    {imageHistory.length > 0 && (
+                      <> Previously-used images appear as suggestions.</>
+                    )}
                   </span>
                 </label>
 
