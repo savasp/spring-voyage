@@ -90,13 +90,14 @@ public class DaprAgentLauncher(
         // removed — AgentContextBuilder now emits the D1-canonical equivalents
         // (SPRING_AGENT_ID, SPRING_MCP_URL, SPRING_MCP_TOKEN) for every launcher.
         //
-        // SPRING_MODEL, SPRING_LLM_PROVIDER, SPRING_LLM_COMPONENT, and
-        // OLLAMA_ENDPOINT are NOT D1-spec canonical names. They remain here
-        // because the Dapr agent's Python code (agent.py) and Dapr Conversation
-        // component YAML (conversation-ollama.yaml, conversation-openai.yaml)
-        // still read them. Tracked for future removal:
-        //   SPRING_MODEL / SPRING_LLM_PROVIDER / SPRING_LLM_COMPONENT → #1327
-        //   OLLAMA_ENDPOINT → #1328 (blocked on Dapr component YAML migration)
+        // #1327: SPRING_MODEL, SPRING_LLM_PROVIDER, SPRING_LLM_COMPONENT are
+        // added to the D1 spec (§ 2.2.1) and emitted here as Dapr-agent-specific
+        // vars. AgentContextBuilder emits SPRING_LLM_PROVIDER_URL for all launchers.
+        // SPRING_LLM_COMPONENT remains launcher-specific (Dapr Conversation component
+        // name) and is not part of the D1 spec.
+        //
+        // #1328: OLLAMA_ENDPOINT removed — conversation-ollama.yaml now reads
+        // SPRING_LLM_PROVIDER_URL.
         //
         // SPRING_THREAD_ID and SPRING_SYSTEM_PROMPT have no D1-spec equivalents
         // and are retained as launcher-specific vars.
@@ -129,13 +130,10 @@ public class DaprAgentLauncher(
             [AgentVolumeManager.WorkspacePathEnvVar] = AgentVolumeManager.WorkspaceMountPath,
         };
 
-        // OLLAMA_ENDPOINT: kept for the Dapr Conversation component YAML which
-        // reads it at sidecar start (conversation-ollama.yaml). Remove once the
-        // component YAML is migrated to read SPRING_LLM_PROVIDER_URL (#1328).
-        if (!string.IsNullOrEmpty(opts.BaseUrl))
-        {
-            envVars["OLLAMA_ENDPOINT"] = opts.BaseUrl;
-        }
+        // #1328: OLLAMA_ENDPOINT removed. The Dapr Conversation component YAML
+        // (conversation-ollama.yaml) now reads SPRING_LLM_PROVIDER_URL, which is
+        // emitted by AgentContextBuilder for every launcher. OLLAMA_ENDPOINT is no
+        // longer set here.
 
         return Task.FromResult(new AgentLaunchSpec(
             WorkspaceFiles: new Dictionary<string, string>(),

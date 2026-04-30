@@ -1,6 +1,11 @@
 // Copyright CVOYA LLC. Licensed under the Business Source License 1.1.
 // See LICENSE.md in the project root for full license terms.
 
+// These tests exercise ProbeContainerHttpAsync which is intentionally [Obsolete]
+// (#1351) — the test file calls it on the mock contract to verify the endpoint
+// still wires through correctly during the deprecation window.
+#pragma warning disable CS0618
+
 namespace Cvoya.Spring.Dispatcher.Tests;
 
 using System.Net;

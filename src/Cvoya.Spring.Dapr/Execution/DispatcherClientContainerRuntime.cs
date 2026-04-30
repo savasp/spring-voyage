@@ -179,6 +179,7 @@ public class DispatcherClientContainerRuntime(
     }
 
     /// <inheritdoc />
+#pragma warning disable CS0618 // Implementing the deprecated interface member; retained for backward-compat (#1351).
     public async Task<bool> ProbeContainerHttpAsync(string containerId, string url, CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(containerId);
@@ -211,6 +212,7 @@ public class DispatcherClientContainerRuntime(
         var parsed = await response.Content.ReadFromJsonAsync<DispatcherProbeResponse>(JsonOptions, ct);
         return parsed?.Healthy ?? false;
     }
+#pragma warning restore CS0618
 
     /// <inheritdoc />
     public async Task<bool> ProbeHttpFromHostAsync(

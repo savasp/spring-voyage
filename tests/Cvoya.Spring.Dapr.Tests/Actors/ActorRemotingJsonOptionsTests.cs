@@ -5,6 +5,7 @@ namespace Cvoya.Spring.Dapr.Tests.Actors;
 
 using System.Runtime.Serialization;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Xml;
 
 using Cvoya.Spring.Core.Messaging;
@@ -204,5 +205,55 @@ public class ActorRemotingJsonOptionsTests
         hydrated.ShouldNotBeNull();
         JsonSerializer.Serialize(hydrated.Payload).ShouldContain("\"Healthy\"");
         hydrated.Payload.GetRawText().ShouldContain("\"Tick\":42");
+    }
+
+    /// <summary>
+    /// Regression guard for #956: <see cref="ActorRemotingJsonOptions"/> MUST
+    /// register <see cref="JsonStringEnumConverter"/> so that enums crossing the
+    /// actor-remoting boundary serialize by name, not ordinal. Without this, a
+    /// future mid-enum insertion would silently shift every persisted actor-state
+    /// document that carries an ordinal-encoded enum.
+    /// </summary>
+    [Fact]
+    public void Instance_HasJsonStringEnumConverter_Registered()
+    {
+        var hasEnumConverter = ActorRemotingJsonOptions.Instance.Converters
+            .Any(c => c is JsonStringEnumConverter);
+
+        hasEnumConverter.ShouldBeTrue(
+            "ActorRemotingJsonOptions must register JsonStringEnumConverter so that " +
+            "enums cross the actor-remoting wire by name, not ordinal (#956).");
+    }
+
+    /// <summary>
+    /// Regression guard for #956: a <see cref="Message"/> carrying a
+    /// <see cref="MessageType"/> enum value must round-trip through the actor-
+    /// remoting options with the wire shape containing the string name (e.g.
+    /// <c>"Domain"</c>), not the integer ordinal. This guards against future
+    /// contributors reordering the enum values.
+    /// </summary>
+    [Fact]
+    public void Options_RoundTrips_MessageType_Enum_AsStringName()
+    {
+        var message = new Message(
+            Guid.NewGuid(),
+            new Address("agent", "sender"),
+            new Address("agent", "receiver"),
+            MessageType.Domain,
+            "thread-123",
+            JsonSerializer.SerializeToElement(new { text = "hello" }),
+            DateTimeOffset.UtcNow);
+
+        var json = JsonSerializer.Serialize(message, ActorRemotingJsonOptions.Instance);
+
+        // The wire shape must use the string name "Domain", not the ordinal.
+        json.ShouldContain("\"Domain\"",
+            customMessage: "MessageType must serialize as \"Domain\" (string name), not as an integer ordinal (#956).");
+        json.ShouldNotContain("\"Type\":4",
+            customMessage: "MessageType ordinal (4) must not appear on the wire when JsonStringEnumConverter is registered (#956).");
+
+        var hydrated = JsonSerializer.Deserialize<Message>(json, ActorRemotingJsonOptions.Instance);
+        hydrated.ShouldNotBeNull();
+        hydrated!.Type.ShouldBe(MessageType.Domain);
     }
 }

@@ -149,6 +149,7 @@ public interface IContainerRuntime
     /// Callers that need to distinguish those cases should fall back to
     /// inspect / logs.
     /// </returns>
+    [Obsolete("Use ProbeHttpFromHostAsync instead — it probes from the dispatcher host process without requiring wget inside the workload image. See #1175 and #1351.")]
     Task<bool> ProbeContainerHttpAsync(string containerId, string url, CancellationToken ct = default);
 
     /// <summary>

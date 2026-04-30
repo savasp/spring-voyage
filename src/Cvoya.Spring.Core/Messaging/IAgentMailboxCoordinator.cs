@@ -6,6 +6,7 @@ namespace Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Core.Agents;
 using Cvoya.Spring.Core.Capabilities;
 using Cvoya.Spring.Core.Execution;
+using Cvoya.Spring.Core.Policies;
 
 /// <summary>
 /// Seam that encapsulates the thread-mailbox routing concern extracted from
@@ -39,10 +40,20 @@ using Cvoya.Spring.Core.Execution;
 public interface IAgentMailboxCoordinator
 {
     /// <summary>
-    /// Routes a domain <paramref name="message"/> to the correct thread channel
-    /// after pre-conditions (membership, policy) have been resolved by the
-    /// actor. Implements three cases:
+    /// Routes a domain <paramref name="message"/> to the correct thread channel.
+    /// Implements four logical stages before the three routing cases:
     /// <list type="bullet">
+    /// <item><description>
+    /// Guard 0 — membership disabled: if <paramref name="effective"/>.Enabled is
+    /// <c>false</c>, emits a <see cref="ActivityEventType.DecisionMade"/>
+    /// "MembershipDisabled" event and returns without routing (#1349).
+    /// </description></item>
+    /// <item><description>
+    /// Guard 1 — unit-policy check: calls <paramref name="applyUnitPolicies"/>; if
+    /// it returns a non-<c>null</c> <see cref="PolicyVerdict"/>, emits a
+    /// <see cref="ActivityEventType.DecisionMade"/> "BlockedByUnitPolicy" event and
+    /// returns without routing (#1349).
+    /// </description></item>
     /// <item><description>
     /// Case 1 — no active thread: creates a new <see cref="ThreadChannel"/>,
     /// activates it, and fires the dispatch task via
@@ -62,9 +73,18 @@ public interface IAgentMailboxCoordinator
     /// <param name="agentId">The Dapr actor id of the routing agent.</param>
     /// <param name="message">The validated domain message to route. Must have a non-null <c>ThreadId</c>.</param>
     /// <param name="effective">
-    /// The per-turn effective <see cref="AgentMetadata"/> already resolved and
-    /// policy-checked by the actor. The coordinator uses it only to forward it
-    /// to <paramref name="activateAndDispatch"/>; it does not re-evaluate policy.
+    /// The per-turn effective <see cref="AgentMetadata"/> resolved by the actor
+    /// (merge of global config and per-membership override). The coordinator checks
+    /// <c>Enabled</c> (Guard 0) and forwards the possibly-coerced value from
+    /// <paramref name="applyUnitPolicies"/> to <paramref name="activateAndDispatch"/>.
+    /// </param>
+    /// <param name="applyUnitPolicies">
+    /// Delegate that applies unit-level policy dimensions (model cap, cost cap,
+    /// execution-mode coercion) to <paramref name="effective"/>. Returns the
+    /// possibly-coerced metadata plus a non-<c>null</c>
+    /// <see cref="PolicyVerdict"/> when the dispatch must be refused
+    /// (Guard 1). Passed as a delegate so the coordinator remains a singleton and
+    /// does not hold actor-scoped or Dapr-specific references (#1349).
     /// </param>
     /// <param name="getActiveConversation">
     /// Delegate that reads the current active <see cref="ThreadChannel"/> from
@@ -91,13 +111,15 @@ public interface IAgentMailboxCoordinator
     /// </param>
     /// <param name="emitActivity">
     /// Delegate that publishes an <see cref="ActivityEvent"/> to the activity
-    /// bus. Called for thread-start, state-change, and queued-as-pending events.
+    /// bus. Called for Guard 0 / Guard 1 rejections, thread-start, state-change,
+    /// and queued-as-pending events.
     /// </param>
     /// <param name="cancellationToken">Cancels the routing operation.</param>
     Task HandleDomainMessageAsync(
         string agentId,
         Message message,
         AgentMetadata effective,
+        Func<AgentMetadata, CancellationToken, Task<(AgentMetadata Effective, PolicyVerdict? Verdict)>> applyUnitPolicies,
         Func<CancellationToken, Task<ThreadChannel?>> getActiveConversation,
         Func<ThreadChannel, CancellationToken, Task> setActiveConversation,
         Func<CancellationToken, Task<List<ThreadChannel>?>> getPendingList,

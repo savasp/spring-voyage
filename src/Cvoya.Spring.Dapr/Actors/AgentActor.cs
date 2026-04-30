@@ -307,61 +307,18 @@ public class AgentActor(
 
         // Resolve the per-turn effective metadata up front: the merge of the
         // agent's own global config with any per-membership override recorded
-        // on the (sender-unit, agent) edge. If the membership is disabled, the
-        // agent short-circuits before doing any dispatch work.
+        // on the (sender-unit, agent) edge.
         var effective = await ResolveEffectiveMetadataAsync(message, cancellationToken);
 
-        if (effective.Enabled == false)
-        {
-            _logger.LogInformation(
-                "Actor {ActorId} skipping message {MessageId} from {Sender}: membership Enabled=false.",
-                Id.GetId(), message.Id, message.From);
-
-            await EmitActivityEventAsync(ActivityEventType.DecisionMade,
-                $"Skipped message {message.Id} from {message.From}: membership disabled.",
-                cancellationToken,
-                details: JsonSerializer.SerializeToElement(new
-                {
-                    decision = "MembershipDisabled",
-                    sender = new { scheme = message.From.Scheme, path = message.From.Path },
-                    messageId = message.Id,
-                }),
-                correlationId: threadId);
-
-            return CreateAckResponse(message);
-        }
-
-        // Unit-policy enforcement on the dispatch path (#247 / #248 / #249).
-        // Model and cost caps refuse the turn when the unit would not permit
-        // it; execution-mode is coerced (forced mode) or denied (outside the
-        // allow-list). Silently swapping a model would break user expectations,
-        // so deny outcomes become a DecisionMade "BlockedByUnitPolicy" event
-        // and the message is acked without dispatch. Policy misconfiguration
-        // must never swallow an exception — a denying decision is surfaced to
-        // the agent as an activity event so operators can trace it.
-        (effective, var policyVerdict) = await ApplyUnitPoliciesAsync(effective, cancellationToken);
-        if (policyVerdict is not null)
-        {
-            await EmitActivityEventAsync(ActivityEventType.DecisionMade,
-                $"Skipped message {message.Id} from {message.From}: {policyVerdict.Summary}.",
-                cancellationToken,
-                details: JsonSerializer.SerializeToElement(new
-                {
-                    decision = policyVerdict.DecisionTag,
-                    dimension = policyVerdict.Dimension,
-                    reason = policyVerdict.Decision.Reason,
-                    denyingUnitId = policyVerdict.Decision.DenyingUnitId,
-                    messageId = message.Id,
-                }),
-                correlationId: threadId);
-
-            return CreateAckResponse(message);
-        }
-
+        // The membership-disabled guard and unit-policy guard have been
+        // relocated into AgentMailboxCoordinator (#1349). The actor now
+        // passes them as delegates so the coordinator owns the complete
+        // pre-validation + routing logic while remaining a stateless singleton.
         await mailboxCoordinator.HandleDomainMessageAsync(
             agentId: Id.GetId(),
             message: message,
             effective: effective,
+            applyUnitPolicies: (eff, ct) => ApplyUnitPoliciesAsync(eff, ct),
             getActiveConversation: ct => GetActiveConversationAsync(ct),
             setActiveConversation: (ch, ct) => StateManager.SetStateAsync(StateKeys.ActiveConversation, ch, ct),
             getPendingList: ct => GetPendingListAsync(ct),
