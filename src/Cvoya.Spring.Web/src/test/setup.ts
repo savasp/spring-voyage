@@ -1,14 +1,16 @@
+// Side-effect import is required for the TypeScript module-augmentation that
+// declares jest-dom matchers (toBeInTheDocument, toBeDisabled, toHaveAttribute,
+// etc.) on `Assertion<T>` — tsc won't see those matchers without it. Its
+// internal expect.extend() call may register against a divergent `expect`
+// instance under vitest 3.x globals, so we ALSO call
+// `expect.extend(jestDomMatchers)` below against the vitest-imported `expect`
+// to guarantee the runtime registration sticks. See #1372.
+import "@testing-library/jest-dom/vitest";
 import * as jestDomMatchers from "@testing-library/jest-dom/matchers";
 import "vitest-axe/extend-expect";
 import * as axeMatchers from "vitest-axe/matchers";
 import { expect } from "vitest";
 
-// Register jest-dom matchers (toBeInTheDocument, toBeDisabled, toHaveAttribute,
-// etc.) with the vitest expect instance directly. Using expect.extend() here
-// rather than the side-effect import ("@testing-library/jest-dom/vitest")
-// matches the pattern used for axe matchers and avoids a vitest 3.x isolation
-// issue where the side-effect import's internal `expect` reference diverges
-// from the per-test globals. See #1372.
 expect.extend(jestDomMatchers);
 
 // Register the `toHaveNoViolations()` matcher used by the a11y smoke
