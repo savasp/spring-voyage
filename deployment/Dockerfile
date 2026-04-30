@@ -44,6 +44,9 @@ WORKDIR /build
 COPY package.json package-lock.json ./
 COPY src/Cvoya.Spring.Web/package.json ./src/Cvoya.Spring.Web/
 COPY src/Cvoya.Spring.Connector.GitHub/web/package.json ./src/Cvoya.Spring.Connector.GitHub/web/
+# preinstall hook needs this — keep the path narrow so unrelated scripts/
+# changes don't bust the npm-ci layer cache.
+COPY scripts/enforce-npm.cjs ./scripts/enforce-npm.cjs
 
 RUN npm ci
 
