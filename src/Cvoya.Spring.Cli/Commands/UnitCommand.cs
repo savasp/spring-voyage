@@ -842,10 +842,53 @@ public static class UnitCommand
                 + "Mutually exclusive with --parent-unit.",
         };
 
+        // #1419: GitHub connector binding at template-instantiation time.
+        // These flags correspond exactly to the wizard's Connector step (Step 4)
+        // for the GitHub connector, so wizard ↔ CLI parity is maintained for the
+        // software-engineering and product-management templates.
+        // Both --github-owner and --github-repo must be supplied together, or
+        // both omitted (no partial binding). The CLI validates this at action time
+        // so the error message is actionable rather than a Kiota HTTP 400.
+        var githubOwnerOption = new Option<string?>("--github-owner")
+        {
+            Description =
+                "GitHub repository owner (org or user) for the GitHub connector binding. " +
+                "Requires --github-repo. When supplied, the unit is created with the GitHub " +
+                "connector bound atomically — equivalent to the wizard's Connector step.",
+        };
+        var githubRepoOption = new Option<string?>("--github-repo")
+        {
+            Description =
+                "GitHub repository name for the GitHub connector binding. " +
+                "Requires --github-owner.",
+        };
+        var githubInstallationIdOption = new Option<string?>("--github-installation-id")
+        {
+            Description =
+                "Optional GitHub App installation id. When omitted the server uses the App-level default.",
+        };
+        var githubEventsOption = new Option<string[]?>("--github-events")
+        {
+            Description =
+                "Optional webhook events to subscribe to (repeatable). " +
+                "When omitted the connector's default event set applies. " +
+                "Example: --github-events issues --github-events pull_request",
+            AllowMultipleArgumentsPerToken = true,
+        };
+        var githubReviewerOption = new Option<string?>("--github-reviewer")
+        {
+            Description =
+                "Optional default reviewer (GitHub login) used for human-review handoffs. " +
+                "When omitted the connector falls back to its installation default.",
+        };
+
         var command = new Command(
             "create-from-template",
             "Instantiate a unit from a packaged template. First-class verb equivalent to the " +
-            "deprecated `spring unit create --from-template <package>/<template>` flag.");
+            "deprecated `spring unit create --from-template <package>/<template>` flag.\n\n" +
+            "GitHub connector: to bind the GitHub connector at creation time " +
+            "(equivalent to the wizard's Connector step) supply --github-owner and --github-repo. " +
+            "The binding is applied atomically — if it fails the unit is rolled back and nothing is persisted.");
         command.Arguments.Add(targetArg);
         command.Options.Add(unitNameOption);
         command.Options.Add(displayNameOption);
@@ -859,6 +902,11 @@ public static class UnitCommand
         command.Options.Add(saveAsTenantDefaultOption);
         command.Options.Add(parentUnitOption);
         command.Options.Add(topLevelOption);
+        command.Options.Add(githubOwnerOption);
+        command.Options.Add(githubRepoOption);
+        command.Options.Add(githubInstallationIdOption);
+        command.Options.Add(githubEventsOption);
+        command.Options.Add(githubReviewerOption);
 
         command.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
         {
@@ -878,6 +926,11 @@ public static class UnitCommand
                 .Select(p => p.Trim())
                 .ToArray();
             var topLevel = parseResult.GetValue(topLevelOption);
+            var githubOwner = parseResult.GetValue(githubOwnerOption);
+            var githubRepo = parseResult.GetValue(githubRepoOption);
+            var githubInstallationId = parseResult.GetValue(githubInstallationIdOption);
+            var githubEvents = parseResult.GetValue(githubEventsOption);
+            var githubReviewer = parseResult.GetValue(githubReviewerOption);
             var output = parseResult.GetValue(outputOption) ?? "table";
 
             // Review feedback on #744: reject neither / both at parse time
@@ -894,6 +947,21 @@ public static class UnitCommand
                 await Console.Error.WriteLineAsync(
                     "Every unit must have a parent. Supply one or more --parent-unit <id> flags, "
                     + "or pass --top-level to attach the unit directly to the tenant.");
+                Environment.Exit(1);
+                return;
+            }
+
+            // #1419: validate GitHub connector flag pairing. Both owner + repo must
+            // be supplied together; a partial binding would leave the unit in an
+            // ambiguous state the server would reject with a 400 anyway.
+            var githubOwnerSupplied = !string.IsNullOrWhiteSpace(githubOwner);
+            var githubRepoSupplied = !string.IsNullOrWhiteSpace(githubRepo);
+            if (githubOwnerSupplied != githubRepoSupplied)
+            {
+                await Console.Error.WriteLineAsync(
+                    "--github-owner and --github-repo must be supplied together. " +
+                    "Example: spring unit create-from-template software-engineering/engineering-team " +
+                    "--github-owner acme --github-repo platform --top-level");
                 Environment.Exit(1);
                 return;
             }
@@ -927,6 +995,18 @@ public static class UnitCommand
                 return;
             }
 
+            // #1419: build the GitHub connector binding when owner + repo were supplied.
+            UnitConnectorBindingRequest? connectorBinding = null;
+            if (githubOwnerSupplied && githubRepoSupplied)
+            {
+                connectorBinding = SpringApiClient.BuildGitHubConnectorBinding(
+                    githubOwner!.Trim(),
+                    githubRepo!.Trim(),
+                    githubInstallationId,
+                    githubEvents,
+                    githubReviewer);
+            }
+
             var exitCode = await ExecuteCreateFromTemplateAsync(
                 target,
                 unitName,
@@ -940,7 +1020,8 @@ public static class UnitCommand
                 credentialResolution,
                 ct,
                 parentUnitIds: parentUnits.Length > 0 ? parentUnits : null,
-                isTopLevel: topLevel);
+                isTopLevel: topLevel,
+                connector: connectorBinding);
             if (exitCode != 0)
             {
                 Environment.Exit(exitCode);
@@ -971,7 +1052,8 @@ public static class UnitCommand
         UnitCredentialOptions credential,
         CancellationToken ct,
         IReadOnlyList<string>? parentUnitIds = null,
-        bool isTopLevel = false)
+        bool isTopLevel = false,
+        UnitConnectorBindingRequest? connector = null)
     {
         var slash = target.IndexOf('/');
         if (slash <= 0 || slash == target.Length - 1)
@@ -1018,6 +1100,7 @@ public static class UnitCommand
             hosting: hosting,
             parentUnitIds: parentUnitIds,
             isTopLevel: isTopLevel ? true : null,
+            connector: connector,
             ct: ct);
 
         // #626: unit-scoped secret is written AFTER the unit exists.

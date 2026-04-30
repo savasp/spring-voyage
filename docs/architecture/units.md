@@ -340,6 +340,77 @@ This list is illustrative, not exhaustive. Any organizational pattern can be mod
 
 ---
 
+## Template-flow parity: wizard ↔ CLI
+
+> Canonical mapping per #1419. Future template authors must keep these in lock-step.
+> CONVENTIONS.md § 13 (UI / CLI Feature Parity) makes this a hard rule.
+
+The two ship-with templates (`software-engineering` and `product-management`) must work
+identically from the management-portal wizard and from the `spring` CLI.
+
+### Ship-with templates
+
+| Template | Package path | Unit manifest | GitHub connector |
+|---|---|---|---|
+| software-engineering | `packages/software-engineering/` | `units/engineering-team.yaml` | Defined in manifest |
+| product-management | `packages/product-management/` | `units/product-squad.yaml` | Defined in manifest |
+
+Both templates declare a `connectors[type: github]` block so the GitHub connector is wired
+at instantiation time. The user supplies the specific repository at creation time — the
+`config` block in the manifest does not hard-code an owner/repo.
+
+### Wizard step ↔ CLI flag mapping
+
+| Wizard step | Wizard input | CLI verb | CLI flag(s) |
+|---|---|---|---|
+| Step 1 — Identity | Unit name (address path) | `spring unit create-from-template` | positional `target` (package/template) |
+| Step 1 — Identity | Display name | `spring unit create-from-template` | `--display-name` / `--display` |
+| Step 1 — Identity | Color | `spring unit create-from-template` | `--color` |
+| Step 1 — Identity | Parent unit | `spring unit create-from-template` | `--parent-unit` |
+| Step 1 — Identity | Top-level | `spring unit create-from-template` | `--top-level` |
+| Step 2 — Execution | Model | `spring unit create-from-template` | `--model` |
+| Step 2 — Execution | Tool | `spring unit create-from-template` | `--tool` |
+| Step 2 — Execution | Provider | `spring unit create-from-template` | `--provider` |
+| Step 2 — Execution | Hosting mode | `spring unit create-from-template` | `--hosting` |
+| Step 3 — Mode | Template selection | `spring unit create-from-template` | positional `target` |
+| Step 4 — Connector | GitHub repository (owner/repo) | `spring unit create-from-template` | `--github-owner` + `--github-repo` |
+| Step 4 — Connector | GitHub App installation id | `spring unit create-from-template` | `--github-installation-id` |
+| Step 4 — Connector | Default reviewer | `spring unit create-from-template` | `--github-reviewer` |
+| Step 4 — Connector | Webhook events | `spring unit create-from-template` | `--github-events` (repeatable) |
+| Step 5 — Secrets | LLM API key | `spring unit create-from-template` | `--api-key` / `--api-key-from-file` |
+| Step 5 — Secrets | Save as tenant default | `spring unit create-from-template` | `--save-as-tenant-default` |
+
+### Example: create a software-engineering unit with GitHub connector
+
+```bash
+spring unit create-from-template software-engineering/engineering-team \
+  --name my-eng-team \
+  --github-owner acme \
+  --github-repo platform \
+  --top-level
+```
+
+This is equivalent to the wizard flow:
+1. Identity step — fill in name
+2. Execution step — leave defaults
+3. Mode step — select "Template", pick `software-engineering/engineering-team`
+4. Connector step — select GitHub, pick `acme/platform` from the repository dropdown
+5. Secrets step — leave defaults (if API key already stored as a tenant default)
+6. Finalize step — click Create
+
+### Example: create a product-management unit with GitHub connector
+
+```bash
+spring unit create-from-template product-management/product-squad \
+  --name my-product-squad \
+  --github-owner acme \
+  --github-repo product-backlog \
+  --github-events issues --github-events issue_comment --github-events pull_request \
+  --top-level
+```
+
+---
+
 ## See Also
 
 - [Agents](agents.md) — agent model, execution pattern, cloning, prompt assembly
