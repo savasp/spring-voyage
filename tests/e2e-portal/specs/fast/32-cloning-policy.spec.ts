@@ -36,17 +36,16 @@ test.describe("cloning policy", () => {
       isTopLevel: true,
     });
     await apiPost("/api/v1/tenant/agents", {
-      id: agent,
+      name: agent,
       displayName: agent,
+      description: "Cloning policy spec (e2e-portal)",
       unitIds: [unit],
     });
 
-    await page.goto(`/agents/${agent}`);
-    // The panel may live behind a tab.
-    const tab = page.getByRole("tab", { name: /^cloning|clones$/i });
-    if (await tab.first().isVisible().catch(() => false)) {
-      await tab.first().click();
-    }
+    // Agent cloning policy panel renders inside the Policies tab.
+    await page.goto(
+      `/units?node=${encodeURIComponent(agent)}&tab=Policies`,
+    );
     await expect(page.getByTestId("agent-cloning-policy-panel")).toBeVisible({
       timeout: 10_000,
     });

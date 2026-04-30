@@ -11,7 +11,9 @@ test.describe("discovery — directory search", () => {
   test("page renders, search box accepts input", async ({ page }) => {
     await page.goto("/discovery");
 
-    const search = page.getByRole("textbox", { name: /search|filter|directory/i }).first();
+    // The Discovery page renders a `<input type="search">` (role
+     // `searchbox`, not `textbox`) labelled "Search expertise".
+    const search = page.getByRole("searchbox", { name: /search expertise/i });
     await expect(search).toBeVisible({ timeout: 10_000 });
     await search.fill("rust");
 

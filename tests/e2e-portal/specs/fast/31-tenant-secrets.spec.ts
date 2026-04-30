@@ -1,54 +1,63 @@
-import { secretName } from "../../fixtures/ids.js";
 import { expect, test } from "../../fixtures/test.js";
 
 /**
  * Tenant secrets — settings panel.
  *
- * Covers the create / list / delete path for tenant-scoped secrets, which
- * back tenant-default credentials inherited by every unit. Mirrors the
- * tenant-scope branch of `tests/e2e/scenarios/fast/21-secret-cli.sh`.
+ * The portal's Tenant defaults panel exposes a fixed set of provider
+ * credential slots (anthropic-api-key, openai-api-key, google-api-key);
+ * arbitrary tenant-scoped secret names are CLI-only by design (per
+ * AGENTS.md "Operator surfaces" rule). This spec drives the
+ * set → clear path on one slot to cover the read-only-view-plus-set
+ * contract. Mirrors `tests/e2e/scenarios/fast/21-secret-cli.sh` only on
+ * shape — the portal cannot create arbitrary tenant secrets.
  */
 
+const SLOT_NAME = "google-api-key";
+
 test.describe("settings — tenant secrets", () => {
-  test("create + list + delete a tenant-scoped secret", async ({
+  test("set + clear the google-api-key tenant default", async ({
     page,
     tracker,
   }) => {
-    const name = tracker.tenantSecret(secretName("tenant"));
+    // Track the slot for cleanup so a leaked Set doesn't bleed into
+    // sibling specs.
+    tracker.tenantSecret(SLOT_NAME);
 
     await page.goto("/settings");
 
-    // Tenant defaults panel — find by accessible name; testid varies.
-    const panel = page
-      .getByText(/tenant defaults|tenant secrets|default credentials/i)
-      .first();
-    if (await panel.isVisible().catch(() => false)) {
-      await panel.click();
+    const row = page.getByTestId(`tenant-default-${SLOT_NAME}`);
+    await expect(row).toBeVisible({ timeout: 10_000 });
+
+    // Skip if the slot is already set — another spec may have left it
+    // dirty; the explicit clear at the end of this test resets it.
+    if (await row.getByText(/\bset\b/).isVisible().catch(() => false)) {
+      const initialClear = row.getByRole("button", {
+        name: new RegExp(`clear ${SLOT_NAME.replace(/-/g, " ")}|clear`, "i"),
+      });
+      if (await initialClear.first().isVisible().catch(() => false)) {
+        await initialClear.first().click();
+        await expect(row.getByText(/\bunset\b/)).toBeVisible({
+          timeout: 5_000,
+        });
+      }
     }
 
-    // Create — find the affordance by label.
-    const create = page
-      .getByRole("button", { name: /^(add secret|new secret|create secret|add tenant secret)$/i })
-      .first();
-    await create.click();
-    await page.getByLabel(/secret name|name/i).first().fill(name);
-    await page.getByLabel(/value|secret value/i).first().fill("not-a-real-tenant-secret");
-    await page.getByRole("button", { name: /^(save|create|add)$/i }).first().click();
+    // Type a placeholder value and click Set.
+    await row.getByPlaceholder(/^Value$|^New value/).fill("placeholder-not-real");
+    await row.getByRole("button", { name: /^Set\b|Rotate/i }).click();
 
-    // The tenant-default secret row testid.
-    await expect(
-      page.getByTestId("tenant-default-secret-row").filter({ hasText: name }),
-    ).toBeVisible({ timeout: 10_000 });
+    // The row flips to the "set" badge.
+    await expect(row.getByText(/\bset\b/).first()).toBeVisible({
+      timeout: 10_000,
+    });
 
-    // Delete — locate by row, click delete, confirm.
-    const row = page
-      .getByTestId("tenant-default-secret-row")
-      .filter({ hasText: name });
-    await row.getByRole("button", { name: /delete|remove/i }).first().click();
-    const confirm = page.getByRole("button", { name: /^(delete|remove|confirm)$/i });
-    if (await confirm.first().isVisible().catch(() => false)) {
-      await confirm.first().click();
-    }
-    await expect(row).toHaveCount(0, { timeout: 10_000 });
+    // Clear the slot. The button is aria-labelled "Clear <label>".
+    await row
+      .getByRole("button", { name: /^Clear / })
+      .first()
+      .click();
+    await expect(row.getByText(/\bunset\b/).first()).toBeVisible({
+      timeout: 10_000,
+    });
   });
 });

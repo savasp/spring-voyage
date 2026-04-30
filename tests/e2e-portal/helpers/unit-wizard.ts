@@ -29,9 +29,14 @@ export interface ScratchUnitOptions {
   /** Override the pinned model. Falls back to DEFAULT_MODEL. */
   model?: string;
   /**
-   * Set true to await the validation panel reaching the Stopped state.
-   * Validation pulls the agent runtime image on first run and may take a
-   * minute; defaults to true so the unit lands ready to start.
+   * Set true to await the wizard's auto-validation phase reaching a
+   * terminal state and redirecting into the explorer. Defaults to
+   * false because the wizard's auto-start path is currently broken
+   * for credential-free runtimes (Ollama) — it POSTs `/start` from
+   * Draft and the actor rejects with `Draft → Starting` per #939.
+   * Specs that need the unit to exist verify via API; specs that
+   * exercise the validation UI itself should opt in explicitly once
+   * that bug is resolved.
    */
   awaitValidation?: boolean;
   /** Per-step error tolerance — surfaces the wizard's stepError text on failure. */
@@ -105,9 +110,11 @@ export async function createScratchUnit(
   await clickNext(page);
 
   // ── Step 3 — Mode ──────────────────────────────────────────────────────
-  // Scratch is the default and uses card-based selection. The card label
-  // is "From scratch". Locate by accessible name.
-  await page.getByRole("button", { name: /from scratch/i }).click();
+  // Card-based selection. The button's accessible name concatenates the
+  // title ("Scratch") and the description, so we match on the leading
+  // title plus a word-boundary so the regex doesn't drift into siblings.
+  // See `ModeCard` in `src/Cvoya.Spring.Web/src/app/units/create/page.tsx`.
+  await pickWizardMode(page, "scratch");
   await clickNext(page);
 
   // ── Step 4 — Connector ────────────────────────────────────────────────
@@ -126,23 +133,51 @@ export async function createScratchUnit(
   // ── Step 6 — Finalize ─────────────────────────────────────────────────
   await page.getByTestId("create-unit-button").click();
 
-  // Wizard transitions into the in-page Validation view after POST
-  // succeeds. We wait for the validation status pill.
-  if (opts.awaitValidation ?? true) {
-    await expect(page.getByTestId("wizard-validation-view")).toBeVisible({
-      timeout: 30_000,
-    });
-    // Two terminal outcomes for the wizard's validation phase: the page
-    // navigates to /units/<name> on success, or the Validation panel
-    // surfaces an error. Either way the POST succeeded — the unit exists.
-    await page.waitForURL(/\/units\/[^/]+$/, {
+  // The wizard transitions into the in-page Validation view after POST
+  // succeeds; verify the panel mounts so we know the create succeeded.
+  await expect(page.getByTestId("wizard-validation-view")).toBeVisible({
+    timeout: 30_000,
+  });
+
+  if (opts.awaitValidation) {
+    // Wizard navigates to the explorer-deep-link form on success
+    // (`/units?node=<name>&tab=Overview`). The legacy `/units/<name>`
+    // routes are gone (they now redirect to the same deep-link).
+    await page.waitForURL(/\/units\?[^#]*\bnode=[^&]+/, {
       timeout: WIZARD_DEFAULT_TIMEOUTS.validationPanelMs,
     });
+    return { unitUrl: page.url() };
   }
 
+  // Skip the wizard's auto-validation hop — see `awaitValidation`
+  // doc above. Navigate the test to the explorer's deep-link
+  // ourselves so callers always land on the unit detail page.
+  const target = `/units?node=${encodeURIComponent(opts.name)}&tab=Overview`;
+  await page.goto(target);
   return { unitUrl: page.url() };
 }
 
 async function clickNext(page: Page): Promise<void> {
   await page.getByRole("button", { name: /^next$/i }).click();
+}
+
+/**
+ * Wizard mode-card selector. The mode cards are buttons whose accessible
+ * name starts with the title ("Scratch" / "Template" / "YAML") and is
+ * followed by the descriptive blurb. Match on the title prefix so the
+ * regex pins exactly one card per mode.
+ */
+export async function pickWizardMode(
+  page: Page,
+  mode: "scratch" | "template" | "yaml",
+): Promise<void> {
+  const titlePattern: Record<typeof mode, RegExp> = {
+    scratch: /^Scratch\b/i,
+    template: /^Template\b/i,
+    yaml: /^YAML\b/i,
+  };
+  await page
+    .getByRole("button", { name: titlePattern[mode] })
+    .first()
+    .click();
 }

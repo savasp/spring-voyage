@@ -643,6 +643,26 @@ public static class AgentEndpoints
     {
         ArgumentNullException.ThrowIfNull(request);
 
+        // #1450: validate identity fields up-front so a malformed body
+        // can't slip past and poison the directory cache (an agent with
+        // a null/empty path used to land in `_entries` before the DB
+        // write rejected it, after which `/api/v1/tenant/tree` 500'd
+        // for the rest of the process lifetime).
+        if (string.IsNullOrWhiteSpace(request.Name))
+        {
+            return Results.Problem(
+                title: "Agent name is required",
+                detail: "Agent creation must include a non-empty 'name'.",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+        if (string.IsNullOrWhiteSpace(request.DisplayName))
+        {
+            return Results.Problem(
+                title: "Agent displayName is required",
+                detail: "Agent creation must include a non-empty 'displayName'.",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+
         // Per #744: every agent must carry at least one unit membership
         // at creation time. An empty / null UnitIds list is a hard
         // 400 — the "unit-less agent" state is no longer representable.

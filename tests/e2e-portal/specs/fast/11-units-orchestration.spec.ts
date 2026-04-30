@@ -24,20 +24,25 @@ test.describe("units — orchestration tab", () => {
       isTopLevel: true,
     });
 
-    await page.goto(`/units/${name}`);
-    await page.getByRole("tab", { name: /^orchestration$/i }).click();
+    await page.goto(
+      `/units?node=${encodeURIComponent(name)}&tab=Orchestration`,
+    );
     await expect(page.getByTestId("orchestration-tab")).toBeVisible();
     await expect(page.getByTestId("orchestration-strategy-card")).toBeVisible();
 
     const select = page.getByTestId("orchestration-strategy-select");
     const values = await select.evaluate((el) =>
-      Array.from((el as HTMLSelectElement).options).map((o) => o.value),
+      Array.from((el as HTMLSelectElement).options)
+        .map((o) => o.value)
+        // The first option is `MANIFEST_UNSET_VALUE` ("— inferred /
+        // default —"); skip it so we actually drive a strategy change.
+        .filter((v) => v && v !== "" && !v.startsWith("__unset")),
     );
-    // Pick the first non-empty value.
-    const target = values.find((v) => v && v !== "default") ?? values[0]!;
+    expect(values.length, "strategy select must offer at least one option").toBeGreaterThan(0);
+    const target = values[0]!;
+    // The strategy persists on change (no Save button — see
+    // `setStrategyMutation` in orchestration-tab.tsx).
     await select.selectOption(target);
-    // Save button — accessible name varies; match generously.
-    await page.getByRole("button", { name: /^save|apply$/i }).first().click();
 
     await expect
       .poll(

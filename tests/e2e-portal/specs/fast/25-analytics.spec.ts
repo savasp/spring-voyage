@@ -12,7 +12,15 @@ import { expect, test } from "../../fixtures/test.js";
 test.describe("analytics", () => {
   test("/analytics renders the index", async ({ page }) => {
     await page.goto("/analytics");
-    await expect(page.getByRole("heading", { name: /analytics/i }).first()).toBeVisible();
+    // /analytics renders a section nav (Costs / Throughput / Wait times)
+    // with no top-level <h1>; check the nav landmark + the breadcrumb so
+    // the assertion stays anchored to user-visible IA.
+    await expect(
+      page.getByRole("navigation", { name: /analytics sections/i }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: /^costs$/i }).first(),
+    ).toBeVisible();
   });
 
   test("/analytics/costs renders without error", async ({ page }) => {

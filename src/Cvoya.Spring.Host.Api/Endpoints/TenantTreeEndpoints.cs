@@ -30,7 +30,15 @@ public static class TenantTreeEndpoints
     /// <summary>Cache-Control window for the tree payload. Short enough to
     /// absorb Cmd-K + dashboard fanout, long enough to ride out the typical
     /// operator navigation bounce between Explorer tabs without re-fetching.</summary>
-    private const int CacheMaxAgeSeconds = 15;
+    // #1451: lowered from 15 → 1 so post-mutation reads (e.g. the
+    // wizard's create-unit flow) see fresh data on the very next
+    // explorer render. The 15 s window was generous for dashboard
+    // fan-out but caused the browser to serve a stale cached tree
+    // when the wizard navigated to `/units?node=<new-unit>` within
+    // the same session. React Query's per-window cache still dedupes
+    // fast back-to-back subscriptions; the HTTP cache is now a thin
+    // burst-protection layer rather than a UX-affecting freshness gate.
+    private const int CacheMaxAgeSeconds = 1;
 
     /// <summary>
     /// Registers the tenant-tree endpoint. Call from <c>Program.cs</c>
@@ -65,8 +73,13 @@ public static class TenantTreeEndpoints
         var tenantId = tenantContext.CurrentTenantId;
         var entries = await directoryService.ListAllAsync(cancellationToken);
 
+        // #1450: skip entries whose path is null/empty so a single
+        // poisoned directory row (left behind by a partially-failed
+        // register) can't take this endpoint down for the rest of the
+        // process lifetime.
         var unitEntries = entries
             .Where(e => string.Equals(e.Address.Scheme, "unit", StringComparison.OrdinalIgnoreCase))
+            .Where(e => !string.IsNullOrEmpty(e.Address.Path))
             .OrderBy(e => e.Address.Path, StringComparer.Ordinal)
             .ToList();
 
@@ -75,6 +88,7 @@ public static class TenantTreeEndpoints
 
         var agentEntries = entries
             .Where(e => string.Equals(e.Address.Scheme, "agent", StringComparison.OrdinalIgnoreCase))
+            .Where(e => !string.IsNullOrEmpty(e.Address.Path))
             .ToDictionary(e => e.Address.Path, StringComparer.Ordinal);
 
         var allMemberships = await memberships.ListAllAsync(cancellationToken);

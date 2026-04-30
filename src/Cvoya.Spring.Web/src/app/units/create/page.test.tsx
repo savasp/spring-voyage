@@ -875,7 +875,7 @@ describe("CreateUnitPage — auto-start + validation (#983)", () => {
     });
   });
 
-  it("legacy Draft path: POSTs /start when post-create status is still Draft", async () => {
+  it("legacy Draft path: POSTs /revalidate when post-create status is still Draft", async () => {
     // First poll returns Draft (legacy scratch path: the create
     // endpoint didn't advance the lifecycle), subsequent polls flip
     // to Running so the redirect can fire.
@@ -918,9 +918,13 @@ describe("CreateUnitPage — auto-start + validation (#983)", () => {
       fireEvent.click(createBtn);
     });
 
+    // #1451: the wizard now calls revalidateUnit (Draft → Validating)
+    // instead of startUnit (Draft → Starting was rejected by the
+    // actor's transition table, #939).
     await waitFor(() => {
-      expect(startUnit).toHaveBeenCalledWith("acme");
+      expect(revalidateUnit).toHaveBeenCalledWith("acme");
     });
+    expect(startUnit).not.toHaveBeenCalled();
     await waitFor(() => {
       expect(pushMock).toHaveBeenCalledWith(
         "/units?node=acme&tab=Overview",
