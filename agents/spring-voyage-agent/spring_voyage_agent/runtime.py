@@ -47,6 +47,7 @@ import sys
 from typing import Any, Callable
 
 import uvicorn
+from a2a.helpers.proto_helpers import new_task_from_user_message
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.events import EventQueue
 from a2a.server.events.in_memory_queue_manager import InMemoryQueueManager
@@ -63,7 +64,6 @@ from a2a.types import (
     AgentCard,
     AgentSkill,
 )
-from a2a.helpers.proto_helpers import new_task_from_user_message
 from a2a.types.a2a_pb2 import AgentInterface, Part
 from starlette.applications import Starlette
 
