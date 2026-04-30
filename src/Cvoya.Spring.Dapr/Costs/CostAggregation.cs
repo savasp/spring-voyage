@@ -104,6 +104,110 @@ public class CostAggregation(SpringDbContext dbContext) : ICostQueryService
         return new CostTimeseries(from, to, bucketLabel, series);
     }
 
+    /// <inheritdoc />
+    public async Task<CostTimeseries> GetAgentCostTimeseriesAsync(
+        string agentId,
+        DateTimeOffset from,
+        DateTimeOffset to,
+        TimeSpan bucket,
+        string bucketLabel,
+        CancellationToken cancellationToken = default)
+    {
+        var rows = await dbContext.CostRecords
+            .Where(r => r.AgentId == agentId && r.Timestamp >= from && r.Timestamp < to)
+            .Select(r => new { r.Timestamp, r.Cost })
+            .ToListAsync(cancellationToken);
+
+        return BuildTimeseries(rows.Select(r => (r.Timestamp, r.Cost)), from, to, bucket, bucketLabel);
+    }
+
+    /// <inheritdoc />
+    public async Task<CostTimeseries> GetUnitCostTimeseriesAsync(
+        string unitId,
+        DateTimeOffset from,
+        DateTimeOffset to,
+        TimeSpan bucket,
+        string bucketLabel,
+        CancellationToken cancellationToken = default)
+    {
+        var rows = await dbContext.CostRecords
+            .Where(r => r.UnitId == unitId && r.Timestamp >= from && r.Timestamp < to)
+            .Select(r => new { r.Timestamp, r.Cost })
+            .ToListAsync(cancellationToken);
+
+        return BuildTimeseries(rows.Select(r => (r.Timestamp, r.Cost)), from, to, bucket, bucketLabel);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<CostBreakdownEntry>> GetAgentCostBreakdownAsync(
+        string agentId,
+        DateTimeOffset from,
+        DateTimeOffset to,
+        CancellationToken cancellationToken = default)
+    {
+        var records = await dbContext.CostRecords
+            .Where(r => r.AgentId == agentId && r.Timestamp >= from && r.Timestamp <= to)
+            .Select(r => new { r.Model, r.Cost })
+            .ToListAsync(cancellationToken);
+
+        return records
+            .GroupBy(r => r.Model)
+            .Select(g => new CostBreakdownEntry(
+                Key: g.Key,
+                Kind: "model",
+                TotalCost: g.Sum(r => r.Cost),
+                RecordCount: g.Count()))
+            .OrderByDescending(e => e.TotalCost)
+            .ToList();
+    }
+
+    // Shared bucketing logic. Callers materialise the EF query into a typed
+    // list before calling so EF Core does not need to translate the tuple
+    // projection — it stays in-memory LINQ only.
+    private static CostTimeseries BuildTimeseries(
+        IEnumerable<(DateTimeOffset Timestamp, decimal Cost)> rows,
+        DateTimeOffset from,
+        DateTimeOffset to,
+        TimeSpan bucket,
+        string bucketLabel)
+    {
+        if (bucket <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(bucket), "bucket must be positive.");
+        }
+
+        if (to <= from)
+        {
+            throw new ArgumentException("'to' must be strictly after 'from'.", nameof(to));
+        }
+
+        var windowTicks = (to - from).Ticks;
+        var bucketTicks = bucket.Ticks;
+        var bucketCount = (int)((windowTicks + bucketTicks - 1) / bucketTicks);
+
+        var buckets = new decimal[bucketCount];
+        foreach (var (timestamp, cost) in rows)
+        {
+            var offsetTicks = (timestamp - from).Ticks;
+            var idx = (int)(offsetTicks / bucketTicks);
+            if (idx < 0 || idx >= bucketCount)
+            {
+                continue;
+            }
+            buckets[idx] += cost;
+        }
+
+        var series = new List<CostTimeseriesBucket>(bucketCount);
+        for (var i = 0; i < bucketCount; i++)
+        {
+            series.Add(new CostTimeseriesBucket(
+                BucketStart: from + TimeSpan.FromTicks(bucketTicks * i),
+                Cost: buckets[i]));
+        }
+
+        return new CostTimeseries(from, to, bucketLabel, series);
+    }
+
     private static async Task<CostSummary> AggregateAsync(
         IQueryable<CostRecord> query,
         DateTimeOffset from,

@@ -65,4 +65,60 @@ public interface ICostQueryService
         TimeSpan bucket,
         string bucketLabel,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets a per-agent cost time-series bucketed by fixed-size UTC
+    /// intervals. Missing buckets are zero-filled. Powers the agent-detail
+    /// sparkline (#569).
+    /// </summary>
+    /// <param name="agentId">The agent identifier.</param>
+    /// <param name="from">The inclusive UTC start of the window.</param>
+    /// <param name="to">The exclusive UTC end of the window.</param>
+    /// <param name="bucket">The bucket size; must be strictly positive and no larger than the window.</param>
+    /// <param name="bucketLabel">Canonical bucket label (e.g. <c>"1h"</c>, <c>"1d"</c>) persisted on the response.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The zero-filled time-series for the agent.</returns>
+    Task<CostTimeseries> GetAgentCostTimeseriesAsync(
+        string agentId,
+        DateTimeOffset from,
+        DateTimeOffset to,
+        TimeSpan bucket,
+        string bucketLabel,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets a per-unit cost time-series bucketed by fixed-size UTC
+    /// intervals. Missing buckets are zero-filled. Powers the unit-detail
+    /// sparkline (#569).
+    /// </summary>
+    /// <param name="unitId">The unit identifier.</param>
+    /// <param name="from">The inclusive UTC start of the window.</param>
+    /// <param name="to">The exclusive UTC end of the window.</param>
+    /// <param name="bucket">The bucket size; must be strictly positive and no larger than the window.</param>
+    /// <param name="bucketLabel">Canonical bucket label (e.g. <c>"1h"</c>, <c>"1d"</c>) persisted on the response.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The zero-filled time-series for the unit.</returns>
+    Task<CostTimeseries> GetUnitCostTimeseriesAsync(
+        string unitId,
+        DateTimeOffset from,
+        DateTimeOffset to,
+        TimeSpan bucket,
+        string bucketLabel,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets the per-model cost breakdown for a specific agent within a time range.
+    /// Groups cost records by model name so the portal can render the tool / model
+    /// breakdown on the agent-detail page (#570).
+    /// </summary>
+    /// <param name="agentId">The agent identifier.</param>
+    /// <param name="from">The start of the time range.</param>
+    /// <param name="to">The end of the time range.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>One entry per distinct model, ordered by total cost descending.</returns>
+    Task<IReadOnlyList<CostBreakdownEntry>> GetAgentCostBreakdownAsync(
+        string agentId,
+        DateTimeOffset from,
+        DateTimeOffset to,
+        CancellationToken cancellationToken = default);
 }

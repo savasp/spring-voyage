@@ -26,6 +26,11 @@ public static class CostEndpoints
             .WithSummary("Get cost summary for an agent")
             .Produces<CostSummaryResponse>(StatusCodes.Status200OK);
 
+        group.MapGet("/agents/{id}/breakdown", GetAgentCostBreakdownAsync)
+            .WithName("GetAgentCostBreakdown")
+            .WithSummary("Get per-model cost breakdown for an agent")
+            .Produces<CostBreakdownResponse>(StatusCodes.Status200OK);
+
         group.MapGet("/units/{id}", GetUnitCostAsync)
             .WithName("GetUnitCost")
             .WithSummary("Get cost summary for a unit")
@@ -49,6 +54,25 @@ public static class CostEndpoints
         var (rangeFrom, rangeTo) = ResolveTimeRange(from, to);
         var summary = await costQueryService.GetAgentCostAsync(id, rangeFrom, rangeTo, cancellationToken);
         return Results.Ok(ToResponse(summary));
+    }
+
+    private static async Task<IResult> GetAgentCostBreakdownAsync(
+        string id,
+        ICostQueryService costQueryService,
+        DateTimeOffset? from,
+        DateTimeOffset? to,
+        CancellationToken cancellationToken)
+    {
+        var (rangeFrom, rangeTo) = ResolveTimeRange(from, to);
+        var entries = await costQueryService.GetAgentCostBreakdownAsync(id, rangeFrom, rangeTo, cancellationToken);
+        var response = new CostBreakdownResponse(
+            AgentId: id,
+            From: rangeFrom,
+            To: rangeTo,
+            Entries: entries
+                .Select(e => new CostBreakdownEntryResponse(e.Key, e.Kind, e.TotalCost, e.RecordCount))
+                .ToList());
+        return Results.Ok(response);
     }
 
     private static async Task<IResult> GetUnitCostAsync(

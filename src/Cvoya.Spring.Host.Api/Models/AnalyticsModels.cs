@@ -59,3 +59,33 @@ public record WaitTimeRollupResponse(
     IReadOnlyList<WaitTimeEntryResponse> Entries,
     DateTimeOffset From,
     DateTimeOffset To);
+
+/// <summary>
+/// One bucket of cost data in a per-agent or per-unit time-series.
+/// </summary>
+/// <param name="T">Inclusive UTC start of the bucket.</param>
+/// <param name="CostUsd">Total cost (USD) accumulated inside <c>[T, T + bucket)</c>. Always emitted — zero for empty buckets.</param>
+public record AnalyticsCostTimeseriesBucketResponse(DateTimeOffset T, decimal CostUsd);
+
+/// <summary>
+/// Response body for <c>GET /api/v1/tenant/analytics/agents/{id}/cost-timeseries</c>
+/// and <c>GET /api/v1/tenant/analytics/units/{id}/cost-timeseries</c>. A
+/// zero-filled cost time-series for a single agent or unit (#569). The
+/// <paramref name="Scope"/> field (<c>agents</c> or <c>units</c>) and
+/// <paramref name="Id"/> echo the request parameters so callers can route
+/// multiple concurrent fetches back to the right detail page without
+/// re-parsing the request URL.
+/// </summary>
+/// <param name="Scope">Either <c>agents</c> or <c>units</c>.</param>
+/// <param name="Id">The agent or unit identifier.</param>
+/// <param name="Bucket">Canonical bucket label (<c>"1h"</c>, <c>"1d"</c>, <c>"7d"</c>).</param>
+/// <param name="From">Inclusive UTC start of the window.</param>
+/// <param name="To">Exclusive UTC end of the window.</param>
+/// <param name="Points">Ordered bucket list; <c>Points[0].T == From</c>.</param>
+public record AnalyticsCostTimeseriesResponse(
+    string Scope,
+    string Id,
+    string Bucket,
+    DateTimeOffset From,
+    DateTimeOffset To,
+    IReadOnlyList<AnalyticsCostTimeseriesBucketResponse> Points);

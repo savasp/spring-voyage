@@ -48,3 +48,36 @@ public record CostTimeseriesResponse(
     DateTimeOffset To,
     string Bucket,
     IReadOnlyList<CostTimeseriesBucketResponse> Series);
+
+/// <summary>
+/// One entry in a per-agent cost breakdown response. Corresponds to
+/// <see cref="Cvoya.Spring.Core.Costs.CostBreakdownEntry"/>.
+/// </summary>
+/// <param name="Key">
+/// The dimension value — a model name (e.g. <c>claude-3-5-sonnet</c>) when
+/// <paramref name="Kind"/> is <c>model</c>, or a tool name when
+/// <paramref name="Kind"/> is <c>tool</c>.
+/// </param>
+/// <param name="Kind">The cost kind: <c>model</c> for LLM token cost rows.</param>
+/// <param name="TotalCost">Total cost (USD) for this key across the requested window.</param>
+/// <param name="RecordCount">Number of individual cost records that contributed to <paramref name="TotalCost"/>.</param>
+public record CostBreakdownEntryResponse(
+    string Key,
+    string Kind,
+    decimal TotalCost,
+    int RecordCount);
+
+/// <summary>
+/// Response body for <c>GET /api/v1/tenant/cost/agents/{id}/breakdown</c>.
+/// Returns one entry per distinct model used by the agent over the window,
+/// ordered by total cost descending (#570).
+/// </summary>
+/// <param name="AgentId">The agent identifier.</param>
+/// <param name="From">Start of the aggregation window.</param>
+/// <param name="To">End of the aggregation window.</param>
+/// <param name="Entries">Per-model breakdown entries, descending by cost.</param>
+public record CostBreakdownResponse(
+    string AgentId,
+    DateTimeOffset From,
+    DateTimeOffset To,
+    IReadOnlyList<CostBreakdownEntryResponse> Entries);

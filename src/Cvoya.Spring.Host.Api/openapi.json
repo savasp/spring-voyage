@@ -3884,6 +3884,53 @@
         }
       }
     },
+    "/api/v1/tenant/cost/agents/{id}/breakdown": {
+      "get": {
+        "tags": [
+          "Costs"
+        ],
+        "summary": "Get per-model cost breakdown for an agent",
+        "operationId": "GetAgentCostBreakdown",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostBreakdownResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/tenant/cost/units/{id}": {
       "get": {
         "tags": [
@@ -4908,6 +4955,116 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/WaitTimeRollupResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tenant/analytics/agents/{id}/cost-timeseries": {
+      "get": {
+        "tags": [
+          "Analytics"
+        ],
+        "summary": "Get a zero-filled cost time-series for an agent, suitable for sparkline rendering",
+        "operationId": "GetAgentCostTimeseries",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "window",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "bucket",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalyticsCostTimeseriesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tenant/analytics/units/{id}/cost-timeseries": {
+      "get": {
+        "tags": [
+          "Analytics"
+        ],
+        "summary": "Get a zero-filled cost time-series for a unit, suitable for sparkline rendering",
+        "operationId": "GetUnitCostTimeseries",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "window",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "bucket",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalyticsCostTimeseriesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -8580,6 +8737,59 @@
           }
         }
       },
+      "AnalyticsCostTimeseriesBucketResponse": {
+        "required": [
+          "t",
+          "costUsd"
+        ],
+        "type": "object",
+        "properties": {
+          "t": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "costUsd": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "AnalyticsCostTimeseriesResponse": {
+        "required": [
+          "scope",
+          "id",
+          "bucket",
+          "from",
+          "to",
+          "points"
+        ],
+        "type": "object",
+        "properties": {
+          "scope": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "bucket": {
+            "type": "string"
+          },
+          "from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "points": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AnalyticsCostTimeseriesBucketResponse"
+            }
+          }
+        }
+      },
       "AttachmentMode": {
         "enum": [
           "detached",
@@ -8864,6 +9074,63 @@
           },
           "actionsBaseUrl": {
             "type": "string"
+          }
+        }
+      },
+      "CostBreakdownEntryResponse": {
+        "required": [
+          "key",
+          "kind",
+          "totalCost",
+          "recordCount"
+        ],
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "totalCost": {
+            "type": "number",
+            "format": "double"
+          },
+          "recordCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "CostBreakdownResponse": {
+        "required": [
+          "agentId",
+          "from",
+          "to",
+          "entries"
+        ],
+        "type": "object",
+        "properties": {
+          "agentId": {
+            "type": "string"
+          },
+          "from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostBreakdownEntryResponse"
+            }
           }
         }
       },
