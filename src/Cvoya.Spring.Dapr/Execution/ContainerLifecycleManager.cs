@@ -374,6 +374,24 @@ public class ContainerLifecycleManager(
 
     private async Task RemoveNetworkAsync(string networkName, CancellationToken ct)
     {
+        // The tenant bridge (e.g. "spring-tenant-default") is a shared,
+        // long-lived network owned by the deployment layer (deploy.sh / docker-
+        // compose). Placement, scheduler, redis, and ollama are permanently
+        // attached to it; removing it on per-dispatch teardown causes Podman to
+        // return 500 ("network in use") which surfaces as a warning on every
+        // successful dispatch (issue #1206). Skip removal for any network that
+        // matches the canonical tenant-bridge name — it was not minted by this
+        // lifecycle invocation and must not be torn down here. ADR 0028 §
+        // Topology establishes the distinction: the per-dispatch bridge is
+        // ephemeral; the tenant bridge is static topology.
+        if (string.Equals(networkName, ContainerConfigBuilder.TenantNetworkName, StringComparison.Ordinal))
+        {
+            _logger.LogDebug(
+                "Skipping removal of shared tenant network {NetworkName} — it is long-lived topology, not a per-dispatch bridge",
+                networkName);
+            return;
+        }
+
         try
         {
             // Idempotent on missing — the dispatcher swallows
