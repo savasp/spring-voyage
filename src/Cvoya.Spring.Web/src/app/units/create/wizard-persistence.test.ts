@@ -34,6 +34,9 @@ function makeForm(overrides: Partial<WizardFormSnapshot> = {}): WizardFormSnapsh
     connectorTypeId: null,
     connectorConfig: null,
     parentUnitId: null,
+    // #814: new fields added in schema v2.
+    parentChoice: null,
+    parentUnitIds: [],
     ...overrides,
   };
 }
@@ -72,7 +75,7 @@ describe("wizard-persistence", () => {
   it("returns null for a snapshot whose schema version doesn't match", () => {
     const runId = "run-2";
     const stale: WizardSnapshot = {
-      schemaVersion: (WIZARD_STATE_SCHEMA_VERSION + 99) as 1,
+      schemaVersion: (WIZARD_STATE_SCHEMA_VERSION + 99) as 2,
       currentStep: 4,
       form: makeForm(),
     };
@@ -177,24 +180,28 @@ describe("wizard-persistence", () => {
   //   (b) older blobs (pre-#1150) lack the field entirely — the
   //       loader must accept them and default the field to `null`
   //       (top-level), not discard the snapshot.
-  it("round-trips a non-null parentUnitId (#1150)", () => {
+  it("round-trips a non-null parentUnitId with parentUnitIds (#1150 + #814)", () => {
     const runId = "run-parent-1";
     const snapshot = makeSnapshot({
-      form: makeForm({ parentUnitId: "engineering" }),
+      form: makeForm({
+        parentUnitId: "engineering",
+        parentChoice: "has-parents",
+        parentUnitIds: ["engineering"],
+      }),
     });
     saveWizardSnapshot(runId, snapshot);
     const loaded = loadWizardSnapshot(runId);
     expect(loaded).not.toBeNull();
     expect(loaded?.form.parentUnitId).toBe("engineering");
+    expect(loaded?.form.parentChoice).toBe("has-parents");
+    expect(loaded?.form.parentUnitIds).toEqual(["engineering"]);
   });
 
-  it("accepts pre-#1150 blobs that omit parentUnitId, defaulting to null", () => {
+  it("accepts v2 blobs that omit parentUnitId, defaulting to null", () => {
     const runId = "run-parent-2";
-    // Hand-craft a snapshot that mimics a pre-#1150 sessionStorage
-    // entry: every other field is present, but `parentUnitId` is
-    // missing. The loader should treat it as a top-level wizard
-    // (`null`) instead of throwing the snapshot away.
-    const legacy = {
+    // Hand-craft a v2 snapshot that omits `parentUnitId` (it's a nullable
+    // string — the loader treats the missing key as `null`).
+    const blob = {
       schemaVersion: WIZARD_STATE_SCHEMA_VERSION,
       currentStep: 3,
       form: {
@@ -216,9 +223,11 @@ describe("wizard-persistence", () => {
         connectorTypeId: null,
         connectorConfig: null,
         // intentionally no `parentUnitId`
+        parentChoice: null,
+        parentUnitIds: [],
       },
     };
-    sessionStorage.setItem(wizardSessionKey(runId), JSON.stringify(legacy));
+    sessionStorage.setItem(wizardSessionKey(runId), JSON.stringify(blob));
     const loaded = loadWizardSnapshot(runId);
     expect(loaded).not.toBeNull();
     expect(loaded?.form.parentUnitId).toBeNull();

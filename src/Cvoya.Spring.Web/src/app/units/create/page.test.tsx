@@ -35,6 +35,7 @@ const deleteUnit = vi.fn();
 const revalidateUnit = vi.fn();
 const getUnit = vi.fn();
 const getUnitExecution = vi.fn();
+const getTenantTree = vi.fn();
 
 const listUnitTemplates = vi.fn();
 const listConnectorTypes = vi.fn();
@@ -67,6 +68,7 @@ vi.mock("@/lib/api/client", () => ({
     revalidateUnit: (name: string) => revalidateUnit(name),
     getUnit: (name: string) => getUnit(name),
     getUnitExecution: (name: string) => getUnitExecution(name),
+    getTenantTree: () => getTenantTree(),
   },
 }));
 
@@ -75,6 +77,16 @@ vi.mock("@/lib/api/client", () => ({
 // EventSource under JSDOM.
 vi.mock("@/lib/stream/use-activity-stream", () => ({
   useActivityStream: () => ({ events: [], connected: true }),
+}));
+
+// #622 / #968: mock the image-history module so tests can control the
+// history store without depending on localStorage (which is not fully
+// available in JSDOM).
+const mockLoadImageHistory = vi.fn<() => string[]>(() => []);
+const mockRecordImageReference = vi.fn<(ref: string) => void>();
+vi.mock("@/lib/image-history", () => ({
+  loadImageHistory: () => mockLoadImageHistory(),
+  recordImageReference: (ref: string) => mockRecordImageReference(ref),
 }));
 
 const toastMock = vi.fn();
@@ -198,6 +210,11 @@ async function advanceToExecution() {
       fireEvent.change(nameInput, { target: { value: "acme" } });
     });
   }
+  // #814: step 1 now requires an explicit parent choice. Pick "Top-level"
+  // so existing tests can advance without choosing "Has parent units".
+  await act(async () => {
+    fireEvent.click(screen.getByTestId("parent-choice-top-level"));
+  });
   const next = screen.getByRole("button", { name: /^next$/i });
   await act(async () => {
     fireEvent.click(next);
@@ -208,6 +225,13 @@ async function selectTool(value: string) {
   const toolSelect = screen.getByLabelText("Execution tool") as HTMLSelectElement;
   await act(async () => {
     fireEvent.change(toolSelect, { target: { value } });
+  });
+}
+
+/** #814: click the "Top-level" radio button on step 1. */
+async function selectTopLevel() {
+  await act(async () => {
+    fireEvent.click(screen.getByTestId("parent-choice-top-level"));
   });
 }
 
@@ -233,6 +257,12 @@ function seedDefaultMocks() {
   listConnectorTypes.mockResolvedValue([]);
   deleteUnit.mockResolvedValue(undefined);
   revalidateUnit.mockResolvedValue(undefined);
+  // #814: default to an empty tenant tree so the parent-unit picker
+  // renders "No existing units" without failing. Tests that exercise
+  // the picker override this.
+  getTenantTree.mockResolvedValue({
+    tree: { id: "tenant", name: "tenant", kind: "Tenant", status: "running" },
+  });
 }
 
 describe("CreateUnitPage — wizard reads tenant-installed agent runtimes (#690)", () => {
@@ -471,6 +501,7 @@ describe("CreateUnitPage — #978 wizard credential dead-ends", () => {
         fireEvent.click(next);
       });
     };
+    await selectTopLevel(); // #814: required parent choice
     await clickNext(); // → Execution
     // Wait for the model dropdown so Next is enabled.
     await waitFor(async () => {
@@ -516,6 +547,7 @@ describe("CreateUnitPage — #978 wizard credential dead-ends", () => {
         fireEvent.click(next);
       });
     };
+    await selectTopLevel(); // #814
     await clickNext();
     await waitFor(async () => {
       const modelSelect = (await screen.findByLabelText(
@@ -562,6 +594,7 @@ describe("CreateUnitPage — #978 wizard credential dead-ends", () => {
         fireEvent.click(next);
       });
     };
+    await selectTopLevel(); // #814
     await clickNext();
     await waitFor(async () => {
       const modelSelect = (await screen.findByLabelText(
@@ -676,6 +709,7 @@ describe("CreateUnitPage — T-07 wizard simplification (#949)", () => {
     await act(async () => {
       fireEvent.change(nameInput, { target: { value: "acme" } });
     });
+    await selectTopLevel(); // #814
     const nextToExec = screen.getByRole("button", { name: /^next$/i });
     await act(async () => {
       fireEvent.click(nextToExec);
@@ -782,6 +816,7 @@ describe("CreateUnitPage — auto-start + validation (#983)", () => {
         fireEvent.click(next);
       });
     };
+    await selectTopLevel(); // #814: required parent-choice gate
     await clickNext(); // → Execution
     await waitFor(async () => {
       const modelSelect = (await screen.findByLabelText(
@@ -1142,6 +1177,10 @@ describe("CreateUnitPage — #1033 execution.tool propagation", () => {
     await act(async () => {
       fireEvent.change(nameInput, { target: { value: "acme" } });
     });
+    // #814: pick top-level to satisfy the required parent-choice gate.
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("parent-choice-top-level"));
+    });
     const clickNext = async () => {
       const next = screen.getByRole("button", { name: /^next$/i });
       await act(async () => {
@@ -1217,6 +1256,7 @@ describe("CreateUnitPage — #1033 execution.tool propagation", () => {
         fireEvent.click(next);
       });
     };
+    await selectTopLevel(); // #814
     await clickNext(); // → Execution
     await waitFor(async () => {
       const modelSelect = (await screen.findByLabelText(
@@ -1295,6 +1335,7 @@ describe("CreateUnitPage — #1034 Finalize summary respects typed name", () => 
         fireEvent.click(next);
       });
     };
+    await selectTopLevel(); // #814
     await clickNext(); // → Execution
     await waitFor(async () => {
       const modelSelect = (await screen.findByLabelText(
@@ -1392,7 +1433,7 @@ describe("CreateUnitPage — #1132 wizard state persistence", () => {
 
   it("rehydrates the wizard at the saved step with the saved field values", async () => {
     seedSnapshot({
-      schemaVersion: 1,
+      schemaVersion: 2,
       currentStep: 3,
       form: {
         name: "rehydrated-unit",
@@ -1412,6 +1453,9 @@ describe("CreateUnitPage — #1132 wizard state persistence", () => {
         connectorSlug: null,
         connectorTypeId: null,
         connectorConfig: null,
+        parentUnitId: null,
+        parentChoice: "top-level",
+        parentUnitIds: [],
       },
     });
 
@@ -1621,6 +1665,20 @@ describe("CreateUnitPage — #1150 sub-unit creation", () => {
         fireEvent.change(nameInput, { target: { value: "acme-child" } });
       });
     }
+    // #814: pick top-level if neither choice is already selected.
+    // When ?parent= is set, parentChoice is pre-seeded to "has-parents".
+    const topLevelBtn = screen.queryByTestId("parent-choice-top-level");
+    if (
+      topLevelBtn &&
+      topLevelBtn.getAttribute("aria-checked") !== "true" &&
+      screen
+        .getByTestId("parent-choice-has-parents")
+        .getAttribute("aria-checked") !== "true"
+    ) {
+      await act(async () => {
+        fireEvent.click(topLevelBtn);
+      });
+    }
     const next = screen.getByRole("button", { name: /^next$/i });
     await act(async () => {
       fireEvent.click(next);
@@ -1654,24 +1712,26 @@ describe("CreateUnitPage — #1150 sub-unit creation", () => {
     });
   }
 
-  it("renders the parent banner and routes the create-unit body through parentUnitIds", async () => {
+  it("seeds has-parents choice from URL param and routes the create-unit body through parentUnitIds", async () => {
     setSearch("?parent=engineering-team");
 
     renderPage();
 
-    // The Identity-step banner names the parent and exposes a Clear
-    // affordance. Both data-testids are part of the contract the
-    // explorer's "Create sub-unit" button relies on.
-    const banner = await screen.findByTestId("parent-unit-banner");
-    expect(banner.dataset.parentId).toBe("engineering-team");
-    await waitFor(() => {
-      expect(banner.textContent).toMatch(/Engineering Team/);
-    });
-    expect(screen.getByTestId("parent-unit-clear")).toBeInTheDocument();
-    // Heading reskins to reflect the sub-unit intent.
+    // #814: the picker pre-selects "Has parent units" from the URL param.
+    // The heading reskins to reflect the sub-unit intent.
     expect(
       screen.getByRole("heading", { name: /create a sub-unit/i }),
     ).toBeInTheDocument();
+    // The parent-unit picker is visible.
+    expect(await screen.findByTestId("parent-unit-picker")).toBeInTheDocument();
+    // The "Has parent units" radio is checked.
+    expect(
+      screen.getByTestId("parent-choice-has-parents").getAttribute("aria-checked"),
+    ).toBe("true");
+    // The selected parent's display name is shown once the query resolves.
+    await waitFor(() => {
+      expect(screen.getByText(/engineering team/i)).toBeInTheDocument();
+    });
 
     await advanceScratchToFinalize();
 
@@ -1688,23 +1748,25 @@ describe("CreateUnitPage — #1150 sub-unit creation", () => {
     expect(body.isTopLevel).toBe(false);
   });
 
-  it("clearing the parent banner reverts the wizard to top-level creation", async () => {
+  it("switching to Top-level after URL-param seed reverts to top-level creation", async () => {
     setSearch("?parent=engineering-team");
 
     renderPage();
 
-    const clear = await screen.findByTestId("parent-unit-clear");
+    // Switch to top-level.
+    const topLevel = await screen.findByTestId("parent-choice-top-level");
     await act(async () => {
-      fireEvent.click(clear);
+      fireEvent.click(topLevel);
     });
 
-    // Banner is gone; heading reverts to plain "Create a unit".
-    expect(
-      screen.queryByTestId("parent-unit-banner"),
-    ).not.toBeInTheDocument();
+    // Heading reverts to plain "Create a unit".
     expect(
       screen.getByRole("heading", { name: /^create a unit$/i }),
     ).toBeInTheDocument();
+    // The banner is gone (no parentUnitMissing on top-level).
+    expect(
+      screen.queryByTestId("parent-unit-banner"),
+    ).not.toBeInTheDocument();
 
     await advanceScratchToFinalize();
     const createBtn = screen.getByTestId("create-unit-button");
@@ -1716,15 +1778,12 @@ describe("CreateUnitPage — #1150 sub-unit creation", () => {
       expect(createUnit).toHaveBeenCalledTimes(1);
     });
     const body = createUnit.mock.calls[0]?.[0] as Record<string, unknown>;
-    // Top-level path: the wizard does not send `parentUnitIds`. The API
-    // client's `withDefaultParentParent` helper then stamps
-    // `isTopLevel: true`, but that's a client-internal default — the
-    // wizard surface itself must not pre-stamp the field.
+    // Explicit top-level: isTopLevel is true, no parentUnitIds.
+    expect(body.isTopLevel).toBe(true);
     expect(body.parentUnitIds).toBeUndefined();
-    expect(body.isTopLevel).toBeUndefined();
   });
 
-  it("legacy path: no `?parent=` keeps the existing top-level flow unchanged", async () => {
+  it("legacy path: no `?parent=` keeps the existing top-level flow when top-level is chosen", async () => {
     // No setSearch — defaults to whatever JSDOM's default location is.
     renderPage();
 
@@ -1745,7 +1804,417 @@ describe("CreateUnitPage — #1150 sub-unit creation", () => {
       expect(createUnit).toHaveBeenCalledTimes(1);
     });
     const body = createUnit.mock.calls[0]?.[0] as Record<string, unknown>;
+    // advanceScratchToFinalize uses fillNameAndAdvance which picks top-level.
+    // Explicit top-level: isTopLevel is true, no parentUnitIds.
+    expect(body.isTopLevel).toBe(true);
+  });
+});
+
+// #814: parent-unit picker — explicit top-level vs has-parents choice.
+describe("CreateUnitPage — #814 parent-unit picker", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    seedDefaultMocks();
+    sessionStorage.clear();
+  });
+
+  it("blocks Next on step 1 when no parent choice is made", async () => {
+    renderPage();
+
+    // Fill the name but do NOT pick top-level or has-parents.
+    const nameInput = screen.getByPlaceholderText(
+      /engineering-team/i,
+    ) as HTMLInputElement;
+    await act(async () => {
+      fireEvent.change(nameInput, { target: { value: "blocked" } });
+    });
+
+    const next = screen.getByRole("button", { name: /^next$/i });
+    await act(async () => {
+      fireEvent.click(next);
+    });
+
+    // Step 1 error is shown.
+    await waitFor(() => {
+      expect(
+        screen.getByText(/choose whether this unit is top-level/i),
+      ).toBeInTheDocument();
+    });
+    // Still on step 1.
+    expect(screen.getByPlaceholderText(/engineering-team/i)).toBeInTheDocument();
+  });
+
+  it("blocks Next when has-parents is chosen but no unit is selected", async () => {
+    renderPage();
+
+    const nameInput = screen.getByPlaceholderText(
+      /engineering-team/i,
+    ) as HTMLInputElement;
+    await act(async () => {
+      fireEvent.change(nameInput, { target: { value: "blocked" } });
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("parent-choice-has-parents"));
+    });
+
+    const next = screen.getByRole("button", { name: /^next$/i });
+    await act(async () => {
+      fireEvent.click(next);
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/select at least one parent unit/i),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("shows the picker with available units when has-parents is chosen", async () => {
+    getTenantTree.mockResolvedValue({
+      tree: {
+        id: "tenant",
+        name: "tenant",
+        kind: "Tenant",
+        status: "running",
+        children: [
+          {
+            id: "eng-unit-id",
+            name: "engineering",
+            kind: "Unit",
+            status: "running",
+          },
+          {
+            id: "product-unit-id",
+            name: "product",
+            kind: "Unit",
+            status: "running",
+          },
+        ],
+      },
+    });
+
+    renderPage();
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("parent-choice-has-parents"));
+    });
+
+    const picker = await screen.findByTestId("parent-unit-picker");
+    expect(picker).toBeInTheDocument();
+    // Both units are listed.
+    expect(
+      await screen.findByTestId("parent-option-eng-unit-id"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("parent-option-product-unit-id"),
+    ).toBeInTheDocument();
+  });
+
+  it("sends parentUnitIds when a parent unit is selected via the picker", async () => {
+    getTenantTree.mockResolvedValue({
+      tree: {
+        id: "tenant",
+        name: "tenant",
+        kind: "Tenant",
+        status: "running",
+        children: [
+          {
+            id: "eng-unit-id",
+            name: "engineering",
+            kind: "Unit",
+            status: "running",
+          },
+        ],
+      },
+    });
+    createUnit.mockResolvedValue({ name: "child", id: "child-id" });
+    startUnit.mockResolvedValue(undefined);
+    getUnit.mockResolvedValue({
+      id: "child-id",
+      name: "child",
+      displayName: "Child",
+      description: "",
+      registeredAt: new Date().toISOString(),
+      status: "Running",
+      model: null,
+      color: null,
+      tool: null,
+      provider: null,
+      hosting: null,
+      lastValidationError: null,
+      lastValidationRunId: null,
+    });
+    getUnitExecution.mockResolvedValue({
+      unitId: "child-id",
+      image: null,
+      runtime: null,
+      model: null,
+      secrets: null,
+      updatedAt: null,
+    });
+
+    renderPage();
+
+    const nameInput = screen.getByPlaceholderText(
+      /engineering-team/i,
+    ) as HTMLInputElement;
+    await act(async () => {
+      fireEvent.change(nameInput, { target: { value: "child" } });
+    });
+
+    // Pick "Has parent units".
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("parent-choice-has-parents"));
+    });
+
+    // Select the engineering unit.
+    const engOption = await screen.findByTestId("parent-option-eng-unit-id");
+    await act(async () => {
+      fireEvent.click(engOption);
+    });
+
+    // Advance through all steps.
+    const clickNext = async () => {
+      const next = screen.getByRole("button", { name: /^next$/i });
+      await act(async () => {
+        fireEvent.click(next);
+      });
+    };
+    await clickNext(); // → Execution
+    await waitFor(async () => {
+      const modelSelect = (await screen.findByLabelText(
+        /^Model$/i,
+      )) as HTMLSelectElement;
+      expect(modelSelect.value).not.toBe("");
+    });
+    await clickNext(); // → Mode
+    const scratch = screen.getByRole("button", { name: /scratch/i });
+    await act(async () => {
+      fireEvent.click(scratch);
+    });
+    await clickNext(); // → Connector
+    await clickNext(); // → Secrets
+    await clickNext(); // → Finalize
+
+    const createBtn = screen.getByTestId("create-unit-button");
+    await act(async () => {
+      fireEvent.click(createBtn);
+    });
+
+    await waitFor(() => {
+      expect(createUnit).toHaveBeenCalledTimes(1);
+    });
+    const body = createUnit.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(body.parentUnitIds).toEqual(["eng-unit-id"]);
+    expect(body.isTopLevel).toBe(false);
+  });
+
+  it("top-level choice sends isTopLevel:true", async () => {
+    createUnit.mockResolvedValue({ name: "top", id: "top-id" });
+    startUnit.mockResolvedValue(undefined);
+    getUnit.mockResolvedValue({
+      id: "top-id",
+      name: "top",
+      displayName: "Top",
+      description: "",
+      registeredAt: new Date().toISOString(),
+      status: "Running",
+      model: null,
+      color: null,
+      tool: null,
+      provider: null,
+      hosting: null,
+      lastValidationError: null,
+      lastValidationRunId: null,
+    });
+    getUnitExecution.mockResolvedValue({
+      unitId: "top-id",
+      image: null,
+      runtime: null,
+      model: null,
+      secrets: null,
+      updatedAt: null,
+    });
+
+    renderPage();
+
+    const nameInput = screen.getByPlaceholderText(
+      /engineering-team/i,
+    ) as HTMLInputElement;
+    await act(async () => {
+      fireEvent.change(nameInput, { target: { value: "top" } });
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("parent-choice-top-level"));
+    });
+
+    const clickNext = async () => {
+      const next = screen.getByRole("button", { name: /^next$/i });
+      await act(async () => {
+        fireEvent.click(next);
+      });
+    };
+    await clickNext(); // → Execution
+    await waitFor(async () => {
+      const modelSelect = (await screen.findByLabelText(
+        /^Model$/i,
+      )) as HTMLSelectElement;
+      expect(modelSelect.value).not.toBe("");
+    });
+    await clickNext(); // → Mode
+    const scratch = screen.getByRole("button", { name: /scratch/i });
+    await act(async () => {
+      fireEvent.click(scratch);
+    });
+    await clickNext(); // → Connector
+    await clickNext(); // → Secrets
+    await clickNext(); // → Finalize
+
+    const createBtn = screen.getByTestId("create-unit-button");
+    await act(async () => {
+      fireEvent.click(createBtn);
+    });
+
+    await waitFor(() => {
+      expect(createUnit).toHaveBeenCalledTimes(1);
+    });
+    const body = createUnit.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(body.isTopLevel).toBe(true);
     expect(body.parentUnitIds).toBeUndefined();
-    expect(body.isTopLevel).toBeUndefined();
+  });
+});
+
+// #968 / #622: image input suggestions (recently-used image history).
+describe("CreateUnitPage — #968/#622 image-reference suggestions", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    seedDefaultMocks();
+    sessionStorage.clear();
+    // mockLoadImageHistory defaults to returning [] (set at declaration).
+    // Reset it explicitly so each test starts clean.
+    mockLoadImageHistory.mockReturnValue([]);
+  });
+
+  it("shows no datalist when history is empty", async () => {
+    mockLoadImageHistory.mockReturnValue([]);
+    renderPage();
+    await advanceToExecution();
+
+    // The image input exists but has no list attribute when history is empty.
+    const imageInput = screen.getByLabelText(/^execution image$/i);
+    expect(imageInput.getAttribute("list")).toBeNull();
+    expect(
+      document.getElementById("image-history-suggestions"),
+    ).toBeNull();
+  });
+
+  it("shows datalist suggestions when history has prior image refs", async () => {
+    mockLoadImageHistory.mockReturnValue([
+      "ghcr.io/spring-voyage/agent:latest",
+      "localhost/spring-agent:dev",
+    ]);
+
+    renderPage();
+    await advanceToExecution();
+
+    // The datalist element exists with the persisted suggestions.
+    const datalist = document.getElementById("image-history-suggestions");
+    expect(datalist).not.toBeNull();
+    const options = datalist!.querySelectorAll("option");
+    const values = Array.from(options).map((o) => o.value);
+    expect(values).toContain("ghcr.io/spring-voyage/agent:latest");
+    expect(values).toContain("localhost/spring-agent:dev");
+
+    // The image input is wired to the datalist.
+    const imageInput = screen.getByLabelText(/^execution image$/i);
+    expect(imageInput.getAttribute("list")).toBe("image-history-suggestions");
+  });
+
+  it("calls recordImageReference after successful unit creation", async () => {
+    createUnit.mockResolvedValue({ name: "img-test", id: "img-test-id" });
+    startUnit.mockResolvedValue(undefined);
+    getUnit.mockResolvedValue({
+      id: "img-test-id",
+      name: "img-test",
+      displayName: "Img Test",
+      description: "",
+      registeredAt: new Date().toISOString(),
+      status: "Running",
+      model: null,
+      color: null,
+      tool: null,
+      provider: null,
+      hosting: null,
+      lastValidationError: null,
+      lastValidationRunId: null,
+    });
+    getUnitExecution.mockResolvedValue({
+      unitId: "img-test-id",
+      image: "ghcr.io/spring-voyage/agent:latest",
+      runtime: null,
+      model: null,
+      secrets: null,
+      updatedAt: null,
+    });
+
+    renderPage();
+
+    const nameInput = screen.getByPlaceholderText(
+      /engineering-team/i,
+    ) as HTMLInputElement;
+    await act(async () => {
+      fireEvent.change(nameInput, { target: { value: "img-test" } });
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("parent-choice-top-level"));
+    });
+    const clickNext = async () => {
+      const next = screen.getByRole("button", { name: /^next$/i });
+      await act(async () => {
+        fireEvent.click(next);
+      });
+    };
+    await clickNext(); // → Execution
+
+    // Fill in an image reference.
+    const imageInput = screen.getByLabelText(/^execution image$/i);
+    await act(async () => {
+      fireEvent.change(imageInput, {
+        target: { value: "ghcr.io/spring-voyage/agent:v1.0" },
+      });
+    });
+
+    await waitFor(async () => {
+      const modelSelect = (await screen.findByLabelText(
+        /^Model$/i,
+      )) as HTMLSelectElement;
+      expect(modelSelect.value).not.toBe("");
+    });
+    await clickNext(); // → Mode
+    const scratch = screen.getByRole("button", { name: /scratch/i });
+    await act(async () => {
+      fireEvent.click(scratch);
+    });
+    await clickNext(); // → Connector
+    await clickNext(); // → Secrets
+    await clickNext(); // → Finalize
+
+    const createBtn = screen.getByTestId("create-unit-button");
+    await act(async () => {
+      fireEvent.click(createBtn);
+    });
+
+    await waitFor(() => {
+      expect(createUnit).toHaveBeenCalledTimes(1);
+    });
+
+    // recordImageReference must have been called with the submitted image.
+    await waitFor(() => {
+      expect(mockRecordImageReference).toHaveBeenCalledWith(
+        "ghcr.io/spring-voyage/agent:v1.0",
+      );
+    });
   });
 });

@@ -35,8 +35,12 @@ const RUN_ID_KEY = `${SESSION_KEY_PREFIX}run-id`;
  * Bump this when the snapshot shape changes incompatibly. On rehydrate,
  * a non-matching version is treated as a missing snapshot — the operator
  * starts fresh at step 1 instead of seeing a half-rehydrated wizard.
+ *
+ * v1 → v2: added `parentChoice` and `parentUnitIds` for the explicit
+ * parent-unit picker (#814). Older blobs are silently discarded and the
+ * wizard starts fresh at step 1.
  */
-export const WIZARD_STATE_SCHEMA_VERSION = 1;
+export const WIZARD_STATE_SCHEMA_VERSION = 2;
 
 export type WizardStep = 1 | 2 | 3 | 4 | 5 | 6;
 export type WizardMode = "template" | "scratch" | "yaml";
@@ -90,14 +94,21 @@ export interface WizardFormSnapshot {
   /**
    * Id of the unit the wizard is creating a sub-unit under (#1150). When
    * `null` the wizard is producing a top-level unit (parent = tenant) —
-   * the existing behaviour from before #1150. The wizard seeds this slot
-   * from the `?parent=<id>` query string when the operator initiates the
-   * flow from a unit detail pane's "Create sub-unit" button, and the
-   * Identity step also exposes a banner that lets the operator clear it
-   * back to top-level. Only the id is persisted; the parent's display
-   * name is re-fetched live so a renamed parent reflects on rehydrate.
+   * the existing behaviour from before #1150. Kept for backward compat;
+   * new code uses `parentUnitIds` (#814).
    */
   parentUnitId: string | null;
+  /**
+   * #814: explicit top-level vs has-parents choice. `null` = not yet
+   * chosen. Persisted so a refresh of step 1 restores the last toggle
+   * state without resetting to the "choose first" prompt.
+   */
+  parentChoice: "top-level" | "has-parents" | null;
+  /**
+   * #814: ids of parent units chosen via the picker. Multi-select;
+   * empty when parentChoice === "top-level".
+   */
+  parentUnitIds: string[];
 }
 
 /**
@@ -225,6 +236,24 @@ export function validateSnapshot(blob: unknown): WizardSnapshot | null {
         f.parentUnitId === undefined
           ? null
           : (f.parentUnitId as string | null),
+      // #814: parentChoice and parentUnitIds were added in schema v2.
+      // Since we bump the schema version, these fields are always present
+      // in valid v2 blobs; provide safe defaults for defensive coding.
+      parentChoice: (() => {
+        const v = f.parentChoice;
+        if (v === "top-level" || v === "has-parents") return v;
+        return null;
+      })(),
+      parentUnitIds: (() => {
+        const v = f.parentUnitIds;
+        if (
+          Array.isArray(v) &&
+          v.every((item) => typeof item === "string")
+        ) {
+          return v as string[];
+        }
+        return [];
+      })(),
     },
   };
 }
