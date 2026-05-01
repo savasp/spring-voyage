@@ -61,32 +61,67 @@ test.describe("engagement — send message via composer", () => {
     });
     expect(seed.threadId).toBeTruthy();
 
-    // Open the engagement detail.
+    // Open the engagement detail. The portal redesign in #1500 lands
+    // the timeline + composer on /engagement/<id>, with the dropdown
+    // defaulting to "Messages" so the natural-language dialog is
+    // visible without lifecycle/tool noise.
     await page.goto(`/engagement/${seed.threadId}`);
     await expect(page.getByTestId("engagement-detail-page")).toBeVisible();
 
-    // The composer only renders for thread participants. When the
-    // platform records the human-message-sender as Observer (#1292
-    // tracks first-class participant tracking), the composer is
-    // hidden — skip the spec rather than fail. Once #1292 lands,
-    // remove the skip.
-    const composer = page.getByTestId("engagement-composer");
-    if (!(await composer.isVisible().catch(() => false))) {
-      test.skip(
-        true,
-        "Engagement composer is hidden because the human sender is recorded as Observer; tracked by #1292.",
-      );
+    // Switch to "Full timeline" so we can see every event (including
+    // the seed Domain message and any agent-emitted lifecycle events).
+    // The dropdown lives top-right of the timeline.
+    const filterTrigger = page.getByTestId("timeline-filter-trigger");
+    if (await filterTrigger.isVisible().catch(() => false)) {
+      await filterTrigger.click();
+      await page.getByTestId("timeline-filter-option-full").click();
     }
 
-    // Capture the initial event count, send a follow-up, and assert growth.
+    // Assertion 1 — closes the #1465 dispatch round-trip gap on the
+    // portal side: an agent-authored event must land in the timeline
+    // after the API-side seed. The composer-hidden case (when the
+    // sender ends up classified as Observer) is no longer a reason
+    // to skip — the seed dispatch alone is enough to prove the
+    // dispatcher → agent transport works.
+    await expect
+      .poll(
+        async () =>
+          await page
+            .getByTestId("engagement-timeline-events")
+            .locator('[data-role="agent"]')
+            .count(),
+        {
+          timeout: 90_000,
+          intervals: [1000, 2000, 3000],
+          message:
+            "Expected at least one agent-authored event in the timeline after the seeded message — the dispatcher → agent JSON-RPC round-trip looks broken (#1465).",
+        },
+      )
+      .toBeGreaterThan(0);
+
+    // Assertion 2 — when the composer is exposed (the human is a
+    // participant), drive a second message through the UI and verify
+    // a new event lands. When the composer isn't exposed (the human
+    // ended up classified as Observer; tracked by #1292), the
+    // assertion above already covers the dispatch path so we skip
+    // the UI-driven send rather than the whole spec.
+    const composer = page.getByTestId("engagement-composer");
+    if (!(await composer.isVisible().catch(() => false))) {
+      test
+        .info()
+        .annotations.push({
+          type: "composer-hidden",
+          description:
+            "Composer not exposed (sender classified as Observer; tracked by #1292) — UI-driven send skipped, but the dispatch round-trip assertion above ran.",
+        });
+      return;
+    }
+
     const before = await page
       .getByTestId("engagement-timeline-events")
       .locator('[data-testid^="conversation-event-"]')
       .count();
 
-    // The composer renders both a recipient `<input>` and a message
-    // `<textarea>` — fill the message slot specifically (the textarea
-    // is aria-labelled "Message text" or "Your answer").
     await composer
       .getByRole("textbox", { name: /message text|your answer/i })
       .fill("Are you there?");
