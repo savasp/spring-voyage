@@ -1,0 +1,250 @@
+name: E2E CLI LLM (on-demand)
+
+# LLM-gated companion to e2e-cli.yml. Runs the tests/e2e/scenarios/llm/
+# pool against a real Ollama backend so the dispatcher → agent JSON-RPC
+# round-trip is exercised against the actual `dapr-agent` image.
+#
+# Gating rationale: LLM scenarios pull a model (~2 GB), launch agent
+# containers, and take noticeably longer than the fast pool. They are not
+# safe as a per-PR gate. Instead this workflow runs:
+#
+#   - On a monthly schedule (1st of every month at 06:00 UTC) so transport
+#     regressions (e.g. the 404 reported in #1465) are caught even when no
+#     one runs the lane manually.
+#   - On workflow_dispatch so any contributor can trigger it before
+#     cutting a release, after touching the dispatcher / a2a path, or
+#     when investigating a suspected regression.
+#
+# The fast suite + the integration tests' A2ADispatchTransportContractTests
+# guard the wire-shape on every PR. This lane confirms the same path with
+# a real LLM in the loop.
+
+on:
+  schedule:
+    - cron: "0 6 1 * *"
+  workflow_dispatch:
+    inputs:
+      spring_api_url:
+        description: "Spring API base URL (default: http://localhost:5000)"
+        required: false
+        default: "http://localhost:5000"
+      e2e_prefix:
+        description: "E2E prefix for generated unit/agent names (default: e2e-ci-llm)"
+        required: false
+        default: "e2e-ci-llm"
+      scenario_glob:
+        description: "Scenario glob to run (e.g. 40-*). Default runs every llm/*.sh."
+        required: false
+        default: ""
+      ollama_model:
+        description: "Ollama model to pull / use. Tested defaults: llama3.2:3b."
+        required: false
+        default: "llama3.2:3b"
+
+concurrency:
+  group: e2e-cli-llm
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  e2e-llm:
+    name: E2E CLI llm pool
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "10.0.x"
+          cache: true
+          cache-dependency-path: |
+            **/*.csproj
+            Directory.Packages.props
+            global.json
+            NuGet.config
+
+      - name: Install Dapr CLI
+        shell: bash
+        run: |
+          wget -q https://raw.githubusercontent.com/dapr/cli/master/install/install.sh -O - | /bin/bash -s 1.14.1
+          dapr --version
+
+      - name: Cache Dapr runtime (~/.dapr)
+        id: dapr-cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.dapr
+          key: dapr-slim-${{ runner.os }}-1.14.1-v1
+
+      - name: Initialize Dapr (slim)
+        if: steps.dapr-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          for attempt in 1 2 3 4 5 6; do
+            if dapr init --slim; then
+              echo "dapr init succeeded on attempt $attempt"
+              exit 0
+            fi
+            echo "dapr init attempt $attempt failed; sleeping 30s"
+            sleep 30
+            dapr uninstall --all || true
+          done
+          echo "::error::dapr init failed after 6 attempts"
+          exit 1
+
+      - name: Restore .NET dependencies
+        run: dotnet restore SpringVoyage.slnx
+
+      - name: Restore dotnet tools (Kiota)
+        run: dotnet tool restore
+
+      - name: Build solution (including CLI)
+        run: dotnet build SpringVoyage.slnx --no-restore --configuration Release
+
+      - name: Install Ollama
+        shell: bash
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+          ollama --version
+
+      - name: Start Ollama daemon
+        shell: bash
+        run: |
+          nohup ollama serve > /tmp/ollama.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -fsS --max-time 2 http://localhost:11434/api/tags >/dev/null 2>&1; then
+              echo "ollama ready after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::ollama did not become ready within 30s"
+          tail -50 /tmp/ollama.log >&2 || true
+          exit 1
+
+      - name: Pull Ollama model
+        shell: bash
+        env:
+          OLLAMA_MODEL: ${{ inputs.ollama_model || 'llama3.2:3b' }}
+        run: |
+          ollama pull "${OLLAMA_MODEL}"
+
+      - name: Start Postgres (test database)
+        shell: bash
+        run: |
+          docker run -d \
+            --name spring-e2e-postgres \
+            -e POSTGRES_USER=spring \
+            -e POSTGRES_PASSWORD=spring \
+            -e POSTGRES_DB=spring \
+            -p 5432:5432 \
+            postgres:16-alpine
+          for i in $(seq 1 30); do
+            if docker exec spring-e2e-postgres pg_isready -U spring >/dev/null 2>&1; then
+              echo "Postgres ready after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::Postgres did not become ready within 30s"
+          exit 1
+
+      - name: Start Spring Voyage API host
+        shell: bash
+        env:
+          ASPNETCORE_URLS: "http://localhost:5000"
+          ConnectionStrings__SpringDb: "Host=localhost;Port=5432;Database=spring;Username=spring;Password=spring"
+          LocalDev: "true"
+          Secrets__AllowEphemeralDevKey: "true"
+          Skills__PackagesRoot: "${{ github.workspace }}/packages"
+          Dapr__Enabled: "false"
+          ASPNETCORE_ENVIRONMENT: "Development"
+          LanguageModel__Ollama__BaseUrl: "http://localhost:11434"
+        run: |
+          dotnet run \
+            --project src/Cvoya.Spring.Host.Api/Cvoya.Spring.Host.Api.csproj \
+            --no-build --configuration Release \
+            &
+          API_PID=$!
+          echo "API_PID=${API_PID}" >> "${GITHUB_ENV}"
+          for i in $(seq 1 60); do
+            if curl -fsS --max-time 2 http://localhost:5000/api/v1/connectors >/dev/null 2>&1; then
+              echo "API ready after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::Spring Voyage API did not become ready within 60s"
+          kill "${API_PID}" 2>/dev/null || true
+          exit 1
+
+      - name: Run E2E llm-pool scenarios
+        shell: bash
+        env:
+          E2E_BASE_URL: ${{ inputs.spring_api_url || 'http://localhost:5000' }}
+          E2E_PREFIX: ${{ inputs.e2e_prefix || 'e2e-ci-llm' }}
+          SPRING_API_URL: ${{ inputs.spring_api_url || 'http://localhost:5000' }}
+          SCENARIO_GLOB: ${{ inputs.scenario_glob }}
+          LLM_BASE_URL: "http://localhost:11434"
+          SPRING_DAPR_AGENT_MODEL: ${{ inputs.ollama_model || 'llama3.2:3b' }}
+          SPRING_DAPR_AGENT_PROVIDER: "ollama"
+          SPRING_CLI: >-
+            dotnet run --project src/Cvoya.Spring.Cli/Cvoya.Spring.Cli.csproj
+            --no-build --configuration Release --
+        run: |
+          cd tests/e2e
+          if [[ -n "${SCENARIO_GLOB}" ]]; then
+            bash run.sh --llm "${SCENARIO_GLOB}"
+          else
+            bash run.sh --llm
+          fi
+
+      - name: Orphan sweep
+        if: always()
+        shell: bash
+        env:
+          E2E_BASE_URL: ${{ inputs.spring_api_url || 'http://localhost:5000' }}
+          E2E_PREFIX: ${{ inputs.e2e_prefix || 'e2e-ci-llm' }}
+          SPRING_API_URL: ${{ inputs.spring_api_url || 'http://localhost:5000' }}
+          SPRING_CLI: >-
+            dotnet run --project src/Cvoya.Spring.Cli/Cvoya.Spring.Cli.csproj
+            --no-build --configuration Release --
+        run: |
+          cd tests/e2e
+          bash run.sh --sweep || true
+
+      - name: Stop API host
+        if: always()
+        shell: bash
+        run: |
+          if [[ -n "${API_PID:-}" ]]; then
+            kill "${API_PID}" 2>/dev/null || true
+          fi
+
+      - name: Stop Postgres
+        if: always()
+        shell: bash
+        run: |
+          docker rm -f spring-e2e-postgres 2>/dev/null || true
+
+      - name: Stop Ollama
+        if: always()
+        shell: bash
+        run: |
+          pkill -f "ollama serve" 2>/dev/null || true
+
+      - name: Upload Ollama logs (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: ollama-logs
+          path: /tmp/ollama.log
+          if-no-files-found: ignore

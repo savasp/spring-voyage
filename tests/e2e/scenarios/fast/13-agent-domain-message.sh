@@ -11,10 +11,16 @@
 # The scenario deliberately DOES NOT require the dispatch to succeed.
 # Without `execution.tool` configured on the agent, the downstream dispatcher
 # emits `ErrorOccurred` and HTTP may surface a 502; that is fine. The
-# assertion is that the upstream MessageReceived event persisted. The full
-# agent turn (MessageReceived → dispatcher runs → agent response) lives in
-# the LLM-backed scenario pool (see #330/#334) because the dispatch tail
-# needs a real execution tool.
+# assertion is that the upstream MessageReceived event persisted.
+#
+# The full dispatch round-trip (dispatcher → agent JSON-RPC over A2A → agent
+# response back into the timeline) is now guarded by the integration test
+# `A2ADispatchTransportContractTests` (issue #1465) which stands up an
+# in-process JSON-RPC responder and asserts the .NET A2AClient can reach
+# `message/send` at `/`. That test runs on every PR via the integration
+# suite. The LLM-backed end-to-end (with a real LLM in the loop) lives in
+# `scenarios/llm/40-dapr-agent-turn.sh` and runs in the on-demand LLM lane
+# (see `tests/e2e/scenarios/llm/README.md`).
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
@@ -54,10 +60,11 @@ fi
 e2e::log "agent actor id: ${agent_id}"
 
 # --- Send a Domain message ---------------------------------------------------
-# Driven through raw HTTP rather than `spring message send` because the CLI
-# currently crashes on the server's 502 response (dispatch error without an
-# execution tool) before returning. The message itself is delivered and the
-# activity event persists either way.
+# Driven through raw HTTP rather than `spring message send` because the
+# server may surface a 502 here (dispatch error without an execution tool)
+# and we want to assert on the persisted MessageReceived event regardless
+# of the dispatch tail. The actual JSON-RPC dispatch path is covered by
+# `A2ADispatchTransportContractTests` (#1465).
 payload=$(cat <<EOF
 {"to":{"scheme":"agent","path":"${agent}"},"type":"Domain","threadId":"${thread_id}","payload":"hello"}
 EOF

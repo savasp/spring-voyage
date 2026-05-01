@@ -142,26 +142,75 @@ test.describe("killer use case — software-engineering team", () => {
       `/units?node=${encodeURIComponent(name)}&tab=Messages`,
     );
     const composer = page.getByTestId("tab-unit-messages-composer-input");
-    if (await composer.isVisible().catch(() => false)) {
-      await composer.fill(
-        "First task: create an empty CHANGELOG entry for the next release.",
-      );
-      await page.getByTestId("tab-unit-messages-composer-send").click();
-      await expect
-        .poll(
-          async () =>
-            await page
-              .locator('[data-testid^="conversation-event-"]')
-              .count(),
-          { timeout: 30_000 },
-        )
-        .toBeGreaterThan(0);
-    } else {
+    if (!(await composer.isVisible().catch(() => false))) {
       test.info().annotations.push({
         type: "skipped-first-message",
         description:
           "Unit detail Messages tab is not exposing the inline composer — investigate auth/permission propagation.",
       });
+      return;
     }
+
+    await composer.fill(
+      "First task: create an empty CHANGELOG entry for the next release.",
+    );
+    await page.getByTestId("tab-unit-messages-composer-send").click();
+
+    // The user-sent event lands first — assert it shows up.
+    await expect
+      .poll(
+        async () =>
+          await page
+            .locator('[data-testid^="conversation-event-"]')
+            .count(),
+        { timeout: 30_000 },
+      )
+      .toBeGreaterThan(0);
+
+    // ── #1465: assert the agent actually replied ─────────────────────────
+    // The previous version of this spec stopped at the URL transition /
+    // user-sent count, which silently passed when the dispatcher → agent
+    // transport regressed. The killer use case is meaningless if the
+    // orchestrator agent never produces output, so wait for an
+    // `agent://`-sourced (or `agent:id:`-sourced) event to land. Switch
+    // to `/engagement/<thread>` so the canonical timeline (with the
+    // role attribution from #1500) is the source of truth.
+    const threadFromCard = await page
+      .locator('[data-testid^="conversation-event-"]')
+      .first()
+      .getAttribute("data-thread-id")
+      .catch(() => null);
+
+    if (threadFromCard) {
+      await page.goto(`/engagement/${threadFromCard}`);
+      await expect(page.getByTestId("engagement-detail-page")).toBeVisible();
+      // Default filter is "Messages" — flip to "Full timeline" so we
+      // see every agent-emitted event, not just MessageReceived.
+      const filterTrigger = page.getByTestId("timeline-filter-trigger");
+      if (await filterTrigger.isVisible().catch(() => false)) {
+        await filterTrigger.click();
+        await page.getByTestId("timeline-filter-option-full").click();
+      }
+    }
+
+    await expect
+      .poll(
+        async () =>
+          await page
+            .locator(
+              '[data-testid^="conversation-event-"][data-role="agent"]',
+            )
+            .count(),
+        {
+          // Generous: a real LLM turn through dapr-agent on a slow
+          // runner can take well past a minute on first invocation
+          // (image pull + cold start + LLM warmup).
+          timeout: 240_000,
+          intervals: [2000, 5000, 10_000],
+          message:
+            "Expected an agent-authored event on the engagement timeline — the orchestrator either failed to dispatch, or its reply never landed (regression class from #1465).",
+        },
+      )
+      .toBeGreaterThan(0);
   });
 });
