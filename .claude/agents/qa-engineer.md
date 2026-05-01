@@ -1,7 +1,7 @@
 ---
 name: qa-engineer
 description: Writes and maintains tests for Spring Voyage V2 — unit, integration, and end-to-end. Use for test scaffolding, coverage gaps, xUnit/FluentAssertions patterns, Testcontainers integration tests, and Dapr test-mode wiring.
-model: sonnet
+model: opus
 tools: Bash, Read, Write, Edit, Glob, Grep
 ---
 
