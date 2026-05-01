@@ -114,6 +114,8 @@ public class AgentRuntimeRegistryTests
 
         public IReadOnlyList<ModelDescriptor> DefaultModels { get; } = Array.Empty<ModelDescriptor>();
 
+        public string DefaultImage => "fake-image:latest";
+
         public IReadOnlyList<ProbeStep> GetProbeSteps(AgentRuntimeInstallConfig config, string credential) =>
             Array.Empty<ProbeStep>();
 

@@ -132,8 +132,23 @@ function makeRuntime(
   overrides: Partial<InstalledAgentRuntimeResponse>,
 ): InstalledAgentRuntimeResponse {
   const now = new Date().toISOString();
+  const id = overrides.id ?? "claude";
+  const defaultImageForId = (runtimeId: string) => {
+    switch (runtimeId) {
+      case "claude":
+        return "ghcr.io/cvoya-com/spring-voyage-agent-claude-code:latest";
+      case "openai":
+        return "ghcr.io/cvoya-com/spring-voyage-agent-codex:latest";
+      case "google":
+        return "ghcr.io/cvoya-com/spring-voyage-agent-google:latest";
+      case "ollama":
+        return "ghcr.io/cvoya-com/spring-voyage-agent-ollama:latest";
+      default:
+        return "ghcr.io/cvoya-com/spring-voyage-agent-base:latest";
+    }
+  };
   return {
-    id: "claude",
+    id,
     displayName: "Claude",
     toolKind: "claude-code-cli",
     installedAt: now,
@@ -143,6 +158,8 @@ function makeRuntime(
     baseUrl: null,
     credentialKind: "ApiKey",
     credentialDisplayHint: null,
+    credentialSecretName: "anthropic-api-key",
+    defaultImage: defaultImageForId(id),
     ...overrides,
   } as InstalledAgentRuntimeResponse;
 }

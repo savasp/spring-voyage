@@ -10342,7 +10342,8 @@
           "baseUrl",
           "credentialKind",
           "credentialDisplayHint",
-          "credentialSecretName"
+          "credentialSecretName",
+          "defaultImage"
         ],
         "type": "object",
         "properties": {
@@ -10391,6 +10392,9 @@
             ]
           },
           "credentialSecretName": {
+            "type": "string"
+          },
+          "defaultImage": {
             "type": "string"
           }
         }

@@ -88,6 +88,13 @@ import {
 
 const DEFAULT_COLOR = "#6366f1";
 
+// #1508: the base/omnibus image that is pre-filled into the image field
+// when the wizard first renders. Switching to a runtime replaces it with
+// the runtime's own defaultImage (while the field still holds this value).
+// Once the operator edits the field or a runtime image has been applied,
+// further runtime changes never overwrite the value again.
+const BASE_IMAGE = "ghcr.io/cvoya-com/spring-voyage-agent-base:latest";
+
 // #1132: how long to wait between the last form-state change and the
 // sessionStorage write. 300ms is short enough that a refresh-after-fill
 // almost always picks up the latest values, while still coalescing the
@@ -315,6 +322,39 @@ export function deriveRequiredCredentialRuntime(
 }
 
 /**
+ * #1508: resolve the defaultImage for the runtime that matches the
+ * current tool + provider selection, or null when no matching runtime
+ * is installed.
+ */
+function deriveRuntimeDefaultImage(
+  tool: ExecutionTool,
+  provider: string,
+  runtimes: InstalledAgentRuntimeResponse[] | null,
+): string | null {
+  if (!runtimes || runtimes.length === 0) return null;
+
+  const lookup = (id: string) =>
+    runtimes.find((r) => r.id.toLowerCase() === id.toLowerCase()) ?? null;
+
+  switch (tool) {
+    case "claude-code":
+      return lookup("claude")?.defaultImage ?? null;
+    case "codex":
+      return lookup("openai")?.defaultImage ?? null;
+    case "gemini":
+      return lookup("google")?.defaultImage ?? null;
+    case "dapr-agent": {
+      const normalised = provider.trim().toLowerCase();
+      const runtimeId = normalised === "anthropic" ? "claude" : normalised;
+      return lookup(runtimeId)?.defaultImage ?? null;
+    }
+    case "custom":
+    default:
+      return null;
+  }
+}
+
+/**
  * #1132: lift a persisted snapshot back into a `FormState`. The
  * snapshot stores `tool` / `hosting` as plain strings (so a future
  * release that adds a new value doesn't have to bump the schema
@@ -402,7 +442,8 @@ const INITIAL_FORM: FormState = {
   color: DEFAULT_COLOR,
   tool: DEFAULT_EXECUTION_TOOL,
   hosting: DEFAULT_HOSTING_MODE,
-  image: "",
+  // #1508: pre-fill the base image so the field is never blank.
+  image: BASE_IMAGE,
   runtime: "",
   mode: null,
   templateId: null,
@@ -531,6 +572,17 @@ export default function CreateUnitPage() {
       };
     }
     return base;
+  });
+  // #1508: track whether the image field is still at the base-image
+  // placeholder ("base") or has been overwritten by a runtime pick or
+  // a manual edit ("applied"). Once "applied", runtime changes never
+  // touch the field again.
+  const [imageSource, setImageSource] = useState<"base" | "applied">(() => {
+    // Rehydrate: if the snapshot's image differs from BASE_IMAGE the
+    // operator had already applied a value in a previous session.
+    const snap = initialSnapshot?.form;
+    if (snap && snap.image && snap.image !== BASE_IMAGE) return "applied";
+    return "base";
   });
   const [stepError, setStepError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -779,6 +831,38 @@ export default function CreateUnitPage() {
     );
   }
 
+  // #1508: when the agent-runtimes catalog first arrives and the image
+  // field is still at the base placeholder, apply the active runtime's
+  // default image. This handles the case where runtimes load after
+  // initial render (the onChange handler can't fire before runtimes
+  // arrive). The same "base → applied" state machine applies: once
+  // applied we never overwrite again. We gate on `imageSource === "base"`
+  // so a rehydrated snapshot with a non-base image is never touched.
+  const initialRuntimeImage = useMemo(
+    () =>
+      deriveRuntimeDefaultImage(
+        form.tool,
+        form.provider,
+        agentRuntimes.length > 0 ? agentRuntimes : null,
+      ),
+    // Re-derive only when runtimes first arrive (agentRuntimes.length
+    // flips 0 → N) or when the tool/provider changes (handled separately
+    // by the onChange handlers above; this catches the initial load race).
+    [form.tool, form.provider, agentRuntimes],
+  );
+  if (
+    imageSource === "base" &&
+    initialRuntimeImage !== null &&
+    form.image !== initialRuntimeImage
+  ) {
+    setImageSource("applied");
+    setForm((prev) =>
+      prev.image === initialRuntimeImage
+        ? prev
+        : { ...prev, image: initialRuntimeImage },
+    );
+  }
+
   // #690: derive the runtime that actually needs a credential for the
   // current tool+provider selection. `null` means "no credential
   // required" (custom tool, uninstalled runtime, or `CredentialKind.None`).
@@ -876,6 +960,12 @@ export default function CreateUnitPage() {
   };
 
   const validateStep2 = (): string | null => {
+    // #1508: image is required — the pre-fill ensures this is never blank
+    // in normal flow, but enforce defensively so a stale snapshot cannot
+    // produce a unit that immediately fails PullingImage validation.
+    if (!form.image.trim()) {
+      return "A container image is required. Set one in the Execution environment section.";
+    }
     // Issue #661: the Execution screen requires a selected model whenever
     // the tool has a known catalog. `modelIsSelected` covers the happy
     // path; the one branch it doesn't cover is "tool=custom" (no catalog
@@ -1566,6 +1656,9 @@ export default function CreateUnitPage() {
       // Execution step. T-07 (#949): no wizard-time credential
       // validation — the backend validates asynchronously after create
       // and the detail page's Validation panel reports the result.
+      // #1508: image is required; the pre-fill ensures this is almost
+      // never blank, but gate defensively.
+      if (!form.image.trim()) return false;
       // Issue #661: require a selected model before advancing (for
       // tools with a known catalog). Custom tools skip the check —
       // they have no declared model list.
@@ -2019,8 +2112,26 @@ export default function CreateUnitPage() {
                   // arrives, so the tool-change handler just clears
                   // the current model and lets the effect snap to
                   // the new runtime's default.
+                  // #1508: if the image field is still at the base
+                  // placeholder, apply the new runtime's default image
+                  // and flip imageSource to "applied".
                   const nextTool = e.target.value as ExecutionTool;
-                  setForm((prev) => ({ ...prev, tool: nextTool, model: "" }));
+                  const runtimeImage = deriveRuntimeDefaultImage(
+                    nextTool,
+                    form.provider,
+                    agentRuntimes.length > 0 ? agentRuntimes : null,
+                  );
+                  if (imageSource === "base" && runtimeImage) {
+                    setImageSource("applied");
+                    setForm((prev) => ({
+                      ...prev,
+                      tool: nextTool,
+                      model: "",
+                      image: runtimeImage,
+                    }));
+                  } else {
+                    setForm((prev) => ({ ...prev, tool: nextTool, model: "" }));
+                  }
                 }}
                 aria-label="Execution tool"
                 className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
@@ -2050,11 +2161,28 @@ export default function CreateUnitPage() {
                   value={form.provider}
                   onChange={(e) => {
                     const nextProvider = e.target.value;
-                    setForm((prev) => ({
-                      ...prev,
-                      provider: nextProvider,
-                      model: "",
-                    }));
+                    // #1508: apply the new runtime's default image when
+                    // the image field is still at the base placeholder.
+                    const runtimeImage = deriveRuntimeDefaultImage(
+                      "dapr-agent",
+                      nextProvider,
+                      agentRuntimes.length > 0 ? agentRuntimes : null,
+                    );
+                    if (imageSource === "base" && runtimeImage) {
+                      setImageSource("applied");
+                      setForm((prev) => ({
+                        ...prev,
+                        provider: nextProvider,
+                        model: "",
+                        image: runtimeImage,
+                      }));
+                    } else {
+                      setForm((prev) => ({
+                        ...prev,
+                        provider: nextProvider,
+                        model: "",
+                      }));
+                    }
                   }}
                   aria-label="LLM provider"
                   disabled={daprAgentRuntimes.length === 0}
@@ -2152,9 +2280,8 @@ export default function CreateUnitPage() {
                   Execution environment
                 </h3>
                 <p className="text-xs text-muted-foreground">
-                  Defaults inherited by member agents. Leave blank to use
-                  platform defaults; individual agents can override each
-                  field on their Execution panel.
+                  Defaults inherited by member agents. Individual agents can
+                  override each field on their Execution panel.
                 </p>
               </div>
 
@@ -2183,8 +2310,13 @@ export default function CreateUnitPage() {
                         : undefined
                     }
                     value={form.image}
-                    onChange={(e) => update("image", e.target.value)}
-                    placeholder="ghcr.io/... or localhost/spring-voyage-agent-claude-code:latest"
+                    onChange={(e) => {
+                      // #1508: any manual edit locks the image field —
+                      // subsequent runtime changes will never overwrite it.
+                      if (imageSource === "base") setImageSource("applied");
+                      update("image", e.target.value);
+                    }}
+                    placeholder="ghcr.io/cvoya-com/spring-voyage-agent-base:latest"
                     aria-label="Execution image"
                     className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                   />

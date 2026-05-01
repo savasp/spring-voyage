@@ -487,6 +487,7 @@ public static class AgentRuntimeEndpoints
             BaseUrl: install.Config.BaseUrl,
             CredentialKind: runtime.CredentialSchema.Kind,
             CredentialDisplayHint: runtime.CredentialSchema.DisplayHint,
-            CredentialSecretName: runtime.CredentialSecretName);
+            CredentialSecretName: runtime.CredentialSecretName,
+            DefaultImage: runtime.DefaultImage);
     }
 }
