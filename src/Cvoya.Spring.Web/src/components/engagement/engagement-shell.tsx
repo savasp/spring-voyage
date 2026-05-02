@@ -96,9 +96,14 @@ function EngagementSidebarFallback() {
 
 export function EngagementShell({ children }: EngagementShellProps) {
   return (
+    // h-full (not min-h-full) is load-bearing: AppShell's <main> has
+    // overflow-y-auto, so a min-height shell is allowed to grow taller than
+    // the viewport when the timeline is tall. With h-full the shell is exactly
+    // the height of main's content box, the inner timeline owns the only
+    // scrollbar, and the composer stays pinned at the bottom (#1546, #1549).
     <div
       data-testid="engagement-shell"
-      className="-m-4 flex min-h-full flex-col md:-m-6"
+      className="-m-4 flex h-full flex-col md:-m-6"
     >
       {/* Engagement portal header band */}
       <header

@@ -85,16 +85,39 @@ public static class MessageReceivedDetails
     }
 
     /// <summary>
-    /// Returns the rendered text from <paramref name="payload"/> when the
-    /// caller wrapped a string (the <c>spring message send</c> path), or
-    /// <c>null</c> when the payload is structured (object/array) or absent.
-    /// Callers fall back to <c>payload</c> for non-string bodies.
+    /// Returns the rendered text from <paramref name="payload"/>.
+    /// Recognises two shapes:
+    /// <list type="bullet">
+    ///   <item><description>
+    ///     A bare JSON string — the <c>spring message send</c> /
+    ///     <c>ThreadMessageRequest</c> path. The string is returned verbatim.
+    ///   </description></item>
+    ///   <item><description>
+    ///     A JSON object with an <c>Output</c> string property — the shape
+    ///     produced by <c>A2AExecutionDispatcher</c> for agent replies
+    ///     (<c>{ Output, ExitCode, [Error] }</c>). The <c>Output</c> string is
+    ///     returned so the thread surfaces render the agent's natural-language
+    ///     reply rather than only the envelope summary line (#1547, #1549).
+    ///   </description></item>
+    /// </list>
+    /// Returns <c>null</c> for any other shape (structured non-reply payloads,
+    /// arrays, absent payloads); callers fall back to <c>payload</c> for those.
     /// </summary>
     public static string? TryExtractText(JsonElement payload)
     {
-        return payload.ValueKind == JsonValueKind.String
-            ? payload.GetString()
-            : null;
+        if (payload.ValueKind == JsonValueKind.String)
+        {
+            return payload.GetString();
+        }
+
+        if (payload.ValueKind == JsonValueKind.Object
+            && payload.TryGetProperty("Output", out var outputProp)
+            && outputProp.ValueKind == JsonValueKind.String)
+        {
+            return outputProp.GetString();
+        }
+
+        return null;
     }
 
     private static string FormatAddress(Address address) =>

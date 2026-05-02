@@ -30,6 +30,34 @@ function tabSlug(tab: TabName): string {
   return tab.toLowerCase();
 }
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * UUID-shaped names slip through to the header when an entity was
+ * registered without a display name (the directory falls back to the
+ * address path, which is the actor UUID). Surfacing the bare UUID as
+ * the page title is meaningless to the user — the panel reads as
+ * "<some-uuid> active" with nothing to anchor it (#1548). When we
+ * detect that shape we drop the bare UUID into a muted, monospace
+ * "ID:" caption and use the kind ("Agent" / "Unit" / "Tenant") as
+ * the visible title so the header still has a meaningful anchor.
+ */
+function isUuidShaped(name: string): boolean {
+  return UUID_RE.test(name.trim());
+}
+
+function kindLabel(kind: NodeKind): string {
+  switch (kind) {
+    case "Tenant":
+      return "Tenant";
+    case "Unit":
+      return "Unit";
+    case "Agent":
+      return "Agent";
+  }
+}
+
 interface DetailPaneProps {
   node: TreeNode;
   path: TreeNode[];
@@ -120,7 +148,30 @@ export function DetailPane({
             kind={node.kind}
             className="h-5 w-5 shrink-0 text-muted-foreground"
           />
-          <h1 className="truncate text-lg font-semibold">{node.name}</h1>
+          {isUuidShaped(node.name) ? (
+            <div className="flex min-w-0 flex-col">
+              <h1
+                className="truncate text-lg font-semibold"
+                data-testid="detail-title"
+              >
+                {kindLabel(node.kind)}
+              </h1>
+              <span
+                className="truncate font-mono text-[11px] text-muted-foreground"
+                title={node.name}
+                data-testid="detail-title-id"
+              >
+                ID: {node.name}
+              </span>
+            </div>
+          ) : (
+            <h1
+              className="truncate text-lg font-semibold"
+              data-testid="detail-title"
+            >
+              {node.name}
+            </h1>
+          )}
           <Badge variant="outline" className="capitalize">
             {node.status}
           </Badge>

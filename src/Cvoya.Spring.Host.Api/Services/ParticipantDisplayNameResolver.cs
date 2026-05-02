@@ -84,7 +84,72 @@ internal sealed class ParticipantDisplayNameResolver(
                 return uuidStr;
             }
 
-            // For other identity-form schemes, fall back to uuid portion.
+            // Agent / unit identity form: NormaliseSource emits "agent:id:<uuid>"
+            // / "unit:id:<uuid>" whenever the activity event was persisted with
+            // the actor UUID as the source — which is the common case. Look up
+            // the entity by ActorId (the same UUID) so the thread surfaces show
+            // the agent / unit name instead of a raw UUID (#1545, #1547, #1548).
+            if (string.Equals(scheme, "agent", StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    var name = await db.AgentDefinitions
+                        .AsNoTracking()
+                        .Where(a => a.ActorId == uuidStr && a.DeletedAt == null)
+                        .Select(a => a.Name)
+                        .FirstOrDefaultAsync(cancellationToken);
+
+                    if (!string.IsNullOrWhiteSpace(name))
+                    {
+                        return name;
+                    }
+
+                    logger.LogDebug(
+                        "No agent definition found for actor id {ActorId}; falling back to UUID.",
+                        uuidStr);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogDebug(
+                        ex,
+                        "Failed to resolve display name for agent actor id {ActorId}; falling back to UUID.",
+                        uuidStr);
+                }
+
+                return uuidStr;
+            }
+
+            if (string.Equals(scheme, "unit", StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    var name = await db.UnitDefinitions
+                        .AsNoTracking()
+                        .Where(u => u.ActorId == uuidStr && u.DeletedAt == null)
+                        .Select(u => u.Name)
+                        .FirstOrDefaultAsync(cancellationToken);
+
+                    if (!string.IsNullOrWhiteSpace(name))
+                    {
+                        return name;
+                    }
+
+                    logger.LogDebug(
+                        "No unit definition found for actor id {ActorId}; falling back to UUID.",
+                        uuidStr);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogDebug(
+                        ex,
+                        "Failed to resolve display name for unit actor id {ActorId}; falling back to UUID.",
+                        uuidStr);
+                }
+
+                return uuidStr;
+            }
+
+            // Unknown identity-form scheme — fall back to the uuid portion.
             return uuidStr;
         }
 
