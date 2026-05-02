@@ -2666,6 +2666,246 @@
         }
       }
     },
+    "/api/v1/packages/install": {
+      "post": {
+        "tags": [
+          "PackageInstall"
+        ],
+        "summary": "Install one or more packages as a single atomic batch",
+        "description": "Phase 1 (single EF transaction): validate, topo-sort, collision pre-flight, write staging rows. Phase 2 (post-commit): activate actors in dependency order. Returns 201 with the install status. Phase-2 failures appear as status=failed in the body; use GET /api/v1/installs/{id} for detail.",
+        "operationId": "InstallPackages",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PackageInstallRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstallStatusResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/packages/install/file": {
+      "post": {
+        "tags": [
+          "PackageInstall"
+        ],
+        "summary": "Install a package from an uploaded YAML file (browse path, ADR-0035 decision 13)",
+        "description": "Accepts a multipart/form-data upload containing the package YAML. For v0.1 the upload is one-shot: install and discard (no persistent tenant-scoped catalog). Same response shape as InstallPackages.",
+        "operationId": "InstallPackageFromFile",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "$ref": "#/components/schemas/IFormFile"
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstallStatusResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/installs/{id}": {
+      "get": {
+        "tags": [
+          "PackageInstall"
+        ],
+        "summary": "Get install status, including per-package detail",
+        "operationId": "GetInstallStatus",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstallStatusResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/installs/{id}/retry": {
+      "post": {
+        "tags": [
+          "PackageInstall"
+        ],
+        "summary": "Re-run Phase 2 for a failed install",
+        "description": "Re-activates every package whose state is not yet active. Phase 1 rows stay intact. Returns 200 with the updated status.",
+        "operationId": "RetryInstall",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstallStatusResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/installs/{id}/abort": {
+      "post": {
+        "tags": [
+          "PackageInstall"
+        ],
+        "summary": "Discard all staging rows for a failed install",
+        "description": "Deletes every row in package_installs, unit_definitions, connector_definitions, and tenant_skill_bundle_bindings for this install_id. Runs in a single EF transaction. After abort the install is gone.",
+        "operationId": "AbortInstall",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/tenant/messages": {
       "post": {
         "tags": [
@@ -10271,6 +10511,10 @@
           }
         }
       },
+      "IFormFile": {
+        "type": "string",
+        "format": "binary"
+      },
       "InboxItemResponse": {
         "required": [
           "threadId",
@@ -10490,6 +10734,74 @@
           },
           "config": {
             "$ref": "#/components/schemas/JsonElement"
+          }
+        }
+      },
+      "InstallPackageDetail": {
+        "required": [
+          "packageName",
+          "state",
+          "errorMessage"
+        ],
+        "type": "object",
+        "properties": {
+          "packageName": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "errorMessage": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "InstallStatusResponse": {
+        "required": [
+          "installId",
+          "status",
+          "packages",
+          "startedAt",
+          "completedAt",
+          "error"
+        ],
+        "type": "object",
+        "properties": {
+          "installId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string"
+          },
+          "packages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InstallPackageDetail"
+            }
+          },
+          "startedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "completedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "error": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -10883,6 +11195,41 @@
           },
           "withValues": {
             "type": "boolean"
+          }
+        }
+      },
+      "PackageInstallRequest": {
+        "required": [
+          "targets"
+        ],
+        "type": "object",
+        "properties": {
+          "targets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PackageInstallTarget"
+            }
+          }
+        }
+      },
+      "PackageInstallTarget": {
+        "required": [
+          "packageName",
+          "inputs"
+        ],
+        "type": "object",
+        "properties": {
+          "packageName": {
+            "type": "string"
+          },
+          "inputs": {
+            "type": [
+              "null",
+              "object"
+            ],
+            "additionalProperties": {
+              "type": "string"
+            }
           }
         }
       },
@@ -13021,6 +13368,9 @@
     },
     {
       "name": "Packages"
+    },
+    {
+      "name": "PackageInstall"
     },
     {
       "name": "Messages"

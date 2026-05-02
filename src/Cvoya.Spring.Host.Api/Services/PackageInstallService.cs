@@ -414,14 +414,22 @@ public class PackageInstallService : IPackageInstallService
     private static List<(InstallTarget Target, ResolvedPackage Package)> TopologicalSort(
         List<(InstallTarget Target, ResolvedPackage Package)> items)
     {
-        // Build dependency map: packageName → set of packages it depends on.
-        var deps = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+        // Build dependency map: packageName → set of packages it depends on
+        // (only within-batch deps count; external deps are resolved by Phase 2
+        // ordering within each package).
         var byName = new Dictionary<string, (InstallTarget Target, ResolvedPackage Package)>(
             StringComparer.OrdinalIgnoreCase);
 
         foreach (var item in items)
         {
             byName[item.Package.Name] = item;
+        }
+
+        // Second pass: build deps map with byName fully populated so that
+        // IntersectWith sees ALL batch packages, not just those seen so far.
+        var deps = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in items)
+        {
             var crossRefs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var artefacts in new[] { item.Package.Units, item.Package.Agents,
                 item.Package.Skills, item.Package.Workflows })
@@ -436,16 +444,22 @@ public class PackageInstallService : IPackageInstallService
             deps[item.Package.Name] = crossRefs;
         }
 
-        // Kahn's algorithm.
+        // Kahn's algorithm. inDegree[X] = number of packages X depends on
+        // within this batch (i.e. X's in-edges in the dependency DAG where an
+        // edge A→B means "A must be activated after B"). Packages with
+        // inDegree 0 have no batch-internal dependencies and are activated
+        // first.
         var inDegree = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         foreach (var name in byName.Keys) inDegree[name] = 0;
         foreach (var (name, depSet) in deps)
         {
+            // Each dep in depSet is a package that 'name' depends on, so
+            // 'name' has one more incoming dependency edge.
             foreach (var dep in depSet)
             {
                 if (inDegree.ContainsKey(dep))
                 {
-                    inDegree[dep]++;
+                    inDegree[name]++;
                 }
             }
         }
@@ -458,6 +472,9 @@ public class PackageInstallService : IPackageInstallService
             var node = queue.Dequeue();
             sorted.Add(byName[node]);
 
+            // 'node' has been placed. Reduce the in-degree of every package
+            // that depends on 'node'; once their count hits 0, all their
+            // dependencies have been placed and they can be enqueued.
             foreach (var (depName, depSet) in deps)
             {
                 if (depSet.Contains(node))
