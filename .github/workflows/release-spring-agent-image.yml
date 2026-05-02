@@ -113,7 +113,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       # GITHUB_TOKEN is minted per job with the 'packages: write' scope
       # declared above - no PAT or long-lived secret in play. The token's
