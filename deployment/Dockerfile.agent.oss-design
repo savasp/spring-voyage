@@ -1,0 +1,84 @@
+# syntax=docker/dockerfile:1.7
+#
+# Spring Voyage — spring-voyage-agent-oss-design
+#
+# Role: Design
+# Unit: Spring Voyage OSS dogfooding unit
+#
+# Bundles on top of the spring-voyage-agents omnibus base:
+#   - Playwright + Chromium   — visual review, screenshot capture, accessibility
+#                               checks. Firefox and WebKit are not installed for
+#                               the design role; Chromium covers primary needs.
+#   - @mermaid-js/mermaid-cli — diagram generation from Markdown (architecture
+#                               diagrams, flow charts, sequence diagrams)
+#   - ImageMagick             — image conversion, resizing, comparison for
+#                               mockup and asset workflows
+#
+# Node 22 + npm are inherited from the omnibus base and are not re-installed.
+#
+# Conforms to ADR-0027 BYOI path 1: ENTRYPOINT is inherited unchanged from the
+# omnibus base (tini → node sidecar); do NOT override it here.
+#
+# Build (from repo root):
+#   docker build \
+#     -f deployment/Dockerfile.agent.oss-design \
+#     -t ghcr.io/cvoya-com/spring-voyage-agent-oss-design:dev \
+#     .
+
+ARG AGENT_BASE_IMAGE=ghcr.io/cvoya-com/spring-voyage-agents:latest
+ARG PLAYWRIGHT_VERSION=1.49.1
+ARG MERMAID_CLI_VERSION=11.14.0
+
+FROM ${AGENT_BASE_IMAGE}
+
+# Re-declare ARGs after FROM so they are in scope for RUN steps below.
+ARG PLAYWRIGHT_VERSION
+ARG MERMAID_CLI_VERSION
+
+USER root
+
+# ---- Playwright + Chromium + required apt deps ---------------------------------
+# System libraries required by the Chromium browser engine. Listed explicitly
+# for reproducibility; these are what `npx playwright install-deps` would add.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      libnss3 \
+      libnspr4 \
+      libatk1.0-0 \
+      libatk-bridge2.0-0 \
+      libcups2 \
+      libdrm2 \
+      libxkbcommon0 \
+      libxcomposite1 \
+      libxdamage1 \
+      libxfixes3 \
+      libxrandr2 \
+      libgbm1 \
+      libpango-1.0-0 \
+      libcairo2 \
+      libasound2 \
+ && rm -rf /var/lib/apt/lists/*
+
+RUN npm install -g "playwright@${PLAYWRIGHT_VERSION}" \
+ && npx playwright install --with-deps chromium
+
+# ---- @mermaid-js/mermaid-cli ---------------------------------------------------
+RUN npm install -g "@mermaid-js/mermaid-cli@${MERMAID_CLI_VERSION}" \
+ && command -v mmdc >/dev/null
+
+# ---- ImageMagick ---------------------------------------------------------------
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends imagemagick \
+ && rm -rf /var/lib/apt/lists/*
+
+USER agent
+
+# ---- labels --------------------------------------------------------------------
+LABEL org.opencontainers.image.title="spring-voyage-agent-oss-design" \
+      org.opencontainers.image.description="Design role image for the Spring Voyage OSS dogfooding unit. Bundles Playwright + Chromium, @mermaid-js/mermaid-cli, and ImageMagick on top of the spring-voyage-agents omnibus base." \
+      org.opencontainers.image.source="https://github.com/cvoya-com/spring-voyage" \
+      com.cvoya.spring-voyage.playwright-version="${PLAYWRIGHT_VERSION}" \
+      com.cvoya.spring-voyage.mermaid-cli-version="${MERMAID_CLI_VERSION}"
+
+# Entrypoint inherited from spring-voyage-agents (tini → node sidecar).
+# ADR-0027 BYOI path 1: do NOT override ENTRYPOINT here.

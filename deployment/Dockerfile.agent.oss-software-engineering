@@ -1,0 +1,113 @@
+# syntax=docker/dockerfile:1.7
+#
+# Spring Voyage — spring-voyage-agent-oss-software-engineering
+#
+# Role: Software Engineering
+# Unit: Spring Voyage OSS dogfooding unit
+#
+# Bundles on top of the spring-voyage-agents omnibus base:
+#   - .NET 10 SDK       — dotnet build / test / format at the solution root
+#   - gh CLI            — issue/PR work via the unit's GitHub App connector
+#   - ruff              — Python linter for agents/
+#   - Playwright + Chromium/Firefox/WebKit + required apt deps
+#                       — browser-based end-to-end tests under the SE team's remit
+#
+# Node 22 + npm are inherited from the omnibus base (spring-voyage-agent-base)
+# and are not re-installed here; they are available for `npm run lint`,
+# `npm --workspace=spring-voyage-dashboard run knip`, tsc, etc.
+#
+# Conforms to ADR-0027 BYOI path 1: ENTRYPOINT is inherited unchanged from the
+# omnibus base (tini → node sidecar); do NOT override it here.
+#
+# Build (from repo root):
+#   docker build \
+#     -f deployment/Dockerfile.agent.oss-software-engineering \
+#     -t ghcr.io/cvoya-com/spring-voyage-agent-oss-software-engineering:dev \
+#     .
+
+ARG AGENT_BASE_IMAGE=ghcr.io/cvoya-com/spring-voyage-agents:latest
+# .NET 10 SDK — Microsoft packages for Debian bookworm (forward-compatible with
+# trixie; MS does not yet ship a separate trixie feed as of 2026-05). Bookworm
+# packages install cleanly on the python:3.13-slim (Debian trixie) base.
+ARG DOTNET_SDK_VERSION=10.0
+ARG GH_CLI_VERSION=2.92.0
+ARG RUFF_VERSION=0.15.12
+ARG PLAYWRIGHT_VERSION=1.49.1
+
+FROM ${AGENT_BASE_IMAGE}
+
+# Re-declare ARGs after FROM so they are in scope for RUN steps below.
+ARG DOTNET_SDK_VERSION
+ARG GH_CLI_VERSION
+ARG RUFF_VERSION
+ARG PLAYWRIGHT_VERSION
+
+USER root
+
+# ---- .NET 10 SDK ---------------------------------------------------------------
+# Using bookworm (Debian 12) packages-microsoft-prod feed. The omnibus base is
+# python:3.13-slim (Debian trixie / 13). Microsoft has not yet published a
+# dedicated trixie feed; the bookworm packages are forward-compatible.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends curl ca-certificates \
+ && rm -rf /var/lib/apt/lists/* \
+ && curl -fsSL https://packages.microsoft.com/config/debian/12/packages-microsoft-prod.deb \
+      -o /tmp/pmp.deb \
+ && dpkg -i /tmp/pmp.deb \
+ && rm /tmp/pmp.deb \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends dotnet-sdk-${DOTNET_SDK_VERSION} \
+ && rm -rf /var/lib/apt/lists/*
+
+# ---- gh CLI --------------------------------------------------------------------
+RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+      | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
+ && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
+ && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+      > /etc/apt/sources.list.d/github-cli.list \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends gh \
+ && rm -rf /var/lib/apt/lists/*
+
+# ---- ruff ----------------------------------------------------------------------
+RUN pip install --no-cache-dir --break-system-packages "ruff==${RUFF_VERSION}"
+
+# ---- Playwright + browsers + required apt deps ---------------------------------
+# System libraries required by Playwright browser engines (Chromium, Firefox,
+# WebKit). These are the packages that `npx playwright install-deps` would
+# otherwise install; listed explicitly for reproducibility and layer caching.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      libnss3 \
+      libnspr4 \
+      libatk1.0-0 \
+      libatk-bridge2.0-0 \
+      libcups2 \
+      libdrm2 \
+      libxkbcommon0 \
+      libxcomposite1 \
+      libxdamage1 \
+      libxfixes3 \
+      libxrandr2 \
+      libgbm1 \
+      libpango-1.0-0 \
+      libcairo2 \
+      libasound2 \
+ && rm -rf /var/lib/apt/lists/*
+
+RUN npm install -g "playwright@${PLAYWRIGHT_VERSION}" \
+ && npx playwright install --with-deps chromium firefox webkit
+
+USER agent
+
+# ---- labels --------------------------------------------------------------------
+LABEL org.opencontainers.image.title="spring-voyage-agent-oss-software-engineering" \
+      org.opencontainers.image.description="Software engineering role image for the Spring Voyage OSS dogfooding unit. Bundles .NET 10 SDK, gh CLI, ruff, and Playwright + Chromium/Firefox/WebKit on top of the spring-voyage-agents omnibus base." \
+      org.opencontainers.image.source="https://github.com/cvoya-com/spring-voyage" \
+      com.cvoya.spring-voyage.dotnet-sdk-version="${DOTNET_SDK_VERSION}" \
+      com.cvoya.spring-voyage.gh-cli-version="${GH_CLI_VERSION}" \
+      com.cvoya.spring-voyage.ruff-version="${RUFF_VERSION}" \
+      com.cvoya.spring-voyage.playwright-version="${PLAYWRIGHT_VERSION}"
+
+# Entrypoint inherited from spring-voyage-agents (tini → node sidecar).
+# ADR-0027 BYOI path 1: do NOT override ENTRYPOINT here.
