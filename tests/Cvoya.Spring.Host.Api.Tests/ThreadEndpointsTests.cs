@@ -12,6 +12,8 @@ using Cvoya.Spring.Core.Directory;
 using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Core.Observability;
 using Cvoya.Spring.Dapr.Actors;
+using Cvoya.Spring.Dapr.Data;
+using Cvoya.Spring.Dapr.Data.Entities;
 using Cvoya.Spring.Host.Api.Models;
 
 using global::Dapr.Actors;
@@ -99,6 +101,96 @@ public class ThreadEndpointsTests : IClassFixture<ThreadEndpointsTests.Factory>
         var response = await _client.GetAsync("/api/v1/tenant/threads/c-missing", ct);
 
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task ListThreads_AgentIdentityFormParticipant_ResolvesToAgentDisplayName()
+    {
+        // #1545 / #1547 / #1548: NormaliseSource emits agent participants as
+        // "agent:id:<uuid>" whenever the activity event was persisted with
+        // the actor UUID as the source. The display-name resolver must look
+        // the agent up by ActorId so the response carries the agent's
+        // human-readable name instead of the bare UUID — without this fix
+        // the portal renders a raw UUID in every thread list row, message
+        // bubble, and explorer header.
+        var ct = TestContext.Current.CancellationToken;
+        var now = DateTimeOffset.UtcNow;
+        var agentActorId = Guid.NewGuid().ToString("D");
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
+            db.AgentDefinitions.Add(new AgentDefinitionEntity
+            {
+                Id = Guid.NewGuid(),
+                AgentId = "ada",
+                ActorId = agentActorId,
+                Name = "Ada Lovelace",
+                TenantId = "default",
+                CreatedAt = now,
+                UpdatedAt = now,
+            });
+            await db.SaveChangesAsync(ct);
+        }
+
+        var participantAddress = $"agent:id:{agentActorId}";
+        _factory.ThreadQueryService
+            .ListAsync(Arg.Any<ThreadQueryFilters>(), Arg.Any<CancellationToken>())
+            .Returns(new List<ThreadSummary>
+            {
+                new("c-id-form", new[] { participantAddress }, "active", now, now, 1, participantAddress, "Started"),
+            });
+
+        var response = await _client.GetAsync("/api/v1/tenant/threads", ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var rows = await response.Content.ReadFromJsonAsync<List<ThreadSummaryResponse>>(ct);
+        rows.ShouldNotBeNull();
+        var participant = rows!.Single().Participants.Single();
+        participant.Address.ShouldBe(participantAddress);
+        participant.DisplayName.ShouldBe("Ada Lovelace");
+    }
+
+    [Fact]
+    public async Task ListThreads_UnitIdentityFormParticipant_ResolvesToUnitDisplayName()
+    {
+        // Same path as the agent test above for unit:id:<uuid> participants.
+        var ct = TestContext.Current.CancellationToken;
+        var now = DateTimeOffset.UtcNow;
+        var unitActorId = Guid.NewGuid().ToString("D");
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
+            db.UnitDefinitions.Add(new UnitDefinitionEntity
+            {
+                Id = Guid.NewGuid(),
+                UnitId = "engineering",
+                ActorId = unitActorId,
+                Name = "Engineering",
+                TenantId = "default",
+                CreatedAt = now,
+                UpdatedAt = now,
+            });
+            await db.SaveChangesAsync(ct);
+        }
+
+        var participantAddress = $"unit:id:{unitActorId}";
+        _factory.ThreadQueryService
+            .ListAsync(Arg.Any<ThreadQueryFilters>(), Arg.Any<CancellationToken>())
+            .Returns(new List<ThreadSummary>
+            {
+                new("c-unit-id", new[] { participantAddress }, "active", now, now, 1, participantAddress, "Started"),
+            });
+
+        var response = await _client.GetAsync("/api/v1/tenant/threads", ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var rows = await response.Content.ReadFromJsonAsync<List<ThreadSummaryResponse>>(ct);
+        rows.ShouldNotBeNull();
+        var participant = rows!.Single().Participants.Single();
+        participant.Address.ShouldBe(participantAddress);
+        participant.DisplayName.ShouldBe("Engineering");
     }
 
     [Fact]

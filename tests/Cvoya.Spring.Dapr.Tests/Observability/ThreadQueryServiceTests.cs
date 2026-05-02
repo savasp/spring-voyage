@@ -405,6 +405,52 @@ public class ThreadQueryServiceTests : IDisposable
         evt.Body.ShouldBe("Approve merge?");
     }
 
+    [Fact]
+    public async Task GetAsync_AgentReplyEnvelope_ExtractsOutputAsBody()
+    {
+        // #1547 / #1549: agent replies are routed back as
+        // { Output: "<text>", ExitCode: 0 } objects (the
+        // A2AExecutionDispatcher response shape), so MessageReceivedDetails
+        // must surface the Output string as the message body — otherwise the
+        // recipient's MessageReceived event has a null body and the portal
+        // bubble falls back to the envelope summary line ("Received Domain
+        // message <uuid> from …").
+        var messageId = Guid.NewGuid();
+        var replyPayload = JsonSerializer.SerializeToElement(new
+        {
+            Output = "Merge approved — looks good to ship.",
+            ExitCode = 0,
+        });
+        var message = new Message(
+            messageId,
+            new Address("agent", "ada"),
+            new Address("human", "savasp"),
+            MessageType.Domain,
+            "c-reply",
+            replyPayload,
+            DateTimeOffset.UtcNow);
+
+        _db.ActivityEvents.Add(new ActivityEventRecord
+        {
+            Id = Guid.NewGuid(),
+            Source = "human:savasp",
+            EventType = nameof(ActivityEventType.MessageReceived),
+            Severity = "Info",
+            Summary = $"Received Domain message {message.Id} from agent://ada",
+            Details = MessageReceivedDetails.Build(message),
+            CorrelationId = "c-reply",
+            Timestamp = DateTimeOffset.UtcNow,
+        });
+        await _db.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        var svc = new ThreadQueryService(_db);
+        var detail = await svc.GetAsync("c-reply", TestContext.Current.CancellationToken);
+
+        detail.ShouldNotBeNull();
+        var evt = detail!.Events.Single();
+        evt.Body.ShouldBe("Merge approved — looks good to ship.");
+    }
+
     // --- UnreadCount tests (#1477) ---
 
     [Fact]

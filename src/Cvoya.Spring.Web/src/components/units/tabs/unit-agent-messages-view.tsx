@@ -237,12 +237,17 @@ export function UnitAgentMessagesView({
   }
 
   return (
+    // h-full + min-h-0 anchors the column to the explorer tab panel's
+    // height so the timeline owns the only scrollbar and the composer
+    // stays pinned at the bottom (#1549). The min-h-[28rem] floor still
+    // applies for short tab panels (compact viewports) so the layout
+    // does not collapse to nothing when the panel itself is short.
     <div
-      className="flex min-h-[28rem] flex-col gap-3"
+      className="flex h-full min-h-[28rem] flex-col gap-3"
       data-testid={rootTestId}
     >
       <div
-        className="flex-1 space-y-3 overflow-auto rounded-md border border-border bg-background p-3"
+        className="min-h-0 flex-1 space-y-3 overflow-auto rounded-md border border-border bg-background p-3"
         data-testid={`${rootTestId}-timeline`}
       >
         {/* Timeline filter header */}

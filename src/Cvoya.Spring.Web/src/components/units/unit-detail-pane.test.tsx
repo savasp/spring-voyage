@@ -171,6 +171,46 @@ describe("DetailPane copy-address button (#1070)", () => {
     );
   });
 
+  // #1548: an entity with no display name surfaces its actor UUID as the
+  // node name. Rendering a bare UUID followed by "active" tells the user
+  // nothing — fall back to the kind label as the title and demote the
+  // UUID into a muted, monospace identifier so the header still reads.
+  it("falls back to kind-as-title and shows an ID caption when name is UUID-shaped (#1548)", () => {
+    const uuidName = "11111111-2222-3333-4444-555555555555";
+    const uuidUnit: TreeNode = {
+      id: uuidName,
+      name: uuidName,
+      kind: "Unit",
+      status: "running",
+    };
+    render(
+      <DetailPane
+        node={uuidUnit}
+        path={[tenant, uuidUnit]}
+        tab="Overview"
+        onTabChange={vi.fn()}
+        onSelectNode={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("detail-title")).toHaveTextContent("Unit");
+    const idCaption = screen.getByTestId("detail-title-id");
+    expect(idCaption).toHaveTextContent(uuidName);
+  });
+
+  it("renders the node name verbatim when it is a normal display name (#1548)", () => {
+    render(
+      <DetailPane
+        node={unit}
+        path={[tenant, unit]}
+        tab="Overview"
+        onTabChange={vi.fn()}
+        onSelectNode={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("detail-title")).toHaveTextContent("Engineering");
+    expect(screen.queryByTestId("detail-title-id")).not.toBeInTheDocument();
+  });
+
   it("swallows clipboard errors so the surface stays usable", async () => {
     const writeText = vi.fn().mockRejectedValue(new Error("denied"));
     Object.defineProperty(navigator, "clipboard", {
