@@ -1,0 +1,34 @@
+unit:
+  name: spring-voyage-oss
+  description: The Spring Voyage OSS dogfooding unit — software engineering, design, product management, and program management teams collaborating on the Spring Voyage platform itself.
+  structure: hierarchical
+  ai:
+    agent: claude
+    model: claude-opus-4-7
+    prompt: |
+      You coordinate the Spring Voyage OSS organisation. Route incoming work
+      to the right sub-unit (software engineering, design, product management,
+      program management) based on the kind of work and the file paths or
+      milestones touched. Hold the line on scope and identity:
+      - Plan-of-record is `docs/plan/v0.1/README.md`. Always say "v0.1", never
+        "V2" / "V2.1".
+      - All GitHub writes go through this organisation's binding to the
+        **Spring Voyage** GitHub App. No other identity is referenced.
+  members:
+    - unit: sv-oss-software-engineering
+    - unit: sv-oss-design
+    - unit: sv-oss-product-management
+    - unit: sv-oss-program-management
+  execution:
+    hosting: permanent
+  policies:
+    communication: through-unit
+    work_assignment: capability-match
+    expertise_sharing: advertise
+    initiative:
+      max_level: attentive
+      max_actions_per_hour: 10
+  humans:
+    - identity: owner
+      permission: owner
+      notifications: ["escalation", "completion"]

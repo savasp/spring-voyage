@@ -1,0 +1,122 @@
+# syntax=docker/dockerfile:1.7
+#
+# Spring Voyage — spring-voyage-agent-oss-software-engineering
+#
+# Role: Software Engineering
+# Unit: Spring Voyage OSS dogfooding unit
+#
+# Bundles on top of the spring-voyage-agents omnibus base:
+#   - .NET 10 SDK       — dotnet build / test / format at the solution root
+#   - gh CLI            — issue/PR work via the unit's GitHub App connector
+#   - ruff              — Python linter for agents/
+#   - Playwright + Chromium/Firefox/WebKit + required apt deps
+#                       — browser-based end-to-end tests under the SE team's remit
+#
+# Node 22 + npm are inherited from the omnibus base (spring-voyage-agent-base)
+# and are not re-installed here; they are available for `npm run lint`,
+# `npm --workspace=spring-voyage-dashboard run knip`, tsc, etc.
+#
+# Conforms to ADR-0027 BYOI path 1: ENTRYPOINT is inherited unchanged from the
+# omnibus base (tini → node sidecar); do NOT override it here.
+#
+# Build (from repo root):
+#   docker build \
+#     -f deployment/Dockerfile.agent.oss-software-engineering \
+#     -t ghcr.io/cvoya-com/spring-voyage-agent-oss-software-engineering:dev \
+#     .
+
+ARG AGENT_BASE_IMAGE=ghcr.io/cvoya-com/spring-voyage-agents:latest
+# .NET 10 SDK — installed via the official `dotnet-install.sh` script rather
+# than the apt feed. Microsoft has not published a Debian trixie (13) feed,
+# and the bookworm (12) feed's GPG signature uses SHA1, which trixie's `sqv`
+# rejects after 2026-02-01 (Debian's SHA1 retirement). The script-based
+# install is the upstream-blessed path for Linux distros without a feed and
+# pins exact channels (e.g. `--channel 10.0`) without trusting a SHA1 key.
+ARG DOTNET_SDK_CHANNEL=10.0
+ARG GH_CLI_VERSION=2.92.0
+ARG RUFF_VERSION=0.15.12
+ARG PLAYWRIGHT_VERSION=1.49.1
+
+FROM ${AGENT_BASE_IMAGE}
+
+# Re-declare ARGs after FROM so they are in scope for RUN steps below.
+ARG DOTNET_SDK_CHANNEL
+ARG GH_CLI_VERSION
+ARG RUFF_VERSION
+ARG PLAYWRIGHT_VERSION
+
+USER root
+
+# ---- .NET 10 SDK ---------------------------------------------------------------
+# Install via the official dot.net script. Installs the latest patch on the
+# pinned channel into /usr/share/dotnet and links the binary onto PATH.
+# `libicu` is required by .NET on Debian-family images (globalisation).
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends curl ca-certificates libicu76 \
+ && rm -rf /var/lib/apt/lists/* \
+ && curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh \
+ && chmod +x /tmp/dotnet-install.sh \
+ && /tmp/dotnet-install.sh --channel "${DOTNET_SDK_CHANNEL}" \
+                           --install-dir /usr/share/dotnet \
+                           --no-path \
+ && ln -s /usr/share/dotnet/dotnet /usr/local/bin/dotnet \
+ && rm /tmp/dotnet-install.sh \
+ && dotnet --info
+
+# ---- gh CLI --------------------------------------------------------------------
+RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+      | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
+ && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
+ && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+      > /etc/apt/sources.list.d/github-cli.list \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends gh \
+ && rm -rf /var/lib/apt/lists/*
+
+# ---- ruff ----------------------------------------------------------------------
+RUN pip install --no-cache-dir --break-system-packages "ruff==${RUFF_VERSION}"
+
+# ---- Playwright + browsers + required apt deps ---------------------------------
+# System libraries required by Playwright browser engines (Chromium, Firefox,
+# WebKit). These are the packages that `npx playwright install-deps` would
+# otherwise install; listed explicitly for reproducibility and layer caching.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      libnss3 \
+      libnspr4 \
+      libatk1.0-0 \
+      libatk-bridge2.0-0 \
+      libcups2 \
+      libdrm2 \
+      libxkbcommon0 \
+      libxcomposite1 \
+      libxdamage1 \
+      libxfixes3 \
+      libxrandr2 \
+      libgbm1 \
+      libpango-1.0-0 \
+      libcairo2 \
+      libasound2 \
+ && rm -rf /var/lib/apt/lists/*
+
+# `--with-deps` is intentionally omitted: it tries to apt-install Debian-12-
+# era package names (e.g. `libvpx6`, `libwebp6`) that no longer exist on
+# Debian trixie (which ships `libvpx9` / `libwebp7`). The required runtime
+# libs are pinned explicitly above; the browsers themselves are bundled
+# binaries that Playwright downloads.
+RUN npm install -g "playwright@${PLAYWRIGHT_VERSION}" \
+ && npx playwright install chromium firefox webkit
+
+USER agent
+
+# ---- labels --------------------------------------------------------------------
+LABEL org.opencontainers.image.title="spring-voyage-agent-oss-software-engineering" \
+      org.opencontainers.image.description="Software engineering role image for the Spring Voyage OSS dogfooding unit. Bundles .NET 10 SDK, gh CLI, ruff, and Playwright + Chromium/Firefox/WebKit on top of the spring-voyage-agents omnibus base." \
+      org.opencontainers.image.source="https://github.com/cvoya-com/spring-voyage" \
+      com.cvoya.spring-voyage.dotnet-sdk-channel="${DOTNET_SDK_CHANNEL}" \
+      com.cvoya.spring-voyage.gh-cli-version="${GH_CLI_VERSION}" \
+      com.cvoya.spring-voyage.ruff-version="${RUFF_VERSION}" \
+      com.cvoya.spring-voyage.playwright-version="${PLAYWRIGHT_VERSION}"
+
+# Entrypoint inherited from spring-voyage-agents (tini → node sidecar).
+# ADR-0027 BYOI path 1: do NOT override ENTRYPOINT here.

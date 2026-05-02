@@ -36,7 +36,7 @@ open-source single-host scenario.
 ## Custom agent images
 
 Unit and agent execution blocks (`execution.image`) accept any container
-reference the host can pull. The platform ships three reference images
+reference the host can pull. The platform ships seven reference images
 (see the file table above) — pick the one that matches your tool and
 either reference it directly or layer extra tooling on top:
 
@@ -45,12 +45,18 @@ either reference it directly or layer extra tooling on top:
 | `ghcr.io/cvoya-com/agent-base:<semver>`                     | path 1 (bridge)  | Bring your own CLI; the bridge handles A2A. |
 | `localhost/spring-voyage-agent-claude-code:latest`      | path 1 (bridge)  | Claude Code CLI baked in; ready to dispatch. |
 | `localhost/spring-voyage-agent-dapr:latest`             | path 3 (native A2A) | Dapr Agent runtime — speaks A2A natively. |
+| `ghcr.io/cvoya-com/spring-voyage-agent-oss-software-engineering:<semver>` | path 1 (bridge) | OSS dogfooding SE team — .NET SDK, gh CLI, Playwright + browsers. |
+| `ghcr.io/cvoya-com/spring-voyage-agent-oss-design:<semver>` | path 1 (bridge) | OSS dogfooding design team — Playwright Chromium, Mermaid CLI, ImageMagick. |
+| `ghcr.io/cvoya-com/spring-voyage-agent-oss-product-management:<semver>` | path 1 (bridge) | OSS dogfooding PM team — gh CLI, Mermaid CLI, markdownlint. |
+| `ghcr.io/cvoya-com/spring-voyage-agent-oss-program-management:<semver>` | path 1 (bridge) | OSS dogfooding PgM team — gh CLI, markdownlint. |
+
+The four `spring-voyage-agent-oss-*` images are the role-flavored agents that back the **Spring Voyage OSS** dogfooding template. See [`docs/guide/operator/dogfooding-oss-unit.md`](../docs/guide/operator/dogfooding-oss-unit.md) for the bring-up flow and [`docs/concepts/spring-voyage-oss.md`](../docs/concepts/spring-voyage-oss.md) for the conceptual overview.
 
 Build them locally with:
 
 ```bash
-./deployment/build-agent-images.sh                # all three at :dev
-./deployment/build-agent-images.sh --tag latest   # all three at :latest
+./deployment/build-agent-images.sh                # all eight at :dev
+./deployment/build-agent-images.sh --tag latest   # all eight at :latest
 ```
 
 To layer extra tooling on top of one of the bases, start from a
