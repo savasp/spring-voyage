@@ -42,6 +42,12 @@ public class GoogleAgentRuntime : IAgentRuntime
     /// <summary>The Google AI (Generative Language) API base URL used when the seed does not pin a value.</summary>
     public const string DefaultBaseUrl = "https://generativelanguage.googleapis.com";
 
+    /// <summary>
+    /// Default container image the portal wizard pre-fills when the operator
+    /// selects this runtime. Ships the dapr-agent with Google AI integration pre-installed.
+    /// </summary>
+    public const string DefaultContainerImage = "ghcr.io/cvoya-com/spring-voyage-agent-google:latest";
+
     /// <summary>The path of the credential-validation endpoint relative to <see cref="DefaultBaseUrl"/>.</summary>
     internal const string ValidationPath = "/v1beta/models";
 
@@ -118,6 +124,9 @@ public class GoogleAgentRuntime : IAgentRuntime
 
     /// <inheritdoc />
     public IReadOnlyList<ModelDescriptor> DefaultModels => _defaultModels.Value;
+
+    /// <inheritdoc />
+    public string DefaultImage => DefaultContainerImage;
 
     /// <summary>
     /// The base URL declared by the seed file; falls back to

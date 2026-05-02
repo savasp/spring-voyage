@@ -439,6 +439,7 @@ public sealed class AgentRuntimeCliEndToEndTests : IDisposable
         public string CredentialSecretName => "";
         public IReadOnlyList<ModelDescriptor> DefaultModels { get; } =
             new[] { new ModelDescriptor("mock-model", "Mock Model", ContextWindow: null) };
+        public string DefaultImage => "mock-image:latest";
         public IReadOnlyList<ProbeStep> GetProbeSteps(AgentRuntimeInstallConfig config, string credential)
             => Array.Empty<ProbeStep>();
         public Task<FetchLiveModelsResult> FetchLiveModelsAsync(

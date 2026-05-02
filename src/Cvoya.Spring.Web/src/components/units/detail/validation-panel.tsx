@@ -138,11 +138,13 @@ const VALIDATION_COPY: Record<
   // via /revalidate; if it persists, check dispatcher logs.
   ScheduleFailed: () =>
     "The validation workflow couldn't be scheduled. Retry; if it repeats, check dispatcher logs.",
-  // #1144: scheduler-side failure the operator can fix on the wizard's
-  // Execution step (e.g. no container image, no runtime). The scheduler
-  // attaches the missing field name(s) under `details.missing` so we can
-  // name them in the copy. Falls back to a generic
-  // "configuration is incomplete" string when no detail is set.
+  // #1144 / #1508: scheduler-side failure when required fields are absent.
+  // The scheduler attaches the missing field name(s) under `details.missing`.
+  // When the missing field is "image" we surface a direct, named instruction
+  // because that's the most common case and the pre-fill should have prevented
+  // it — the operator probably cleared the field manually. For other missing
+  // fields we list them prominently. Falls back to a generic message when no
+  // detail is set.
   ConfigurationIncomplete: (_ctx, err) => {
     const missing = err?.details?.missing;
     if (typeof missing === "string" && missing.length > 0) {
@@ -151,6 +153,12 @@ const VALIDATION_COPY: Record<
         .map((f) => f.trim())
         .filter((f) => f.length > 0);
       if (fields.length > 0) {
+        // #1508: name the "image" field explicitly — it's the most actionable.
+        if (fields.length === 1 && fields[0].toLowerCase() === "image") {
+          return (
+            "Container image is missing — set it on the Execution step and retry validation."
+          );
+        }
         return (
           `This unit can't be validated yet — missing: ${fields.join(", ")}. ` +
           "Update the unit's Execution settings and retry validation."

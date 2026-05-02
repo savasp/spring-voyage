@@ -57,6 +57,14 @@ using Cvoya.Spring.Core.AgentRuntimes;
 /// declares no credential (for example, Ollama): callers MUST treat the
 /// empty case as "no credential to write" and skip any secret write.
 /// </param>
+/// <param name="DefaultImage">
+/// The default container image the portal wizard pre-fills when the operator
+/// selects this runtime. Ships the runtime's CLI tool pre-installed so units
+/// can start without a custom image. Non-null and non-empty; the wizard
+/// applies this value the first time the operator picks a runtime (while the
+/// image field still holds the base-image placeholder). Once the operator
+/// edits the image manually, subsequent runtime changes do not overwrite it.
+/// </param>
 public record InstalledAgentRuntimeResponse(
     string Id,
     string DisplayName,
@@ -68,7 +76,8 @@ public record InstalledAgentRuntimeResponse(
     string? BaseUrl,
     AgentRuntimeCredentialKind CredentialKind,
     string? CredentialDisplayHint,
-    string CredentialSecretName);
+    string CredentialSecretName,
+    string DefaultImage);
 
 /// <summary>
 /// Single entry in the response to <c>GET /api/v1/agent-runtimes/{id}/models</c>.

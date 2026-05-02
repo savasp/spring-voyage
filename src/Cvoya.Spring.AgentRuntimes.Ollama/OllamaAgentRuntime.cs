@@ -63,6 +63,12 @@ public class OllamaAgentRuntime : IAgentRuntime
     /// </summary>
     public const string HttpClientName = "Cvoya.Spring.AgentRuntimes.Ollama";
 
+    /// <summary>
+    /// Default container image the portal wizard pre-fills when the operator
+    /// selects this runtime. Ships the dapr-agent with Ollama integration pre-installed.
+    /// </summary>
+    public const string DefaultContainerImage = "ghcr.io/cvoya-com/spring-voyage-agent-ollama:latest";
+
     private static readonly TimeSpan VerifyToolTimeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan ResolveModelTimeout = TimeSpan.FromSeconds(15);
 
@@ -116,6 +122,9 @@ public class OllamaAgentRuntime : IAgentRuntime
 
     /// <inheritdoc />
     public IReadOnlyList<ModelDescriptor> DefaultModels => _defaultModels.Value;
+
+    /// <inheritdoc />
+    public string DefaultImage => DefaultContainerImage;
 
     /// <inheritdoc />
     public IReadOnlyList<ProbeStep> GetProbeSteps(AgentRuntimeInstallConfig config, string credential)

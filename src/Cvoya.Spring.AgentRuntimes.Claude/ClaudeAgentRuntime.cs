@@ -56,6 +56,12 @@ public class ClaudeAgentRuntime : IAgentRuntime
     /// <summary>Execution-tool identifier shared with any future Claude-backed runtime variant.</summary>
     public const string ToolKindId = "claude-code-cli";
 
+    /// <summary>
+    /// Default container image the portal wizard pre-fills when the operator
+    /// selects this runtime. Ships the Claude Code CLI pre-installed.
+    /// </summary>
+    public const string DefaultContainerImage = "ghcr.io/cvoya-com/spring-voyage-agent-claude-code:latest";
+
     /// <summary>Human-facing display label for UI / CLI surfaces.</summary>
     public const string DisplayLabel = "Claude (Claude Code CLI + Anthropic API)";
 
@@ -120,6 +126,9 @@ public class ClaudeAgentRuntime : IAgentRuntime
 
     /// <inheritdoc />
     public IReadOnlyList<ModelDescriptor> DefaultModels => _defaultModels;
+
+    /// <inheritdoc />
+    public string DefaultImage => DefaultContainerImage;
 
     /// <summary>
     /// Default base URL for the Anthropic Platform REST API. Read from

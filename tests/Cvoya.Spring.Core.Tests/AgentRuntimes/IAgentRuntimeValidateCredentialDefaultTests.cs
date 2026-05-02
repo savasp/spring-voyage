@@ -142,6 +142,7 @@ public class IAgentRuntimeValidateCredentialDefaultTests
         public AgentRuntimeCredentialSchema CredentialSchema => new(AgentRuntimeCredentialKind.ApiKey);
         public string CredentialSecretName => "fake-key";
         public IReadOnlyList<ModelDescriptor> DefaultModels => Array.Empty<ModelDescriptor>();
+        public string DefaultImage => "fake-image:latest";
 
         public IReadOnlyList<ProbeStep> GetProbeSteps(AgentRuntimeInstallConfig config, string credential)
             => Array.Empty<ProbeStep>();

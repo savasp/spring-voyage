@@ -109,6 +109,26 @@ public interface IAgentRuntime
     IReadOnlyList<ModelDescriptor> DefaultModels { get; }
 
     /// <summary>
+    /// The default container image the portal wizard pre-fills when the
+    /// operator selects this runtime. The image should contain the runtime's
+    /// CLI tool pre-installed so units can start without a custom image.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The wizard applies this value the first time the operator picks a
+    /// runtime (while the image field still holds the base-image placeholder).
+    /// Once the operator edits the image field manually, subsequent runtime
+    /// changes do not overwrite it.
+    /// </para>
+    /// <para>
+    /// The value must be a non-null, non-empty image reference. It does not
+    /// have to be currently published — the backend validates availability at
+    /// unit-validation time.
+    /// </para>
+    /// </remarks>
+    string DefaultImage { get; }
+
+    /// <summary>
     /// Builds the declarative list of in-container probe commands the
     /// Dapr <c>UnitValidationWorkflow</c> should execute against the unit's
     /// chosen container image, after pulling the image and starting it.

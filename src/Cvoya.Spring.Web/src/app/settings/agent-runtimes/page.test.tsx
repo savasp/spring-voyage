@@ -66,6 +66,8 @@ function makeRuntime(
     baseUrl: null,
     credentialKind: "ApiKey",
     credentialDisplayHint: "ANTHROPIC_API_KEY",
+    credentialSecretName: "anthropic-api-key",
+    defaultImage: "ghcr.io/cvoya-com/spring-voyage-agent-claude-code:latest",
     ...overrides,
   } as InstalledAgentRuntimeResponse;
 }

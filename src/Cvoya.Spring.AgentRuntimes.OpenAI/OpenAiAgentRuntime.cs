@@ -39,6 +39,12 @@ public class OpenAiAgentRuntime : IAgentRuntime
     /// <summary>The OpenAI Platform API base URL used when the seed does not pin a value.</summary>
     public const string DefaultBaseUrl = "https://api.openai.com";
 
+    /// <summary>
+    /// Default container image the portal wizard pre-fills when the operator
+    /// selects this runtime. Ships the Codex CLI and dapr-agent pre-installed.
+    /// </summary>
+    public const string DefaultContainerImage = "ghcr.io/cvoya-com/spring-voyage-agent-codex:latest";
+
     private const string CredentialEnvVar = "OPENAI_API_KEY";
 
     // Probe timeouts — conservative caps for an HTTP round-trip inside the
@@ -107,6 +113,9 @@ public class OpenAiAgentRuntime : IAgentRuntime
 
     /// <inheritdoc />
     public IReadOnlyList<ModelDescriptor> DefaultModels => _defaultModels.Value;
+
+    /// <inheritdoc />
+    public string DefaultImage => DefaultContainerImage;
 
     /// <summary>
     /// The base URL declared by the seed file; falls back to
