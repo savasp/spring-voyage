@@ -332,7 +332,10 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
 
             var dbName = $"TestDb_{Guid.NewGuid()}";
             services.AddDbContext<SpringDbContext>(options =>
-                options.UseInMemoryDatabase(dbName));
+                options
+                    .UseInMemoryDatabase(dbName)
+                    .ConfigureWarnings(w =>
+                        w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.InMemoryEventId.TransactionIgnoredWarning)));
 
             // Remove existing registrations that depend on Dapr runtime.
             var typesToRemove = new[]
