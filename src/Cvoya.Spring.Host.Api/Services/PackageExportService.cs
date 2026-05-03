@@ -79,7 +79,7 @@ public sealed class PackageExportService : IPackageExportService
         // The EF query filter on UnitDefinitionEntity scopes to CurrentTenantId.
         var unitRow = await db.UnitDefinitions
             .IgnoreQueryFilters()
-            .Where(u => u.UnitId == unitName && u.DeletedAt == null)
+            .Where(u => u.DisplayName == unitName && u.DeletedAt == null)
             .FirstOrDefaultAsync(cancellationToken);
 
         Guid? installId = unitRow?.InstallId;

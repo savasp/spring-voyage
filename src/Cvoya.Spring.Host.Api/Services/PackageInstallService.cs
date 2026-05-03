@@ -115,21 +115,22 @@ public class PackageInstallService : IPackageInstallService
                 };
                 db.PackageInstalls.Add(installRow);
 
-                // Write unit_definitions staging rows.
+                // Write unit_definitions staging rows. Identity is the row's
+                // Guid id post-#1629; the human-readable name lives on
+                // DisplayName only.
                 foreach (var unit in pkg.Units.Where(a => !a.IsCrossPackage))
                 {
                     var existing = await db.UnitDefinitions
                         .IgnoreQueryFilters()
                         .FirstOrDefaultAsync(u =>
-                            u.UnitId == unit.Name && u.DeletedAt == null,
+                            u.DisplayName == unit.Name && u.DeletedAt == null,
                             cancellationToken);
                     if (existing is null)
                     {
                         var entity = new UnitDefinitionEntity
                         {
                             Id = Guid.NewGuid(),
-                            UnitId = unit.Name,
-                            Name = unit.Name,
+                            DisplayName = unit.Name,
                             Description = string.Empty,
                             InstallState = PackageInstallState.Staging,
                             InstallId = installId,
@@ -511,7 +512,7 @@ public class PackageInstallService : IPackageInstallService
                 foreach (var a in artefacts.Where(a => !a.IsCrossPackage))
                 {
                     var scheme = a.Kind == ArtefactKind.Unit ? "unit" : "agent";
-                    var address = new Address(scheme, a.Name);
+                    var address = Address.For(scheme, a.Name);
                     var existing = await _directoryService.ResolveAsync(address, cancellationToken);
                     if (existing is not null)
                     {
@@ -583,7 +584,7 @@ public class PackageInstallService : IPackageInstallService
             var row = await db.UnitDefinitions
                 .IgnoreQueryFilters()
                 .FirstOrDefaultAsync(u =>
-                    u.InstallId == installId && u.UnitId == artefact.Name,
+                    u.InstallId == installId && u.DisplayName == artefact.Name,
                     cancellationToken);
             if (row is not null)
             {
@@ -611,7 +612,7 @@ public class PackageInstallService : IPackageInstallService
                 var row = await db.UnitDefinitions
                     .IgnoreQueryFilters()
                     .FirstOrDefaultAsync(u =>
-                        u.InstallId == installId && u.UnitId == artefact.Name,
+                        u.InstallId == installId && u.DisplayName == artefact.Name,
                         cancellationToken);
                 if (row is not null)
                 {

@@ -114,9 +114,13 @@ public static class AnalyticsEndpoints
         string? bucket,
         CancellationToken cancellationToken)
     {
+        if (!Cvoya.Spring.Core.Identifiers.GuidFormatter.TryParse(id, out var idGuid))
+        {
+            return Results.Problem(detail: $"Agent id '{id}' is not a valid Guid.", statusCode: StatusCodes.Status400BadRequest);
+        }
         return await GetCostTimeseriesAsync(
             id, "agents", costQueryService,
-            (svc, from, to, b, lbl, ct) => svc.GetAgentCostTimeseriesAsync(id, from, to, b, lbl, ct),
+            (svc, from, to, b, lbl, ct) => svc.GetAgentCostTimeseriesAsync(idGuid, from, to, b, lbl, ct),
             window, bucket, cancellationToken);
     }
 
@@ -127,9 +131,13 @@ public static class AnalyticsEndpoints
         string? bucket,
         CancellationToken cancellationToken)
     {
+        if (!Cvoya.Spring.Core.Identifiers.GuidFormatter.TryParse(id, out var idGuid))
+        {
+            return Results.Problem(detail: $"Unit id '{id}' is not a valid Guid.", statusCode: StatusCodes.Status400BadRequest);
+        }
         return await GetCostTimeseriesAsync(
             id, "units", costQueryService,
-            (svc, from, to, b, lbl, ct) => svc.GetUnitCostTimeseriesAsync(id, from, to, b, lbl, ct),
+            (svc, from, to, b, lbl, ct) => svc.GetUnitCostTimeseriesAsync(idGuid, from, to, b, lbl, ct),
             window, bucket, cancellationToken);
     }
 

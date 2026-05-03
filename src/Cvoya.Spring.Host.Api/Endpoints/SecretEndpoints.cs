@@ -71,7 +71,20 @@ public static class SecretEndpoints
     /// further by layering additional logic on top of
     /// <see cref="ISecretAccessPolicy"/>.
     /// </summary>
-    public const string PlatformOwnerId = "platform";
+    /// <summary>
+    /// Platform-scoped secrets have no owner — the registry stores
+    /// <see cref="SecretRef.OwnerId"/> as <c>null</c> for the platform
+    /// scope. The constant is exposed for the URL Location header
+    /// (where "platform" is the human-friendly segment).
+    /// </summary>
+    public const string PlatformOwnerLabel = "platform";
+
+    /// <summary>
+    /// The Guid? owner id passed into ISecretAccessPolicy /
+    /// ISecretRegistry calls for platform-scoped secrets — always null
+    /// per the interface contract.
+    /// </summary>
+    public static readonly Guid? PlatformOwnerId = null;
 
     /// <summary>
     /// Registers the unit-scoped, tenant-scoped, and platform-scoped
@@ -245,11 +258,6 @@ public static class SecretEndpoints
         [FromServices] SpringDbContext db,
         CancellationToken cancellationToken)
     {
-        if (!await accessPolicy.IsAuthorizedAsync(SecretAccessAction.List, SecretScope.Unit, id, cancellationToken))
-        {
-            return Forbidden(SecretScope.Unit, SecretAccessAction.List);
-        }
-
         var unitAddress = Address.For("unit", id);
         var entry = await directoryService.ResolveAsync(unitAddress, cancellationToken);
         if (entry is null)
@@ -257,6 +265,11 @@ public static class SecretEndpoints
             return Results.Problem(
                 detail: $"Unit '{id}' not found",
                 statusCode: StatusCodes.Status404NotFound);
+        }
+
+        if (!await accessPolicy.IsAuthorizedAsync(SecretAccessAction.List, SecretScope.Unit, entry.ActorId, cancellationToken))
+        {
+            return Forbidden(SecretScope.Unit, SecretAccessAction.List);
         }
 
         // Use the stable ActorId (UUID) as the secret owner key, not the slug
@@ -277,7 +290,16 @@ public static class SecretEndpoints
         [FromServices] IOptions<SecretsOptions> options,
         CancellationToken cancellationToken)
     {
-        if (!await accessPolicy.IsAuthorizedAsync(SecretAccessAction.Create, SecretScope.Unit, id, cancellationToken))
+        var unitAddress = Address.For("unit", id);
+        var entry = await directoryService.ResolveAsync(unitAddress, cancellationToken);
+        if (entry is null)
+        {
+            return Results.Problem(
+                detail: $"Unit '{id}' not found",
+                statusCode: StatusCodes.Status404NotFound);
+        }
+
+        if (!await accessPolicy.IsAuthorizedAsync(SecretAccessAction.Create, SecretScope.Unit, entry.ActorId, cancellationToken))
         {
             return Forbidden(SecretScope.Unit, SecretAccessAction.Create);
         }
@@ -286,15 +308,6 @@ public static class SecretEndpoints
         if (validationError is not null)
         {
             return validationError;
-        }
-
-        var unitAddress = Address.For("unit", id);
-        var entry = await directoryService.ResolveAsync(unitAddress, cancellationToken);
-        if (entry is null)
-        {
-            return Results.Problem(
-                detail: $"Unit '{id}' not found",
-                statusCode: StatusCodes.Status404NotFound);
         }
 
         // Use the stable ActorId (UUID) as the secret owner key, not the slug from
@@ -316,11 +329,6 @@ public static class SecretEndpoints
         [FromServices] IOptions<SecretsOptions> options,
         CancellationToken cancellationToken)
     {
-        if (!await accessPolicy.IsAuthorizedAsync(SecretAccessAction.Rotate, SecretScope.Unit, id, cancellationToken))
-        {
-            return Forbidden(SecretScope.Unit, SecretAccessAction.Rotate);
-        }
-
         var unitAddress = Address.For("unit", id);
         var entry = await directoryService.ResolveAsync(unitAddress, cancellationToken);
         if (entry is null)
@@ -328,6 +336,11 @@ public static class SecretEndpoints
             return Results.Problem(
                 detail: $"Unit '{id}' not found",
                 statusCode: StatusCodes.Status404NotFound);
+        }
+
+        if (!await accessPolicy.IsAuthorizedAsync(SecretAccessAction.Rotate, SecretScope.Unit, entry.ActorId, cancellationToken))
+        {
+            return Forbidden(SecretScope.Unit, SecretAccessAction.Rotate);
         }
 
         // Use the stable ActorId (UUID) as the secret owner key (#1488).
@@ -343,11 +356,6 @@ public static class SecretEndpoints
         [FromServices] ISecretAccessPolicy accessPolicy,
         CancellationToken cancellationToken)
     {
-        if (!await accessPolicy.IsAuthorizedAsync(SecretAccessAction.List, SecretScope.Unit, id, cancellationToken))
-        {
-            return Forbidden(SecretScope.Unit, SecretAccessAction.List);
-        }
-
         var unitAddress = Address.For("unit", id);
         var entry = await directoryService.ResolveAsync(unitAddress, cancellationToken);
         if (entry is null)
@@ -355,6 +363,11 @@ public static class SecretEndpoints
             return Results.Problem(
                 detail: $"Unit '{id}' not found",
                 statusCode: StatusCodes.Status404NotFound);
+        }
+
+        if (!await accessPolicy.IsAuthorizedAsync(SecretAccessAction.List, SecretScope.Unit, entry.ActorId, cancellationToken))
+        {
+            return Forbidden(SecretScope.Unit, SecretAccessAction.List);
         }
 
         // Use the stable ActorId (UUID) as the secret owner key (#1488).
@@ -371,11 +384,6 @@ public static class SecretEndpoints
         [FromServices] ISecretAccessPolicy accessPolicy,
         CancellationToken cancellationToken)
     {
-        if (!await accessPolicy.IsAuthorizedAsync(SecretAccessAction.Prune, SecretScope.Unit, id, cancellationToken))
-        {
-            return Forbidden(SecretScope.Unit, SecretAccessAction.Prune);
-        }
-
         var unitAddress = Address.For("unit", id);
         var entry = await directoryService.ResolveAsync(unitAddress, cancellationToken);
         if (entry is null)
@@ -383,6 +391,11 @@ public static class SecretEndpoints
             return Results.Problem(
                 detail: $"Unit '{id}' not found",
                 statusCode: StatusCodes.Status404NotFound);
+        }
+
+        if (!await accessPolicy.IsAuthorizedAsync(SecretAccessAction.Prune, SecretScope.Unit, entry.ActorId, cancellationToken))
+        {
+            return Forbidden(SecretScope.Unit, SecretAccessAction.Prune);
         }
 
         // Use the stable ActorId (UUID) as the secret owner key (#1488).
@@ -399,11 +412,6 @@ public static class SecretEndpoints
         [FromServices] ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
-        if (!await accessPolicy.IsAuthorizedAsync(SecretAccessAction.Delete, SecretScope.Unit, id, cancellationToken))
-        {
-            return Forbidden(SecretScope.Unit, SecretAccessAction.Delete);
-        }
-
         var unitAddress = Address.For("unit", id);
         var entry = await directoryService.ResolveAsync(unitAddress, cancellationToken);
         if (entry is null)
@@ -411,6 +419,11 @@ public static class SecretEndpoints
             return Results.Problem(
                 detail: $"Unit '{id}' not found",
                 statusCode: StatusCodes.Status404NotFound);
+        }
+
+        if (!await accessPolicy.IsAuthorizedAsync(SecretAccessAction.Delete, SecretScope.Unit, entry.ActorId, cancellationToken))
+        {
+            return Forbidden(SecretScope.Unit, SecretAccessAction.Delete);
         }
 
         // Use the stable ActorId (UUID) as the secret owner key (#1488).
@@ -717,7 +730,7 @@ public static class SecretEndpoints
 
     private static async Task<IResult> RotateSecretAsync(
         SecretScope scope,
-        string ownerId,
+        Guid? ownerId,
         string name,
         RotateSecretRequest request,
         ISecretStore store,
@@ -813,7 +826,7 @@ public static class SecretEndpoints
 
     private static async Task<IResult> ListVersionsAsync(
         SecretScope scope,
-        string ownerId,
+        Guid? ownerId,
         string name,
         ISecretRegistry registry,
         CancellationToken cancellationToken)
@@ -836,7 +849,7 @@ public static class SecretEndpoints
 
     private static async Task<IResult> PruneSecretAsync(
         SecretScope scope,
-        string ownerId,
+        Guid? ownerId,
         string name,
         int? keep,
         ISecretStore store,
@@ -888,7 +901,7 @@ public static class SecretEndpoints
 
     private static async Task<IResult> CreateSecretAsync(
         SecretScope scope,
-        string ownerId,
+        Guid? ownerId,
         CreateSecretRequest request,
         ISecretStore store,
         ISecretRegistry registry,
@@ -897,12 +910,15 @@ public static class SecretEndpoints
         CancellationToken cancellationToken,
         string? locationOwnerId = null)
     {
-        // locationOwnerId is the slug used to build the Location header URL for
-        // unit-scoped secrets. For tenant- and platform-scoped secrets the owner
-        // id already matches the URL segment, so the parameter defaults to null
-        // (use ownerId). See #1488 for why unit secrets use a UUID ownerId but
-        // a slug in the URL.
-        var urlOwnerId = locationOwnerId ?? ownerId;
+        // locationOwnerId is the URL segment used to build the Location header.
+        // For unit secrets the caller passes the unit slug; for tenant secrets
+        // the caller leaves it null and we use the canonical no-dash form of the
+        // tenant Guid. See #1488 for why unit secrets are keyed by Guid but the
+        // URL still uses the unit slug.
+        var urlOwnerId = locationOwnerId
+            ?? (ownerId.HasValue
+                ? Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(ownerId.Value)
+                : "platform");
 
         var max = options.MaxSecretsPerOwner;
         if (max > 0)
@@ -972,7 +988,7 @@ public static class SecretEndpoints
 
     private static async Task<IResult> DeleteSecretAsync(
         SecretScope scope,
-        string ownerId,
+        Guid? ownerId,
         string name,
         ISecretStore store,
         ISecretRegistry registry,
@@ -1049,7 +1065,7 @@ public static class SecretEndpoints
         ISecretRegistry registry,
         SpringDbContext db,
         SecretScope scope,
-        string ownerId,
+        Guid? ownerId,
         CancellationToken cancellationToken)
     {
         // The registry ListAsync returns one SecretRef per named secret

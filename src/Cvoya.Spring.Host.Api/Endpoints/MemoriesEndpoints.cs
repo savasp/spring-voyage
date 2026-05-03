@@ -65,7 +65,7 @@ public static class MemoriesEndpoints
         IDirectoryService directoryService,
         CancellationToken cancellationToken)
     {
-        var entry = await directoryService.ResolveAsync(new Address(scheme, id), cancellationToken);
+        var entry = await directoryService.ResolveAsync(Address.For(scheme, id), cancellationToken);
         if (entry is null)
         {
             return Results.Problem(

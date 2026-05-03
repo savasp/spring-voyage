@@ -166,7 +166,7 @@ public static class ActivitySourceNormalizer
         IDirectoryService directoryService,
         CancellationToken cancellationToken)
     {
-        var entry = await directoryService.ResolveAsync(new Address(scheme, path), cancellationToken);
-        return entry?.ActorId;
+        var entry = await directoryService.ResolveAsync(Address.For(scheme, path), cancellationToken);
+        return entry is null ? null : Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(entry.ActorId);
     }
 }

@@ -81,7 +81,10 @@ public class ApiTokenAuthHandler(
 
         var claims = new List<Claim>
         {
-            new(ClaimTypes.NameIdentifier, tokenEntity.UserId ?? tokenEntity.Id.ToString()),
+            new(ClaimTypes.NameIdentifier,
+                tokenEntity.UserId.HasValue
+                    ? Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(tokenEntity.UserId.Value)
+                    : tokenEntity.Id.ToString("N")),
             new("token_name", tokenEntity.Name)
         };
 

@@ -89,14 +89,19 @@ internal sealed class ParticipantDisplayNameResolver(
             // the actor UUID as the source — which is the common case. Look up
             // the entity by ActorId (the same UUID) so the thread surfaces show
             // the agent / unit name instead of a raw UUID (#1545, #1547, #1548).
+            if (!Cvoya.Spring.Core.Identifiers.GuidFormatter.TryParse(uuidStr, out var idGuid))
+            {
+                return uuidStr;
+            }
+
             if (string.Equals(scheme, "agent", StringComparison.OrdinalIgnoreCase))
             {
                 try
                 {
                     var name = await db.AgentDefinitions
                         .AsNoTracking()
-                        .Where(a => a.ActorId == uuidStr && a.DeletedAt == null)
-                        .Select(a => a.Name)
+                        .Where(a => a.Id == idGuid && a.DeletedAt == null)
+                        .Select(a => a.DisplayName)
                         .FirstOrDefaultAsync(cancellationToken);
 
                     if (!string.IsNullOrWhiteSpace(name))
@@ -125,8 +130,8 @@ internal sealed class ParticipantDisplayNameResolver(
                 {
                     var name = await db.UnitDefinitions
                         .AsNoTracking()
-                        .Where(u => u.ActorId == uuidStr && u.DeletedAt == null)
-                        .Select(u => u.Name)
+                        .Where(u => u.Id == idGuid && u.DeletedAt == null)
+                        .Select(u => u.DisplayName)
                         .FirstOrDefaultAsync(cancellationToken);
 
                     if (!string.IsNullOrWhiteSpace(name))
@@ -175,12 +180,19 @@ internal sealed class ParticipantDisplayNameResolver(
 
         try
         {
+            // Path may already be a Guid hex form (post-#1629). Parse and
+            // resolve via the Guid id.
+            if (!Cvoya.Spring.Core.Identifiers.GuidFormatter.TryParse(path, out var pathGuid))
+            {
+                return path;
+            }
+
             if (string.Equals(schemeNav, "agent", StringComparison.OrdinalIgnoreCase))
             {
                 var name = await db.AgentDefinitions
                     .AsNoTracking()
-                    .Where(a => a.AgentId == path && a.DeletedAt == null)
-                    .Select(a => a.Name)
+                    .Where(a => a.Id == pathGuid && a.DeletedAt == null)
+                    .Select(a => a.DisplayName)
                     .FirstOrDefaultAsync(cancellationToken);
 
                 if (name is not null)
@@ -198,8 +210,8 @@ internal sealed class ParticipantDisplayNameResolver(
             {
                 var name = await db.UnitDefinitions
                     .AsNoTracking()
-                    .Where(u => u.UnitId == path && u.DeletedAt == null)
-                    .Select(u => u.Name)
+                    .Where(u => u.Id == pathGuid && u.DeletedAt == null)
+                    .Select(u => u.DisplayName)
                     .FirstOrDefaultAsync(cancellationToken);
 
                 if (name is not null)

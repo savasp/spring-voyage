@@ -78,7 +78,7 @@ public static class MessageEndpoints
             return Results.Problem(detail: $"Invalid message type: '{request.Type}'", statusCode: StatusCodes.Status400BadRequest);
         }
 
-        var to = new Address(request.To.Scheme, request.To.Path);
+        var to = Address.For(request.To.Scheme, request.To.Path);
         var messageId = Guid.NewGuid();
 
         // #985: AgentActor.HandleDomainMessageAsync hard-requires a

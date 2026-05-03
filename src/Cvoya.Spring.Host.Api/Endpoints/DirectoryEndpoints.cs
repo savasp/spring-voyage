@@ -96,10 +96,10 @@ public static class DirectoryEndpoints
 
         var query = new ExpertiseSearchQuery(
             Text: request.Text,
-            Owner: request.Owner is null ? null : new Address(request.Owner.Scheme, request.Owner.Path),
+            Owner: request.Owner is null ? null : Address.For(request.Owner.Scheme, request.Owner.Path),
             Domains: request.Domains,
             TypedOnly: request.TypedOnly,
-            Caller: request.Caller is null ? null : new Address(request.Caller.Scheme, request.Caller.Path),
+            Caller: request.Caller is null ? null : Address.For(request.Caller.Scheme, request.Caller.Path),
             Context: request.InsideUnit ? BoundaryViewContext.InsideUnit : BoundaryViewContext.External,
             Limit: request.Limit <= 0 ? ExpertiseSearchQuery.DefaultLimit : request.Limit,
             Offset: request.Offset);
@@ -116,7 +116,7 @@ public static class DirectoryEndpoints
     private static DirectoryEntryResponse ToDirectoryEntryResponse(DirectoryEntry entry) =>
         new(
             new AddressDto(entry.Address.Scheme, entry.Address.Path),
-            entry.ActorId,
+            Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(entry.ActorId),
             entry.DisplayName,
             entry.Description,
             entry.Role,

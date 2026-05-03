@@ -129,7 +129,7 @@ public static class ThreadEndpoints
         }
 
         var from = await callerAccessor.GetCallerAddressAsync(cancellationToken);
-        var to = new Address(request.To.Scheme, request.To.Path ?? string.Empty);
+        var to = Address.For(request.To.Scheme, request.To.Path ?? string.Empty);
         var messageId = Guid.NewGuid();
 
         // Wrap the text as a Domain payload — same shape as SendMessage.
@@ -253,7 +253,7 @@ public static class ThreadEndpoints
             try
             {
                 var proxy = actorProxyFactory.CreateActorProxy<IAgentActor>(
-                    new ActorId(entry.ActorId), nameof(AgentActor));
+                    new ActorId(Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(entry.ActorId)), nameof(AgentActor));
                 await proxy.CloseConversationAsync(id, reason, cancellationToken);
             }
             catch (Exception ex)
@@ -380,7 +380,11 @@ public static class ThreadEndpoints
             return false;
         }
 
-        address = new Address(scheme, path);
+        if (!Address.TryParse($"{scheme}:{path}", out var parsed) || parsed is null)
+        {
+            return false;
+        }
+        address = parsed;
         return true;
     }
 }
@@ -436,9 +440,9 @@ public static class InboxEndpoints
         // callerAddress is the canonical form used to match activity event
         // sources. For identity-form addresses (uuid-keyed humans) use
         // ToIdentityUri(); for the fallback navigation form use scheme://path.
-        var callerAddress = caller.IsIdentity
-            ? caller.ToIdentityUri()
-            : caller.ToCanonicalUri();
+        // The address always renders as scheme:no-dash-guid post-#1629; the
+        // identity vs navigation distinction is gone.
+        var callerAddress = caller.ToString();
 
         // Fetch the caller's per-thread read cursors from their HumanActor so
         // the query service can compute UnreadCount per row.
@@ -492,9 +496,9 @@ public static class InboxEndpoints
         // Return the refreshed inbox item (UnreadCount should now be 0).
         var entries = await humanProxy.GetLastReadAtAsync(cancellationToken);
         var lastReadAt = entries.ToDictionary(e => e.ThreadId, e => e.LastReadAt);
-        var callerAddress = caller.IsIdentity
-            ? caller.ToIdentityUri()
-            : caller.ToCanonicalUri();
+        // The address always renders as scheme:no-dash-guid post-#1629; the
+        // identity vs navigation distinction is gone.
+        var callerAddress = caller.ToString();
         var items = await queryService.ListInboxAsync(callerAddress, lastReadAt, cancellationToken);
         var rawUpdated = items.FirstOrDefault(i => string.Equals(i.ThreadId, threadId, StringComparison.Ordinal));
 

@@ -329,7 +329,7 @@ public class UnitCreationService : IUnitCreationService
             var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
 
             var entity = await db.UnitDefinitions
-                .FirstOrDefaultAsync(u => u.UnitId == unitId && u.DeletedAt == null, cancellationToken);
+                .FirstOrDefaultAsync(u => u.DisplayName == unitId && u.DeletedAt == null, cancellationToken);
 
             if (entity is null)
             {
@@ -411,7 +411,7 @@ public class UnitCreationService : IUnitCreationService
             var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
 
             var entity = await db.UnitDefinitions
-                .FirstOrDefaultAsync(u => u.UnitId == unitId && u.DeletedAt == null, cancellationToken);
+                .FirstOrDefaultAsync(u => u.DisplayName == unitId && u.DeletedAt == null, cancellationToken);
 
             if (entity is null)
             {
@@ -607,7 +607,8 @@ public class UnitCreationService : IUnitCreationService
             }
         }
 
-        var actorId = Guid.NewGuid().ToString();
+        var actorGuid = Guid.NewGuid();
+        var actorId = Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(actorGuid);
         var address = Address.For("unit", name);
 
         // #325: when the caller supplies a canonical name override through
@@ -626,7 +627,7 @@ public class UnitCreationService : IUnitCreationService
 
         var entry = new DirectoryEntry(
             address,
-            actorId,
+            actorGuid,
             displayName,
             description,
             null,
@@ -717,7 +718,7 @@ public class UnitCreationService : IUnitCreationService
                 try
                 {
                     var parentProxy = _actorProxyFactory.CreateActorProxy<IUnitActor>(
-                        new ActorId(parentEntry.ActorId), nameof(UnitActor));
+                        new ActorId(Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(parentEntry.ActorId)), nameof(UnitActor));
                     await parentProxy.AddMemberAsync(address, cancellationToken);
                 }
                 catch (Exception ex)
@@ -739,7 +740,7 @@ public class UnitCreationService : IUnitCreationService
                     continue;
                 }
 
-                var memberAddress = new Address(resolved.Value.Scheme, resolved.Value.Path);
+                var memberAddress = Address.For(resolved.Value.Scheme, resolved.Value.Path);
 
                 // #745: for pre-existing members (not auto-registered below)
                 // enforce the same-tenant invariant before the actor-state
@@ -808,10 +809,9 @@ public class UnitCreationService : IUnitCreationService
                         var existing = await _directoryService.ResolveAsync(agentAddress, cancellationToken);
                         if (existing is null)
                         {
-                            var agentActorId = Guid.NewGuid().ToString();
                             var agentEntry = new DirectoryEntry(
                                 agentAddress,
-                                agentActorId,
+                                agentAddress.Id,
                                 resolved.Value.Path,  // displayName = member name
                                 string.Empty,          // description
                                 null,                  // role
@@ -846,14 +846,12 @@ public class UnitCreationService : IUnitCreationService
                         var agentDir = await _directoryService.ResolveAsync(
                             Address.For("agent", resolved.Value.Path), cancellationToken);
 
-                        if (unitDir is not null && agentDir is not null
-                            && Guid.TryParse(unitDir.ActorId, out var unitMemberUuid)
-                            && Guid.TryParse(agentDir.ActorId, out var agentMemberUuid))
+                        if (unitDir is not null && agentDir is not null)
                         {
                             await _membershipRepository.UpsertAsync(
                                 new UnitMembership(
-                                    UnitId: unitMemberUuid,
-                                    AgentId: agentMemberUuid,
+                                    UnitId: unitDir.ActorId,
+                                    AgentId: agentDir.ActorId,
                                     Enabled: true),
                                 cancellationToken);
                         }
@@ -940,7 +938,7 @@ public class UnitCreationService : IUnitCreationService
             // update + revalidate) to kick off validation.
             var initialStatus = UnitStatus.Draft;
             var fullyConfigured = await IsFullyConfiguredForValidationAsync(
-                name, model, provider, cancellationToken);
+                actorGuid, model, provider, cancellationToken);
             if (fullyConfigured)
             {
                 try
@@ -990,7 +988,7 @@ public class UnitCreationService : IUnitCreationService
             }
 
             var response = new UnitResponse(
-                entry.ActorId,
+                Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(entry.ActorId),
                 entry.Address.Path,
                 entry.DisplayName,
                 entry.Description,
@@ -1020,7 +1018,7 @@ public class UnitCreationService : IUnitCreationService
     /// configuration and then calls <c>/revalidate</c>.
     /// </summary>
     private async Task<bool> IsFullyConfiguredForValidationAsync(
-        string unitName,
+        Guid unitId,
         string? model,
         string? provider,
         CancellationToken cancellationToken)
@@ -1042,7 +1040,7 @@ public class UnitCreationService : IUnitCreationService
         {
             var resolution = await _credentialResolver.ResolveAsync(
                 providerId: provider,
-                unitName: unitName,
+                unitId: unitId,
                 cancellationToken);
 
             // A non-null value means we have a credential to hand to the
@@ -1058,8 +1056,8 @@ public class UnitCreationService : IUnitCreationService
         catch (Exception ex)
         {
             _logger.LogWarning(ex,
-                "Unit '{UnitName}' credential resolution threw during creation; leaving unit in Draft.",
-                unitName);
+                "Unit {UnitId} credential resolution threw during creation; leaving unit in Draft.",
+                unitId);
             return false;
         }
     }
@@ -1244,31 +1242,31 @@ public class UnitCreationService : IUnitCreationService
 
     private async Task SetTopLevelFlagAsync(string unitId, CancellationToken cancellationToken)
     {
+        // The IsTopLevel column was removed in #1629; "top-level" is now
+        // expressed implicitly: a unit with zero unit_subunit_memberships
+        // rows on the child side IS top-level. Nothing to write here, but
+        // keep the method as a no-op so callers don't have to branch.
+        await Task.CompletedTask;
         try
         {
+            // Defensive: still verify the unit exists so log diagnostics
+            // emit a clear message when callers pass an unknown id.
             await using var scope = _scopeFactory.CreateAsyncScope();
             var db = scope.ServiceProvider.GetService<SpringDbContext>();
             if (db is null)
             {
-                _logger.LogWarning(
-                    "Unit '{UnitId}': SpringDbContext is not registered in the current scope; IsTopLevel flag will remain at its default (false).",
-                    unitId);
                 return;
             }
 
             var entity = await db.UnitDefinitions
-                .FirstOrDefaultAsync(u => u.UnitId == unitId && u.DeletedAt == null, cancellationToken);
+                .FirstOrDefaultAsync(u => u.DisplayName == unitId && u.DeletedAt == null, cancellationToken);
 
             if (entity is null)
             {
                 _logger.LogWarning(
-                    "Unit '{UnitId}': could not locate UnitDefinition row to persist IsTopLevel flag; flag will remain at its default (false).",
+                    "Unit '{UnitId}': could not locate UnitDefinition row while setting top-level marker; ignored.",
                     unitId);
-                return;
             }
-
-            entity.IsTopLevel = true;
-            await db.SaveChangesAsync(cancellationToken);
         }
         catch (OperationCanceledException)
         {
