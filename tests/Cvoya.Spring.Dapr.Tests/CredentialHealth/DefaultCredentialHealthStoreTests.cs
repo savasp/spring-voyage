@@ -22,8 +22,8 @@ using Xunit;
 /// </summary>
 public class DefaultCredentialHealthStoreTests
 {
-    private const string TenantA = "tenant-a";
-    private const string TenantB = "tenant-b";
+    private static readonly Guid TenantA = new("aaaaaaaa-1111-1111-1111-000000000001");
+    private static readonly Guid TenantB = new("aaaaaaaa-1111-1111-1111-000000000002");
 
     [Fact]
     public async Task RecordAsync_CreatesRowOnFirstCall()
@@ -131,7 +131,7 @@ public class DefaultCredentialHealthStoreTests
             .Status.ShouldBe(CredentialHealthStatus.Invalid);
     }
 
-    private static DefaultCredentialHealthStore CreateSut(string dbName, string tenantId)
+    private static DefaultCredentialHealthStore CreateSut(string dbName, Guid tenantId)
     {
         var options = new DbContextOptionsBuilder<SpringDbContext>()
             .UseInMemoryDatabase(databaseName: dbName)

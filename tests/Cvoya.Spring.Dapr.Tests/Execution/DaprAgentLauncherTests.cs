@@ -137,6 +137,7 @@ public class DaprAgentLauncherTests
             Prompt: "prompt",
             McpEndpoint: "http://host.docker.internal:9999/mcp/",
             McpToken: "t",
+            TenantId: Cvoya.Spring.Core.Tenancy.OssTenantIds.Default,
             Provider: "openai",
             Model: "gpt-4o-mini");
 
@@ -221,5 +222,6 @@ public class DaprAgentLauncherTests
             ThreadId: "conv-99",
             Prompt: "## System\nYou are a helpful assistant.",
             McpEndpoint: "http://host.docker.internal:9999/mcp/",
-            McpToken: "test-token-xyz");
+            McpToken: "test-token-xyz",
+            TenantId: Cvoya.Spring.Core.Tenancy.OssTenantIds.Default);
 }

@@ -58,8 +58,11 @@ public class AgentContextBuilderTests
             loggerFactory);
     }
 
+    private static readonly Guid AcmeTenantId = new("aaaaaaaa-1111-1111-1111-000000000001");
+    private static readonly string AcmeTenantHex = AcmeTenantId.ToString("N");
+
     private static AgentLaunchContext MakeLaunchContext(
-        string? tenantId = "acme",
+        Guid? tenantId = null,
         string? unitId = null,
         string? agentDefinitionYaml = null,
         string? tenantConfigJson = null,
@@ -70,7 +73,7 @@ public class AgentContextBuilderTests
             Prompt: "do things",
             McpEndpoint: McpEndpoint,
             McpToken: McpToken,
-            TenantId: tenantId ?? "default",
+            TenantId: tenantId ?? AcmeTenantId,
             UnitId: unitId,
             AgentDefinitionYaml: agentDefinitionYaml,
             TenantConfigJson: tenantConfigJson,
@@ -79,12 +82,12 @@ public class AgentContextBuilderTests
     [Fact]
     public async Task BuildAsync_EmitsRequiredD1SpecEnvVars()
     {
-        var ctx = MakeLaunchContext(tenantId: "acme", unitId: "u-1");
+        var ctx = MakeLaunchContext(tenantId: AcmeTenantId, unitId: "u-1");
         var result = await _builder.BuildAsync(ctx, TestContext.Current.CancellationToken);
 
         // Static metadata
         result.EnvironmentVariables.ShouldContainKey("SPRING_TENANT_ID");
-        result.EnvironmentVariables["SPRING_TENANT_ID"].ShouldBe("acme");
+        result.EnvironmentVariables["SPRING_TENANT_ID"].ShouldBe(AcmeTenantHex);
 
         result.EnvironmentVariables.ShouldContainKey("SPRING_AGENT_ID");
         result.EnvironmentVariables["SPRING_AGENT_ID"].ShouldBe(AgentId);
@@ -253,7 +256,7 @@ public class AgentContextBuilderTests
             Prompt: "do things",
             McpEndpoint: McpEndpoint,
             McpToken: McpToken,
-            TenantId: "acme");
+            TenantId: AcmeTenantId);
 
         var result = await _builder.BuildAsync(ctx, TestContext.Current.CancellationToken);
 
@@ -272,7 +275,7 @@ public class AgentContextBuilderTests
             Prompt: "do things",
             McpEndpoint: McpEndpoint,
             McpToken: McpToken,
-            TenantId: "acme");
+            TenantId: AcmeTenantId);
 
         var result = await _builder.BuildAsync(ctx, TestContext.Current.CancellationToken);
 
@@ -293,7 +296,7 @@ public class AgentContextBuilderTests
 
         var restartCtx = new SupervisorRestartContext(
             AgentId: AgentId,
-            TenantId: "acme",
+            TenantId: AcmeTenantId,
             UnitId: "u-eng");
 
         var result = await _builder.RefreshForRestartAsync(
@@ -310,7 +313,7 @@ public class AgentContextBuilderTests
         result.EnvironmentVariables["SPRING_MCP_TOKEN"].ShouldNotBeNullOrEmpty();
 
         // Identity env vars MUST be set from the restart context.
-        result.EnvironmentVariables["SPRING_TENANT_ID"].ShouldBe("acme");
+        result.EnvironmentVariables["SPRING_TENANT_ID"].ShouldBe(AcmeTenantHex);
         result.EnvironmentVariables["SPRING_AGENT_ID"].ShouldBe(AgentId);
         result.EnvironmentVariables["SPRING_UNIT_ID"].ShouldBe("u-eng");
 
@@ -328,7 +331,7 @@ public class AgentContextBuilderTests
         _mcpServer.IssueSession(Arg.Any<string>(), Arg.Any<string>())
             .Returns(ci => new McpSession($"mcp-{Guid.NewGuid():N}", AgentId, "t"));
 
-        var restartCtx = new SupervisorRestartContext(AgentId: AgentId, TenantId: "acme");
+        var restartCtx = new SupervisorRestartContext(AgentId: AgentId, TenantId: AcmeTenantId);
 
         var r1 = await _builder.RefreshForRestartAsync(
             restartCtx, TestContext.Current.CancellationToken);

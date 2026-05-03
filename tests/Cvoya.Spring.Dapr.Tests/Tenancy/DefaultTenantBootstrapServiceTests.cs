@@ -51,9 +51,9 @@ public class DefaultTenantBootstrapServiceTests
         await sut.StartAsync(TestContext.Current.CancellationToken);
 
         p1.Calls.Count.ShouldBe(1);
-        p1.Calls[0].ShouldBe("default");
+        p1.Calls[0].ShouldBe(OssTenantIds.Default);
         p2.Calls.Count.ShouldBe(1);
-        p2.Calls[0].ShouldBe("default");
+        p2.Calls[0].ShouldBe(OssTenantIds.Default);
     }
 
     [Fact]

@@ -53,7 +53,8 @@ public class GeminiLauncherTests
             ThreadId: "conv-88",
             Prompt: "## Platform Instructions\nAnalyze thoroughly.",
             McpEndpoint: "http://host.docker.internal:9999/mcp/",
-            McpToken: "gemini-secret-token");
+            McpToken: "gemini-secret-token",
+            TenantId: Cvoya.Spring.Core.Tenancy.OssTenantIds.Default);
 
         var prep = await _launcher.PrepareAsync(context, TestContext.Current.CancellationToken);
 
@@ -90,7 +91,8 @@ public class GeminiLauncherTests
             ThreadId: "conv-1",
             Prompt: "Be helpful.",
             McpEndpoint: "http://host.docker.internal:9999/mcp/",
-            McpToken: "gemini-secret-token");
+            McpToken: "gemini-secret-token",
+            TenantId: Cvoya.Spring.Core.Tenancy.OssTenantIds.Default);
 
         var prep = await _launcher.PrepareAsync(context, TestContext.Current.CancellationToken);
 
