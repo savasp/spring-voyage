@@ -106,6 +106,7 @@ public class FileSystemPackageCatalogService(
             return Task.FromResult<PackageDetail?>(null);
         }
 
+        var inputs = ReadPackageInputs(packageDir);
         var unitTemplates = ReadUnitTemplates(packageDir, name, cancellationToken);
         var agentTemplates = ReadAgentTemplates(packageDir, name, cancellationToken);
         var skills = ReadSkills(packageDir, name, cancellationToken);
@@ -115,6 +116,7 @@ public class FileSystemPackageCatalogService(
         var detail = new PackageDetail(
             Name: name,
             Description: TryReadReadmeSummary(packageDir),
+            Inputs: inputs,
             UnitTemplates: unitTemplates,
             AgentTemplates: agentTemplates,
             Skills: skills,
@@ -122,6 +124,74 @@ public class FileSystemPackageCatalogService(
             Workflows: workflows);
 
         return Task.FromResult<PackageDetail?>(detail);
+    }
+
+    /// <summary>
+    /// Read the <c>inputs:</c> block from the package's <c>package.yaml</c>
+    /// (or <c>package.yml</c>) so the wizard / CLI can render input fields
+    /// per declared input. A missing manifest, a malformed manifest, or a
+    /// manifest without an inputs block all map to an empty list — browse
+    /// is best-effort metadata and a malformed package should still appear
+    /// in the catalog so the operator can investigate. Errors are logged
+    /// at warning so misconfigurations don't disappear silently.
+    /// </summary>
+    private List<PackageInputSummary> ReadPackageInputs(string packageDir)
+    {
+        var manifestPath = FindManifestPath(packageDir);
+        if (manifestPath is null)
+        {
+            return [];
+        }
+
+        try
+        {
+            var yaml = File.ReadAllText(manifestPath);
+            var manifest = PackageManifestParser.ParseRaw(yaml);
+            if (manifest.Inputs is null || manifest.Inputs.Count == 0)
+            {
+                return [];
+            }
+
+            var result = new List<PackageInputSummary>(manifest.Inputs.Count);
+            foreach (var def in manifest.Inputs)
+            {
+                if (string.IsNullOrWhiteSpace(def.Name))
+                {
+                    continue;
+                }
+
+                result.Add(new PackageInputSummary(
+                    Name: def.Name!,
+                    Type: string.IsNullOrWhiteSpace(def.Type) ? "string" : def.Type!,
+                    Required: def.Required,
+                    Secret: def.Secret,
+                    Description: def.Description,
+                    Default: def.Default));
+            }
+
+            return result;
+        }
+        catch (Exception ex) when (ex is PackageParseException or YamlDotNet.Core.YamlException or IOException)
+        {
+            logger.LogWarning(
+                ex,
+                "Skipping inputs schema for package manifest '{Path}' because it could not be parsed.",
+                manifestPath);
+            return [];
+        }
+    }
+
+    private static string? FindManifestPath(string packageDir)
+    {
+        foreach (var ext in new[] { "package.yaml", "package.yml" })
+        {
+            var candidate = Path.Combine(packageDir, ext);
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+        return null;
     }
 
     /// <inheritdoc />

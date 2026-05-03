@@ -2,13 +2,15 @@ import { expect, test } from "../../fixtures/test.js";
 
 /**
  * Wizard: Catalog source branch (post-#1563 replacement for the deleted
- * "Mode = Template" path). v0.1 ships two operator-relevant catalog
- * packages without required inputs:
+ * "Mode = Template" path). This spec drives the two zero-input catalog
+ * packages:
  *   - software-engineering → unit `engineering-team`
  *   - product-management   → unit `product-squad`
  *
- * `spring-voyage-oss` requires GitHub inputs and is exercised in the
- * killer suite. Mirrors the CLI scenario
+ * `spring-voyage-oss` declares three required GitHub inputs and is
+ * covered by the sibling spec
+ * `41-units-create-from-template-with-inputs.spec.ts` (#1615). Mirrors
+ * the CLI scenario
  * `tests/cli-scenarios/scenarios/units/unit-create-from-template.sh`
  * which now drives `spring package install <name>` for the same flow.
  *

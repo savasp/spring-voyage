@@ -47,6 +47,7 @@ import {
   useAgentRuntimes,
   useConnectorTypes,
   useOllamaModels,
+  usePackage,
   usePackages,
   useProviderCredentialStatus,
   useTenantTree,
@@ -62,6 +63,7 @@ import type { ValidatedTenantTreeNode } from "@/lib/api/validate-tenant-tree";
 import type {
   InstalledAgentRuntimeResponse,
   InstallStatusResponse,
+  PackageInputSummary,
   UnitConnectorBindingRequest,
   UnitStatus,
 } from "@/lib/api/types";
@@ -776,6 +778,130 @@ export default function CreateUnitPage() {
       : String(packagesQuery.error)
     : null;
 
+  // #1615: detail for the currently-selected catalog package — surfaces
+  // the input schema so the package step can render a typed form field
+  // per declared input. Only fetches once a package is picked; the
+  // dashboard's tanstack-query cache dedupes against the detail page.
+  const selectedPackageQuery = usePackage(form.catalogPackageName ?? "", {
+    enabled: form.source === "catalog" && form.catalogPackageName !== null,
+  });
+  const selectedPackageInputs = useMemo<PackageInputSummary[]>(
+    () => selectedPackageQuery.data?.inputs ?? [],
+    [selectedPackageQuery.data],
+  );
+  const selectedPackageLoading =
+    form.source === "catalog" &&
+    form.catalogPackageName !== null &&
+    selectedPackageQuery.isPending;
+  const selectedPackageError =
+    selectedPackageQuery.isError && form.catalogPackageName !== null
+      ? selectedPackageQuery.error instanceof Error
+        ? selectedPackageQuery.error.message
+        : String(selectedPackageQuery.error)
+      : null;
+
+  // #1615: pre-fill values derived from the wizard's GitHub connector
+  // step. When a declared input name matches one of the conventional
+  // GitHub connector keys, seed `catalogInputs` with the connector
+  // config value so the operator sees the field already filled rather
+  // than having to retype it. The pre-fill only writes when the slot is
+  // currently empty, so an explicit edit by the operator is preserved
+  // even when the connector config changes underneath. Removing the
+  // shim that derived these values silently at install-time (PR #1616);
+  // the new behaviour is observable and overridable.
+  const githubPrefill = useMemo<Record<string, string>>(() => {
+    if (form.connectorSlug !== "github" || form.connectorConfig === null) {
+      return {};
+    }
+    const cfg = form.connectorConfig as {
+      owner?: unknown;
+      repo?: unknown;
+      appInstallationId?: unknown;
+    };
+    const out: Record<string, string> = {};
+    if (typeof cfg.owner === "string" && cfg.owner.trim() !== "") {
+      out.github_owner = cfg.owner;
+    }
+    if (typeof cfg.repo === "string" && cfg.repo.trim() !== "") {
+      out.github_repo = cfg.repo;
+    }
+    if (
+      typeof cfg.appInstallationId === "number" &&
+      Number.isFinite(cfg.appInstallationId)
+    ) {
+      out.github_installation_id = String(cfg.appInstallationId);
+    }
+    return out;
+  }, [form.connectorSlug, form.connectorConfig]);
+
+  // Whenever the package input schema or the GitHub pre-fill changes,
+  // seed any input slot whose name matches a pre-fill key AND whose
+  // value is currently empty. We never overwrite a value the operator
+  // has typed — the merge order is "current value wins".
+  useEffect(() => {
+    if (form.source !== "catalog" || form.catalogPackageName === null) {
+      return;
+    }
+    if (selectedPackageInputs.length === 0) {
+      return;
+    }
+    setForm((prev) => {
+      let changed = false;
+      const next = { ...prev.catalogInputs };
+      for (const def of selectedPackageInputs) {
+        const name = def.name;
+        if (!name) continue;
+        if (typeof next[name] === "string" && next[name] !== "") continue;
+        const candidate = githubPrefill[name];
+        if (candidate !== undefined && candidate !== "") {
+          next[name] = candidate;
+          changed = true;
+        }
+      }
+      return changed ? { ...prev, catalogInputs: next } : prev;
+    });
+    // setForm is stable; we only react to schema and connector changes.
+  }, [
+    form.source,
+    form.catalogPackageName,
+    selectedPackageInputs,
+    githubPrefill,
+  ]);
+
+  // #1615: which declared required inputs are still unsatisfied? An
+  // input is satisfied when it has a non-empty value OR the package
+  // declares a default (the install pipeline applies the default at
+  // Phase 1). The Next gate consults this list; the package step
+  // surfaces a per-field hint when one of these is empty.
+  const missingRequiredCatalogInputs = useMemo<string[]>(() => {
+    if (form.source !== "catalog" || form.catalogPackageName === null) {
+      return [];
+    }
+    const missing: string[] = [];
+    for (const def of selectedPackageInputs) {
+      if (!def.required) continue;
+      const name = def.name;
+      if (!name) continue;
+      const value = form.catalogInputs[name];
+      if (typeof value === "string" && value.trim() !== "") continue;
+      if (
+        typeof def.default === "string" &&
+        def.default !== null &&
+        def.default !== undefined &&
+        def.default !== ""
+      ) {
+        continue;
+      }
+      missing.push(name);
+    }
+    return missing;
+  }, [
+    form.source,
+    form.catalogPackageName,
+    form.catalogInputs,
+    selectedPackageInputs,
+  ]);
+
   // Connector catalog (#199): fetched once so the Connector screen can
   // render the picker without waiting on the server for each render.
   const connectorTypesQuery = useConnectorTypes();
@@ -1016,6 +1142,16 @@ export default function CreateUnitPage() {
     if (form.source === "catalog") {
       // Catalog: require a package selection.
       if (!form.catalogPackageName) return "Select a package to continue.";
+      // #1615: every required input declared by the package must have a
+      // value (or a default) before Next is allowed. Without this gate
+      // the install lands a 400 "Input '<name>' is required" at Phase 1
+      // — surfacing that as an in-form error is the whole point of
+      // shipping the schema-aware UI.
+      const missing = missingRequiredCatalogInputs;
+      if (missing.length > 0) {
+        const labels = missing.map((n) => `"${n}"`).join(", ");
+        return `Fill in ${labels} to continue.`;
+      }
       return null;
     }
     // Scratch branch: step 2 is Identity.
@@ -1211,41 +1347,6 @@ export default function CreateUnitPage() {
     };
   };
 
-  // Catalog branch: derive package inputs from the connector wizard step
-  // when the package's input names match conventional connector keys. The
-  // canonical case today is the spring-voyage-oss package, whose unit YAMLs
-  // substitute `${{ inputs.github_owner }}` / `github_repo` /
-  // `github_installation_id` from values the GitHub connector step already
-  // collects. Without this bridge, install fails with
-  // "Input 'github_owner' is required but was not supplied" because the
-  // wizard never re-prompts the operator for the same fields.
-  //
-  // Explicit `catalogInputs` entries win over derived ones so the
-  // (currently absent, post-#1908 TODO) per-input UI can override.
-  const buildCatalogInputs = (): Record<string, string> => {
-    const merged: Record<string, string> = {};
-    if (form.connectorSlug === "github" && form.connectorConfig !== null) {
-      const cfg = form.connectorConfig as {
-        owner?: unknown;
-        repo?: unknown;
-        appInstallationId?: unknown;
-      };
-      if (typeof cfg.owner === "string" && cfg.owner.trim() !== "") {
-        merged.github_owner = cfg.owner;
-      }
-      if (typeof cfg.repo === "string" && cfg.repo.trim() !== "") {
-        merged.github_repo = cfg.repo;
-      }
-      if (
-        typeof cfg.appInstallationId === "number" &&
-        Number.isFinite(cfg.appInstallationId)
-      ) {
-        merged.github_installation_id = String(cfg.appInstallationId);
-      }
-    }
-    return { ...merged, ...form.catalogInputs };
-  };
-
   // Install mutation. Routes by source branch:
   //   catalog → POST /api/v1/packages/install (JSON body) — ADR-0035 path
   //   scratch → POST /api/v1/tenant/units (+ PUT /execution for image/runtime)
@@ -1265,7 +1366,7 @@ export default function CreateUnitPage() {
         return api.installPackages([
           {
             packageName: form.catalogPackageName,
-            inputs: buildCatalogInputs(),
+            inputs: form.catalogInputs,
           },
         ]);
       }
@@ -1616,7 +1717,10 @@ export default function CreateUnitPage() {
         return true;
       }
       if (form.source === "catalog") {
-        return form.catalogPackageName !== null;
+        if (form.catalogPackageName === null) return false;
+        // #1615: every required input declared by the package must
+        // carry a value (or have a default) before Next is allowed.
+        return missingRequiredCatalogInputs.length === 0;
       }
       // Scratch step 2 = Identity. Require name + parentChoice.
       if (!form.name.trim()) return false;
@@ -1653,7 +1757,14 @@ export default function CreateUnitPage() {
     }
     // Step 5 is Install (scratch) — no advance.
     return false;
-  }, [step, form, isOllamaDapr, ollamaModelsLoading, modelIsSelected]);
+  }, [
+    step,
+    form,
+    isOllamaDapr,
+    ollamaModelsLoading,
+    modelIsSelected,
+    missingRequiredCatalogInputs,
+  ]);
 
   // Issue #927-followup (post-T-07): explain *why* Next is disabled on
   // Step 2. Without this hint the wizard can dead-end silently — the
@@ -1940,21 +2051,27 @@ export default function CreateUnitPage() {
               </ul>
             )}
 
-            {/* v0.1: PackageDetail does not yet expose inputs schema.
-                When a package is selected we show a placeholder noting
-                that no inputs are required. A follow-up issue will add
-                per-input fields once the DTO exposes them. */}
+            {/* #1615: render one form field per declared package input.
+                The package's `inputs:` block lives on PackageDetail; the
+                wizard step pre-fills GitHub-connector keys from the
+                connector wizard step (when configured) but the operator
+                can override every field. Required inputs without a value
+                AND no default block Next via `missingRequiredCatalogInputs`. */}
             {form.catalogPackageName && (
-              <div className="rounded-md border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-                <p className="font-medium text-foreground">
-                  Package inputs
-                </p>
-                <p className="mt-0.5">
-                  No required inputs for{" "}
-                  <code className="font-mono">{form.catalogPackageName}</code>{" "}
-                  in v0.1. Proceed to install.
-                </p>
-              </div>
+              <CatalogInputsPanel
+                packageName={form.catalogPackageName}
+                inputs={selectedPackageInputs}
+                values={form.catalogInputs}
+                onChange={(name, value) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    catalogInputs: { ...prev.catalogInputs, [name]: value },
+                  }))
+                }
+                loading={selectedPackageLoading}
+                error={selectedPackageError}
+                missingRequired={missingRequiredCatalogInputs}
+              />
             )}
 
             {stepError && (
@@ -3168,6 +3285,162 @@ function SubmitWarningsPanel({ warnings }: { warnings: string[] }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * #1615: renders the catalog package's declared inputs as a typed form.
+ * Each entry produces one field whose control matches the input type
+ * (`string` → text, `int` → number, `bool` → checkbox); secret-flagged
+ * inputs render as password fields. Required inputs without a value AND
+ * no default surface an inline hint and bubble up via
+ * `missingRequiredCatalogInputs` so the wizard's Next button stays
+ * disabled until the operator fills them. The placeholder "no inputs"
+ * panel from the v0.1 stub is gone — when the package declares no
+ * inputs the panel collapses to a one-line note.
+ */
+function CatalogInputsPanel({
+  packageName,
+  inputs,
+  values,
+  onChange,
+  loading,
+  error,
+  missingRequired,
+}: {
+  packageName: string;
+  inputs: PackageInputSummary[];
+  values: Record<string, string>;
+  onChange: (name: string, value: string) => void;
+  loading: boolean;
+  error: string | null;
+  missingRequired: string[];
+}) {
+  if (loading) {
+    return (
+      <div
+        className="rounded-md border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground"
+        data-testid="catalog-inputs-loading"
+      >
+        <p className="font-medium text-foreground">Package inputs</p>
+        <p className="mt-0.5">Loading inputs schema for {packageName}…</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div
+        className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-xs text-destructive"
+        role="alert"
+        data-testid="catalog-inputs-error"
+      >
+        Could not load inputs schema: {error}
+      </div>
+    );
+  }
+
+  if (inputs.length === 0) {
+    return (
+      <div
+        className="rounded-md border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground"
+        data-testid="catalog-inputs-empty"
+      >
+        <p className="font-medium text-foreground">Package inputs</p>
+        <p className="mt-0.5">
+          <code className="font-mono">{packageName}</code> declares no inputs.
+        </p>
+      </div>
+    );
+  }
+
+  const missingSet = new Set(missingRequired);
+
+  return (
+    <div
+      className="space-y-3 rounded-md border border-border bg-muted/10 px-3 py-3"
+      data-testid="catalog-inputs"
+    >
+      <p className="text-sm font-medium text-foreground">Package inputs</p>
+      {inputs.map((def) => {
+        const name = def.name ?? "";
+        if (!name) return null;
+        const type = (def.type ?? "string").toLowerCase();
+        const isSecret = def.secret === true;
+        const isBool = type === "bool" || type === "boolean";
+        const isInt = type === "int" || type === "integer";
+        const isRequired = def.required === true;
+        const value = values[name] ?? "";
+        const showMissing = missingSet.has(name);
+        const placeholderText =
+          typeof def.default === "string" && def.default !== ""
+            ? `default: ${def.default}`
+            : undefined;
+
+        return (
+          <label
+            key={name}
+            className="block space-y-1"
+            data-testid={`catalog-input-${name}`}
+          >
+            <span className="flex items-center gap-1 text-sm">
+              <code className="font-mono text-xs">{name}</code>
+              {isRequired && (
+                <span
+                  className="text-destructive"
+                  aria-label="required"
+                  title="Required"
+                >
+                  *
+                </span>
+              )}
+              <span className="text-[11px] text-muted-foreground">
+                ({isSecret ? "secret" : type})
+              </span>
+            </span>
+            {isBool ? (
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={value === "true"}
+                  onChange={(e) =>
+                    onChange(name, e.target.checked ? "true" : "false")
+                  }
+                  data-testid={`catalog-input-${name}-control`}
+                  className="h-4 w-4 rounded border-input"
+                />
+                <span className="text-xs text-muted-foreground">
+                  {value === "true" ? "true" : "false"}
+                </span>
+              </label>
+            ) : (
+              <Input
+                type={isSecret ? "password" : isInt ? "number" : "text"}
+                value={value}
+                onChange={(e) => onChange(name, e.target.value)}
+                placeholder={placeholderText}
+                data-testid={`catalog-input-${name}-control`}
+                aria-required={isRequired}
+                aria-invalid={showMissing}
+              />
+            )}
+            {def.description && (
+              <span className="block text-xs text-muted-foreground">
+                {def.description}
+              </span>
+            )}
+            {showMissing && (
+              <span
+                className="block text-xs text-destructive"
+                data-testid={`catalog-input-${name}-missing`}
+              >
+                This input is required.
+              </span>
+            )}
+          </label>
+        );
+      })}
     </div>
   );
 }

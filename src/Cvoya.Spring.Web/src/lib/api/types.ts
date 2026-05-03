@@ -140,6 +140,14 @@ export type PackageSummary = Schemas["PackageSummary"];
 /** Full package detail (GET /api/v1/packages/{name}). */
 export type PackageDetail = Schemas["PackageDetail"];
 
+/**
+ * Single declared input on a {@link PackageDetail}. Mirrors the
+ * <c>inputs:</c> entries in the package's <c>package.yaml</c>; the
+ * unit-creation wizard renders one form field per entry on the catalog
+ * Package step (#1615).
+ */
+export type PackageInputSummary = Schemas["PackageInputSummary"];
+
 /** GET /api/v1/costs/agents/{id} or /units/{id} response. */
 export type CostSummaryResponse = Schemas["CostSummaryResponse"];
 

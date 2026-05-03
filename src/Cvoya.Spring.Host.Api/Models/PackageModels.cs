@@ -38,6 +38,12 @@ public record PackageSummary(
 /// </summary>
 /// <param name="Name">The package name.</param>
 /// <param name="Description">Optional description from the package README.</param>
+/// <param name="Inputs">
+/// Input definitions declared by the package. Empty when the package has
+/// no inputs schema. Mirrors the <c>inputs:</c> block in <c>package.yaml</c>
+/// so the portal's install wizard can render the right field per input
+/// without re-fetching the manifest itself (#1615).
+/// </param>
 /// <param name="UnitTemplates">Unit templates offered by the package.</param>
 /// <param name="AgentTemplates">Agent templates offered by the package.</param>
 /// <param name="Skills">Skill bundles offered by the package.</param>
@@ -46,11 +52,36 @@ public record PackageSummary(
 public record PackageDetail(
     string Name,
     string? Description,
+    IReadOnlyList<PackageInputSummary> Inputs,
     IReadOnlyList<UnitTemplateSummary> UnitTemplates,
     IReadOnlyList<AgentTemplateSummary> AgentTemplates,
     IReadOnlyList<SkillSummary> Skills,
     IReadOnlyList<ConnectorSummary> Connectors,
     IReadOnlyList<WorkflowSummary> Workflows);
+
+/// <summary>
+/// Wire-shape for a single declared input on a <see cref="PackageDetail"/>.
+/// Sourced from the package's <c>package.yaml</c> <c>inputs:</c> block —
+/// see <c>Cvoya.Spring.Manifest.PackageInputDefinition</c> for the parser
+/// model. The portal install wizard renders one form field per entry;
+/// the CLI's <c>spring package show</c> output is the same data.
+/// </summary>
+/// <param name="Name">The input key name, used in <c>${{ inputs.&lt;name&gt; }}</c> expressions.</param>
+/// <param name="Type">
+/// Scalar type — <c>string</c> (default), <c>int</c>, or <c>bool</c>.
+/// Forward-compatible: unknown values render as text fields.
+/// </param>
+/// <param name="Required">When true, the install fails if no value is supplied and no default exists.</param>
+/// <param name="Secret">When true, the input is a secret reference; portals render this as a password field.</param>
+/// <param name="Description">Human-readable description of the input's purpose; used as field hint text.</param>
+/// <param name="Default">Optional default value applied when no value is supplied.</param>
+public record PackageInputSummary(
+    string Name,
+    string Type,
+    bool Required,
+    bool Secret,
+    string? Description,
+    string? Default);
 
 /// <summary>
 /// A single agent template declared by a package. The YAML under
