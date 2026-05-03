@@ -119,7 +119,7 @@ public class DirectoryCommandTests
             Slug = "translation",
             Domain = new ExpertiseDomainDto
             {
-                DisplayName = "translation",
+                Name = "translation",
                 Description = "Translation expertise",
                 Level = "advanced",
             },
@@ -171,7 +171,7 @@ public class DirectoryCommandTests
             Slug = "python",
             Domain = new ExpertiseDomainDto
             {
-                DisplayName = "python",
+                Name = "python",
                 Description = "Python expertise",
                 Level = "advanced",
             },

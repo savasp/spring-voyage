@@ -91,9 +91,22 @@ public class PlatformTenantsContractTests : IClassFixture<CustomWebApplicationFa
     {
         using var scope = _factory.Services.CreateScope();
         var registry = scope.ServiceProvider.GetRequiredService<ITenantRegistry>();
-        if (await registry.GetAsync(id, cancellationToken) is null)
+        var tenantId = DeriveTenantId(id);
+        if (await registry.GetAsync(tenantId, cancellationToken) is null)
         {
-            await registry.CreateAsync(id, $"display-{id}", cancellationToken);
+            await registry.CreateAsync(tenantId, $"display-{id}", cancellationToken);
         }
+    }
+
+    private static Guid DeriveTenantId(string label)
+    {
+        // Derive a stable Guid from the label so seeded tenants can still be
+        // looked up by their human-readable test label without rewriting the
+        // contract assertions to use raw Guid strings.
+        var bytes = System.Text.Encoding.UTF8.GetBytes(label);
+        var hash = System.Security.Cryptography.SHA256.HashData(bytes);
+        var guidBytes = new byte[16];
+        Array.Copy(hash, guidBytes, 16);
+        return new Guid(guidBytes);
     }
 }

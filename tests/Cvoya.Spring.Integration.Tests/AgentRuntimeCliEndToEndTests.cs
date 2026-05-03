@@ -312,8 +312,11 @@ public sealed class AgentRuntimeCliEndToEndTests : IDisposable
     {
         var ct = TestContext.Current.CancellationToken;
 
+        var alphaTenant = new Guid("aaaaaaaa-1111-2222-3333-aaaaaaaaaaaa");
+        var betaTenant = new Guid("bbbbbbbb-1111-2222-3333-bbbbbbbbbbbb");
+
         // Install Ollama as tenant 'alpha'.
-        _tenantContext.Set("alpha");
+        _tenantContext.Set(alphaTenant);
         await using (var scope = _factory.Services.CreateAsyncScope())
         {
             var installService = scope.ServiceProvider
@@ -324,7 +327,7 @@ public sealed class AgentRuntimeCliEndToEndTests : IDisposable
         }
 
         // Switch to tenant 'beta' — the install from 'alpha' must not surface.
-        _tenantContext.Set("beta");
+        _tenantContext.Set(betaTenant);
         await using (var scope = _factory.Services.CreateAsyncScope())
         {
             var installService = scope.ServiceProvider
@@ -338,7 +341,7 @@ public sealed class AgentRuntimeCliEndToEndTests : IDisposable
 
         // Flipping back to 'alpha' must still see the install (sanity check
         // that the filter is symmetric, not a hard delete).
-        _tenantContext.Set("alpha");
+        _tenantContext.Set(alphaTenant);
         await using (var scope = _factory.Services.CreateAsyncScope())
         {
             var installService = scope.ServiceProvider
@@ -611,7 +614,7 @@ public sealed class AgentRuntimeCliEndToEndTests : IDisposable
                 policy.IsAuthorizedAsync(
                         Arg.Any<SecretAccessAction>(),
                         Arg.Any<SecretScope>(),
-                        Arg.Any<string>(),
+                        Arg.Any<Guid?>(),
                         Arg.Any<CancellationToken>())
                     .Returns(Task.FromResult(true));
                 ReplaceWithInstance(services, policy);

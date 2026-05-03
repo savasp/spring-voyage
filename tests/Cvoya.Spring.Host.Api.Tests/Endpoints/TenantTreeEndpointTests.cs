@@ -244,8 +244,8 @@ public class TenantTreeEndpointTests : IClassFixture<CustomWebApplicationFactory
             var uuid = Guid.NewGuid();
             _entryUuids[$"unit:{path}"] = uuid;
             list.Add(new DirectoryEntry(
-                Address: new Address("unit", path),
-                ActorId: uuid.ToString(),
+                Address: new Address("unit", uuid),
+                ActorId: uuid,
                 DisplayName: displayName,
                 Description: string.Empty,
                 Role: null,
@@ -256,8 +256,8 @@ public class TenantTreeEndpointTests : IClassFixture<CustomWebApplicationFactory
             var uuid = Guid.NewGuid();
             _entryUuids[$"agent:{path}"] = uuid;
             list.Add(new DirectoryEntry(
-                Address: new Address("agent", path),
-                ActorId: uuid.ToString(),
+                Address: new Address("agent", uuid),
+                ActorId: uuid,
                 DisplayName: displayName,
                 Description: string.Empty,
                 Role: role,

@@ -127,7 +127,7 @@ public class UnitParentEndpointTests : IClassFixture<CustomWebApplicationFactory
             db.UnitDefinitions.Add(new UnitDefinitionEntity
             {
                 Id = Guid.NewGuid(),
-                TenantId = "default",
+                TenantId = Cvoya.Spring.Core.Tenancy.OssTenantIds.Default,
                 DisplayName = "Root Unit",
                 Description = string.Empty,
                 CreatedAt = DateTimeOffset.UtcNow,
@@ -146,12 +146,17 @@ public class UnitParentEndpointTests : IClassFixture<CustomWebApplicationFactory
 
         response.StatusCode.ShouldBe(HttpStatusCode.Created);
 
-        // IsTopLevel should be flipped to true in the DB.
+        // After #1492 "top-level" is implicit — no row on the child side
+        // of unit_subunit_memberships. Verify the unit row exists and that
+        // there is no membership edge pointing at it as a sub-unit.
         using var verifyScope = _factory.Services.CreateScope();
         var verifyDb = verifyScope.ServiceProvider.GetRequiredService<SpringDbContext>();
         var row = await verifyDb.UnitDefinitions
             .FirstAsync(u => u.DisplayName == "root-unit", ct);
-        row.IsTopLevel.ShouldBeTrue();
+        var membershipChildRows = await verifyDb.UnitSubunitMemberships
+            .Where(m => m.ChildId == row.Id)
+            .CountAsync(ct);
+        membershipChildRows.ShouldBe(0);
 
         // No parent actor proxy should have been called to add the new
         // unit as a member — top-level means no parent-unit edges.
@@ -192,9 +197,10 @@ public class UnitParentEndpointTests : IClassFixture<CustomWebApplicationFactory
             .Returns(parentProxy);
         var childProxy = Substitute.For<IUnitActor>();
         childProxy.GetStatusAsync(Arg.Any<CancellationToken>()).Returns(UnitStatus.Draft);
+        var actorParentIdStr = ActorParent_Id.ToString("N");
         _factory.ActorProxyFactory
             .CreateActorProxy<IUnitActor>(
-                Arg.Is<ActorId>(a => a.GetId() != ActorParent_Id),
+                Arg.Is<ActorId>(a => a.GetId() != actorParentIdStr),
                 Arg.Any<string>())
             .Returns(childProxy);
 

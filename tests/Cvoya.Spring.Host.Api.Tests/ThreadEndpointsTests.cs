@@ -126,7 +126,7 @@ public class ThreadEndpointsTests : IClassFixture<ThreadEndpointsTests.Factory>
             {
                 Id = Guid.NewGuid(),
                 DisplayName = "Ada Lovelace",
-                TenantId = "default",
+                TenantId = Cvoya.Spring.Core.Tenancy.OssTenantIds.Default,
                 CreatedAt = now,
                 UpdatedAt = now,
             });
@@ -166,7 +166,7 @@ public class ThreadEndpointsTests : IClassFixture<ThreadEndpointsTests.Factory>
             {
                 Id = Guid.NewGuid(),
                 DisplayName = "Engineering",
-                TenantId = "default",
+                TenantId = Cvoya.Spring.Core.Tenancy.OssTenantIds.Default,
                 CreatedAt = now,
                 UpdatedAt = now,
             });
@@ -348,21 +348,22 @@ public class ThreadEndpointsTests : IClassFixture<ThreadEndpointsTests.Factory>
 
         var entry = new DirectoryEntry(
             new Address("agent", Agent_Ada_Id),
-            ActorId: "ada",
+            ActorId: Agent_Ada_Id,
             DisplayName: "Ada",
             Description: "Test agent",
             Role: null,
             RegisteredAt: now);
         _factory.DirectoryService.ClearSubstitute();
         _factory.DirectoryService.ResolveAsync(
-                Arg.Is<Address>(a => a.Scheme == "agent" && a.Path == "ada"),
+                Arg.Is<Address>(a => a.Scheme == "agent" && a.Id == Agent_Ada_Id),
                 Arg.Any<CancellationToken>())
             .Returns(entry);
 
+        var adaActorIdStr = Agent_Ada_Id.ToString("N");
         var agentProxy = Substitute.For<IAgentActor>();
         _factory.ActorProxyFactory.ClearSubstitute();
         _factory.ActorProxyFactory
-            .CreateActorProxy<IAgentActor>(Arg.Is<ActorId>(id => id.GetId() == "ada"), nameof(AgentActor))
+            .CreateActorProxy<IAgentActor>(Arg.Is<ActorId>(id => id.GetId() == adaActorIdStr), nameof(AgentActor))
             .Returns(agentProxy);
 
         var body = new CloseThreadRequest("operator request");

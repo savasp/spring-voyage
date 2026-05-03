@@ -50,7 +50,7 @@ public class MemoriesEndpointTests : IClassFixture<CustomWebApplicationFactory>
         var ct = TestContext.Current.CancellationToken;
         ArrangeDirectoryHit("unit", "engineering", ActorEng_Id);
 
-        var response = await _client.GetAsync("/api/v1/tenant/units/engineering/memories", ct);
+        var response = await _client.GetAsync($"/api/v1/tenant/units/{ActorEng_Id:N}/memories", ct);
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var body = await response.Content.ReadFromJsonAsync<MemoriesResponse>(JsonOptions, ct);
@@ -65,7 +65,7 @@ public class MemoriesEndpointTests : IClassFixture<CustomWebApplicationFactory>
         var ct = TestContext.Current.CancellationToken;
         ArrangeDirectoryMiss();
 
-        var response = await _client.GetAsync("/api/v1/tenant/units/ghost/memories", ct);
+        var response = await _client.GetAsync($"/api/v1/tenant/units/{Guid.NewGuid():N}/memories", ct);
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 
@@ -75,7 +75,7 @@ public class MemoriesEndpointTests : IClassFixture<CustomWebApplicationFactory>
         var ct = TestContext.Current.CancellationToken;
         ArrangeDirectoryHit("agent", "ada", ActorAda_Id);
 
-        var response = await _client.GetAsync("/api/v1/tenant/agents/ada/memories", ct);
+        var response = await _client.GetAsync($"/api/v1/tenant/agents/{ActorAda_Id:N}/memories", ct);
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var body = await response.Content.ReadFromJsonAsync<MemoriesResponse>(JsonOptions, ct);
@@ -90,22 +90,22 @@ public class MemoriesEndpointTests : IClassFixture<CustomWebApplicationFactory>
         var ct = TestContext.Current.CancellationToken;
         ArrangeDirectoryMiss();
 
-        var response = await _client.GetAsync("/api/v1/tenant/agents/ghost/memories", ct);
+        var response = await _client.GetAsync($"/api/v1/tenant/agents/{Guid.NewGuid():N}/memories", ct);
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 
-    private void ArrangeDirectoryHit(string scheme, string path, string actorId)
+    private void ArrangeDirectoryHit(string scheme, string displayName, Guid actorId)
     {
         _factory.DirectoryService.ClearReceivedCalls();
         var entry = new DirectoryEntry(
-            new Address(scheme, path),
+            new Address(scheme, actorId),
             actorId,
-            path,
-            $"{scheme} {path}",
+            displayName,
+            $"{scheme} {displayName}",
             null,
             DateTimeOffset.UtcNow);
         _factory.DirectoryService
-            .ResolveAsync(Arg.Is<Address>(a => a.Scheme == scheme && a.Path == path),
+            .ResolveAsync(Arg.Is<Address>(a => a.Scheme == scheme && a.Id == actorId),
                 Arg.Any<CancellationToken>())
             .Returns(entry);
     }

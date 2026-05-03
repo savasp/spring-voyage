@@ -89,7 +89,8 @@ public class ConnectorContractTests : IClassFixture<CustomWebApplicationFactory>
 
         // Wire up a unit in the directory and a matching store binding so
         // the bindings list includes at least one row.
-        var unitId = "contract-bind-unit";
+        var unitId = Guid.NewGuid();
+        var unitIdStr = unitId.ToString("N");
         // Capture TypeId before passing to Returns() — NSubstitute confuses
         // property accesses inside Returns() with substitution setup calls.
         var stubTypeId = _factory.StubConnectorType.TypeId;
@@ -98,11 +99,11 @@ public class ConnectorContractTests : IClassFixture<CustomWebApplicationFactory>
         _factory.DirectoryService.ListAllAsync(Arg.Any<CancellationToken>())
             .Returns(new List<DirectoryEntry>
             {
-                new(new Address("unit", unitId), $"actor-{unitId}",
+                new(new Address("unit", unitId), unitId,
                     "Contract Bind Unit", "A unit", null, DateTimeOffset.UtcNow),
             });
 
-        _factory.ConnectorConfigStore.GetAsync(unitId, Arg.Any<CancellationToken>())
+        _factory.ConnectorConfigStore.GetAsync(unitIdStr, Arg.Any<CancellationToken>())
             .Returns(new UnitConnectorBinding(stubTypeId, emptyConfig));
 
         var response = await _client.GetAsync(

@@ -126,7 +126,7 @@ public class InboxContractTests : IClassFixture<InboxContractTests.Factory>
     public async Task MarkRead_WritesTimestampToActor()
     {
         var ct = TestContext.Current.CancellationToken;
-        var threadId = ActorWriteTestThread_Id;
+        var threadIdStr = ActorWriteTestThread_Id.ToString("N");
         var now = DateTimeOffset.UtcNow;
 
         _factory.ThreadQueryService.ClearSubstitute();
@@ -135,7 +135,7 @@ public class InboxContractTests : IClassFixture<InboxContractTests.Factory>
             .Returns(new List<InboxItem>
             {
                 new(
-                    ThreadId: threadId,
+                    ThreadId: threadIdStr,
                     From: "agent://contract-bot",
                     Human: "human://local-dev-user",
                     PendingSince: now,
@@ -143,11 +143,11 @@ public class InboxContractTests : IClassFixture<InboxContractTests.Factory>
                     UnreadCount: 0),
             });
 
-        await _client.PostAsync($"/api/v1/tenant/inbox/{threadId}/mark-read", content: null, ct);
+        await _client.PostAsync($"/api/v1/tenant/inbox/{threadIdStr}/mark-read", content: null, ct);
 
         // The endpoint must have called MarkReadAsync on the human actor proxy.
         await _factory.HumanActor.Received().MarkReadAsync(
-            threadId,
+            threadIdStr,
             Arg.Any<DateTimeOffset>(),
             Arg.Any<CancellationToken>());
     }

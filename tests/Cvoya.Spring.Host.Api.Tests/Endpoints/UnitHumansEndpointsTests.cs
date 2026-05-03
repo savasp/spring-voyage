@@ -61,17 +61,17 @@ public class UnitHumansEndpointsTests : IClassFixture<CustomWebApplicationFactor
     public async Task SetHumanPermission_LocalDevCreatorIsOwner_Returns200()
     {
         var ct = TestContext.Current.CancellationToken;
-        var unitName = NewUnitName();
-        ArrangeResolved(unitName);
+        var unitId = Guid.NewGuid();
+        ArrangeResolved(unitId);
 
         // Mirror the post-creation state: the LocalDev caller has Owner
         // on the unit. The permission service is the seam the handler
         // consults — arranging Owner here asserts the gate actually lets
         // the caller through when the service reports Owner (#976).
-        ArrangePermission(unitName, AuthConstants.DefaultLocalUserId, PermissionLevel.Owner);
+        ArrangePermission(unitId, AuthConstants.DefaultLocalUserId, PermissionLevel.Owner);
 
         var response = await _client.PatchAsJsonAsync(
-            $"/api/v1/tenant/units/{unitName}/humans/alice/permissions",
+            $"/api/v1/tenant/units/{unitId:N}/humans/alice/permissions",
             new SetHumanPermissionRequest("Operator"),
             ct);
 
@@ -82,9 +82,9 @@ public class UnitHumansEndpointsTests : IClassFixture<CustomWebApplicationFactor
     public async Task GetHumanPermissions_LocalDevCreatorIsViewer_Returns200()
     {
         var ct = TestContext.Current.CancellationToken;
-        var unitName = NewUnitName();
-        ArrangeResolved(unitName);
-        ArrangePermission(unitName, AuthConstants.DefaultLocalUserId, PermissionLevel.Viewer);
+        var unitId = Guid.NewGuid();
+        ArrangeResolved(unitId);
+        ArrangePermission(unitId, AuthConstants.DefaultLocalUserId, PermissionLevel.Viewer);
 
         var proxy = Substitute.For<IUnitActor>();
         proxy.GetHumanPermissionsAsync(Arg.Any<CancellationToken>())
@@ -94,7 +94,7 @@ public class UnitHumansEndpointsTests : IClassFixture<CustomWebApplicationFactor
             .Returns(proxy);
 
         var response = await _client.GetAsync(
-            $"/api/v1/tenant/units/{unitName}/humans", ct);
+            $"/api/v1/tenant/units/{unitId:N}/humans", ct);
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
     }
@@ -103,12 +103,12 @@ public class UnitHumansEndpointsTests : IClassFixture<CustomWebApplicationFactor
     public async Task RemoveHumanPermission_LocalDevCreatorIsOwner_Returns204()
     {
         var ct = TestContext.Current.CancellationToken;
-        var unitName = NewUnitName();
-        ArrangeResolved(unitName);
-        ArrangePermission(unitName, AuthConstants.DefaultLocalUserId, PermissionLevel.Owner);
+        var unitId = Guid.NewGuid();
+        ArrangeResolved(unitId);
+        ArrangePermission(unitId, AuthConstants.DefaultLocalUserId, PermissionLevel.Owner);
 
         var response = await _client.DeleteAsync(
-            $"/api/v1/tenant/units/{unitName}/humans/alice/permissions", ct);
+            $"/api/v1/tenant/units/{unitId:N}/humans/alice/permissions", ct);
 
         response.StatusCode.ShouldBe(HttpStatusCode.NoContent);
     }
@@ -120,19 +120,19 @@ public class UnitHumansEndpointsTests : IClassFixture<CustomWebApplicationFactor
         // denied. The fix only widens "route id vs actor id" resolution —
         // it must not weaken the permission gate itself.
         var ct = TestContext.Current.CancellationToken;
-        var unitName = NewUnitName();
-        ArrangeResolved(unitName);
+        var unitId = Guid.NewGuid();
+        ArrangeResolved(unitId);
 
         // Explicitly arrange "no permission" so we don't depend on the
         // substitute's implicit null default — the assertion documents
         // the expected 403 branch.
         _factory.PermissionService
             .ResolveEffectivePermissionAsync(
-                AuthConstants.DefaultLocalUserId, unitName, Arg.Any<CancellationToken>())
+                AuthConstants.DefaultLocalUserId, unitId.ToString("N"), Arg.Any<CancellationToken>())
             .Returns((PermissionLevel?)null);
 
         var response = await _client.PatchAsJsonAsync(
-            $"/api/v1/tenant/units/{unitName}/humans/alice/permissions",
+            $"/api/v1/tenant/units/{unitId:N}/humans/alice/permissions",
             new SetHumanPermissionRequest("Operator"),
             ct);
 
@@ -146,12 +146,12 @@ public class UnitHumansEndpointsTests : IClassFixture<CustomWebApplicationFactor
         // fix preserves the gate semantics while correcting the id
         // lookup — asserting both in one test suite.
         var ct = TestContext.Current.CancellationToken;
-        var unitName = NewUnitName();
-        ArrangeResolved(unitName);
-        ArrangePermission(unitName, AuthConstants.DefaultLocalUserId, PermissionLevel.Viewer);
+        var unitId = Guid.NewGuid();
+        ArrangeResolved(unitId);
+        ArrangePermission(unitId, AuthConstants.DefaultLocalUserId, PermissionLevel.Viewer);
 
         var response = await _client.PatchAsJsonAsync(
-            $"/api/v1/tenant/units/{unitName}/humans/alice/permissions",
+            $"/api/v1/tenant/units/{unitId:N}/humans/alice/permissions",
             new SetHumanPermissionRequest("Operator"),
             ct);
 
@@ -166,12 +166,12 @@ public class UnitHumansEndpointsTests : IClassFixture<CustomWebApplicationFactor
         // regression where the auth gate starts consulting a different
         // identifier than the rest of the humans endpoint surface.
         var ct = TestContext.Current.CancellationToken;
-        var unitName = NewUnitName();
-        ArrangeResolved(unitName);
-        ArrangePermission(unitName, AuthConstants.DefaultLocalUserId, PermissionLevel.Owner);
+        var unitId = Guid.NewGuid();
+        ArrangeResolved(unitId);
+        ArrangePermission(unitId, AuthConstants.DefaultLocalUserId, PermissionLevel.Owner);
 
         await _client.PatchAsJsonAsync(
-            $"/api/v1/tenant/units/{unitName}/humans/alice/permissions",
+            $"/api/v1/tenant/units/{unitId:N}/humans/alice/permissions",
             new SetHumanPermissionRequest("Operator"),
             ct);
 
@@ -179,7 +179,7 @@ public class UnitHumansEndpointsTests : IClassFixture<CustomWebApplicationFactor
             .Received()
             .ResolveEffectivePermissionAsync(
                 AuthConstants.DefaultLocalUserId,
-                unitName,
+                unitId.ToString("N"),
                 Arg.Any<CancellationToken>());
     }
 
@@ -192,16 +192,16 @@ public class UnitHumansEndpointsTests : IClassFixture<CustomWebApplicationFactor
         // the endpoint leaks "unit exists" vs "unit is forbidden" the way
         // the original declarative RequireAuthorization gate did.
         var ct = TestContext.Current.CancellationToken;
-        var unitName = NewUnitName();
-        ArrangeNotFound(unitName);
+        var unitId = Guid.NewGuid();
+        ArrangeNotFound(unitId);
 
         _factory.PermissionService
             .ResolveEffectivePermissionAsync(
-                AuthConstants.DefaultLocalUserId, unitName, Arg.Any<CancellationToken>())
+                AuthConstants.DefaultLocalUserId, unitId.ToString("N"), Arg.Any<CancellationToken>())
             .Returns((PermissionLevel?)null);
 
         var response = await _client.PatchAsJsonAsync(
-            $"/api/v1/tenant/units/{unitName}/humans/alice/permissions",
+            $"/api/v1/tenant/units/{unitId:N}/humans/alice/permissions",
             new SetHumanPermissionRequest("Operator"),
             ct);
 
@@ -212,16 +212,16 @@ public class UnitHumansEndpointsTests : IClassFixture<CustomWebApplicationFactor
     public async Task GetHumanPermissions_UnitDoesNotExist_Returns404()
     {
         var ct = TestContext.Current.CancellationToken;
-        var unitName = NewUnitName();
-        ArrangeNotFound(unitName);
+        var unitId = Guid.NewGuid();
+        ArrangeNotFound(unitId);
 
         _factory.PermissionService
             .ResolveEffectivePermissionAsync(
-                AuthConstants.DefaultLocalUserId, unitName, Arg.Any<CancellationToken>())
+                AuthConstants.DefaultLocalUserId, unitId.ToString("N"), Arg.Any<CancellationToken>())
             .Returns((PermissionLevel?)null);
 
         var response = await _client.GetAsync(
-            $"/api/v1/tenant/units/{unitName}/humans", ct);
+            $"/api/v1/tenant/units/{unitId:N}/humans", ct);
 
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
@@ -230,50 +230,48 @@ public class UnitHumansEndpointsTests : IClassFixture<CustomWebApplicationFactor
     public async Task RemoveHumanPermission_UnitDoesNotExist_Returns404()
     {
         var ct = TestContext.Current.CancellationToken;
-        var unitName = NewUnitName();
-        ArrangeNotFound(unitName);
+        var unitId = Guid.NewGuid();
+        ArrangeNotFound(unitId);
 
         _factory.PermissionService
             .ResolveEffectivePermissionAsync(
-                AuthConstants.DefaultLocalUserId, unitName, Arg.Any<CancellationToken>())
+                AuthConstants.DefaultLocalUserId, unitId.ToString("N"), Arg.Any<CancellationToken>())
             .Returns((PermissionLevel?)null);
 
         var response = await _client.DeleteAsync(
-            $"/api/v1/tenant/units/{unitName}/humans/alice/permissions", ct);
+            $"/api/v1/tenant/units/{unitId:N}/humans/alice/permissions", ct);
 
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 
-    private static string NewUnitName() => $"humans-test-{Guid.NewGuid():N}";
-
-    private void ArrangeResolved(string unitName)
+    private void ArrangeResolved(Guid unitId)
     {
         _factory.DirectoryService
             .ResolveAsync(
-                Arg.Is<Address>(a => a.Scheme == "unit" && a.Path == unitName),
+                Arg.Is<Address>(a => a.Scheme == "unit" && a.Id == unitId),
                 Arg.Any<CancellationToken>())
             .Returns(_ => new DirectoryEntry(
-                new Address("unit", unitName),
-                $"actor-{Guid.NewGuid():N}",
-                unitName,
+                new Address("unit", unitId),
+                unitId,
+                "Test unit",
                 "Test unit",
                 null,
                 DateTimeOffset.UtcNow));
     }
 
-    private void ArrangeNotFound(string unitName)
+    private void ArrangeNotFound(Guid unitId)
     {
         _factory.DirectoryService
             .ResolveAsync(
-                Arg.Is<Address>(a => a.Scheme == "unit" && a.Path == unitName),
+                Arg.Is<Address>(a => a.Scheme == "unit" && a.Id == unitId),
                 Arg.Any<CancellationToken>())
             .Returns((DirectoryEntry?)null);
     }
 
-    private void ArrangePermission(string unitName, string humanId, PermissionLevel level)
+    private void ArrangePermission(Guid unitId, string humanId, PermissionLevel level)
     {
         _factory.PermissionService
-            .ResolveEffectivePermissionAsync(humanId, unitName, Arg.Any<CancellationToken>())
+            .ResolveEffectivePermissionAsync(humanId, unitId.ToString("N"), Arg.Any<CancellationToken>())
             .Returns(level);
     }
 }

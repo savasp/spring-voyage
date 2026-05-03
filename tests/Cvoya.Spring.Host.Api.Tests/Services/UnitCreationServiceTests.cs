@@ -285,19 +285,19 @@ public class UnitCreationServiceTests
         // After #1492, UnitMembership.UnitId and AgentId are Guids (not slugs).
         await fixture.MembershipRepository.Received(1).UpsertAsync(
             Arg.Is<UnitMembership>(u =>
-                u.DisplayName == unitUuid && u.AgentId == techLeadUuid
+                u.UnitId == unitUuid && u.AgentId == techLeadUuid
                 && u.Enabled && u.Model == null && u.Specialty == null && u.ExecutionMode == null),
             Arg.Any<CancellationToken>());
 
         await fixture.MembershipRepository.Received(1).UpsertAsync(
             Arg.Is<UnitMembership>(u =>
-                u.DisplayName == unitUuid && u.AgentId == backendUuid
+                u.UnitId == unitUuid && u.AgentId == backendUuid
                 && u.Enabled && u.Model == null && u.Specialty == null && u.ExecutionMode == null),
             Arg.Any<CancellationToken>());
 
         await fixture.MembershipRepository.Received(1).UpsertAsync(
             Arg.Is<UnitMembership>(u =>
-                u.DisplayName == unitUuid && u.AgentId == qaUuid
+                u.UnitId == unitUuid && u.AgentId == qaUuid
                 && u.Enabled && u.Model == null && u.Specialty == null && u.ExecutionMode == null),
             Arg.Any<CancellationToken>());
     }
@@ -429,7 +429,7 @@ public class UnitCreationServiceTests
         // Pre-register "tech-lead" so the Resolve returns non-null.
         var existingEntry = new DirectoryEntry(
             new Address("agent", Agent_TechLead_Id),
-            Guid.NewGuid().ToString(),
+            Agent_TechLead_Id,
             "tech-lead",
             "already exists",
             null,
@@ -478,7 +478,7 @@ public class UnitCreationServiceTests
         fixture.HttpContextAccessor.HttpContext.Returns((HttpContext?)null);
         fixture.CredentialResolver
             .ResolveAsync(
-                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                Arg.Any<string>(), Arg.Any<Guid?>(), Arg.Any<CancellationToken>())
             .Returns(new Cvoya.Spring.Core.Execution.LlmCredentialResolution(
                 Value: "sk-live",
                 Source: Cvoya.Spring.Core.Execution.LlmCredentialSource.Tenant,
@@ -514,7 +514,7 @@ public class UnitCreationServiceTests
         fixture.HttpContextAccessor.HttpContext.Returns((HttpContext?)null);
         fixture.CredentialResolver
             .ResolveAsync(
-                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                Arg.Any<string>(), Arg.Any<Guid?>(), Arg.Any<CancellationToken>())
             .Returns(new Cvoya.Spring.Core.Execution.LlmCredentialResolution(
                 Value: null,
                 Source: Cvoya.Spring.Core.Execution.LlmCredentialSource.NotFound,

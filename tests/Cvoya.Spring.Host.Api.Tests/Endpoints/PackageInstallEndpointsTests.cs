@@ -238,7 +238,7 @@ public class PackageInstallEndpointsTests : IClassFixture<PackageInstallEndpoint
                 Arg.Any<CancellationToken>())
             .Returns(new DirectoryEntry(
                 new Address("unit", Unit_Main_Id),
-                "existing-actor",
+                Unit_Main_Id,
                 "main",
                 string.Empty,
                 null,

@@ -113,7 +113,7 @@ public sealed class UnitValidationCredentialLeakTests : IDisposable
         db.UnitDefinitions.Add(new UnitDefinitionEntity
         {
             Id = Guid.NewGuid(),
-            TenantId = "default",
+            TenantId = Cvoya.Spring.Core.Tenancy.OssTenantIds.Default,
             DisplayName = _unitActorId,
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow,
@@ -185,7 +185,7 @@ public sealed class UnitValidationCredentialLeakTests : IDisposable
             var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
             var row = await db.UnitDefinitions
                 .AsNoTracking()
-                .FirstAsync(u => u.ActorId == _unitActorId, ct);
+                .FirstAsync(u => u.DisplayName == _unitActorId, ct);
 
             row.LastValidationErrorJson.ShouldNotBeNull();
             row.LastValidationErrorJson!.ShouldNotContain(_canary);

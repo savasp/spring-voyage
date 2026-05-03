@@ -179,15 +179,14 @@ public class SecretRotationEndpointsTests : IClassFixture<CustomWebApplicationFa
     {
         _ = _label;
         var ct = TestContext.Current.CancellationToken;
-        var (basePath, _ownerId) = ResolveRoute(scope);
-        _ = _ownerId;
+        var (basePath, ownerId) = ResolveRoute(scope);
 
         // Unit scope needs a valid unit for the POST, but the rotation
         // PUT goes straight to the registry without a unit lookup —
         // a missing entry is enough.
-        if (scope == SecretScope.Unit)
+        if (scope == SecretScope.Unit && ownerId is { } unitGuid)
         {
-            StubUnit(basePath.Split('/').Last().Replace("secrets", "").Trim('/'));
+            StubUnit(unitGuid);
         }
 
         var response = await _client.PutAsJsonAsync(
@@ -263,7 +262,7 @@ public class SecretRotationEndpointsTests : IClassFixture<CustomWebApplicationFa
                 .IsAuthorizedAsync(
                     Arg.Any<SecretAccessAction>(),
                     Arg.Any<SecretScope>(),
-                    Arg.Any<string>(),
+                    Arg.Any<Guid?>(),
                     Arg.Any<CancellationToken>())
                 .Returns(Task.FromResult(true));
         }

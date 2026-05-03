@@ -21,6 +21,8 @@ public class ReflectionActionHandlerTests
 {
     private static readonly Guid AgentId = Guid.NewGuid();
     private static readonly Address AgentAddress = new("agent", AgentId);
+    private static readonly Guid BobId = new("b0b00000-0000-0000-0000-000000000bbb");
+    private static readonly string BobIdHex = BobId.ToString("N");
 
     [Fact]
     public async Task SendMessage_ValidPayload_ProducesDomainMessage()
@@ -32,7 +34,7 @@ public class ReflectionActionHandlerTests
             ActionPayload: JsonSerializer.SerializeToElement(new
             {
                 targetScheme = "agent",
-                targetPath = "bob",
+                targetPath = BobIdHex,
                 content = "hello there",
                 threadId = "conv-42",
             }));
@@ -42,7 +44,7 @@ public class ReflectionActionHandlerTests
 
         message.ShouldNotBeNull();
         message!.From.ShouldBe(AgentAddress);
-        message.To.ShouldBe(Address.For("agent", "bob"));
+        message.To.ShouldBe(new Address("agent", BobId));
         message.Type.ShouldBe(MessageType.Domain);
         message.ThreadId.ShouldBe("conv-42");
         message.Payload.GetProperty("Content").GetString().ShouldBe("hello there");
@@ -57,7 +59,7 @@ public class ReflectionActionHandlerTests
             ActionPayload: JsonSerializer.SerializeToElement(new
             {
                 targetScheme = "agent",
-                targetPath = "bob",
+                targetPath = BobIdHex,
             }));
 
         var handler = new SendMessageReflectionActionHandler();
@@ -103,7 +105,7 @@ public class ReflectionActionHandlerTests
             ActionPayload: JsonSerializer.SerializeToElement(new
             {
                 targetScheme = "agent",
-                targetPath = "bob",
+                targetPath = BobIdHex,
                 topic = "refactor-plan",
             }));
 
@@ -126,7 +128,7 @@ public class ReflectionActionHandlerTests
             ActionPayload: JsonSerializer.SerializeToElement(new
             {
                 targetScheme = "agent",
-                targetPath = "bob",
+                targetPath = BobIdHex,
                 topic = "refactor-plan",
                 content = "First message body.",
                 threadId = "conv-stable",
@@ -149,7 +151,7 @@ public class ReflectionActionHandlerTests
             ActionPayload: JsonSerializer.SerializeToElement(new
             {
                 targetScheme = "agent",
-                targetPath = "bob",
+                targetPath = BobIdHex,
                 reason = "need a review",
             }));
 

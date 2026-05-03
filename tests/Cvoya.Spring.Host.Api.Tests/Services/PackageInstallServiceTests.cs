@@ -40,8 +40,8 @@ public class PackageInstallServiceTests
 {
     private static readonly Guid Unit_Main_Id = new("00000001-feed-1234-5678-000000000000");
 
-    private const string TenantA = "tenant-a";
-    private const string TenantB = "tenant-b";
+    private static readonly Guid TenantA = new("aaaaaaaa-1111-2222-3333-aaaaaaaaaaaa");
+    private static readonly Guid TenantB = new("bbbbbbbb-1111-2222-3333-bbbbbbbbbbbb");
 
     // A minimal valid UnitPackage YAML with no inputs. {0} = package name.
     private const string MinimalPackageYaml = """
@@ -78,7 +78,7 @@ public class PackageInstallServiceTests
     /// </summary>
     private static (PackageInstallService Service, IServiceScopeFactory ScopeFactory)
         BuildService(
-            string tenantId = TenantA,
+            Guid? tenantId = null,
             IDirectoryService? dir = null,
             IPackageArtefactActivator? activator = null,
             IPackageCatalogProvider? catalog = null)
@@ -86,7 +86,7 @@ public class PackageInstallServiceTests
         var dbName = $"pkg-install-{Guid.NewGuid():N}";
         var services = new ServiceCollection();
 
-        services.AddSingleton<ITenantContext>(new StaticTenantContext(tenantId));
+        services.AddSingleton<ITenantContext>(new StaticTenantContext(tenantId ?? TenantA));
         services.AddScoped<SpringDbContext>(sp =>
         {
             var opts = new DbContextOptionsBuilder<SpringDbContext>()
@@ -456,7 +456,7 @@ public class PackageInstallServiceTests
                 Arg.Any<CancellationToken>())
             .Returns(new DirectoryEntry(
                 new Address("unit", Unit_Main_Id),
-                Guid.NewGuid().ToString(),
+                Unit_Main_Id,
                 "main", string.Empty, null, DateTimeOffset.UtcNow));
         dir.ResolveAsync(
                 Arg.Is<Address>(a => a.Path != "main"),

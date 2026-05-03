@@ -50,11 +50,11 @@ public class TenantCostEndpointsTests : IClassFixture<CustomWebApplicationFactor
         {
             var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
             db.CostRecords.AddRange(
-                CreateRecord(tenantId: "default", cost: 0.10m, timestamp: now.AddDays(-2)),
-                CreateRecord(tenantId: "default", cost: 0.25m, timestamp: now.AddDays(-2).AddHours(3)),
-                CreateRecord(tenantId: "default", cost: 0.50m, timestamp: now.AddDays(-10)),
+                CreateRecord(tenantId: Cvoya.Spring.Core.Tenancy.OssTenantIds.Default, cost: 0.10m, timestamp: now.AddDays(-2)),
+                CreateRecord(tenantId: Cvoya.Spring.Core.Tenancy.OssTenantIds.Default, cost: 0.25m, timestamp: now.AddDays(-2).AddHours(3)),
+                CreateRecord(tenantId: Cvoya.Spring.Core.Tenancy.OssTenantIds.Default, cost: 0.50m, timestamp: now.AddDays(-10)),
                 // Out-of-window row — must not appear in any bucket.
-                CreateRecord(tenantId: "default", cost: 99m, timestamp: now.AddDays(-60)));
+                CreateRecord(tenantId: Cvoya.Spring.Core.Tenancy.OssTenantIds.Default, cost: 99m, timestamp: now.AddDays(-60)));
             await db.SaveChangesAsync(ct);
         }
 
@@ -82,7 +82,7 @@ public class TenantCostEndpointsTests : IClassFixture<CustomWebApplicationFactor
         {
             var costService = scope.ServiceProvider.GetRequiredService<ICostQueryService>();
             var canonical = await costService.GetTenantCostAsync(
-                "default", body.From, body.To, ct);
+                Cvoya.Spring.Core.Tenancy.OssTenantIds.Default, body.From, body.To, ct);
 
             body.Series.Sum(b => b.Cost).ShouldBe(canonical.TotalCost);
 
@@ -180,7 +180,7 @@ public class TenantCostEndpointsTests : IClassFixture<CustomWebApplicationFactor
     }
 
     private static CostRecord CreateRecord(
-        string tenantId = "default",
+        Guid? tenantId = null,
         string agentId = "agent-ts",
         string? unitId = "unit-ts",
         decimal cost = 0.05m,
@@ -192,7 +192,7 @@ public class TenantCostEndpointsTests : IClassFixture<CustomWebApplicationFactor
         return new CostRecord
         {
             Id = Guid.NewGuid(),
-            TenantId = tenantId,
+            TenantId = tenantId ?? Cvoya.Spring.Core.Tenancy.OssTenantIds.Default,
             Model = "claude-3-opus",
             Cost = cost,
             InputTokens = inputTokens,

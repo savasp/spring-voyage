@@ -37,8 +37,8 @@ public class CostEndpointsTests : IClassFixture<CustomWebApplicationFactory>
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
         db.CostRecords.AddRange(
-            CreateRecord("cost-agent-1", "unit-1", "default", 0.10m, 200, 100, now),
-            CreateRecord("cost-agent-1", "unit-1", "default", 0.20m, 300, 150, now));
+            CreateRecord("cost-agent-1", "unit-1", Cvoya.Spring.Core.Tenancy.OssTenantIds.Default, 0.10m, 200, 100, now),
+            CreateRecord("cost-agent-1", "unit-1", Cvoya.Spring.Core.Tenancy.OssTenantIds.Default, 0.20m, 300, 150, now));
         await db.SaveChangesAsync(ct);
 
         var from = Uri.EscapeDataString(now.AddHours(-1).ToString("O"));
@@ -84,9 +84,9 @@ public class CostEndpointsTests : IClassFixture<CustomWebApplicationFactory>
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
         db.CostRecords.AddRange(
-            CreateRecord("split-agent", "unit-1", "default", 0.08m, 100, 50, now, CostSource.Work),
-            CreateRecord("split-agent", "unit-1", "default", 0.04m, 100, 50, now, CostSource.Work),
-            CreateRecord("split-agent", "unit-1", "default", 0.03m, 100, 50, now, CostSource.Initiative));
+            CreateRecord("split-agent", "unit-1", Cvoya.Spring.Core.Tenancy.OssTenantIds.Default, 0.08m, 100, 50, now, CostSource.Work),
+            CreateRecord("split-agent", "unit-1", Cvoya.Spring.Core.Tenancy.OssTenantIds.Default, 0.04m, 100, 50, now, CostSource.Work),
+            CreateRecord("split-agent", "unit-1", Cvoya.Spring.Core.Tenancy.OssTenantIds.Default, 0.03m, 100, 50, now, CostSource.Initiative));
         await db.SaveChangesAsync(ct);
 
         var from = Uri.EscapeDataString(now.AddHours(-1).ToString("O"));
@@ -112,8 +112,8 @@ public class CostEndpointsTests : IClassFixture<CustomWebApplicationFactory>
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
         db.CostRecords.AddRange(
-            CreateRecord("agent-x", "cost-unit-1", "default", 0.15m, 100, 50, now),
-            CreateRecord("agent-y", "cost-unit-1", "default", 0.25m, 200, 100, now));
+            CreateRecord("agent-x", "cost-unit-1", Cvoya.Spring.Core.Tenancy.OssTenantIds.Default, 0.15m, 100, 50, now),
+            CreateRecord("agent-y", "cost-unit-1", Cvoya.Spring.Core.Tenancy.OssTenantIds.Default, 0.25m, 200, 100, now));
         await db.SaveChangesAsync(ct);
 
         var from = Uri.EscapeDataString(now.AddHours(-1).ToString("O"));
@@ -146,14 +146,15 @@ public class CostEndpointsTests : IClassFixture<CustomWebApplicationFactory>
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
         db.CostRecords.AddRange(
-            CreateRecord("agent-a", "unit-a", "default", 0.50m, 500, 250, testWindow),
-            CreateRecord("agent-b", "unit-b", "default", 0.30m, 300, 150, testWindow));
+            CreateRecord("agent-a", "unit-a", Cvoya.Spring.Core.Tenancy.OssTenantIds.Default, 0.50m, 500, 250, testWindow),
+            CreateRecord("agent-b", "unit-b", Cvoya.Spring.Core.Tenancy.OssTenantIds.Default, 0.30m, 300, 150, testWindow));
         await db.SaveChangesAsync(ct);
 
         var from = Uri.EscapeDataString(testWindow.AddHours(-1).ToString("O"));
         var to = Uri.EscapeDataString(testWindow.AddHours(1).ToString("O"));
+        var tenantQuery = Cvoya.Spring.Core.Tenancy.OssTenantIds.Default.ToString("N");
         var response = await _client.GetAsync(
-            $"/api/v1/tenant/cost/tenant?tenantId=default&from={from}&to={to}", ct);
+            $"/api/v1/tenant/cost/tenant?tenantId={tenantQuery}&from={from}&to={to}", ct);
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
@@ -166,7 +167,7 @@ public class CostEndpointsTests : IClassFixture<CustomWebApplicationFactory>
     private static CostRecord CreateRecord(
         string agentId,
         string unitId,
-        string tenantId,
+        Guid tenantId,
         decimal cost,
         int inputTokens,
         int outputTokens,

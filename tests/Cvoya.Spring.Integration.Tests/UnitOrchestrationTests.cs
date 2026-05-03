@@ -183,11 +183,14 @@ public class UnitOrchestrationTests
         var directory = Substitute.For<IDirectoryService>();
         var factory = Substitute.For<IActorProxyFactory>();
 
-        var subAddress = Address.For("unit", "sub-team");
+        var subId = new Guid("11111111-2222-3333-4444-555555555555");
+        var parentId = new Guid("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+
+        var subAddress = new Address("unit", subId);
         directory.ResolveAsync(subAddress, Arg.Any<CancellationToken>())
             .Returns(new DirectoryEntry(
                 subAddress,
-                "sub-actor",
+                subId,
                 "sub-team",
                 "Sub team",
                 null,
@@ -197,12 +200,12 @@ public class UnitOrchestrationTests
         subProxy.GetMembersAsync(Arg.Any<CancellationToken>())
             .Returns(System.Array.Empty<Address>());
         factory.CreateActorProxy<IUnitActor>(
-                Arg.Is<ActorId>(a => a.GetId() == "sub-actor"),
+                Arg.Is<ActorId>(a => a.GetId() == subId.ToString("N")),
                 nameof(UnitActor))
             .Returns(subProxy);
 
         var (parent, parentState, _) = ActorTestHost.CreateUnitActor(
-            actorId: "parent-unit",
+            actorId: parentId.ToString("N"),
             directoryService: directory,
             actorProxyFactory: factory);
 
@@ -222,36 +225,42 @@ public class UnitOrchestrationTests
         var directory = Substitute.For<IDirectoryService>();
         var factory = Substitute.For<IActorProxyFactory>();
 
-        var subAddress = Address.For("unit", "sub-team");
+        var subId = new Guid("11111111-2222-3333-4444-555555555555");
+        var parentId = new Guid("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+
+        var subAddress = new Address("unit", subId);
         directory.ResolveAsync(subAddress, Arg.Any<CancellationToken>())
             .Returns(new DirectoryEntry(
                 subAddress,
-                "sub-actor",
+                subId,
                 "sub-team",
                 "Sub team",
                 null,
                 DateTimeOffset.UtcNow));
 
         var subProxy = Substitute.For<IUnitActor>();
+        var parentAddress = new Address("unit", parentId);
         subProxy.GetMembersAsync(Arg.Any<CancellationToken>())
-            .Returns(new[] { Address.For("unit", "parent-team") });
+            .Returns(new[] { parentAddress });
         factory.CreateActorProxy<IUnitActor>(
-                Arg.Is<ActorId>(a => a.GetId() == "sub-actor"),
+                Arg.Is<ActorId>(a => a.GetId() == subId.ToString("N")),
                 nameof(UnitActor))
             .Returns(subProxy);
 
-        // "parent-team" resolves back to the "parent-unit" actor.
-        directory.ResolveAsync(Address.For("unit", "parent-team"), Arg.Any<CancellationToken>())
+        // The cycle: subProxy reports parentAddress as a member. That maps
+        // back to the parent actor we're calling AddMemberAsync on, so the
+        // guard must reject before persisting.
+        directory.ResolveAsync(parentAddress, Arg.Any<CancellationToken>())
             .Returns(new DirectoryEntry(
-                Address.For("unit", "parent-team"),
-                "parent-unit",
+                parentAddress,
+                parentId,
                 "parent-team",
                 "Parent team",
                 null,
                 DateTimeOffset.UtcNow));
 
         var (parent, parentState, _) = ActorTestHost.CreateUnitActor(
-            actorId: "parent-unit",
+            actorId: parentId.ToString("N"),
             directoryService: directory,
             actorProxyFactory: factory);
 

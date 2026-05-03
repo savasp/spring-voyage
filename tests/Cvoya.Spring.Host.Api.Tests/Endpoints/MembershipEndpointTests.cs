@@ -400,25 +400,22 @@ public class MembershipEndpointTests : IClassFixture<CustomWebApplicationFactory
     /// <c>ListAllAsync</c> returns a consistent set for slug-resolution in
     /// <c>ToResponse</c>.
     /// </summary>
-    private void ArrangeDirectoryHit(string scheme, string path, Guid actorUuid)
-        => ArrangeDirectoryHit(scheme, path, actorUuid.ToString());
-
-    private void ArrangeDirectoryHit(string scheme, string path, string actorId)
+    private void ArrangeDirectoryHit(string scheme, string displayName, Guid actorUuid)
     {
         var entry = new DirectoryEntry(
-            new Address(scheme, path),
-            actorId,
-            path,
-            $"{scheme} {path}",
+            new Address(scheme, actorUuid),
+            actorUuid,
+            displayName,
+            $"{scheme} {displayName}",
             null,
             DateTimeOffset.UtcNow);
         _factory.DirectoryService
-            .ResolveAsync(Arg.Is<Address>(a => a.Scheme == scheme && a.Path == path),
+            .ResolveAsync(Arg.Is<Address>(a => a.Scheme == scheme && a.Id == actorUuid),
                 Arg.Any<CancellationToken>())
             .Returns(entry);
 
         // Keep the list in sync so ListAllAsync returns all arranged entries.
-        _arrangedEntries.RemoveAll(e => e.Address.Scheme == scheme && e.Address.Path == path);
+        _arrangedEntries.RemoveAll(e => e.Address.Scheme == scheme && e.Address.Id == actorUuid);
         _arrangedEntries.Add(entry);
     }
 

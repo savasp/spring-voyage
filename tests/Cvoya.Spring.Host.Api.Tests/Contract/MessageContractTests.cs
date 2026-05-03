@@ -78,7 +78,7 @@ public class MessageContractTests : IClassFixture<CustomWebApplicationFactory>
             .Returns(reply);
         _factory.AgentProxyResolver
             .Resolve(Arg.Is<string>(s => string.Equals(s, "agent", StringComparison.OrdinalIgnoreCase)),
-                ActorContractSend_Id)
+                ActorContractSend_Id.ToString("N"))
             .Returns(agent);
 
         var request = new SendMessageRequest(
@@ -147,7 +147,7 @@ public class MessageContractTests : IClassFixture<CustomWebApplicationFactory>
             .Returns((Message?)null);
         _factory.AgentProxyResolver
             .Resolve(Arg.Is<string>(s => string.Equals(s, "agent", StringComparison.OrdinalIgnoreCase)),
-                ActorContractNullPayload_Id)
+                ActorContractNullPayload_Id.ToString("N"))
             .Returns(agent);
 
         var request = new SendMessageRequest(

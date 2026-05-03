@@ -444,6 +444,6 @@ public class UnitMembershipCoordinatorTests
             getSubUnitMembers: (_, _) => Task.FromResult(Array.Empty<Address>()),
             cancellationToken: TestContext.Current.CancellationToken);
 
-        await projector.DidNotReceiveWithAnyArgs().ProjectAddAsync(default, default, default);
+        await projector.DidNotReceiveWithAnyArgs().ProjectAddAsync(default, default, TestContext.Current.CancellationToken);
     }
 }

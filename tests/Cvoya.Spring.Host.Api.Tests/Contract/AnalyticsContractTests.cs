@@ -195,7 +195,7 @@ public class AnalyticsContractTests : IClassFixture<CustomWebApplicationFactory>
         db.CostRecords.Add(new CostRecord
         {
             Id = Guid.NewGuid(),
-            TenantId = "default",
+            TenantId = Cvoya.Spring.Core.Tenancy.OssTenantIds.Default,
             Model = model,
             Cost = cost,
             InputTokens = 100,

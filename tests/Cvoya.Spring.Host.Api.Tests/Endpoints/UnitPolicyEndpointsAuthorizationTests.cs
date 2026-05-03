@@ -210,13 +210,14 @@ public class UnitPolicyEndpointsAuthorizationTests : IClassFixture<CustomWebAppl
 
     private void ArrangeResolved(string unitName)
     {
+        var unitGuid = Guid.TryParse(unitName, out var parsed) ? parsed : Guid.NewGuid();
         _factory.DirectoryService
             .ResolveAsync(
-                Arg.Is<Address>(a => a.Scheme == "unit" && a.Path == unitName),
+                Arg.Is<Address>(a => a.Scheme == "unit" && (a.Id == unitGuid || a.Path == unitName)),
                 Arg.Any<CancellationToken>())
             .Returns(_ => new DirectoryEntry(
-                new Address("unit", unitName),
-                $"actor-{Guid.NewGuid():N}",
+                new Address("unit", unitGuid),
+                unitGuid,
                 unitName,
                 "Test unit",
                 null,

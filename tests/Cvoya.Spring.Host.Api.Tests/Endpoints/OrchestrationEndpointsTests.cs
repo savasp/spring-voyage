@@ -46,7 +46,7 @@ public class OrchestrationEndpointsTests
             .ResolveAsync(Arg.Any<Address>(), Arg.Any<CancellationToken>())
             .Returns((DirectoryEntry?)null);
 
-        var response = await _client.GetAsync("/api/v1/tenant/units/ghost/orchestration", ct);
+        var response = await _client.GetAsync($"/api/v1/tenant/units/{Guid.NewGuid():N}/orchestration", ct);
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 
@@ -54,7 +54,7 @@ public class OrchestrationEndpointsTests
     public async Task GetOrchestration_NoStrategyPersisted_ReturnsEmptyShape()
     {
         var ct = TestContext.Current.CancellationToken;
-        var unitName = NewUnitName();
+        var unitId = Guid.NewGuid(); var unitName = unitId.ToString("N");
         ArrangeResolved(unitName);
         _factory.OrchestrationStore
             .GetStrategyKeyAsync(unitName, Arg.Any<CancellationToken>())
@@ -72,7 +72,7 @@ public class OrchestrationEndpointsTests
     public async Task PutOrchestration_ValidKey_PersistsAndReturnsIt()
     {
         var ct = TestContext.Current.CancellationToken;
-        var unitName = NewUnitName();
+        var unitId = Guid.NewGuid(); var unitName = unitId.ToString("N");
         ArrangeResolved(unitName);
 
         string? captured = null;
@@ -101,7 +101,7 @@ public class OrchestrationEndpointsTests
     public async Task PutOrchestration_EmptyStrategy_Returns400()
     {
         var ct = TestContext.Current.CancellationToken;
-        var unitName = NewUnitName();
+        var unitId = Guid.NewGuid(); var unitName = unitId.ToString("N");
         ArrangeResolved(unitName);
 
         var putResponse = await _client.PutAsJsonAsync(
@@ -127,7 +127,7 @@ public class OrchestrationEndpointsTests
             .Returns((DirectoryEntry?)null);
 
         var putResponse = await _client.PutAsJsonAsync(
-            "/api/v1/tenant/units/ghost/orchestration",
+            $"/api/v1/tenant/units/{Guid.NewGuid():N}/orchestration",
             new UnitOrchestrationResponse("ai"),
             ct);
         putResponse.StatusCode.ShouldBe(HttpStatusCode.NotFound);
@@ -137,7 +137,7 @@ public class OrchestrationEndpointsTests
     public async Task DeleteOrchestration_KnownUnit_ReturnsNoContentAndClearsSlot()
     {
         var ct = TestContext.Current.CancellationToken;
-        var unitName = NewUnitName();
+        var unitId = Guid.NewGuid(); var unitName = unitId.ToString("N");
         ArrangeResolved(unitName);
 
         var response = await _client.DeleteAsync($"/api/v1/tenant/units/{unitName}/orchestration", ct);
@@ -157,21 +157,22 @@ public class OrchestrationEndpointsTests
             .ResolveAsync(Arg.Any<Address>(), Arg.Any<CancellationToken>())
             .Returns((DirectoryEntry?)null);
 
-        var response = await _client.DeleteAsync("/api/v1/tenant/units/ghost/orchestration", ct);
+        var response = await _client.DeleteAsync($"/api/v1/tenant/units/{Guid.NewGuid():N}/orchestration", ct);
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 
-    private static string NewUnitName() => $"eng-{Guid.NewGuid():N}";
+    private static string NewUnitName() => Guid.NewGuid().ToString("N");
 
     private void ArrangeResolved(string unitName)
     {
+        var unitGuid = Guid.Parse(unitName);
         _factory.DirectoryService
             .ResolveAsync(
-                Arg.Is<Address>(a => a.Scheme == "unit" && a.Path == unitName),
+                Arg.Is<Address>(a => a.Scheme == "unit" && a.Id == unitGuid),
                 Arg.Any<CancellationToken>())
             .Returns(_ => new DirectoryEntry(
-                new Address("unit", unitName),
-                $"actor-{unitName}",
+                new Address("unit", unitGuid),
+                unitGuid,
                 "Engineering",
                 "Engineering unit",
                 null,

@@ -238,10 +238,10 @@ public class PlatformTenantsEndpointsTests : IClassFixture<CustomWebApplicationF
     {
         using var scope = _factory.Services.CreateScope();
         var registry = scope.ServiceProvider.GetRequiredService<ITenantRegistry>();
-        var existing = await registry.GetAsync("default", ct);
+        var existing = await registry.GetAsync(OssTenantIds.Default, ct);
         if (existing is null)
         {
-            await registry.CreateAsync("default", "Default", ct);
+            await registry.CreateAsync(OssTenantIds.Default, "Default", ct);
         }
     }
 
