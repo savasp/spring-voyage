@@ -31,6 +31,8 @@ using Xunit;
 /// </summary>
 public class InboxContractTests : IClassFixture<InboxContractTests.Factory>
 {
+    private static readonly Guid ActorWriteTestThread_Id = new("00002711-bbbb-cccc-dddd-000000000000");
+
     private readonly Factory _factory;
     private readonly HttpClient _client;
 
@@ -124,7 +126,7 @@ public class InboxContractTests : IClassFixture<InboxContractTests.Factory>
     public async Task MarkRead_WritesTimestampToActor()
     {
         var ct = TestContext.Current.CancellationToken;
-        var threadId = "actor-write-test-thread";
+        var threadId = ActorWriteTestThread_Id;
         var now = DateTimeOffset.UtcNow;
 
         _factory.ThreadQueryService.ClearSubstitute();

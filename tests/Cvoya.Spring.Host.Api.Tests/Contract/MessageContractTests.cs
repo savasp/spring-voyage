@@ -23,6 +23,13 @@ using Xunit;
 /// </summary>
 public class MessageContractTests : IClassFixture<CustomWebApplicationFactory>
 {
+    private static readonly Guid ActorContractNullPayload_Id = new("00002711-bbbb-cccc-dddd-000000000000");
+    private static readonly Guid ActorContractSend_Id = new("00002712-bbbb-cccc-dddd-000000000000");
+
+    private static readonly Guid Agent_ContractNullPayloadTarget_Id = new("00000001-feed-1234-5678-000000000000");
+    private static readonly Guid Agent_ContractSendTarget_Id = new("00000002-feed-1234-5678-000000000000");
+    private static readonly Guid Human_LocalDevUser_Id = new("00000003-feed-1234-5678-000000000000");
+
     private readonly CustomWebApplicationFactory _factory;
     private readonly HttpClient _client;
 
@@ -38,8 +45,8 @@ public class MessageContractTests : IClassFixture<CustomWebApplicationFactory>
         var ct = TestContext.Current.CancellationToken;
 
         var entry = new DirectoryEntry(
-            Address.For("agent", "contract-send-target"),
-            "actor-contract-send",
+            new Address("agent", Agent_ContractSendTarget_Id),
+            ActorContractSend_Id,
             "Contract Send Target",
             "An agent for contract tests",
             null,
@@ -60,8 +67,8 @@ public class MessageContractTests : IClassFixture<CustomWebApplicationFactory>
         // emit.
         var reply = new Message(
             Guid.NewGuid(),
-            Address.For("agent", "contract-send-target"),
-            Address.For("human", "local-dev-user"),
+            new Address("agent", Agent_ContractSendTarget_Id),
+            new Address("human", Human_LocalDevUser_Id),
             MessageType.Domain,
             "contract-conv-1",
             JsonSerializer.SerializeToElement(new { ack = "received" }),
@@ -71,7 +78,7 @@ public class MessageContractTests : IClassFixture<CustomWebApplicationFactory>
             .Returns(reply);
         _factory.AgentProxyResolver
             .Resolve(Arg.Is<string>(s => string.Equals(s, "agent", StringComparison.OrdinalIgnoreCase)),
-                "actor-contract-send")
+                ActorContractSend_Id)
             .Returns(agent);
 
         var request = new SendMessageRequest(
@@ -119,8 +126,8 @@ public class MessageContractTests : IClassFixture<CustomWebApplicationFactory>
         var ct = TestContext.Current.CancellationToken;
 
         var entry = new DirectoryEntry(
-            Address.For("agent", "contract-null-payload-target"),
-            "actor-contract-null-payload",
+            new Address("agent", Agent_ContractNullPayloadTarget_Id),
+            ActorContractNullPayload_Id,
             "Contract Null Payload Target",
             "An agent that returns no reply payload",
             null,
@@ -140,7 +147,7 @@ public class MessageContractTests : IClassFixture<CustomWebApplicationFactory>
             .Returns((Message?)null);
         _factory.AgentProxyResolver
             .Resolve(Arg.Is<string>(s => string.Equals(s, "agent", StringComparison.OrdinalIgnoreCase)),
-                "actor-contract-null-payload")
+                ActorContractNullPayload_Id)
             .Returns(agent);
 
         var request = new SendMessageRequest(

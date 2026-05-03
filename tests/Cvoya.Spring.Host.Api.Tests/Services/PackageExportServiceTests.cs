@@ -40,6 +40,9 @@ using Xunit;
 /// </summary>
 public class PackageExportServiceTests
 {
+    private static readonly Guid Unit_Main_Id = new("00000001-feed-1234-5678-000000000000");
+    private static readonly Guid Unit_OrphanUnit_Id = new("00000002-feed-1234-5678-000000000000");
+
     private const string TenantA = "tenant-a";
     private const string TenantB = "tenant-b";
 
@@ -281,9 +284,9 @@ public class PackageExportServiceTests
             scopeFactory, TenantA, packageName, formattedYaml);
 
         // Directory resolves the unit.
-        dir.ResolveAsync(Address.For("unit", "main"), Arg.Any<CancellationToken>())
+        dir.ResolveAsync(new Address("unit", Unit_Main_Id), Arg.Any<CancellationToken>())
             .Returns(new DirectoryEntry(
-                Address.For("unit", "main"),
+                new Address("unit", Unit_Main_Id),
                 Guid.NewGuid().ToString(),
                 "Main Unit",
                 string.Empty,
@@ -400,9 +403,9 @@ public class PackageExportServiceTests
         // Arrange: directory resolves the unit but there's no unit_definitions row
         // with an InstallId (e.g. a unit created before the install feature landed).
         var (svc, scopeFactory, dir) = BuildService();
-        dir.ResolveAsync(Address.For("unit", "orphan-unit"), Arg.Any<CancellationToken>())
+        dir.ResolveAsync(new Address("unit", Unit_OrphanUnit_Id), Arg.Any<CancellationToken>())
             .Returns(new DirectoryEntry(
-                Address.For("unit", "orphan-unit"),
+                new Address("unit", Unit_OrphanUnit_Id),
                 Guid.NewGuid().ToString(),
                 "Orphan",
                 string.Empty, null,
@@ -508,9 +511,9 @@ public class PackageExportServiceTests
         var installId = await SeedInstallAsync(
             scopeFactory, TenantA, packageName, yamlRaw, inputs);
 
-        dir.ResolveAsync(Address.For("unit", "main"), Arg.Any<CancellationToken>())
+        dir.ResolveAsync(new Address("unit", Unit_Main_Id), Arg.Any<CancellationToken>())
             .Returns(new DirectoryEntry(
-                Address.For("unit", "main"),
+                new Address("unit", Unit_Main_Id),
                 Guid.NewGuid().ToString(),
                 "Main", string.Empty, null,
                 DateTimeOffset.UtcNow));

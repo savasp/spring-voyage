@@ -33,8 +33,11 @@ using Xunit;
 /// </summary>
 public class UnitLifecycleEndpointTests : IClassFixture<CustomWebApplicationFactory>
 {
+    private static readonly Guid ActorEngineering_Id = new("00002711-bbbb-cccc-dddd-000000000000");
+
     private const string UnitName = "engineering";
-    private const string ActorId = "actor-engineering";
+    private static readonly Guid ActorId_Guid = ActorEngineering_Id;
+    private static readonly string ActorId = ActorId_Guid.ToString("N");
 
     private readonly CustomWebApplicationFactory _factory;
     private readonly HttpClient _client;
@@ -229,19 +232,19 @@ public class UnitLifecycleEndpointTests : IClassFixture<CustomWebApplicationFact
         _factory.StubConnectorType.ClearReceivedCalls();
 
         var entry = new DirectoryEntry(
-            new Address("unit", UnitName),
-            ActorId,
+            new Address("unit", ActorId_Guid),
+            ActorId_Guid,
             "Engineering",
             "Engineering unit",
             null,
             DateTimeOffset.UtcNow);
 
         _factory.DirectoryService
-            .ResolveAsync(Arg.Is<Address>(a => a.Scheme == "unit" && a.Path == UnitName), Arg.Any<CancellationToken>())
+            .ResolveAsync(Arg.Is<Address>(a => a.Scheme == "unit" && a.Id == ActorId_Guid), Arg.Any<CancellationToken>())
             .Returns(entry);
 
         _factory.ActorProxyFactory
-            .CreateActorProxy<IUnitActor>(Arg.Is<ActorId>(a => a.GetId() == ActorId), Arg.Any<string>())
+            .CreateActorProxy<IUnitActor>(Arg.Is<global::Dapr.Actors.ActorId>(a => a.GetId() == ActorId), Arg.Any<string>())
             .Returns(proxy);
     }
 }

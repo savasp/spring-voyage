@@ -28,6 +28,10 @@ using Xunit;
 /// </summary>
 public class UnitContractTests : IClassFixture<CustomWebApplicationFactory>
 {
+    private static readonly Guid ActorListUnit_Id = new("00002711-bbbb-cccc-dddd-000000000000");
+
+    private static readonly Guid Unit_ContractListUnit_Id = new("00000001-feed-1234-5678-000000000000");
+
     private readonly CustomWebApplicationFactory _factory;
     private readonly HttpClient _client;
 
@@ -45,8 +49,8 @@ public class UnitContractTests : IClassFixture<CustomWebApplicationFactory>
         _factory.DirectoryService.ListAllAsync(Arg.Any<CancellationToken>())
             .Returns(new List<DirectoryEntry>
             {
-                new(Address.For("unit", "contract-list-unit"),
-                    "actor-list-unit",
+                new(new Address("unit", Unit_ContractListUnit_Id),
+                    ActorListUnit_Id,
                     "Contract List Unit",
                     "A unit for contract tests",
                     null,

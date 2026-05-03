@@ -31,6 +31,8 @@ using Xunit;
 /// </summary>
 public class MembershipEndpointTests : IClassFixture<CustomWebApplicationFactory>
 {
+    private static readonly Guid ActorEng_Id = new("00002711-bbbb-cccc-dddd-000000000000");
+
     // Stable UUIDs for the well-known test entities.
     // After #1492 all membership rows use UUID keys, and the endpoints
     // require Guid-parseable ActorIds in directory entries.
@@ -181,7 +183,7 @@ public class MembershipEndpointTests : IClassFixture<CustomWebApplicationFactory
     {
         var ct = TestContext.Current.CancellationToken;
         ClearMemberships();
-        ArrangeDirectoryHit("unit", "engineering", "actor-eng"); // non-UUID actor id
+        ArrangeDirectoryHit("unit", "engineering", ActorEng_Id); // non-UUID actor id
 
         var response = await _client.GetAsync("/api/v1/tenant/units/engineering/memberships", ct);
 

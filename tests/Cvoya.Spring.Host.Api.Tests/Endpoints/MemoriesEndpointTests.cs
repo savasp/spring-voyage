@@ -27,6 +27,9 @@ using Xunit;
 /// </summary>
 public class MemoriesEndpointTests : IClassFixture<CustomWebApplicationFactory>
 {
+    private static readonly Guid ActorAda_Id = new("00002711-bbbb-cccc-dddd-000000000000");
+    private static readonly Guid ActorEng_Id = new("00002712-bbbb-cccc-dddd-000000000000");
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         Converters = { new JsonStringEnumConverter() },
@@ -45,7 +48,7 @@ public class MemoriesEndpointTests : IClassFixture<CustomWebApplicationFactory>
     public async Task GetUnitMemories_KnownUnit_ReturnsEmptyShortAndLongTermLists()
     {
         var ct = TestContext.Current.CancellationToken;
-        ArrangeDirectoryHit("unit", "engineering", "actor-eng");
+        ArrangeDirectoryHit("unit", "engineering", ActorEng_Id);
 
         var response = await _client.GetAsync("/api/v1/tenant/units/engineering/memories", ct);
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
@@ -70,7 +73,7 @@ public class MemoriesEndpointTests : IClassFixture<CustomWebApplicationFactory>
     public async Task GetAgentMemories_KnownAgent_ReturnsEmptyShortAndLongTermLists()
     {
         var ct = TestContext.Current.CancellationToken;
-        ArrangeDirectoryHit("agent", "ada", "actor-ada");
+        ArrangeDirectoryHit("agent", "ada", ActorAda_Id);
 
         var response = await _client.GetAsync("/api/v1/tenant/agents/ada/memories", ct);
         response.StatusCode.ShouldBe(HttpStatusCode.OK);

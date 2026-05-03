@@ -61,6 +61,8 @@ using Xunit;
 /// </summary>
 public class PackageInstallEndpointsTests : IClassFixture<PackageInstallEndpointsTests.InstallFactory>
 {
+    private static readonly Guid Unit_Main_Id = new("00000001-feed-1234-5678-000000000000");
+
     // Server serialises enums as strings; tests must match.
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -235,7 +237,7 @@ public class PackageInstallEndpointsTests : IClassFixture<PackageInstallEndpoint
                 Arg.Is<Address>(a => a.Path == "main"),
                 Arg.Any<CancellationToken>())
             .Returns(new DirectoryEntry(
-                Address.For("unit", "main"),
+                new Address("unit", Unit_Main_Id),
                 "existing-actor",
                 "main",
                 string.Empty,

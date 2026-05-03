@@ -38,6 +38,8 @@ using Xunit;
 /// </summary>
 public class PackageInstallServiceTests
 {
+    private static readonly Guid Unit_Main_Id = new("00000001-feed-1234-5678-000000000000");
+
     private const string TenantA = "tenant-a";
     private const string TenantB = "tenant-b";
 
@@ -453,7 +455,7 @@ public class PackageInstallServiceTests
                 Arg.Is<Address>(a => a.Path == "main"),
                 Arg.Any<CancellationToken>())
             .Returns(new DirectoryEntry(
-                Address.For("unit", "main"),
+                new Address("unit", Unit_Main_Id),
                 Guid.NewGuid().ToString(),
                 "main", string.Empty, null, DateTimeOffset.UtcNow));
         dir.ResolveAsync(

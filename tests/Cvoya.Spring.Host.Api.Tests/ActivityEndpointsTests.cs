@@ -24,6 +24,8 @@ using Xunit;
 
 public class ActivityEndpointsTests : IClassFixture<CustomWebApplicationFactory>
 {
+    private static readonly Guid Agent_AgentIntTest_Id = new("00000001-feed-1234-5678-000000000000");
+
     private readonly CustomWebApplicationFactory _factory;
     private readonly HttpClient _client;
 
@@ -130,7 +132,7 @@ public class ActivityEndpointsTests : IClassFixture<CustomWebApplicationFactory>
             expected.Add(new ActivityEvent(
                 Id: Guid.NewGuid(),
                 Timestamp: DateTimeOffset.UtcNow,
-                Source: Address.For("agent", "agent-int-test"),
+                Source: new Address("agent", Agent_AgentIntTest_Id),
                 EventType: type,
                 Severity: ActivitySeverity.Info,
                 Summary: $"{type}-summary"));

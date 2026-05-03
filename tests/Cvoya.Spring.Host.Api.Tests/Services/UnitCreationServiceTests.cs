@@ -37,6 +37,8 @@ using Xunit;
 /// </summary>
 public class UnitCreationServiceTests
 {
+    private static readonly Guid Agent_TechLead_Id = new("00000001-feed-1234-5678-000000000000");
+
     // Stable UUIDs returned by the mock IHumanIdentityResolver.
     private static readonly Guid FallbackGuid = new("00000000-0000-0000-0000-000000000001");
     private static readonly Guid AliceGuid = new("aaaaaaaa-0000-0000-0000-000000000001");
@@ -426,7 +428,7 @@ public class UnitCreationServiceTests
 
         // Pre-register "tech-lead" so the Resolve returns non-null.
         var existingEntry = new DirectoryEntry(
-            Address.For("agent", "tech-lead"),
+            new Address("agent", Agent_TechLead_Id),
             Guid.NewGuid().ToString(),
             "tech-lead",
             "already exists",

@@ -33,6 +33,11 @@ using Xunit;
 /// </summary>
 public class ThreadContractTests : IClassFixture<ThreadContractTests.Factory>
 {
+    private static readonly Guid ActorContractBot_Id = new("00002711-bbbb-cccc-dddd-000000000000");
+
+    private static readonly Guid Agent_ContractBot_Id = new("00000001-feed-1234-5678-000000000000");
+    private static readonly Guid Human_LocalDevUser_Id = new("00000002-feed-1234-5678-000000000000");
+
     private readonly Factory _factory;
     private readonly HttpClient _client;
 
@@ -121,8 +126,8 @@ public class ThreadContractTests : IClassFixture<ThreadContractTests.Factory>
         // produce.
         var reply = new Message(
             Guid.NewGuid(),
-            Address.For("agent", "contract-bot"),
-            Address.For("human", "local-dev-user"),
+            new Address("agent", Agent_ContractBot_Id),
+            new Address("human", Human_LocalDevUser_Id),
             MessageType.Domain,
             "contract-conv-post",
             System.Text.Json.JsonSerializer.SerializeToElement(new { ack = "received" }),
@@ -161,8 +166,8 @@ public class ThreadContractTests : IClassFixture<ThreadContractTests.Factory>
 
         var reply = new Message(
             Guid.NewGuid(),
-            Address.For("agent", "contract-bot"),
-            Address.For("human", "local-dev-user"),
+            new Address("agent", Agent_ContractBot_Id),
+            new Address("human", Human_LocalDevUser_Id),
             MessageType.Domain,
             $"contract-conv-kind-{kind}",
             System.Text.Json.JsonSerializer.SerializeToElement(new { ack = "received" }),
@@ -197,8 +202,8 @@ public class ThreadContractTests : IClassFixture<ThreadContractTests.Factory>
 
         var reply = new Message(
             Guid.NewGuid(),
-            Address.For("agent", "contract-bot"),
-            Address.For("human", "local-dev-user"),
+            new Address("agent", Agent_ContractBot_Id),
+            new Address("human", Human_LocalDevUser_Id),
             MessageType.Domain,
             "contract-conv-kind-default",
             System.Text.Json.JsonSerializer.SerializeToElement(new { ack = "received" }),
@@ -268,8 +273,8 @@ public class ThreadContractTests : IClassFixture<ThreadContractTests.Factory>
             .Returns(beforeDetail, afterDetail);
 
         var entry = new DirectoryEntry(
-            Address.For("agent", "contract-bot"),
-            ActorId: "actor-contract-bot",
+            new Address("agent", Agent_ContractBot_Id),
+            ActorId: ActorContractBot_Id,
             DisplayName: "Bot",
             Description: "",
             Role: null,
@@ -285,7 +290,7 @@ public class ThreadContractTests : IClassFixture<ThreadContractTests.Factory>
         _factory.ActorProxyFactory.ClearSubstitute();
         _factory.ActorProxyFactory
             .CreateActorProxy<IAgentActor>(
-                Arg.Is<ActorId>(id => id.GetId() == "actor-contract-bot"),
+                Arg.Is<ActorId>(id => id.GetId() == ActorContractBot_Id),
                 nameof(AgentActor))
             .Returns(agentProxy);
 

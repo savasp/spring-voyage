@@ -32,8 +32,11 @@ using Xunit;
 /// </summary>
 public class UnitRevalidateEndpointTests : IClassFixture<CustomWebApplicationFactory>
 {
+    private static readonly Guid ActorEngineering_Id = new("00002711-bbbb-cccc-dddd-000000000000");
+
     private const string UnitName = "engineering";
-    private const string ActorId = "actor-engineering";
+    private static readonly Guid ActorId_Guid = ActorEngineering_Id;
+    private static readonly string ActorId = ActorId_Guid.ToString("N");
 
     private readonly CustomWebApplicationFactory _factory;
     private readonly HttpClient _client;
@@ -115,8 +118,8 @@ public class UnitRevalidateEndpointTests : IClassFixture<CustomWebApplicationFac
         _factory.ActorProxyFactory.ClearReceivedCalls();
 
         var entry = new DirectoryEntry(
-            new Address("unit", UnitName),
-            ActorId,
+            new Address("unit", ActorId_Guid),
+            ActorId_Guid,
             "Engineering",
             "Engineering unit",
             null,
@@ -124,7 +127,7 @@ public class UnitRevalidateEndpointTests : IClassFixture<CustomWebApplicationFac
 
         _factory.DirectoryService
             .ResolveAsync(
-                Arg.Is<Address>(a => a.Scheme == "unit" && a.Path == UnitName),
+                Arg.Is<Address>(a => a.Scheme == "unit" && a.Id == ActorId_Guid),
                 Arg.Any<CancellationToken>())
             .Returns(entry);
 

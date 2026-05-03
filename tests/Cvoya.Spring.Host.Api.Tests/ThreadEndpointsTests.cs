@@ -36,6 +36,8 @@ using Xunit;
 /// </summary>
 public class ThreadEndpointsTests : IClassFixture<ThreadEndpointsTests.Factory>
 {
+    private static readonly Guid Agent_Ada_Id = new("00000001-feed-1234-5678-000000000000");
+
     private readonly Factory _factory;
     private readonly HttpClient _client;
 
@@ -260,7 +262,7 @@ public class ThreadEndpointsTests : IClassFixture<ThreadEndpointsTests.Factory>
         _factory.MessageRouter
             .RouteAsync(Arg.Any<Message>(), Arg.Any<CancellationToken>())
             .Returns(Result<Message?, RoutingError>.Failure(
-                RoutingError.PermissionDenied(Address.For("agent", "ada"))));
+                RoutingError.PermissionDenied(new Address("agent", Agent_Ada_Id))));
 
         var body = new ThreadMessageRequest(new AddressDto("agent", "ada"), "hi");
 
@@ -281,7 +283,7 @@ public class ThreadEndpointsTests : IClassFixture<ThreadEndpointsTests.Factory>
             .RouteAsync(Arg.Any<Message>(), Arg.Any<CancellationToken>())
             .Returns(Result<Message?, RoutingError>.Failure(
                 RoutingError.CallerValidation(
-                    Address.For("agent", "ada"),
+                    new Address("agent", Agent_Ada_Id),
                     CallerValidationCodes.UnknownMessageType,
                     "Unknown message type: Amendment")));
 
@@ -305,7 +307,7 @@ public class ThreadEndpointsTests : IClassFixture<ThreadEndpointsTests.Factory>
         _factory.MessageRouter
             .RouteAsync(Arg.Any<Message>(), Arg.Any<CancellationToken>())
             .Returns(Result<Message?, RoutingError>.Failure(
-                RoutingError.DeliveryFailed(Address.For("agent", "ada"), "Actor unavailable")));
+                RoutingError.DeliveryFailed(new Address("agent", Agent_Ada_Id), "Actor unavailable")));
 
         var body = new ThreadMessageRequest(new AddressDto("agent", "ada"), "hi");
 
@@ -345,7 +347,7 @@ public class ThreadEndpointsTests : IClassFixture<ThreadEndpointsTests.Factory>
             .Returns(beforeDetail, afterDetail);
 
         var entry = new DirectoryEntry(
-            Address.For("agent", "ada"),
+            new Address("agent", Agent_Ada_Id),
             ActorId: "ada",
             DisplayName: "Ada",
             Description: "Test agent",

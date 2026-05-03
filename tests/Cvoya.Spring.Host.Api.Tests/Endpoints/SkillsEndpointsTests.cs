@@ -29,6 +29,8 @@ using Xunit;
 /// </summary>
 public class SkillsEndpointsTests : IClassFixture<CustomWebApplicationFactory>
 {
+    private static readonly Guid ActorAda_Id = new("00002711-bbbb-cccc-dddd-000000000000");
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         Converters = { new JsonStringEnumConverter() },
@@ -82,7 +84,7 @@ public class SkillsEndpointsTests : IClassFixture<CustomWebApplicationFactory>
     public async Task GetAgentSkills_ReturnsConfiguredList()
     {
         var ct = TestContext.Current.CancellationToken;
-        var proxy = ArrangeAgent("ada", "actor-ada",
+        var proxy = ArrangeAgent("ada", ActorAda_Id,
             skills: ["github_read_file", "github_write_file"]);
 
         var response = await _client.GetAsync("/api/v1/tenant/agents/ada/skills", ct);
@@ -99,7 +101,7 @@ public class SkillsEndpointsTests : IClassFixture<CustomWebApplicationFactory>
     public async Task SetAgentSkills_ReplacesListAndReturnsUpdated()
     {
         var ct = TestContext.Current.CancellationToken;
-        var proxy = ArrangeAgent("ada", "actor-ada",
+        var proxy = ArrangeAgent("ada", ActorAda_Id,
             skills: ["github_read_file", "github_write_file"]);
 
         var body = new SetAgentSkillsRequest(
@@ -124,7 +126,7 @@ public class SkillsEndpointsTests : IClassFixture<CustomWebApplicationFactory>
     public async Task SetAgentSkills_EmptyList_ClearsSkills()
     {
         var ct = TestContext.Current.CancellationToken;
-        var proxy = ArrangeAgent("ada", "actor-ada", skills: ["github_read_file"]);
+        var proxy = ArrangeAgent("ada", ActorAda_Id, skills: ["github_read_file"]);
 
         var body = new SetAgentSkillsRequest(Array.Empty<string>());
 
