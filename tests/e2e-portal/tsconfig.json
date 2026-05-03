@@ -13,10 +13,9 @@
     "skipLibCheck": true,
     "noEmit": true,
     "types": ["node"],
-    "baseUrl": ".",
     "paths": {
-      "@fixtures/*": ["fixtures/*"],
-      "@helpers/*": ["helpers/*"]
+      "@fixtures/*": ["./fixtures/*"],
+      "@helpers/*": ["./helpers/*"]
     }
   },
   "include": ["**/*.ts"],
