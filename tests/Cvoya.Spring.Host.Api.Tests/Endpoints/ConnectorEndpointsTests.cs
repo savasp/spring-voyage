@@ -36,6 +36,23 @@ using Xunit;
 /// </summary>
 public class ConnectorEndpointsTests : IClassFixture<CustomWebApplicationFactory>
 {
+    private static readonly Guid Agent_Noise_Id = new("00000001-1234-5678-9abc-000000000000");
+    private static readonly Guid Unit_Alpha_Id = new("00000002-1234-5678-9abc-000000000000");
+    private static readonly Guid Unit_Beta_Id = new("00000003-1234-5678-9abc-000000000000");
+    private static readonly Guid Unit_Delta_Id = new("00000004-1234-5678-9abc-000000000000");
+    private static readonly Guid Unit_Gamma_Id = new("00000005-1234-5678-9abc-000000000000");
+    private static readonly Guid Unit_U1_Id = new("00000006-1234-5678-9abc-000000000000");
+    private static readonly Guid Unit_U2_Id = new("00000007-1234-5678-9abc-000000000000");
+    private static readonly Guid Unit_Visible_Id = new("00000008-1234-5678-9abc-000000000000");
+    private static readonly Guid ActorAlpha_Id = new("00000009-1234-5678-9abc-000000000000");
+    private static readonly Guid ActorBeta_Id = new("0000000a-1234-5678-9abc-000000000000");
+    private static readonly Guid ActorDelta_Id = new("0000000b-1234-5678-9abc-000000000000");
+    private static readonly Guid ActorGamma_Id = new("0000000c-1234-5678-9abc-000000000000");
+    private static readonly Guid ActorNoise_Id = new("0000000d-1234-5678-9abc-000000000000");
+    private static readonly Guid ActorU1_Id = new("0000000e-1234-5678-9abc-000000000000");
+    private static readonly Guid ActorU2_Id = new("0000000f-1234-5678-9abc-000000000000");
+    private static readonly Guid ActorVisible_Id = new("00000010-1234-5678-9abc-000000000000");
+
     private readonly CustomWebApplicationFactory _factory;
     private readonly HttpClient _client;
 
@@ -277,7 +294,7 @@ public class ConnectorEndpointsTests : IClassFixture<CustomWebApplicationFactory
         var binding = new UnitConnectorBinding(
             _factory.StubConnectorType.TypeId,
             JsonSerializer.SerializeToElement(new { anything = true }));
-        _factory.ConnectorConfigStore.GetAsync("u1", Arg.Any<CancellationToken>())
+        _factory.ConnectorConfigStore.GetAsync(Unit_U1_Id.ToString("N"), Arg.Any<CancellationToken>())
             .Returns(binding);
 
         var response = await _client.GetAsync("/api/v1/tenant/units/u1/connector", ct);
@@ -302,11 +319,11 @@ public class ConnectorEndpointsTests : IClassFixture<CustomWebApplicationFactory
 
         var entries = new List<DirectoryEntry>
         {
-            new(Address.For("unit", "alpha"), "actor-alpha", "Alpha", "", null, DateTimeOffset.UtcNow),
-            new(Address.For("unit", "beta"), "actor-beta", "Beta", "", null, DateTimeOffset.UtcNow),
-            new(Address.For("unit", "gamma"), "actor-gamma", "Gamma", "", null, DateTimeOffset.UtcNow),
-            new(Address.For("unit", "delta"), "actor-delta", "Delta", "", null, DateTimeOffset.UtcNow),
-            new(Address.For("agent", "noise"), "actor-noise", "Noise", "", null, DateTimeOffset.UtcNow),
+            new(new Address("unit", Unit_Alpha_Id), ActorAlpha_Id, "Alpha", "", null, DateTimeOffset.UtcNow),
+            new(new Address("unit", Unit_Beta_Id), ActorBeta_Id, "Beta", "", null, DateTimeOffset.UtcNow),
+            new(new Address("unit", Unit_Gamma_Id), ActorGamma_Id, "Gamma", "", null, DateTimeOffset.UtcNow),
+            new(new Address("unit", Unit_Delta_Id), ActorDelta_Id, "Delta", "", null, DateTimeOffset.UtcNow),
+            new(new Address("agent", Agent_Noise_Id), ActorNoise_Id, "Noise", "", null, DateTimeOffset.UtcNow),
         };
         _factory.DirectoryService.ListAllAsync(Arg.Any<CancellationToken>()).Returns(entries);
 
@@ -317,10 +334,10 @@ public class ConnectorEndpointsTests : IClassFixture<CustomWebApplicationFactory
             Guid.Parse("11111111-1111-1111-1111-111111111111"),
             JsonSerializer.SerializeToElement(new { }));
 
-        _factory.ConnectorConfigStore.GetAsync("alpha", Arg.Any<CancellationToken>()).Returns(stubBinding);
-        _factory.ConnectorConfigStore.GetAsync("beta", Arg.Any<CancellationToken>()).Returns((UnitConnectorBinding?)null);
-        _factory.ConnectorConfigStore.GetAsync("gamma", Arg.Any<CancellationToken>()).Returns(otherBinding);
-        _factory.ConnectorConfigStore.GetAsync("delta", Arg.Any<CancellationToken>()).Returns(stubBinding);
+        _factory.ConnectorConfigStore.GetAsync(Unit_Alpha_Id.ToString("N"), Arg.Any<CancellationToken>()).Returns(stubBinding);
+        _factory.ConnectorConfigStore.GetAsync(Unit_Beta_Id.ToString("N"), Arg.Any<CancellationToken>()).Returns((UnitConnectorBinding?)null);
+        _factory.ConnectorConfigStore.GetAsync(Unit_Gamma_Id.ToString("N"), Arg.Any<CancellationToken>()).Returns(otherBinding);
+        _factory.ConnectorConfigStore.GetAsync(Unit_Delta_Id.ToString("N"), Arg.Any<CancellationToken>()).Returns(stubBinding);
 
         var response = await _client.GetAsync("/api/v1/tenant/connectors/stub/bindings", ct);
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
@@ -328,12 +345,12 @@ public class ConnectorEndpointsTests : IClassFixture<CustomWebApplicationFactory
         var body = await response.Content.ReadFromJsonAsync<ConnectorUnitBindingResponse[]>(ct);
         body.ShouldNotBeNull();
         body!.Length.ShouldBe(2);
-        body.Select(r => r.UnitId).OrderBy(x => x).ShouldBe(new[] { "alpha", "delta" });
+        body.Select(r => r.UnitId).OrderBy(x => x).ShouldBe(new[] { Unit_Alpha_Id.ToString("N"), Unit_Delta_Id.ToString("N") });
         body.ShouldAllBe(r => r.TypeSlug == "stub");
         body.ShouldAllBe(r => r.TypeId == _factory.StubConnectorType.TypeId);
-        body.Single(r => r.UnitId == "alpha").UnitDisplayName.ShouldBe("Alpha");
-        body.Single(r => r.UnitId == "alpha").ConfigUrl.ShouldBe("/api/v1/tenant/connectors/stub/units/alpha/config");
-        body.Single(r => r.UnitId == "alpha").ActionsBaseUrl.ShouldBe("/api/v1/tenant/connectors/stub/actions");
+        body.Single(r => r.UnitId == Unit_Alpha_Id.ToString("N")).UnitDisplayName.ShouldBe("Alpha");
+        body.Single(r => r.UnitId == Unit_Alpha_Id.ToString("N")).ConfigUrl.ShouldBe("/api/v1/tenant/connectors/stub/units/alpha/config");
+        body.Single(r => r.UnitId == Unit_Alpha_Id.ToString("N")).ActionsBaseUrl.ShouldBe("/api/v1/tenant/connectors/stub/actions");
     }
 
     [Fact]
@@ -348,8 +365,8 @@ public class ConnectorEndpointsTests : IClassFixture<CustomWebApplicationFactory
 
         var entries = new List<DirectoryEntry>
         {
-            new(Address.For("unit", "u1"), "actor-u1", "Unit 1", "", null, DateTimeOffset.UtcNow),
-            new(Address.For("unit", "u2"), "actor-u2", "Unit 2", "", null, DateTimeOffset.UtcNow),
+            new(new Address("unit", Unit_U1_Id), ActorU1_Id, "Unit 1", "", null, DateTimeOffset.UtcNow),
+            new(new Address("unit", Unit_U2_Id), ActorU2_Id, "Unit 2", "", null, DateTimeOffset.UtcNow),
         };
         _factory.DirectoryService.ListAllAsync(Arg.Any<CancellationToken>()).Returns(entries);
         _factory.ConnectorConfigStore.GetAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
@@ -387,14 +404,14 @@ public class ConnectorEndpointsTests : IClassFixture<CustomWebApplicationFactory
 
         var visibleEntries = new List<DirectoryEntry>
         {
-            new(Address.For("unit", "visible"), "actor-visible", "Visible", "", null, DateTimeOffset.UtcNow),
+            new(new Address("unit", Unit_Visible_Id), ActorVisible_Id, "Visible", "", null, DateTimeOffset.UtcNow),
         };
         _factory.DirectoryService.ListAllAsync(Arg.Any<CancellationToken>()).Returns(visibleEntries);
 
         var binding = new UnitConnectorBinding(
             _factory.StubConnectorType.TypeId,
             JsonSerializer.SerializeToElement(new { }));
-        _factory.ConnectorConfigStore.GetAsync("visible", Arg.Any<CancellationToken>()).Returns(binding);
+        _factory.ConnectorConfigStore.GetAsync(Unit_Visible_Id.ToString("N"), Arg.Any<CancellationToken>()).Returns(binding);
         // Hidden unit has a matching binding in the store, but ListAllAsync
         // never surfaces it. The endpoint must not call the store for it.
         _factory.ConnectorConfigStore.GetAsync("hidden", Arg.Any<CancellationToken>()).Returns(binding);
@@ -405,7 +422,7 @@ public class ConnectorEndpointsTests : IClassFixture<CustomWebApplicationFactory
         var body = await response.Content.ReadFromJsonAsync<ConnectorUnitBindingResponse[]>(ct);
         body.ShouldNotBeNull();
         body!.Length.ShouldBe(1);
-        body[0].UnitId.ShouldBe("visible");
+        body[0].UnitId.ShouldBe(Unit_Visible_Id.ToString("N"));
 
         await _factory.ConnectorConfigStore.DidNotReceive()
             .GetAsync("hidden", Arg.Any<CancellationToken>());
@@ -421,8 +438,8 @@ public class ConnectorEndpointsTests : IClassFixture<CustomWebApplicationFactory
         var response = await _client.DeleteAsync("/api/v1/tenant/units/u2/connector", ct);
 
         response.StatusCode.ShouldBe(HttpStatusCode.NoContent);
-        await _factory.ConnectorConfigStore.Received(1).ClearAsync("u2", Arg.Any<CancellationToken>());
-        await _factory.ConnectorRuntimeStore.Received(1).ClearAsync("u2", Arg.Any<CancellationToken>());
+        await _factory.ConnectorConfigStore.Received(1).ClearAsync(Unit_U2_Id.ToString("N"), Arg.Any<CancellationToken>());
+        await _factory.ConnectorRuntimeStore.Received(1).ClearAsync(Unit_U2_Id.ToString("N"), Arg.Any<CancellationToken>());
     }
 
     // ---- Helpers ----

@@ -29,6 +29,10 @@ using Xunit;
 /// </summary>
 public class PersistentAgentEndpointsTests : IClassFixture<CustomWebApplicationFactory>
 {
+    private static readonly Guid Agent_A_Id = new("00000001-1234-5678-9abc-000000000000");
+    private static readonly Guid Agent_Idle_Id = new("00000002-1234-5678-9abc-000000000000");
+    private static readonly Guid Actor1_Id = new("00000003-1234-5678-9abc-000000000000");
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         Converters = { new JsonStringEnumConverter() },
@@ -62,10 +66,10 @@ public class PersistentAgentEndpointsTests : IClassFixture<CustomWebApplicationF
     {
         var ct = TestContext.Current.CancellationToken;
         _factory.DirectoryService
-            .ResolveAsync(Arg.Is<Address>(a => a.Path == "idle"), Arg.Any<CancellationToken>())
+            .ResolveAsync(Arg.Is<Address>(a => a.Id == Agent_Idle_Id), Arg.Any<CancellationToken>())
             .Returns(new DirectoryEntry(
-                Address.For("agent", "idle"),
-                "actor-1",
+                new Address("agent", Agent_Idle_Id),
+                Actor1_Id,
                 "Idle",
                 "",
                 null,
@@ -87,10 +91,10 @@ public class PersistentAgentEndpointsTests : IClassFixture<CustomWebApplicationF
     {
         var ct = TestContext.Current.CancellationToken;
         _factory.DirectoryService
-            .ResolveAsync(Arg.Is<Address>(a => a.Path == "a"), Arg.Any<CancellationToken>())
+            .ResolveAsync(Arg.Is<Address>(a => a.Id == Agent_A_Id), Arg.Any<CancellationToken>())
             .Returns(new DirectoryEntry(
-                Address.For("agent", "a"),
-                "actor-1",
+                new Address("agent", Agent_A_Id),
+                Actor1_Id,
                 "A",
                 "",
                 null,
@@ -109,10 +113,10 @@ public class PersistentAgentEndpointsTests : IClassFixture<CustomWebApplicationF
     {
         var ct = TestContext.Current.CancellationToken;
         _factory.DirectoryService
-            .ResolveAsync(Arg.Is<Address>(a => a.Path == "a"), Arg.Any<CancellationToken>())
+            .ResolveAsync(Arg.Is<Address>(a => a.Id == Agent_A_Id), Arg.Any<CancellationToken>())
             .Returns(new DirectoryEntry(
-                Address.For("agent", "a"),
-                "actor-1",
+                new Address("agent", Agent_A_Id),
+                Actor1_Id,
                 "A",
                 "",
                 null,
@@ -124,7 +128,7 @@ public class PersistentAgentEndpointsTests : IClassFixture<CustomWebApplicationF
         var body = await response.Content
             .ReadFromJsonAsync<PersistentAgentDeploymentResponse>(JsonOptions, ct);
         body.ShouldNotBeNull();
-        body.AgentId.ShouldBe("a");
+        body.AgentId.ShouldBe(Agent_A_Id.ToString("N"));
         body.Running.ShouldBeFalse();
         body.Replicas.ShouldBe(0);
     }
@@ -134,10 +138,10 @@ public class PersistentAgentEndpointsTests : IClassFixture<CustomWebApplicationF
     {
         var ct = TestContext.Current.CancellationToken;
         _factory.DirectoryService
-            .ResolveAsync(Arg.Is<Address>(a => a.Path == "a"), Arg.Any<CancellationToken>())
+            .ResolveAsync(Arg.Is<Address>(a => a.Id == Agent_A_Id), Arg.Any<CancellationToken>())
             .Returns(new DirectoryEntry(
-                Address.For("agent", "a"),
-                "actor-1",
+                new Address("agent", Agent_A_Id),
+                Actor1_Id,
                 "A",
                 "",
                 null,

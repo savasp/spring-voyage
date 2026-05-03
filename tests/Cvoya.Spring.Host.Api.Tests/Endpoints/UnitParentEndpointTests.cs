@@ -38,6 +38,11 @@ using Xunit;
 /// </summary>
 public class UnitParentEndpointTests : IClassFixture<CustomWebApplicationFactory>
 {
+    private static readonly Guid Unit_EngTeam_Id = new("00000001-1234-5678-9abc-000000000000");
+    private static readonly Guid Unit_ParentA_Id = new("00000002-1234-5678-9abc-000000000000");
+    private static readonly Guid ActorParent_Id = new("00000003-1234-5678-9abc-000000000000");
+    private static readonly Guid ActorParentA_Id = new("00000004-1234-5678-9abc-000000000000");
+
     private readonly CustomWebApplicationFactory _factory;
     private readonly HttpClient _client;
 
@@ -162,12 +167,12 @@ public class UnitParentEndpointTests : IClassFixture<CustomWebApplicationFactory
         ResetMocks();
 
         // Parent unit is registered and reachable.
-        var parentAddress = Address.For("unit", "eng-team");
+        var parentAddress = new Address("unit", Unit_EngTeam_Id);
         var parentEntry = new DirectoryEntry(
-            parentAddress, "actor-parent", "eng-team", "parent", null, DateTimeOffset.UtcNow);
+            parentAddress, ActorParent_Id, Unit_EngTeam_Id.ToString("N"), "parent", null, DateTimeOffset.UtcNow);
         _factory.DirectoryService
             .ResolveAsync(
-                Arg.Is<Address>(a => a.Scheme == "unit" && a.Path == "eng-team"),
+                Arg.Is<Address>(a => a.Scheme == "unit" && a.Id == Unit_EngTeam_Id),
                 Arg.Any<CancellationToken>())
             .Returns(parentEntry);
         _factory.DirectoryService
@@ -182,14 +187,14 @@ public class UnitParentEndpointTests : IClassFixture<CustomWebApplicationFactory
         var parentProxy = Substitute.For<IUnitActor>();
         _factory.ActorProxyFactory
             .CreateActorProxy<IUnitActor>(
-                Arg.Is<ActorId>(a => a.GetId() == "actor-parent"),
+                Arg.Is<ActorId>(a => a.GetId() == ActorParent_Id),
                 Arg.Any<string>())
             .Returns(parentProxy);
         var childProxy = Substitute.For<IUnitActor>();
         childProxy.GetStatusAsync(Arg.Any<CancellationToken>()).Returns(UnitStatus.Draft);
         _factory.ActorProxyFactory
             .CreateActorProxy<IUnitActor>(
-                Arg.Is<ActorId>(a => a.GetId() != "actor-parent"),
+                Arg.Is<ActorId>(a => a.GetId() != ActorParent_Id),
                 Arg.Any<string>())
             .Returns(childProxy);
 
@@ -197,7 +202,7 @@ public class UnitParentEndpointTests : IClassFixture<CustomWebApplicationFactory
             Name: "child-unit",
             DisplayName: "Child Unit",
             Description: "Parented by eng-team",
-            ParentUnitIds: new[] { "eng-team" });
+            ParentUnitIds: new[] { Unit_EngTeam_Id.ToString("N") });
 
         var response = await _client.PostAsJsonAsync("/api/v1/tenant/units", request, ct);
 
@@ -238,12 +243,12 @@ public class UnitParentEndpointTests : IClassFixture<CustomWebApplicationFactory
         ResetMocks();
 
         // Parent unit exists and resolves.
-        var parentAddress = Address.For("unit", "parent-a");
+        var parentAddress = new Address("unit", Unit_ParentA_Id);
         var parentEntry = new DirectoryEntry(
-            parentAddress, "actor-parent-a", "parent-a", "parent", null, DateTimeOffset.UtcNow);
+            parentAddress, ActorParentA_Id, Unit_ParentA_Id.ToString("N"), "parent", null, DateTimeOffset.UtcNow);
         _factory.DirectoryService
             .ResolveAsync(
-                Arg.Is<Address>(a => a.Scheme == "unit" && a.Path == "parent-a"),
+                Arg.Is<Address>(a => a.Scheme == "unit" && a.Id == Unit_ParentA_Id),
                 Arg.Any<CancellationToken>())
             .Returns(parentEntry);
 
@@ -255,12 +260,12 @@ public class UnitParentEndpointTests : IClassFixture<CustomWebApplicationFactory
         // non-top-level unit" situation.
         _factory.ParentInvariantGuard
             .EnsureParentRemainsAsync(
-                Arg.Is<Address>(a => a.Scheme == "unit" && a.Path == "parent-a"),
+                Arg.Is<Address>(a => a.Scheme == "unit" && a.Id == Unit_ParentA_Id),
                 Arg.Is<Address>(a => a.Scheme == "unit" && a.Path == "child-unit"),
                 Arg.Any<CancellationToken>())
             .Returns(_ => throw new UnitParentRequiredException(
                 "child-unit",
-                "parent-a",
+                Unit_ParentA_Id.ToString("N"),
                 "Cannot remove unit 'child-unit' from unit 'parent-a': this is the unit's last parent. "
                 + "Attach it to another parent unit first, promote it to top-level, or delete the unit itself."));
 

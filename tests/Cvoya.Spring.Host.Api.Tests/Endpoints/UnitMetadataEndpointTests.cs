@@ -29,8 +29,10 @@ using Xunit;
 /// </summary>
 public class UnitMetadataEndpointTests : IClassFixture<CustomWebApplicationFactory>
 {
+    private static readonly Guid ActorEngineering_Id = new("00000001-1234-5678-9abc-000000000000");
+
     private const string UnitName = "engineering";
-    private const string ActorId = "actor-engineering";
+    private static readonly Guid ActorId = ActorEngineering_Id;
 
     private readonly CustomWebApplicationFactory _factory;
     private readonly HttpClient _client;

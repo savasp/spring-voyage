@@ -38,8 +38,13 @@ using Xunit;
 /// </summary>
 public class UnitDetailsEndpointTests : IClassFixture<CustomWebApplicationFactory>
 {
+    private static readonly Guid Agent_Alpha_Id = new("00000001-1234-5678-9abc-000000000000");
+    private static readonly Guid Agent_Beta_Id = new("00000002-1234-5678-9abc-000000000000");
+    private static readonly Guid Unit_Child_Id = new("00000003-1234-5678-9abc-000000000000");
+    private static readonly Guid ActorEngineering_Id = new("00000004-1234-5678-9abc-000000000000");
+
     private const string UnitName = "engineering";
-    private const string ActorId = "actor-engineering";
+    private static readonly Guid ActorId = ActorEngineering_Id;
 
     private readonly CustomWebApplicationFactory _factory;
     private readonly HttpClient _client;
@@ -62,9 +67,9 @@ public class UnitDetailsEndpointTests : IClassFixture<CustomWebApplicationFactor
         proxy.GetMembersAsync(Arg.Any<CancellationToken>())
             .Returns(new[]
             {
-                Address.For("agent", "alpha"),
-                Address.For("agent", "beta"),
-                Address.For("unit", "child"),
+                new Address("agent", Agent_Alpha_Id),
+                new Address("agent", Agent_Beta_Id),
+                new Address("unit", Unit_Child_Id),
             });
 
         ArrangeResolved(proxy);

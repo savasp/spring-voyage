@@ -27,6 +27,15 @@ using Xunit;
 /// </summary>
 public class DashboardContractTests : IClassFixture<CustomWebApplicationFactory>
 {
+    private static readonly Guid Agent_ContractAgentDash_Id = new("00000001-1234-5678-9abc-000000000000");
+    private static readonly Guid Agent_ContractAgentList_Id = new("00000002-1234-5678-9abc-000000000000");
+    private static readonly Guid Unit_ContractUnitDash_Id = new("00000003-1234-5678-9abc-000000000000");
+    private static readonly Guid Unit_ContractUnitList_Id = new("00000004-1234-5678-9abc-000000000000");
+    private static readonly Guid ActorAgentList_Id = new("00000005-1234-5678-9abc-000000000000");
+    private static readonly Guid ActorDashAgent_Id = new("00000006-1234-5678-9abc-000000000000");
+    private static readonly Guid ActorDashUnit_Id = new("00000007-1234-5678-9abc-000000000000");
+    private static readonly Guid ActorUnitList_Id = new("00000008-1234-5678-9abc-000000000000");
+
     private readonly CustomWebApplicationFactory _factory;
     private readonly HttpClient _client;
 
@@ -44,9 +53,9 @@ public class DashboardContractTests : IClassFixture<CustomWebApplicationFactory>
 
         var entries = new List<DirectoryEntry>
         {
-            new(Address.For("unit", "contract-unit-dash"), "actor-dash-unit",
+            new(new Address("unit", Unit_ContractUnitDash_Id), ActorDashUnit_Id,
                 "Contract Unit", "A unit", null, now),
-            new(Address.For("agent", "contract-agent-dash"), "actor-dash-agent",
+            new(new Address("agent", Agent_ContractAgentDash_Id), ActorDashAgent_Id,
                 "Contract Agent", "An agent", "backend", now),
         };
         _factory.DirectoryService.ListAllAsync(Arg.Any<CancellationToken>()).Returns(entries);
@@ -85,7 +94,7 @@ public class DashboardContractTests : IClassFixture<CustomWebApplicationFactory>
         _factory.DirectoryService.ListAllAsync(Arg.Any<CancellationToken>())
             .Returns(new List<DirectoryEntry>
             {
-                new(Address.For("agent", "contract-agent-list"), "actor-agent-list",
+                new(new Address("agent", Agent_ContractAgentList_Id), ActorAgentList_Id,
                     "Contract Agent List", "An agent", "backend", now),
             });
 
@@ -106,7 +115,7 @@ public class DashboardContractTests : IClassFixture<CustomWebApplicationFactory>
         _factory.DirectoryService.ListAllAsync(Arg.Any<CancellationToken>())
             .Returns(new List<DirectoryEntry>
             {
-                new(Address.For("unit", "contract-unit-list"), "actor-unit-list",
+                new(new Address("unit", Unit_ContractUnitList_Id), ActorUnitList_Id,
                     "Contract Unit List", "A unit", null, now),
             });
 

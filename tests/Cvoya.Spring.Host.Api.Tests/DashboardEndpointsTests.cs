@@ -25,6 +25,14 @@ using Xunit;
 
 public class DashboardEndpointsTests : IClassFixture<CustomWebApplicationFactory>
 {
+    private static readonly Guid Agent_Agent1_Id = new("00000001-1234-5678-9abc-000000000000");
+    private static readonly Guid Agent_Agent2_Id = new("00000002-1234-5678-9abc-000000000000");
+    private static readonly Guid Unit_Unit1_Id = new("00000003-1234-5678-9abc-000000000000");
+    private static readonly Guid Unit_Unit2_Id = new("00000004-1234-5678-9abc-000000000000");
+    private static readonly Guid Actor1_Id = new("00000005-1234-5678-9abc-000000000000");
+    private static readonly Guid Actor2_Id = new("00000006-1234-5678-9abc-000000000000");
+    private static readonly Guid Actor3_Id = new("00000007-1234-5678-9abc-000000000000");
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         Converters = { new JsonStringEnumConverter() },
@@ -47,9 +55,9 @@ public class DashboardEndpointsTests : IClassFixture<CustomWebApplicationFactory
         // Two units (one Running, one Draft) and one agent.
         var entries = new List<DirectoryEntry>
         {
-            new(Address.For("unit", "unit-1"), "actor-1", "Unit One", "First unit", null, DateTimeOffset.UtcNow),
-            new(Address.For("unit", "unit-2"), "actor-2", "Unit Two", "Second unit", null, DateTimeOffset.UtcNow),
-            new(Address.For("agent", "agent-1"), "actor-3", "Agent One", "An agent", "backend", DateTimeOffset.UtcNow),
+            new(new Address("unit", Unit_Unit1_Id), Actor1_Id, "Unit One", "First unit", null, DateTimeOffset.UtcNow),
+            new(new Address("unit", Unit_Unit2_Id), Actor2_Id, "Unit Two", "Second unit", null, DateTimeOffset.UtcNow),
+            new(new Address("agent", Agent_Agent1_Id), Actor3_Id, "Agent One", "An agent", "backend", DateTimeOffset.UtcNow),
         };
         _factory.DirectoryService.ListAllAsync(Arg.Any<CancellationToken>()).Returns(entries);
 
@@ -59,13 +67,13 @@ public class DashboardEndpointsTests : IClassFixture<CustomWebApplicationFactory
 
         _factory.ActorProxyFactory
             .CreateActorProxy<IUnitActor>(
-                Arg.Is<ActorId>(id => id.GetId() == "actor-1"),
+                Arg.Is<ActorId>(id => id.GetId() == Actor1_Id),
                 Arg.Any<string>())
             .Returns(runningProxy);
 
         _factory.ActorProxyFactory
             .CreateActorProxy<IUnitActor>(
-                Arg.Is<ActorId>(id => id.GetId() == "actor-2"),
+                Arg.Is<ActorId>(id => id.GetId() == Actor2_Id),
                 Arg.Any<string>())
             .Returns(_ => throw new Exception("Actor unavailable"));
 
@@ -99,13 +107,13 @@ public class DashboardEndpointsTests : IClassFixture<CustomWebApplicationFactory
 
         // Verify inline unit and agent lists.
         summary.Units.Count.ShouldBe(2);
-        summary.Units[0].Name.ShouldBe("unit-1");
+        summary.Units[0].Name.ShouldBe(Unit_Unit1_Id.ToString("N"));
         summary.Units[0].Status.ShouldBe(UnitStatus.Running);
-        summary.Units[1].Name.ShouldBe("unit-2");
+        summary.Units[1].Name.ShouldBe(Unit_Unit2_Id.ToString("N"));
         summary.Units[1].Status.ShouldBe(UnitStatus.Draft);
 
         summary.Agents.Count.ShouldBe(1);
-        summary.Agents[0].Name.ShouldBe("agent-1");
+        summary.Agents[0].Name.ShouldBe(Agent_Agent1_Id.ToString("N"));
         summary.Agents[0].DisplayName.ShouldBe("Agent One");
         summary.Agents[0].Role.ShouldBe("backend");
     }
@@ -116,9 +124,9 @@ public class DashboardEndpointsTests : IClassFixture<CustomWebApplicationFactory
         var ct = TestContext.Current.CancellationToken;
         var entries = new List<DirectoryEntry>
         {
-            new(Address.For("agent", "agent-1"), "actor-1", "Agent One", "First agent", "backend", DateTimeOffset.UtcNow),
-            new(Address.For("unit", "unit-1"), "actor-2", "Unit One", "A unit", null, DateTimeOffset.UtcNow),
-            new(Address.For("agent", "agent-2"), "actor-3", "Agent Two", "Second agent", "frontend", DateTimeOffset.UtcNow)
+            new(new Address("agent", Agent_Agent1_Id), Actor1_Id, "Agent One", "First agent", "backend", DateTimeOffset.UtcNow),
+            new(new Address("unit", Unit_Unit1_Id), Actor2_Id, "Unit One", "A unit", null, DateTimeOffset.UtcNow),
+            new(new Address("agent", Agent_Agent2_Id), Actor3_Id, "Agent Two", "Second agent", "frontend", DateTimeOffset.UtcNow)
         };
         _factory.DirectoryService.ListAllAsync(Arg.Any<CancellationToken>()).Returns(entries);
 
@@ -128,10 +136,10 @@ public class DashboardEndpointsTests : IClassFixture<CustomWebApplicationFactory
 
         var agents = await response.Content.ReadFromJsonAsync<List<AgentDashboardSummary>>(ct);
         agents!.Count().ShouldBe(2);
-        agents![0].Name.ShouldBe("agent-1");
+        agents![0].Name.ShouldBe(Agent_Agent1_Id.ToString("N"));
         agents[0].DisplayName.ShouldBe("Agent One");
         agents[0].Role.ShouldBe("backend");
-        agents[1].Name.ShouldBe("agent-2");
+        agents[1].Name.ShouldBe(Agent_Agent2_Id.ToString("N"));
     }
 
     [Fact]
@@ -140,9 +148,9 @@ public class DashboardEndpointsTests : IClassFixture<CustomWebApplicationFactory
         var ct = TestContext.Current.CancellationToken;
         var entries = new List<DirectoryEntry>
         {
-            new(Address.For("agent", "agent-1"), "actor-1", "Agent One", "An agent", "backend", DateTimeOffset.UtcNow),
-            new(Address.For("unit", "unit-1"), "actor-2", "Unit One", "First unit", null, DateTimeOffset.UtcNow),
-            new(Address.For("unit", "unit-2"), "actor-3", "Unit Two", "Second unit", null, DateTimeOffset.UtcNow)
+            new(new Address("agent", Agent_Agent1_Id), Actor1_Id, "Agent One", "An agent", "backend", DateTimeOffset.UtcNow),
+            new(new Address("unit", Unit_Unit1_Id), Actor2_Id, "Unit One", "First unit", null, DateTimeOffset.UtcNow),
+            new(new Address("unit", Unit_Unit2_Id), Actor3_Id, "Unit Two", "Second unit", null, DateTimeOffset.UtcNow)
         };
         _factory.DirectoryService.ListAllAsync(Arg.Any<CancellationToken>()).Returns(entries);
 
@@ -152,9 +160,9 @@ public class DashboardEndpointsTests : IClassFixture<CustomWebApplicationFactory
 
         var units = await response.Content.ReadFromJsonAsync<List<UnitDashboardSummary>>(JsonOptions, ct);
         units!.Count().ShouldBe(2);
-        units![0].Name.ShouldBe("unit-1");
+        units![0].Name.ShouldBe(Unit_Unit1_Id.ToString("N"));
         units[0].DisplayName.ShouldBe("Unit One");
-        units[1].Name.ShouldBe("unit-2");
+        units[1].Name.ShouldBe(Unit_Unit2_Id.ToString("N"));
     }
 
     [Fact]
