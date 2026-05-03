@@ -205,7 +205,7 @@ public class UnitDetailsEndpointTests : IClassFixture<CustomWebApplicationFactor
             db.UnitDefinitions.Add(new UnitDefinitionEntity
             {
                 Id = Guid.NewGuid(),
-                TenantId = "default",
+                TenantId = Cvoya.Spring.Core.Tenancy.OssTenantIds.Default,
                 DisplayName = UnitName,
                 Description = "test",
                 CreatedAt = DateTimeOffset.UtcNow,
@@ -238,7 +238,7 @@ public class UnitDetailsEndpointTests : IClassFixture<CustomWebApplicationFactor
         {
             var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
             var row = await db.UnitDefinitions.FirstOrDefaultAsync(
-                u => u.UnitId == UnitName, ct);
+                u => u.DisplayName == UnitName, ct);
             if (row is not null)
             {
                 db.UnitDefinitions.Remove(row);
@@ -278,7 +278,7 @@ public class UnitDetailsEndpointTests : IClassFixture<CustomWebApplicationFactor
         _factory.AgentProxyResolver.ClearReceivedCalls();
 
         var entry = new DirectoryEntry(
-            new Address("unit", UnitName),
+            new Address("unit", ActorId),
             ActorId,
             "Engineering",
             "Engineering unit",
@@ -286,11 +286,11 @@ public class UnitDetailsEndpointTests : IClassFixture<CustomWebApplicationFactor
             DateTimeOffset.UtcNow);
 
         _factory.DirectoryService
-            .ResolveAsync(Arg.Is<Address>(a => a.Scheme == "unit" && a.Path == UnitName), Arg.Any<CancellationToken>())
+            .ResolveAsync(Arg.Is<Address>(a => a.Scheme == "unit" && a.Id == ActorId), Arg.Any<CancellationToken>())
             .Returns(entry);
 
         _factory.ActorProxyFactory
-            .CreateActorProxy<IUnitActor>(Arg.Is<ActorId>(a => a.GetId() == ActorId), Arg.Any<string>())
+            .CreateActorProxy<IUnitActor>(Arg.Is<global::Dapr.Actors.ActorId>(a => a.GetId() == ActorId.ToString("N")), Arg.Any<string>())
             .Returns(proxy);
     }
 }

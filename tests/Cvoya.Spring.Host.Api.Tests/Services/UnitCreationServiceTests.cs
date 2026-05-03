@@ -245,28 +245,28 @@ public class UnitCreationServiceTests
             .ResolveAsync(
                 Arg.Is<Address>(a => a.Scheme == "unit" && a.Path == "eng-team"),
                 Arg.Any<CancellationToken>())
-            .Returns(new DirectoryEntry(Address.For("unit", "eng-team"), unitUuid.ToString(),
+            .Returns(new DirectoryEntry(new Address("unit", unitUuid), unitUuid,
                 "eng-team", string.Empty, null, DateTimeOffset.UtcNow));
 
         fixture.Directory
             .ResolveAsync(
                 Arg.Is<Address>(a => a.Scheme == "agent" && a.Path == "tech-lead"),
                 Arg.Any<CancellationToken>())
-            .Returns(new DirectoryEntry(Address.For("agent", "tech-lead"), techLeadUuid.ToString(),
+            .Returns(new DirectoryEntry(new Address("agent", techLeadUuid), techLeadUuid,
                 "tech-lead", string.Empty, null, DateTimeOffset.UtcNow));
 
         fixture.Directory
             .ResolveAsync(
                 Arg.Is<Address>(a => a.Scheme == "agent" && a.Path == "backend-engineer"),
                 Arg.Any<CancellationToken>())
-            .Returns(new DirectoryEntry(Address.For("agent", "backend-engineer"), backendUuid.ToString(),
+            .Returns(new DirectoryEntry(new Address("agent", backendUuid), backendUuid,
                 "backend-engineer", string.Empty, null, DateTimeOffset.UtcNow));
 
         fixture.Directory
             .ResolveAsync(
                 Arg.Is<Address>(a => a.Scheme == "agent" && a.Path == "qa-engineer"),
                 Arg.Any<CancellationToken>())
-            .Returns(new DirectoryEntry(Address.For("agent", "qa-engineer"), qaUuid.ToString(),
+            .Returns(new DirectoryEntry(new Address("agent", qaUuid), qaUuid,
                 "qa-engineer", string.Empty, null, DateTimeOffset.UtcNow));
 
         var members = new[]
@@ -348,13 +348,13 @@ public class UnitCreationServiceTests
             .ResolveAsync(
                 Arg.Is<Address>(a => a.Scheme == "unit" && a.Path == "flaky-unit"),
                 Arg.Any<CancellationToken>())
-            .Returns(new DirectoryEntry(Address.For("unit", "flaky-unit"), flakyUnitUuid.ToString(),
+            .Returns(new DirectoryEntry(new Address("unit", flakyUnitUuid), flakyUnitUuid,
                 "flaky-unit", string.Empty, null, DateTimeOffset.UtcNow));
         fixture.Directory
             .ResolveAsync(
                 Arg.Is<Address>(a => a.Scheme == "agent" && a.Path == "lonely-agent"),
                 Arg.Any<CancellationToken>())
-            .Returns(new DirectoryEntry(Address.For("agent", "lonely-agent"), lonelyAgentUuid.ToString(),
+            .Returns(new DirectoryEntry(new Address("agent", lonelyAgentUuid), lonelyAgentUuid,
                 "lonely-agent", string.Empty, null, DateTimeOffset.UtcNow));
 
         fixture.MembershipRepository
