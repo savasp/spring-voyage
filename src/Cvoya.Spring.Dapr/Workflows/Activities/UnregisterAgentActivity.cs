@@ -23,7 +23,7 @@ public class UnregisterAgentActivity(
     /// <inheritdoc />
     public override async Task<bool> RunAsync(WorkflowActivityContext context, AgentLifecycleInput input)
     {
-        var address = new Address("agent", input.AgentId);
+        var address = Address.For("agent", input.AgentId);
 
         await directoryService.UnregisterAsync(address);
 

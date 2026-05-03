@@ -67,7 +67,7 @@ public class AgentActor(
     /// <summary>
     /// Gets the address of this agent actor.
     /// </summary>
-    public Address Address => new("agent", Id.GetId());
+    public Address Address => Address.For("agent", Id.GetId());
 
     /// <summary>
     /// Runs the actor-activation logic by delegating to
@@ -268,7 +268,7 @@ public class AgentActor(
                 }
 
                 // Resolve the sender unit slug → UUID and this agent's UUID.
-                var unitEntry = await directoryService.ResolveAsync(new Address("unit", unitSlug), ct);
+                var unitEntry = await directoryService.ResolveAsync(Address.For("unit", unitSlug), ct);
                 if (unitEntry is null || !Guid.TryParse(unitEntry.ActorId, out var unitUuid))
                 {
                     return null;

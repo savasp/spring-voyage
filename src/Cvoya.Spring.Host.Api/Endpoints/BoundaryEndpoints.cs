@@ -61,7 +61,7 @@ public static class BoundaryEndpoints
         [FromServices] IUnitBoundaryStore boundaryStore,
         CancellationToken cancellationToken)
     {
-        var address = new Address("unit", id);
+        var address = Address.For("unit", id);
         var entry = await directoryService.ResolveAsync(address, cancellationToken);
         if (entry is null)
         {
@@ -80,7 +80,7 @@ public static class BoundaryEndpoints
         [FromServices] IExpertiseAggregator aggregator,
         CancellationToken cancellationToken)
     {
-        var address = new Address("unit", id);
+        var address = Address.For("unit", id);
         var entry = await directoryService.ResolveAsync(address, cancellationToken);
         if (entry is null)
         {
@@ -108,7 +108,7 @@ public static class BoundaryEndpoints
         [FromServices] IExpertiseAggregator aggregator,
         CancellationToken cancellationToken)
     {
-        var address = new Address("unit", id);
+        var address = Address.For("unit", id);
         var entry = await directoryService.ResolveAsync(address, cancellationToken);
         if (entry is null)
         {

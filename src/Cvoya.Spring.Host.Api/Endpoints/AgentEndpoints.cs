@@ -152,7 +152,7 @@ public static class AgentEndpoints
         [FromServices] IAgentExecutionStore store,
         CancellationToken cancellationToken)
     {
-        var entry = await directoryService.ResolveAsync(new Address("agent", id), cancellationToken);
+        var entry = await directoryService.ResolveAsync(Address.For("agent", id), cancellationToken);
         if (entry is null)
         {
             return Results.Problem(detail: $"Agent '{id}' not found", statusCode: StatusCodes.Status404NotFound);
@@ -169,7 +169,7 @@ public static class AgentEndpoints
         [FromServices] IAgentExecutionStore store,
         CancellationToken cancellationToken)
     {
-        var entry = await directoryService.ResolveAsync(new Address("agent", id), cancellationToken);
+        var entry = await directoryService.ResolveAsync(Address.For("agent", id), cancellationToken);
         if (entry is null)
         {
             return Results.Problem(detail: $"Agent '{id}' not found", statusCode: StatusCodes.Status404NotFound);
@@ -219,7 +219,7 @@ public static class AgentEndpoints
         [FromServices] IAgentExecutionStore store,
         CancellationToken cancellationToken)
     {
-        var entry = await directoryService.ResolveAsync(new Address("agent", id), cancellationToken);
+        var entry = await directoryService.ResolveAsync(Address.For("agent", id), cancellationToken);
         if (entry is null)
         {
             return Results.Problem(detail: $"Agent '{id}' not found", statusCode: StatusCodes.Status404NotFound);
@@ -247,7 +247,7 @@ public static class AgentEndpoints
         [FromServices] PersistentAgentLifecycle lifecycle,
         CancellationToken cancellationToken)
     {
-        var entry = await directoryService.ResolveAsync(new Address("agent", id), cancellationToken);
+        var entry = await directoryService.ResolveAsync(Address.For("agent", id), cancellationToken);
         if (entry is null)
         {
             return Results.Problem(detail: $"Agent '{id}' not found", statusCode: StatusCodes.Status404NotFound);
@@ -293,7 +293,7 @@ public static class AgentEndpoints
         [FromServices] PersistentAgentLifecycle lifecycle,
         CancellationToken cancellationToken)
     {
-        var entry = await directoryService.ResolveAsync(new Address("agent", id), cancellationToken);
+        var entry = await directoryService.ResolveAsync(Address.For("agent", id), cancellationToken);
         if (entry is null)
         {
             return Results.Problem(detail: $"Agent '{id}' not found", statusCode: StatusCodes.Status404NotFound);
@@ -313,7 +313,7 @@ public static class AgentEndpoints
         [FromServices] PersistentAgentLifecycle lifecycle,
         CancellationToken cancellationToken)
     {
-        var entry = await directoryService.ResolveAsync(new Address("agent", id), cancellationToken);
+        var entry = await directoryService.ResolveAsync(Address.For("agent", id), cancellationToken);
         if (entry is null)
         {
             return Results.Problem(detail: $"Agent '{id}' not found", statusCode: StatusCodes.Status404NotFound);
@@ -338,7 +338,7 @@ public static class AgentEndpoints
         [FromQuery] int? tail,
         CancellationToken cancellationToken)
     {
-        var entry = await directoryService.ResolveAsync(new Address("agent", id), cancellationToken);
+        var entry = await directoryService.ResolveAsync(Address.For("agent", id), cancellationToken);
         if (entry is null)
         {
             return Results.Problem(detail: $"Agent '{id}' not found", statusCode: StatusCodes.Status404NotFound);
@@ -368,7 +368,7 @@ public static class AgentEndpoints
         [FromServices] PersistentAgentRegistry registry,
         CancellationToken cancellationToken)
     {
-        var entry = await directoryService.ResolveAsync(new Address("agent", id), cancellationToken);
+        var entry = await directoryService.ResolveAsync(Address.For("agent", id), cancellationToken);
         if (entry is null)
         {
             return Results.Problem(detail: $"Agent '{id}' not found", statusCode: StatusCodes.Status404NotFound);
@@ -518,7 +518,7 @@ public static class AgentEndpoints
         [FromServices] IInitiativeEngine initiativeEngine,
         CancellationToken cancellationToken)
     {
-        var address = new Address("agent", id);
+        var address = Address.For("agent", id);
         var entry = await directoryService.ResolveAsync(address, cancellationToken);
 
         if (entry is null)
@@ -607,7 +607,7 @@ public static class AgentEndpoints
         [FromServices] IActorProxyFactory actorProxyFactory,
         CancellationToken cancellationToken)
     {
-        var address = new Address("agent", id);
+        var address = Address.For("agent", id);
         var entry = await directoryService.ResolveAsync(address, cancellationToken);
 
         if (entry is null)
@@ -691,10 +691,10 @@ public static class AgentEndpoints
         // creation surface never leaks the existence of other-tenant
         // units.
         var resolvedUnits = new List<(string Id, DirectoryEntry Entry)>(unitIds.Count);
-        var pseudoParent = new Address("agent", request.Name);
+        var pseudoParent = Address.For("agent", request.Name);
         foreach (var unitId in unitIds)
         {
-            var unitAddress = new Address("unit", unitId);
+            var unitAddress = Address.For("unit", unitId);
             var unitEntry = await directoryService.ResolveAsync(unitAddress, cancellationToken);
             if (unitEntry is null)
             {
@@ -738,7 +738,7 @@ public static class AgentEndpoints
         }
 
         var actorId = Guid.NewGuid().ToString();
-        var address = new Address("agent", request.Name);
+        var address = Address.For("agent", request.Name);
         var entry = new DirectoryEntry(
             address,
             actorId,
@@ -828,7 +828,7 @@ public static class AgentEndpoints
         IUnitMembershipRepository membershipRepository,
         CancellationToken cancellationToken)
     {
-        var address = new Address("agent", id);
+        var address = Address.For("agent", id);
         var entry = await directoryService.ResolveAsync(address, cancellationToken);
 
         if (entry is null)
@@ -860,7 +860,7 @@ public static class AgentEndpoints
         [FromServices] IActorProxyFactory actorProxyFactory,
         CancellationToken cancellationToken)
     {
-        var entry = await directoryService.ResolveAsync(new Address("agent", id), cancellationToken);
+        var entry = await directoryService.ResolveAsync(Address.For("agent", id), cancellationToken);
         if (entry is null)
         {
             return Results.Problem(detail: $"Agent '{id}' not found", statusCode: StatusCodes.Status404NotFound);
@@ -885,7 +885,7 @@ public static class AgentEndpoints
             return Results.Problem(detail: "Skills list is required (use [] to clear).", statusCode: StatusCodes.Status400BadRequest);
         }
 
-        var entry = await directoryService.ResolveAsync(new Address("agent", id), cancellationToken);
+        var entry = await directoryService.ResolveAsync(Address.For("agent", id), cancellationToken);
         if (entry is null)
         {
             return Results.Problem(detail: $"Agent '{id}' not found", statusCode: StatusCodes.Status404NotFound);

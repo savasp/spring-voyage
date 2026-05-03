@@ -182,7 +182,7 @@ public sealed partial class BudgetEnforcer(
         var budgetEvent = new ActivityEvent(
             Guid.NewGuid(),
             DateTimeOffset.UtcNow,
-            new Address("agent", agentId),
+            Address.For("agent", agentId),
             ActivityEventType.CostIncurred,
             severity,
             summary,
@@ -205,7 +205,7 @@ public sealed partial class BudgetEnforcer(
         var budgetEvent = new ActivityEvent(
             Guid.NewGuid(),
             DateTimeOffset.UtcNow,
-            new Address("tenant", tenantId),
+            Address.For("tenant", tenantId),
             ActivityEventType.CostIncurred,
             severity,
             summary,

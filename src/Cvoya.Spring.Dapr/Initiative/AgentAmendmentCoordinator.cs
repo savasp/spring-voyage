@@ -255,7 +255,7 @@ public class AgentAmendmentCoordinator(
         return new ActivityEvent(
             Guid.NewGuid(),
             DateTimeOffset.UtcNow,
-            new Address("agent", agentId),
+            Address.For("agent", agentId),
             eventType,
             severity,
             summary,

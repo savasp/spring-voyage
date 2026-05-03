@@ -52,7 +52,7 @@ public class UnitActorConnectorConfigStore(
 
     private async Task<IUnitActor?> ResolveProxyAsync(string unitId, CancellationToken ct)
     {
-        var address = new Address("unit", unitId);
+        var address = Address.For("unit", unitId);
         var entry = await directoryService.ResolveAsync(address, ct);
         if (entry is null)
         {
@@ -99,7 +99,7 @@ public class UnitActorConnectorRuntimeStore(
 
     private async Task<IUnitActor?> ResolveProxyAsync(string unitId, CancellationToken ct)
     {
-        var address = new Address("unit", unitId);
+        var address = Address.For("unit", unitId);
         var entry = await directoryService.ResolveAsync(address, ct);
         if (entry is null)
         {

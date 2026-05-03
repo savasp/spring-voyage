@@ -33,6 +33,16 @@ public class ActivityEventRecord : ITenantScopedEntity
     /// </summary>
     public Guid SourceId { get; set; }
 
+    /// <summary>
+    /// Convenience accessor for callers that historically read the
+    /// activity event's source as a string. Returns the canonical
+    /// no-dash Guid string form of <see cref="SourceId"/>; rendering
+    /// the human-readable label is a read-time concern that joins the
+    /// live entity table on this Guid.
+    /// </summary>
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public string Source => Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(SourceId);
+
     /// <summary>Gets or sets the type of the event.</summary>
     public string EventType { get; set; } = string.Empty;
 

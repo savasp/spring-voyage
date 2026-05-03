@@ -73,7 +73,7 @@ public static class UnitExecutionEndpoints
         [FromServices] IUnitExecutionStore store,
         CancellationToken cancellationToken)
     {
-        var entry = await directoryService.ResolveAsync(new Address("unit", id), cancellationToken);
+        var entry = await directoryService.ResolveAsync(Address.For("unit", id), cancellationToken);
         if (entry is null)
         {
             return Results.Problem(
@@ -92,7 +92,7 @@ public static class UnitExecutionEndpoints
         [FromServices] IUnitExecutionStore store,
         CancellationToken cancellationToken)
     {
-        var entry = await directoryService.ResolveAsync(new Address("unit", id), cancellationToken);
+        var entry = await directoryService.ResolveAsync(Address.For("unit", id), cancellationToken);
         if (entry is null)
         {
             return Results.Problem(
@@ -125,7 +125,7 @@ public static class UnitExecutionEndpoints
         [FromServices] IUnitExecutionStore store,
         CancellationToken cancellationToken)
     {
-        var entry = await directoryService.ResolveAsync(new Address("unit", id), cancellationToken);
+        var entry = await directoryService.ResolveAsync(Address.For("unit", id), cancellationToken);
         if (entry is null)
         {
             return Results.Problem(

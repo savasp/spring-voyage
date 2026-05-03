@@ -41,4 +41,11 @@ public record UnitSubunitMembership(
     Guid ParentId,
     Guid ChildId,
     DateTimeOffset CreatedAt = default,
-    DateTimeOffset UpdatedAt = default);
+    DateTimeOffset UpdatedAt = default)
+{
+    /// <summary>Legacy alias for <see cref="ParentId"/>.</summary>
+    public Guid ParentUnitId => ParentId;
+
+    /// <summary>Legacy alias for <see cref="ChildId"/>.</summary>
+    public Guid ChildUnitId => ChildId;
+}

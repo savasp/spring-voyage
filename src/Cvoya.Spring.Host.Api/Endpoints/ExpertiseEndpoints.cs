@@ -93,7 +93,7 @@ public static class ExpertiseEndpoints
         [FromServices] IActorProxyFactory actorProxyFactory,
         CancellationToken cancellationToken)
     {
-        var address = new Address("agent", id);
+        var address = Address.For("agent", id);
         var entry = await directoryService.ResolveAsync(address, cancellationToken);
         if (entry is null)
         {
@@ -122,7 +122,7 @@ public static class ExpertiseEndpoints
                 statusCode: StatusCodes.Status400BadRequest);
         }
 
-        var address = new Address("agent", id);
+        var address = Address.For("agent", id);
         var entry = await directoryService.ResolveAsync(address, cancellationToken);
         if (entry is null)
         {
@@ -150,7 +150,7 @@ public static class ExpertiseEndpoints
         [FromServices] IActorProxyFactory actorProxyFactory,
         CancellationToken cancellationToken)
     {
-        var address = new Address("unit", id);
+        var address = Address.For("unit", id);
         var entry = await directoryService.ResolveAsync(address, cancellationToken);
         if (entry is null)
         {
@@ -179,7 +179,7 @@ public static class ExpertiseEndpoints
                 statusCode: StatusCodes.Status400BadRequest);
         }
 
-        var address = new Address("unit", id);
+        var address = Address.For("unit", id);
         var entry = await directoryService.ResolveAsync(address, cancellationToken);
         if (entry is null)
         {
@@ -204,7 +204,7 @@ public static class ExpertiseEndpoints
         [FromServices] IExpertiseAggregator aggregator,
         CancellationToken cancellationToken)
     {
-        var address = new Address("unit", id);
+        var address = Address.For("unit", id);
         var entry = await directoryService.ResolveAsync(address, cancellationToken);
         if (entry is null)
         {

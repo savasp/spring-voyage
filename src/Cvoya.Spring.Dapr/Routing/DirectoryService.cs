@@ -475,9 +475,9 @@ public class DirectoryService(
 
             // Evict from the in-memory map + cache so the next resolve falls
             // through to the DB and sees "deleted".
-            var agentKey = ToKey(new Address("agent", agentEntity.AgentId));
+            var agentKey = ToKey(Address.For("agent", agentEntity.AgentId));
             _entries.TryRemove(agentKey, out _);
-            cache.Invalidate(new Address("agent", agentEntity.AgentId));
+            cache.Invalidate(Address.For("agent", agentEntity.AgentId));
         }
 
         entity.DeletedAt = DateTimeOffset.UtcNow;
@@ -659,7 +659,7 @@ public class DirectoryService(
 
         foreach (var u in units)
         {
-            var address = new Address("unit", u.UnitId);
+            var address = Address.For("unit", u.UnitId);
             var entry = new DirectoryEntry(
                 address,
                 u.ActorId ?? u.UnitId,
@@ -679,7 +679,7 @@ public class DirectoryService(
 
         foreach (var a in agents)
         {
-            var address = new Address("agent", a.AgentId);
+            var address = Address.For("agent", a.AgentId);
             var entry = new DirectoryEntry(
                 address,
                 a.ActorId ?? a.AgentId,

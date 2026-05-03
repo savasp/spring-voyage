@@ -55,7 +55,7 @@ public class EmitValidationProgressActivity(
             var activityEvent = new ActivityEvent(
                 Id: Guid.NewGuid(),
                 Timestamp: DateTimeOffset.UtcNow,
-                Source: new Address("unit", input.UnitName),
+                Source: Address.For("unit", input.UnitName),
                 EventType: ActivityEventType.ValidationProgress,
                 Severity: severity,
                 Summary: summary,

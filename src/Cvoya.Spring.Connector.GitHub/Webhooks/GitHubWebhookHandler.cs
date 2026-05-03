@@ -326,7 +326,7 @@ public class GitHubWebhookHandler : IGitHubWebhookHandler
         var unitPath = _options.DefaultTargetUnitPath;
         if (!string.IsNullOrWhiteSpace(unitPath))
         {
-            return new Address("unit", unitPath);
+            return Address.For("unit", unitPath);
         }
 
         _logger.LogWarning(

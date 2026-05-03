@@ -25,7 +25,7 @@ public class ConnectorActor(ActorHost host, ILoggerFactory loggerFactory) : Acto
     /// <summary>
     /// Gets the address of this connector actor.
     /// </summary>
-    public Address Address => new("connector", Id.GetId());
+    public Address Address => Address.For("connector", Id.GetId());
 
     /// <inheritdoc />
     public async Task<Message?> ReceiveAsync(Message message, CancellationToken cancellationToken = default)

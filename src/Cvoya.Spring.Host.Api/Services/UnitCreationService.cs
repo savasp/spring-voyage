@@ -496,7 +496,7 @@ public class UnitCreationService : IUnitCreationService
                 return;
             }
 
-            var address = new Address("unit", unitName);
+            var address = Address.For("unit", unitName);
             await _boundaryStore.SetAsync(address, core, cancellationToken);
         }
         catch (OperationCanceledException)
@@ -565,7 +565,7 @@ public class UnitCreationService : IUnitCreationService
         var resolvedParents = new List<(string Id, DirectoryEntry Entry)>(parentInfo.ParentUnitIds.Count);
         foreach (var parentId in parentInfo.ParentUnitIds)
         {
-            var parentAddress = new Address("unit", parentId);
+            var parentAddress = Address.For("unit", parentId);
             var parentEntry = await _directoryService.ResolveAsync(parentAddress, cancellationToken);
             if (parentEntry is null)
             {
@@ -608,7 +608,7 @@ public class UnitCreationService : IUnitCreationService
         }
 
         var actorId = Guid.NewGuid().ToString();
-        var address = new Address("unit", name);
+        var address = Address.For("unit", name);
 
         // #325: when the caller supplies a canonical name override through
         // the request body we reject duplicates up front with a typed
@@ -804,7 +804,7 @@ public class UnitCreationService : IUnitCreationService
                     // members in the actor list but `[]` from /memberships).
                     try
                     {
-                        var agentAddress = new Address("agent", resolved.Value.Path);
+                        var agentAddress = Address.For("agent", resolved.Value.Path);
                         var existing = await _directoryService.ResolveAsync(agentAddress, cancellationToken);
                         if (existing is null)
                         {
@@ -844,7 +844,7 @@ public class UnitCreationService : IUnitCreationService
                         // Resolve unit UUID from the newly-registered entry.
                         var unitDir = await _directoryService.ResolveAsync(address, cancellationToken);
                         var agentDir = await _directoryService.ResolveAsync(
-                            new Address("agent", resolved.Value.Path), cancellationToken);
+                            Address.For("agent", resolved.Value.Path), cancellationToken);
 
                         if (unitDir is not null && agentDir is not null
                             && Guid.TryParse(unitDir.ActorId, out var unitMemberUuid)

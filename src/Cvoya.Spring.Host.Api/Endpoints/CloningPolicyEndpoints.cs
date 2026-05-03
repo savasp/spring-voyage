@@ -83,7 +83,7 @@ public static class CloningPolicyEndpoints
         [FromServices] IAgentCloningPolicyRepository repository,
         CancellationToken cancellationToken)
     {
-        var entry = await directoryService.ResolveAsync(new Address("agent", id), cancellationToken);
+        var entry = await directoryService.ResolveAsync(Address.For("agent", id), cancellationToken);
         if (entry is null)
         {
             return Results.Problem(
@@ -102,7 +102,7 @@ public static class CloningPolicyEndpoints
         [FromServices] IAgentCloningPolicyRepository repository,
         CancellationToken cancellationToken)
     {
-        var entry = await directoryService.ResolveAsync(new Address("agent", id), cancellationToken);
+        var entry = await directoryService.ResolveAsync(Address.For("agent", id), cancellationToken);
         if (entry is null)
         {
             return Results.Problem(
@@ -121,7 +121,7 @@ public static class CloningPolicyEndpoints
         [FromServices] IAgentCloningPolicyRepository repository,
         CancellationToken cancellationToken)
     {
-        var entry = await directoryService.ResolveAsync(new Address("agent", id), cancellationToken);
+        var entry = await directoryService.ResolveAsync(Address.For("agent", id), cancellationToken);
         if (entry is null)
         {
             return Results.Problem(

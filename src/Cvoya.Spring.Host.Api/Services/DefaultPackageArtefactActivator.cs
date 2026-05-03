@@ -148,7 +148,7 @@ public class DefaultPackageArtefactActivator : IPackageArtefactActivator
         var displayName = string.IsNullOrWhiteSpace(fields.DisplayName) ? slug : fields.DisplayName!;
         var description = fields.Description ?? string.Empty;
 
-        var address = new Address("agent", slug);
+        var address = Address.For("agent", slug);
         var existing = await _directoryService.ResolveAsync(address, ct);
         var actorId = existing?.ActorId ?? Guid.NewGuid().ToString();
 

@@ -32,4 +32,20 @@ public class UnitSubunitMembershipEntity : ITenantScopedEntity
 
     /// <summary>UTC timestamp when the edge was last touched.</summary>
     public DateTimeOffset UpdatedAt { get; set; }
+
+    /// <summary>Legacy alias for <see cref="ParentId"/>.</summary>
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public Guid ParentUnitId
+    {
+        get => ParentId;
+        set => ParentId = value;
+    }
+
+    /// <summary>Legacy alias for <see cref="ChildId"/>.</summary>
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public Guid ChildUnitId
+    {
+        get => ChildId;
+        set => ChildId = value;
+    }
 }

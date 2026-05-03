@@ -43,7 +43,7 @@ public class UnitParentRequiredException : SpringException
     }
 
     /// <summary>
-    /// Gets the unit-address path (equivalent to <c>new Address("unit", id).Path</c>)
+    /// Gets the unit-address path (equivalent to <c>Address.For("unit", id).Path</c>)
     /// whose last parent-unit removal was rejected, or the create-time unit name
     /// that lacked any parent.
     /// </summary>

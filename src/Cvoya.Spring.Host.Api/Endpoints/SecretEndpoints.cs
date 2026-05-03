@@ -250,7 +250,7 @@ public static class SecretEndpoints
             return Forbidden(SecretScope.Unit, SecretAccessAction.List);
         }
 
-        var unitAddress = new Address("unit", id);
+        var unitAddress = Address.For("unit", id);
         var entry = await directoryService.ResolveAsync(unitAddress, cancellationToken);
         if (entry is null)
         {
@@ -288,7 +288,7 @@ public static class SecretEndpoints
             return validationError;
         }
 
-        var unitAddress = new Address("unit", id);
+        var unitAddress = Address.For("unit", id);
         var entry = await directoryService.ResolveAsync(unitAddress, cancellationToken);
         if (entry is null)
         {
@@ -321,7 +321,7 @@ public static class SecretEndpoints
             return Forbidden(SecretScope.Unit, SecretAccessAction.Rotate);
         }
 
-        var unitAddress = new Address("unit", id);
+        var unitAddress = Address.For("unit", id);
         var entry = await directoryService.ResolveAsync(unitAddress, cancellationToken);
         if (entry is null)
         {
@@ -348,7 +348,7 @@ public static class SecretEndpoints
             return Forbidden(SecretScope.Unit, SecretAccessAction.List);
         }
 
-        var unitAddress = new Address("unit", id);
+        var unitAddress = Address.For("unit", id);
         var entry = await directoryService.ResolveAsync(unitAddress, cancellationToken);
         if (entry is null)
         {
@@ -376,7 +376,7 @@ public static class SecretEndpoints
             return Forbidden(SecretScope.Unit, SecretAccessAction.Prune);
         }
 
-        var unitAddress = new Address("unit", id);
+        var unitAddress = Address.For("unit", id);
         var entry = await directoryService.ResolveAsync(unitAddress, cancellationToken);
         if (entry is null)
         {
@@ -404,7 +404,7 @@ public static class SecretEndpoints
             return Forbidden(SecretScope.Unit, SecretAccessAction.Delete);
         }
 
-        var unitAddress = new Address("unit", id);
+        var unitAddress = Address.For("unit", id);
         var entry = await directoryService.ResolveAsync(unitAddress, cancellationToken);
         if (entry is null)
         {

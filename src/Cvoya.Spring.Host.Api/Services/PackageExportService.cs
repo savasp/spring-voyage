@@ -58,13 +58,13 @@ public sealed class PackageExportService : IPackageExportService
         // Verify the unit (or agent) exists in the current tenant's directory.
         // The directory service is already tenant-scoped.
         var entry = await _directoryService.ResolveAsync(
-            new Address("unit", unitName), cancellationToken);
+            Address.For("unit", unitName), cancellationToken);
 
         if (entry is null)
         {
             // Try agent scheme — a package may install an agent rather than a unit.
             entry = await _directoryService.ResolveAsync(
-                new Address("agent", unitName), cancellationToken);
+                Address.For("agent", unitName), cancellationToken);
         }
 
         if (entry is null)

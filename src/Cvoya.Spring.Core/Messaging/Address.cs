@@ -84,6 +84,13 @@ public record Address(
     }
 
     /// <summary>
+    /// Builds an <see cref="Address"/> from a scheme + Guid identity.
+    /// Convenience alias kept for call sites that historically used
+    /// this factory.
+    /// </summary>
+    public static Address ForIdentity(string scheme, Guid id) => new(scheme, id);
+
+    /// <summary>
     /// Attempts to parse a string into an <see cref="Address"/>. Accepts
     /// the canonical no-dash form (<c>scheme:8c5fab…</c>) and the dashed
     /// form (<c>scheme:8c5fab2a-8e7e-…</c>) — <see cref="Guid.TryParse"/>

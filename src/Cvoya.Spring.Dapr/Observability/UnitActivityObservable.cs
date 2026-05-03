@@ -57,7 +57,7 @@ public sealed class UnitActivityObservable(
         ArgumentException.ThrowIfNullOrWhiteSpace(unitId);
 
         var visited = new HashSet<Address>(new AddressComparer());
-        visited.Add(new Address("unit", unitId));
+        visited.Add(Address.For("unit", unitId));
 
         await CollectMembersAsync(unitId, visited, depth: 0, cancellationToken);
 

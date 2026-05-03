@@ -209,7 +209,7 @@ public static class UnitEndpoints
     {
         var logger = loggerFactory.CreateLogger("Cvoya.Spring.Host.Api.Endpoints.UnitEndpoints");
 
-        var address = new Address("unit", id);
+        var address = Address.For("unit", id);
         var entry = await directoryService.ResolveAsync(address, cancellationToken);
 
         if (entry is null)
@@ -404,7 +404,7 @@ public static class UnitEndpoints
     {
         var logger = loggerFactory.CreateLogger("Cvoya.Spring.Host.Api.Endpoints.UnitEndpoints");
 
-        var address = new Address("unit", id);
+        var address = Address.For("unit", id);
         var entry = await directoryService.ResolveAsync(address, cancellationToken);
 
         if (entry is null)
@@ -457,7 +457,7 @@ public static class UnitEndpoints
         CancellationToken cancellationToken)
     {
         var logger = loggerFactory.CreateLogger("Cvoya.Spring.Host.Api.Endpoints.UnitEndpoints");
-        var address = new Address("unit", id);
+        var address = Address.For("unit", id);
         var entry = await directoryService.ResolveAsync(address, cancellationToken);
 
         if (entry is null)
@@ -629,7 +629,7 @@ public static class UnitEndpoints
         [FromServices] IActorProxyFactory actorProxyFactory,
         CancellationToken cancellationToken)
     {
-        var address = new Address("unit", id);
+        var address = Address.For("unit", id);
         var entry = await directoryService.ResolveAsync(address, cancellationToken);
 
         if (entry is null)
@@ -653,7 +653,7 @@ public static class UnitEndpoints
         CancellationToken cancellationToken)
     {
         var logger = loggerFactory.CreateLogger("Cvoya.Spring.Host.Api.Endpoints.UnitEndpoints");
-        var address = new Address("unit", id);
+        var address = Address.For("unit", id);
         var entry = await directoryService.ResolveAsync(address, cancellationToken);
 
         if (entry is null)
@@ -710,7 +710,7 @@ public static class UnitEndpoints
         CancellationToken cancellationToken)
     {
         var logger = loggerFactory.CreateLogger("Cvoya.Spring.Host.Api.Endpoints.UnitEndpoints");
-        var address = new Address("unit", id);
+        var address = Address.For("unit", id);
         var entry = await directoryService.ResolveAsync(address, cancellationToken);
 
         if (entry is null)
@@ -784,7 +784,7 @@ public static class UnitEndpoints
     {
         var logger = loggerFactory.CreateLogger("Cvoya.Spring.Host.Api.Endpoints.UnitEndpoints");
 
-        var address = new Address("unit", id);
+        var address = Address.For("unit", id);
         var entry = await directoryService.ResolveAsync(address, cancellationToken);
         if (entry is null)
         {
@@ -841,7 +841,7 @@ public static class UnitEndpoints
         [FromServices] IActorProxyFactory actorProxyFactory,
         CancellationToken cancellationToken)
     {
-        var unitAddress = new Address("unit", id);
+        var unitAddress = Address.For("unit", id);
         var entry = await directoryService.ResolveAsync(unitAddress, cancellationToken);
 
         if (entry is null)
@@ -869,7 +869,7 @@ public static class UnitEndpoints
         IUnitMembershipTenantGuard tenantGuard,
         CancellationToken cancellationToken)
     {
-        var unitAddress = new Address("unit", id);
+        var unitAddress = Address.For("unit", id);
         var entry = await directoryService.ResolveAsync(unitAddress, cancellationToken);
 
         if (entry is null)
@@ -939,7 +939,7 @@ public static class UnitEndpoints
         IUnitParentInvariantGuard parentGuard,
         CancellationToken cancellationToken)
     {
-        var unitAddress = new Address("unit", id);
+        var unitAddress = Address.For("unit", id);
         var entry = await directoryService.ResolveAsync(unitAddress, cancellationToken);
 
         if (entry is null)
@@ -968,7 +968,7 @@ public static class UnitEndpoints
         {
             await parentGuard.EnsureParentRemainsAsync(
                 unitAddress,
-                new Address("unit", memberId),
+                Address.For("unit", memberId),
                 cancellationToken);
         }
         catch (UnitParentRequiredException ex)
@@ -984,8 +984,8 @@ public static class UnitEndpoints
                 });
         }
 
-        await unitProxy.RemoveMemberAsync(new Address("agent", memberId), cancellationToken);
-        await unitProxy.RemoveMemberAsync(new Address("unit", memberId), cancellationToken);
+        await unitProxy.RemoveMemberAsync(Address.For("agent", memberId), cancellationToken);
+        await unitProxy.RemoveMemberAsync(Address.For("unit", memberId), cancellationToken);
 
         await expertiseAggregator.InvalidateAsync(unitAddress, cancellationToken);
 
@@ -1304,7 +1304,7 @@ public static class UnitEndpoints
         CancellationToken cancellationToken)
     {
         var logger = loggerFactory.CreateLogger("Cvoya.Spring.Host.Api.Endpoints.UnitEndpoints");
-        var unitAddress = new Address("unit", id);
+        var unitAddress = Address.For("unit", id);
         var unitEntry = await directoryService.ResolveAsync(unitAddress, cancellationToken);
 
         if (unitEntry is null)
@@ -1375,14 +1375,14 @@ public static class UnitEndpoints
             return Results.Problem(detail: "agentId is required.", statusCode: StatusCodes.Status400BadRequest);
         }
 
-        var unitAddress = new Address("unit", id);
+        var unitAddress = Address.For("unit", id);
         var unitEntry = await directoryService.ResolveAsync(unitAddress, cancellationToken);
         if (unitEntry is null)
         {
             return Results.Problem(detail: $"Unit '{id}' not found", statusCode: StatusCodes.Status404NotFound);
         }
 
-        var agentAddress = new Address("agent", agentId);
+        var agentAddress = Address.For("agent", agentId);
         var agentEntry = await directoryService.ResolveAsync(agentAddress, cancellationToken);
         if (agentEntry is null)
         {
@@ -1469,14 +1469,14 @@ public static class UnitEndpoints
     {
         var logger = loggerFactory.CreateLogger("Cvoya.Spring.Host.Api.Endpoints.UnitEndpoints");
 
-        var unitAddress = new Address("unit", id);
+        var unitAddress = Address.For("unit", id);
         var unitEntry = await directoryService.ResolveAsync(unitAddress, cancellationToken);
         if (unitEntry is null)
         {
             return Results.Problem(detail: $"Unit '{id}' not found", statusCode: StatusCodes.Status404NotFound);
         }
 
-        var agentAddress = new Address("agent", agentId);
+        var agentAddress = Address.For("agent", agentId);
         var agentEntry = await directoryService.ResolveAsync(agentAddress, cancellationToken);
         if (agentEntry is null)
         {

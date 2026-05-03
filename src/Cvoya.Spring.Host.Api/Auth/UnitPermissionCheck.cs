@@ -108,7 +108,7 @@ public static class UnitPermissionCheck
         // unit with the same id. This is the fix for #1029 — the previous
         // declarative gate returned 403 here because the permission
         // evaluator saw no grant for a unit that did not exist.
-        var address = new Address("unit", unitId);
+        var address = Address.For("unit", unitId);
         var entry = await directoryService.ResolveAsync(address, cancellationToken);
         if (entry is null)
         {

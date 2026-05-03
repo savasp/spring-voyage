@@ -79,7 +79,7 @@ public static class MembershipEndpoints
         [FromServices] IUnitMembershipRepository repository,
         CancellationToken cancellationToken)
     {
-        var address = new Address("agent", id);
+        var address = Address.For("agent", id);
         var entry = await directoryService.ResolveAsync(address, cancellationToken);
         if (entry is null)
         {
@@ -108,7 +108,7 @@ public static class MembershipEndpoints
         [FromServices] IUnitMembershipRepository repository,
         CancellationToken cancellationToken)
     {
-        var address = new Address("unit", id);
+        var address = Address.For("unit", id);
         var entry = await directoryService.ResolveAsync(address, cancellationToken);
         if (entry is null)
         {
@@ -148,7 +148,7 @@ public static class MembershipEndpoints
                 statusCode: StatusCodes.Status400BadRequest);
         }
 
-        var unitEntry = await directoryService.ResolveAsync(new Address("unit", unitId), cancellationToken);
+        var unitEntry = await directoryService.ResolveAsync(Address.For("unit", unitId), cancellationToken);
         if (unitEntry is null)
         {
             return Results.Problem(
@@ -156,7 +156,7 @@ public static class MembershipEndpoints
                 statusCode: StatusCodes.Status404NotFound);
         }
 
-        var agentEntry = await directoryService.ResolveAsync(new Address("agent", agentAddress), cancellationToken);
+        var agentEntry = await directoryService.ResolveAsync(Address.For("agent", agentAddress), cancellationToken);
         if (agentEntry is null)
         {
             return Results.Problem(
@@ -205,7 +205,7 @@ public static class MembershipEndpoints
         CancellationToken cancellationToken)
     {
         // Resolve slugs → UUIDs at the boundary (#1492).
-        var unitEntry = await directoryService.ResolveAsync(new Address("unit", unitId), cancellationToken);
+        var unitEntry = await directoryService.ResolveAsync(Address.For("unit", unitId), cancellationToken);
         if (unitEntry is null || !Guid.TryParse(unitEntry.ActorId, out var unitUuid))
         {
             return Results.Problem(
@@ -213,7 +213,7 @@ public static class MembershipEndpoints
                 statusCode: StatusCodes.Status404NotFound);
         }
 
-        var agentEntry = await directoryService.ResolveAsync(new Address("agent", agentAddress), cancellationToken);
+        var agentEntry = await directoryService.ResolveAsync(Address.For("agent", agentAddress), cancellationToken);
         if (agentEntry is null || !Guid.TryParse(agentEntry.ActorId, out var agentUuid))
         {
             return Results.Problem(
