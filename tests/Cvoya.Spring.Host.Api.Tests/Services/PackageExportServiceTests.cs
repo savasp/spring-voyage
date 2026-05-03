@@ -43,8 +43,8 @@ public class PackageExportServiceTests
     private static readonly Guid Unit_Main_Id = new("00000001-feed-1234-5678-000000000000");
     private static readonly Guid Unit_OrphanUnit_Id = new("00000002-feed-1234-5678-000000000000");
 
-    private const string TenantA = "tenant-a";
-    private const string TenantB = "tenant-b";
+    private static readonly Guid TenantA = new("aaaaaaaa-1111-1111-1111-000000000001");
+    private static readonly Guid TenantB = new("aaaaaaaa-1111-1111-1111-000000000002");
 
     // A minimal valid UnitPackage YAML with no inputs. {0} = package name.
     private const string MinimalPackageYaml = """
@@ -97,7 +97,7 @@ public class PackageExportServiceTests
 
     private static (PackageExportService Service, IServiceScopeFactory ScopeFactory, IDirectoryService Directory)
         BuildService(
-            string tenantId = TenantA,
+            Guid tenantId = default,
             IDirectoryService? dir = null)
     {
         var dbName = $"pkg-export-{Guid.NewGuid():N}";
@@ -133,7 +133,7 @@ public class PackageExportServiceTests
     /// </summary>
     private static async Task<Guid> SeedInstallAsync(
         IServiceScopeFactory scopeFactory,
-        string tenantId,
+        Guid tenantId,
         string packageName,
         string yaml,
         string inputsJson = "{}",
@@ -287,7 +287,7 @@ public class PackageExportServiceTests
         dir.ResolveAsync(new Address("unit", Unit_Main_Id), Arg.Any<CancellationToken>())
             .Returns(new DirectoryEntry(
                 new Address("unit", Unit_Main_Id),
-                Guid.NewGuid().ToString(),
+                Guid.NewGuid(),
                 "Main Unit",
                 string.Empty,
                 null,
@@ -406,7 +406,7 @@ public class PackageExportServiceTests
         dir.ResolveAsync(new Address("unit", Unit_OrphanUnit_Id), Arg.Any<CancellationToken>())
             .Returns(new DirectoryEntry(
                 new Address("unit", Unit_OrphanUnit_Id),
-                Guid.NewGuid().ToString(),
+                Guid.NewGuid(),
                 "Orphan",
                 string.Empty, null,
                 DateTimeOffset.UtcNow));
@@ -514,7 +514,7 @@ public class PackageExportServiceTests
         dir.ResolveAsync(new Address("unit", Unit_Main_Id), Arg.Any<CancellationToken>())
             .Returns(new DirectoryEntry(
                 new Address("unit", Unit_Main_Id),
-                Guid.NewGuid().ToString(),
+                Guid.NewGuid(),
                 "Main", string.Empty, null,
                 DateTimeOffset.UtcNow));
 
