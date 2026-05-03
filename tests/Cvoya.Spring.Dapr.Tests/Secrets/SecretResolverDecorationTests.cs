@@ -52,7 +52,8 @@ using Xunit;
 /// </summary>
 public class SecretResolverDecorationTests
 {
-    private const string KnownTenantId = "audit-test-tenant";
+    private static readonly Guid KnownTenantId = new("aaaaaaaa-1111-1111-1111-000000000001");
+    private static readonly Guid UnitU1Id = new("bbbbbbbb-2222-2222-2222-000000000001");
 
     [Fact]
     public void DecoratingSecretResolver_AfterBaselineRegistration_RoutesCallsThroughDecorator()
@@ -93,7 +94,7 @@ public class SecretResolverDecorationTests
         services.Replace(ServiceDescriptor.Scoped(_ => registry));
         services.Replace(ServiceDescriptor.Singleton(_ => store));
 
-        var unitRef = new SecretRef(SecretScope.Unit, "u1", "gh-token");
+        var unitRef = new SecretRef(SecretScope.Unit, UnitU1Id, "gh-token");
         registry.LookupWithVersionAsync(unitRef, Arg.Any<CancellationToken>())
             .Returns((new SecretPointer("sk-opaque", SecretOrigin.PlatformOwned), (int?)4));
         store.ReadAsync("sk-opaque", Arg.Any<CancellationToken>())
@@ -189,7 +190,7 @@ public class SecretResolverDecorationTests
         var registry = scope.ServiceProvider.GetRequiredService<ISecretRegistry>();
         registry.ShouldBeOfType<RecordingRegistryDecorator>();
 
-        var @ref = new SecretRef(SecretScope.Unit, "u1", "token");
+        var @ref = new SecretRef(SecretScope.Unit, UnitU1Id, "token");
         await registry.RegisterAsync(@ref, "sk-1", SecretOrigin.PlatformOwned, ct);
 
         var deleted = new List<string>();
@@ -240,7 +241,7 @@ public class SecretResolverDecorationTests
         var ct = TestContext.Current.CancellationToken;
 
         var registry = scope.ServiceProvider.GetRequiredService<ISecretRegistry>();
-        var @ref = new SecretRef(SecretScope.Unit, "u1", "token");
+        var @ref = new SecretRef(SecretScope.Unit, UnitU1Id, "token");
 
         await registry.RegisterAsync(@ref, "sk-1", SecretOrigin.PlatformOwned, ct);
         await registry.RotateAsync(@ref, "sk-2", SecretOrigin.PlatformOwned, null, ct);

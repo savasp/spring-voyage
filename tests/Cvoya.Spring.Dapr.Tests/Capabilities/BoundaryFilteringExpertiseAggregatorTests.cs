@@ -53,7 +53,7 @@ public class BoundaryFilteringExpertiseAggregatorTests
             .Returns(ci =>
             {
                 var addr = ci.ArgAt<Address>(0);
-                return new DirectoryEntry(addr, addr.Path, addr.Path, string.Empty, null, DateTimeOffset.UtcNow);
+                return new DirectoryEntry(addr, addr.Id, addr.Path, string.Empty, null, DateTimeOffset.UtcNow);
             });
 
         _proxyFactory.CreateActorProxy<IUnitActor>(Arg.Any<ActorId>(), nameof(UnitActor))

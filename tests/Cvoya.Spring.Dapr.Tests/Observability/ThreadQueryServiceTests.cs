@@ -86,44 +86,10 @@ public class ThreadQueryServiceTests : IDisposable
         c2.Status.ShouldBe("completed");
     }
 
-    [Fact]
-    public async Task ListAsync_AgentFilterBySlug_ResolvesThroughDirectoryAndMatchesActorIdParticipants()
-    {
-        // Production activity events carry the actor id (a UUID) as their
-        // source — see AgentActor.EmitActivityEventAsync. The portal's
-        // Messages tab and the CLI's `spring conversation list --agent
-        // <name>` both pass the agent slug, so a literal slug-only filter
-        // would return zero matches even when the thread clearly involves
-        // the named agent. The directory resolves the slug to its actor id
-        // and the filter matches against the resolved address.
-        var actorId = "2ab56e09-6746-40b2-9a34-f0d6babfc0f3";
-        await SeedThreadAsync("c-1", new[]
-        {
-            ($"agent:{actorId}", "MessageReceived", "Received human ask", DateTimeOffset.UtcNow.AddMinutes(-5)),
-            ($"agent:{actorId}", "ThreadStarted", "Started c-1", DateTimeOffset.UtcNow.AddMinutes(-5)),
-        });
-
-        var directory = Substitute.For<IDirectoryService>();
-        directory.ResolveAsync(
-                Arg.Is<Address>(a => a.Scheme == "agent" && a.Path == "backend-engineer"),
-                Arg.Any<CancellationToken>())
-            .Returns(new DirectoryEntry(
-                Address: Address.For("agent", "backend-engineer"),
-                ActorId: actorId,
-                DisplayName: "backend-engineer",
-                Description: string.Empty,
-                Role: null,
-                RegisteredAt: DateTimeOffset.UtcNow));
-
-        var svc = new ThreadQueryService(_db, directory);
-
-        var result = await svc.ListAsync(
-            new ThreadQueryFilters(Agent: "backend-engineer"),
-            TestContext.Current.CancellationToken);
-
-        result.Count.ShouldBe(1);
-        result[0].Id.ShouldBe("c-1");
-    }
+    // #1629: ListAsync_AgentFilterBySlug_ResolvesThroughDirectoryAndMatchesActorIdParticipants
+    // and ListAsync_AgentFilterBySlug_IdentityFormNeedleMatchesUuidSourceEvents were
+    // slug-resolution tests; post #1629 every address is identity, so the slug
+    // upgrade path the tests exercised no longer exists.
 
     [Fact]
     public async Task ListAsync_AgentFilter_NoDirectory_FallsBackToLiteralMatch()
@@ -384,7 +350,7 @@ public class ThreadQueryServiceTests : IDisposable
         _db.ActivityEvents.Add(new ActivityEventRecord
         {
             Id = Guid.NewGuid(),
-            Source = "agent:ada",
+            SourceId = Guid.NewGuid(),
             EventType = nameof(ActivityEventType.MessageReceived),
             Severity = "Info",
             Summary = $"Received Domain message {message.Id} from human://savasp",
@@ -433,7 +399,7 @@ public class ThreadQueryServiceTests : IDisposable
         _db.ActivityEvents.Add(new ActivityEventRecord
         {
             Id = Guid.NewGuid(),
-            Source = "human:savasp",
+            SourceId = Guid.NewGuid(),
             EventType = nameof(ActivityEventType.MessageReceived),
             Severity = "Info",
             Summary = $"Received Domain message {message.Id} from agent://ada",
@@ -477,7 +443,7 @@ public class ThreadQueryServiceTests : IDisposable
         _db.ActivityEvents.Add(new ActivityEventRecord
         {
             Id = Guid.NewGuid(),
-            Source = "human:savasp",
+            SourceId = Guid.NewGuid(),
             EventType = nameof(ActivityEventType.MessageReceived),
             Severity = "Info",
             Summary = $"Received Domain message {messageId} from agent://ada",
@@ -666,41 +632,6 @@ public class ThreadQueryServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task ListAsync_AgentFilterBySlug_IdentityFormNeedleMatchesUuidSourceEvents()
-    {
-        // Regression guard for #1490: when the directory resolves a slug
-        // to a UUID, the filter needle must be in the identity form
-        // ("agent:id:<uuid>") to match participants that NormaliseSource
-        // upgraded to the same form.
-        var actorId = "2ab56e09-6746-40b2-9a34-f0d6babfc0f3";
-        await SeedThreadAsync("c-id-filter", new[]
-        {
-            ($"agent:{actorId}", "MessageReceived", "Msg", DateTimeOffset.UtcNow.AddMinutes(-5)),
-        });
-
-        var directory = Substitute.For<IDirectoryService>();
-        directory.ResolveAsync(
-                Arg.Is<Address>(a => a.Scheme == "agent" && a.Path == "backend-engineer"),
-                Arg.Any<CancellationToken>())
-            .Returns(new DirectoryEntry(
-                Address: Address.For("agent", "backend-engineer"),
-                ActorId: actorId,
-                DisplayName: "backend-engineer",
-                Description: string.Empty,
-                Role: null,
-                RegisteredAt: DateTimeOffset.UtcNow));
-
-        var svc = new ThreadQueryService(_db, directory);
-
-        var result = await svc.ListAsync(
-            new ThreadQueryFilters(Agent: "backend-engineer"),
-            TestContext.Current.CancellationToken);
-
-        result.Count.ShouldBe(1);
-        result[0].Id.ShouldBe("c-id-filter");
-    }
-
-    [Fact]
     public void ToPersistenceSource_IdentityForm_ConvertsToCompactForm()
     {
         // "agent:id:<uuid>" → "agent:<uuid>" (the compact persistence form).
@@ -721,6 +652,20 @@ public class ThreadQueryServiceTests : IDisposable
         ThreadQueryService.ToPersistenceSource("human:savasp").ShouldBe("human:savasp");
     }
 
+    /// <summary>
+    /// Best-effort parse of legacy "scheme:&lt;guid-or-slug&gt;" test seed strings into
+    /// the <see cref="ActivityEventRecord.SourceId"/> Guid. When the slug part
+    /// is not a Guid, we synthesise a fresh Guid — slug-based filtering no
+    /// longer exists post #1629, so the tests that still seed slug-shaped
+    /// sources only care that some entity Guid is recorded.
+    /// </summary>
+    private static Guid ParseSourceGuid(string source)
+    {
+        var sepIdx = source.IndexOf(':');
+        var idPart = sepIdx >= 0 ? source[(sepIdx + 1)..] : source;
+        return Guid.TryParse(idPart, out var g) ? g : Guid.NewGuid();
+    }
+
     private async Task SeedThreadAsync(
         string threadId,
         (string source, string eventType, string summary, DateTimeOffset ts)[] events)
@@ -730,7 +675,7 @@ public class ThreadQueryServiceTests : IDisposable
             _db.ActivityEvents.Add(new ActivityEventRecord
             {
                 Id = Guid.NewGuid(),
-                Source = source,
+                SourceId = ParseSourceGuid(source),
                 EventType = type,
                 Severity = "Info",
                 Summary = summary,

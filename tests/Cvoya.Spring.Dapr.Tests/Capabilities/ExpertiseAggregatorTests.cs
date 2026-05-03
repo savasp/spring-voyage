@@ -51,7 +51,7 @@ public class ExpertiseAggregatorTests
             .Returns(ci =>
             {
                 var addr = ci.ArgAt<Address>(0);
-                return new DirectoryEntry(addr, addr.Path, addr.Path, string.Empty, null, DateTimeOffset.UtcNow);
+                return new DirectoryEntry(addr, addr.Id, addr.Path, string.Empty, null, DateTimeOffset.UtcNow);
             });
 
         // Proxy factory hands out per-path substitute IUnitActor instances
@@ -301,13 +301,13 @@ public class ExpertiseAggregatorTests
 
         // Directory resolves "ada" to a stable UUID so the aggregator can look up memberships.
         _directory.ResolveAsync(ada, Arg.Any<CancellationToken>())
-            .Returns(new DirectoryEntry(ada, adaUuid.ToString(), "ada", string.Empty, null, DateTimeOffset.UtcNow));
+            .Returns(new DirectoryEntry(ada, adaUuid, "ada", string.Empty, null, DateTimeOffset.UtcNow));
 
         // ListAllAsync must include the "eng" unit with its UUID for the reverse walk.
         _directory.ListAllAsync(Arg.Any<CancellationToken>())
             .Returns(new[]
             {
-                new DirectoryEntry(unit, engUuid.ToString(), "eng", string.Empty, null, DateTimeOffset.UtcNow),
+                new DirectoryEntry(unit, engUuid, "eng", string.Empty, null, DateTimeOffset.UtcNow),
             });
 
         _memberships.ListByAgentAsync(adaUuid, Arg.Any<CancellationToken>())
@@ -340,9 +340,9 @@ public class ExpertiseAggregatorTests
         // The directory must list every unit for the reverse-parent walk.
         _directory.ListAllAsync(Arg.Any<CancellationToken>()).Returns(new[]
         {
-            new DirectoryEntry(root, "root", "root", string.Empty, null, DateTimeOffset.UtcNow),
-            new DirectoryEntry(mid, "mid", "mid", string.Empty, null, DateTimeOffset.UtcNow),
-            new DirectoryEntry(leaf, "leaf", "leaf", string.Empty, null, DateTimeOffset.UtcNow),
+            new DirectoryEntry(root, root.Id, "root", string.Empty, null, DateTimeOffset.UtcNow),
+            new DirectoryEntry(mid, mid.Id, "mid", string.Empty, null, DateTimeOffset.UtcNow),
+            new DirectoryEntry(leaf, leaf.Id, "leaf", string.Empty, null, DateTimeOffset.UtcNow),
         });
 
         // Warm the cache at root.
