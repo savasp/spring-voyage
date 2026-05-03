@@ -32,14 +32,14 @@ using Xunit;
 public class DaprStateBackedSecretStoreTests
 {
     private const string Component = "statestore";
-    private const string TenantId = "acme";
+    private static readonly Guid TenantId = new("aaaaaaaa-1111-1111-1111-000000000001");
 
     private readonly DaprClient _dapr = Substitute.For<DaprClient>();
 
-    private static ITenantContext TenantContext(string tenantId = TenantId)
+    private static ITenantContext TenantContext(Guid? tenantId = null)
     {
         var ctx = Substitute.For<ITenantContext>();
-        ctx.CurrentTenantId.Returns(tenantId);
+        ctx.CurrentTenantId.Returns(tenantId ?? TenantId);
         return ctx;
     }
 
@@ -167,11 +167,13 @@ public class DaprStateBackedSecretStoreTests
         var ct = TestContext.Current.CancellationToken;
         var encryptor = RealEncryptor();
 
-        // Encrypt as tenant "acme" but attempt to read with the store
-        // configured for tenant "mallory" — the AAD mismatch must fail.
-        var envelope = encryptor.Encrypt("hunter2", "acme", "storekey123");
+        // Encrypt as tenant Acme but attempt to read with the store
+        // configured for tenant Mallory — the AAD mismatch must fail.
+        var acme = new Guid("aaaaaaaa-1111-1111-1111-000000000001");
+        var mallory = new Guid("aaaaaaaa-1111-1111-1111-000000000099");
+        var envelope = encryptor.Encrypt("hunter2", acme, "storekey123");
 
-        var sut = CreateSut(encryptor: encryptor, tenantContext: TenantContext("mallory"));
+        var sut = CreateSut(encryptor: encryptor, tenantContext: TenantContext(mallory));
 
         _dapr
             .GetStateAsync<string?>(Component, "secrets/storekey123", cancellationToken: Arg.Any<CancellationToken>())
@@ -211,7 +213,7 @@ public class DaprStateBackedSecretStoreTests
             StoreComponent = "statestore",
             ComponentNameFormat = "statestore-{tenantId}",
             KeyPrefix = "secrets/",
-        }, tenantContext: TenantContext("acme"));
+        }, tenantContext: TenantContext());
 
         await sut.WriteAsync("hunter2", ct);
 
@@ -240,7 +242,7 @@ public class DaprStateBackedSecretStoreTests
         {
             ComponentNameFormat = "statestore-{tenantId}",
             KeyPrefix = "secrets/",
-        }, tenantContext: TenantContext("acme"));
+        }, tenantContext: TenantContext());
 
         _dapr
             .GetStateAsync<string?>("statestore-acme", "secrets/abc", cancellationToken: Arg.Any<CancellationToken>())
@@ -255,7 +257,7 @@ public class DaprStateBackedSecretStoreTests
     {
         var ct = TestContext.Current.CancellationToken;
 
-        var sut = CreateSut(tenantContext: TenantContext("acme"));
+        var sut = CreateSut(tenantContext: TenantContext());
 
         // Canonical key misses.
         _dapr

@@ -65,7 +65,7 @@ public class RequestHelpToolTests
             Arg.Any<CancellationToken>())
             .Returns(new DirectoryEntry(
                 Address.For("agent", "target-agent"),
-                "target-actor-id",
+                Guid.NewGuid(),
                 "Target",
                 "Target agent",
                 null,

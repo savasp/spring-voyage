@@ -16,6 +16,10 @@ using Xunit;
 
 public class ActivityEventMapperTests
 {
+    private static readonly Guid AdaId = new("aaaaaaaa-1111-1111-1111-000000000001");
+    private static readonly Guid EngineeringId = new("bbbbbbbb-2222-2222-2222-000000000001");
+    private static readonly Guid TestAgentId = new("aaaaaaaa-1111-1111-1111-000000000002");
+
     [Fact]
     public void ToRecord_MapsAllFields()
     {
@@ -23,7 +27,7 @@ public class ActivityEventMapperTests
         var activityEvent = new ActivityEvent(
             Guid.NewGuid(),
             DateTimeOffset.UtcNow,
-            Address.For("agent", "team/ada"),
+            new Address("agent", AdaId),
             ActivityEventType.DecisionMade,
             ActivitySeverity.Debug,
             "Decision recorded",
@@ -34,7 +38,7 @@ public class ActivityEventMapperTests
         var record = ActivityEventMapper.ToRecord(activityEvent);
 
         record.Id.ShouldBe(activityEvent.Id);
-        record.Source.ShouldBe("agent:team/ada");
+        record.SourceId.ShouldBe(AdaId);
         record.EventType.ShouldBe("DecisionMade");
         record.Severity.ShouldBe("Debug");
         record.Summary.ShouldBe("Decision recorded");
@@ -51,7 +55,7 @@ public class ActivityEventMapperTests
         var record = new ActivityEventRecord
         {
             Id = Guid.NewGuid(),
-            Source = "unit:engineering",
+            SourceId = EngineeringId,
             EventType = "CostIncurred",
             Severity = "Warning",
             Summary = "High cost",
@@ -64,7 +68,7 @@ public class ActivityEventMapperTests
         var domain = ActivityEventMapper.ToDomain(record);
 
         domain.Id.ShouldBe(record.Id);
-        domain.Source.ShouldBe(Address.For("unit", "engineering"));
+        domain.Source.Id.ShouldBe(EngineeringId);
         domain.EventType.ShouldBe(ActivityEventType.CostIncurred);
         domain.Severity.ShouldBe(ActivitySeverity.Warning);
         domain.Summary.ShouldBe("High cost");
@@ -80,7 +84,7 @@ public class ActivityEventMapperTests
         var original = new ActivityEvent(
             Guid.NewGuid(),
             DateTimeOffset.UtcNow,
-            Address.For("agent", "test-agent"),
+            new Address("agent", TestAgentId),
             ActivityEventType.MessageReceived,
             ActivitySeverity.Info,
             "Message received",
@@ -92,7 +96,7 @@ public class ActivityEventMapperTests
         var restored = ActivityEventMapper.ToDomain(record);
 
         restored.Id.ShouldBe(original.Id);
-        restored.Source.ShouldBe(original.Source);
+        restored.Source.Id.ShouldBe(original.Source.Id);
         restored.EventType.ShouldBe(original.EventType);
         restored.Severity.ShouldBe(original.Severity);
         restored.Summary.ShouldBe(original.Summary);
@@ -108,7 +112,7 @@ public class ActivityEventMapperTests
         var activityEvent = new ActivityEvent(
             Guid.NewGuid(),
             DateTimeOffset.UtcNow,
-            Address.For("agent", "test"),
+            new Address("agent", TestAgentId),
             ActivityEventType.StateChanged,
             ActivitySeverity.Info,
             "State changed");

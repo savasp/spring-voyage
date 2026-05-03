@@ -58,5 +58,5 @@ public class DirectoryCacheTests
     }
 
     private static DirectoryEntry CreateEntry(Address address) =>
-        new(address, Guid.NewGuid().ToString(), "Test", "Test entry", null, DateTimeOffset.UtcNow);
+        new(address, address.Id, "Test", "Test entry", null, DateTimeOffset.UtcNow);
 }

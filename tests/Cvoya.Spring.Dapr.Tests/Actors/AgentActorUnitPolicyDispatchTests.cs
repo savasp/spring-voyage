@@ -43,12 +43,17 @@ using Xunit;
 /// </summary>
 public class AgentActorUnitPolicyDispatchTests
 {
-    private const string AgentId = "ada";
-    private const string UnitId = "engineering";
+    private const string AgentName = "ada";
+    private const string UnitName = "engineering";
 
     // Stable UUIDs for membership mock lookups (post #1492 interface).
     private static readonly Guid AgentAdaUuid = new("aadaadaa-0000-0000-0000-000000000001");
     private static readonly Guid UnitEngineeringUuid = new("ee1ee111-0000-0000-0000-000000000001");
+
+    // Aliases used by the actor / address surface (Guid identity).
+    private static readonly Guid AgentGuid = AgentAdaUuid;
+    private static readonly Guid UnitId = UnitEngineeringUuid;
+    private static readonly string AgentId = AgentGuid.ToString("N");
 
     private readonly IActorStateManager _stateManager = Substitute.For<IActorStateManager>();
     private readonly IActivityEventBus _activityEventBus = Substitute.For<IActivityEventBus>();
@@ -78,15 +83,15 @@ public class AgentActorUnitPolicyDispatchTests
         _definitionProvider.GetByIdAsync(AgentAdaUuid.ToString(), Arg.Any<CancellationToken>())
             .Returns(new AgentDefinition(AgentAdaUuid.ToString(), "Test", "instructions", null));
 
-        // Wire directory service: unit slug → UUID entry.
+        // Wire directory service: unit Guid → directory entry.
         _directoryService
             .ResolveAsync(
-                Arg.Is<Address>(a => a.Scheme == "unit" && a.Path == UnitId),
+                Arg.Is<Address>(a => a.Scheme == "unit" && a.Id == UnitId),
                 Arg.Any<CancellationToken>())
             .Returns(new DirectoryEntry(
                 new Address("unit", UnitId),
-                UnitEngineeringUuid.ToString(),
                 UnitId,
+                UnitName,
                 string.Empty,
                 null,
                 DateTimeOffset.UtcNow));
@@ -142,7 +147,7 @@ public class AgentActorUnitPolicyDispatchTests
         ArrangeMembership(model: "gpt-4");
 
         _enforcer.EvaluateModelAsync(Arg.Any<string>(), "gpt-4", Arg.Any<CancellationToken>())
-            .Returns(PolicyDecision.Deny("Model 'gpt-4' is blocked.", UnitId));
+            .Returns(PolicyDecision.Deny("Model 'gpt-4' is blocked.", UnitId.ToString("N")));
 
         var message = DomainMessageFromUnit();
         await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
@@ -178,7 +183,7 @@ public class AgentActorUnitPolicyDispatchTests
         ArrangeMembership(model: "gpt-4");
 
         _enforcer.EvaluateModelAsync(Arg.Any<string>(), "gpt-4", Arg.Any<CancellationToken>())
-            .Returns(PolicyDecision.Deny("Model 'gpt-4' is blocked.", UnitId));
+            .Returns(PolicyDecision.Deny("Model 'gpt-4' is blocked.", UnitId.ToString("N")));
 
         var message = DomainMessageFromUnit();
         await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
@@ -214,7 +219,7 @@ public class AgentActorUnitPolicyDispatchTests
         ArrangeMembership();
 
         _enforcer.EvaluateCostAsync(Arg.Any<string>(), Arg.Any<decimal>(), Arg.Any<CancellationToken>())
-            .Returns(PolicyDecision.Deny("Hourly spend exceeds cap.", UnitId));
+            .Returns(PolicyDecision.Deny("Hourly spend exceeds cap.", UnitId.ToString("N")));
 
         var message = DomainMessageFromUnit();
         await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
@@ -277,7 +282,7 @@ public class AgentActorUnitPolicyDispatchTests
 
         _enforcer.ResolveExecutionModeAsync(Arg.Any<string>(), Arg.Any<AgentExecutionMode>(), Arg.Any<CancellationToken>())
             .Returns(new ExecutionModeResolution(
-                PolicyDecision.Deny("Mode 'Auto' not in unit allow-list.", UnitId),
+                PolicyDecision.Deny("Mode 'Auto' not in unit allow-list.", UnitId.ToString("N")),
                 AgentExecutionMode.Auto));
 
         var message = DomainMessageFromUnit();
@@ -305,7 +310,7 @@ public class AgentActorUnitPolicyDispatchTests
         new(
             Guid.NewGuid(),
             new Address("unit", UnitId),
-            new Address("agent", AgentId),
+            new Address("agent", AgentGuid),
             MessageType.Domain,
             "conv-1",
             JsonSerializer.SerializeToElement(new { task = "do-it" }),

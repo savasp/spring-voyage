@@ -111,7 +111,7 @@ public class AnalyticsQueryServiceTests : IDisposable
         _db.ActivityEvents.Add(new ActivityEventRecord
         {
             Id = Guid.NewGuid(),
-            Source = "agent:ada",
+            SourceId = SourceGuid("agent:ada"),
             EventType = nameof(ActivityEventType.StateChanged),
             Severity = "Info",
             Summary = "Agent metadata updated: Model",
@@ -246,15 +246,30 @@ public class AnalyticsQueryServiceTests : IDisposable
     private static ActivityEventRecord BuildLifecycle(
         string source, DateTimeOffset timestamp, string from, string to)
     {
+        // Per-test-case Guid identity derived deterministically from the
+        // legacy slug-shaped source string so Equals-by-source semantics
+        // continue to hold inside a single test method.
         return new ActivityEventRecord
         {
             Id = Guid.NewGuid(),
-            Source = source,
+            SourceId = SourceGuid(source),
             EventType = nameof(ActivityEventType.StateChanged),
             Severity = "Info",
             Summary = $"State changed from {from} to {to}",
             Timestamp = timestamp,
             Details = JsonSerializer.SerializeToElement(new { from, to }),
         };
+    }
+
+    private static readonly Dictionary<string, Guid> _sourceGuids = new();
+
+    private static Guid SourceGuid(string source)
+    {
+        if (!_sourceGuids.TryGetValue(source, out var g))
+        {
+            g = Guid.NewGuid();
+            _sourceGuids[source] = g;
+        }
+        return g;
     }
 }

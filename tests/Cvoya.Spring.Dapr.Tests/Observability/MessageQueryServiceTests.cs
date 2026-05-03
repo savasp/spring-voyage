@@ -144,7 +144,7 @@ public class MessageQueryServiceTests : IDisposable
         _db.ActivityEvents.Add(new ActivityEventRecord
         {
             Id = Guid.NewGuid(),
-            Source = $"{message.To.Scheme}:{message.To.Path}",
+            SourceId = message.To.Id,
             EventType = nameof(ActivityEventType.MessageReceived),
             Severity = "Info",
             Summary = $"Received {message.Type} message {message.Id} from {message.From}",

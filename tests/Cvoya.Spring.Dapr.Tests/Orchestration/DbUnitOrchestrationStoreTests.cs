@@ -88,7 +88,7 @@ public class DbUnitOrchestrationStoreTests
 
         using var scope = scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
-        var persisted = db.UnitDefinitions.Single(u => u.UnitId == "triage");
+        var persisted = db.UnitDefinitions.Single(u => u.DisplayName == "triage");
         var json = persisted.Definition!.Value;
         // Expertise + instructions survive the rewrite verbatim; the
         // orchestration slot carries the new key.
@@ -119,7 +119,7 @@ public class DbUnitOrchestrationStoreTests
 
         using var scope = scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
-        var persisted = db.UnitDefinitions.Single(u => u.UnitId == "triage");
+        var persisted = db.UnitDefinitions.Single(u => u.DisplayName == "triage");
         // Expertise survives the clear — only the orchestration slot is
         // stripped.
         persisted.Definition!.Value.TryGetProperty("expertise", out _).ShouldBeTrue();

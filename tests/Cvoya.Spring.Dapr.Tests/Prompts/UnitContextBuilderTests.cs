@@ -26,16 +26,18 @@ public class UnitContextBuilderTests
     [Fact]
     public void Build_IncludesMemberAddresses()
     {
+        var aliceId = new Guid("aaaaaaaa-1111-1111-1111-000000000001");
+        var bobId = new Guid("aaaaaaaa-1111-1111-1111-000000000002");
         var members = new List<Address>
         {
-            new("agent", "team/alice"),
-            new("agent", "team/bob")
+            new("agent", aliceId),
+            new("agent", bobId),
         };
 
         var result = _builder.Build(members, null, null);
 
-        result.ShouldContain("agent://team/alice");
-        result.ShouldContain("agent://team/bob");
+        result.ShouldContain(aliceId.ToString("N"));
+        result.ShouldContain(bobId.ToString("N"));
         result.ShouldContain("Peer Directory");
     }
 

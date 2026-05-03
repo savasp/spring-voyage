@@ -46,7 +46,7 @@ public class DefaultAgentCloningPolicyEnforcerTests
     public DefaultAgentCloningPolicyEnforcerTests()
     {
         _repository = new StateStoreAgentCloningPolicyRepository(_stateStore);
-        _tenantContext.CurrentTenantId.Returns("test-tenant");
+        _tenantContext.CurrentTenantId.Returns(new Guid("aaaaaaaa-1111-1111-1111-000000000001"));
 
         _membershipRepository
             .ListByAgentAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
@@ -197,7 +197,7 @@ public class DefaultAgentCloningPolicyEnforcerTests
         _directoryService.ListAllAsync(Arg.Any<CancellationToken>())
             .Returns(new[]
             {
-                new DirectoryEntry(unitAddr, UnitResearchCellUuid.ToString(), "research-cell", string.Empty, null, DateTimeOffset.UtcNow),
+                new DirectoryEntry(unitAddr, UnitResearchCellUuid, "research-cell", string.Empty, null, DateTimeOffset.UtcNow),
             });
 
         _boundaryStore
@@ -230,7 +230,7 @@ public class DefaultAgentCloningPolicyEnforcerTests
         _directoryService.ListAllAsync(Arg.Any<CancellationToken>())
             .Returns(new[]
             {
-                new DirectoryEntry(unitAddr, UnitResearchCellUuid.ToString(), "research-cell", string.Empty, null, DateTimeOffset.UtcNow),
+                new DirectoryEntry(unitAddr, UnitResearchCellUuid, "research-cell", string.Empty, null, DateTimeOffset.UtcNow),
             });
 
         _boundaryStore

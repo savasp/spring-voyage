@@ -45,8 +45,8 @@ public class SpringDbContextTests : IDisposable
         var retrieved = await _context.AgentDefinitions.FindAsync([agent.Id], ct);
 
         retrieved.ShouldNotBeNull();
-        retrieved!.AgentId.ShouldBe("ada");
-        retrieved.Name.ShouldBe("Ada");
+        retrieved!.Id.ShouldBe(agent.Id);
+        retrieved.DisplayName.ShouldBe("Ada");
     }
 
     [Fact]
@@ -109,7 +109,7 @@ public class SpringDbContextTests : IDisposable
         // Small delay to ensure timestamp differs.
         await Task.Delay(10, ct);
 
-        agent.Name = "Modified";
+        agent.DisplayName = "Modified";
         _context.AgentDefinitions.Update(agent);
         await _context.SaveChangesAsync(ct);
 

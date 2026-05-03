@@ -85,10 +85,11 @@ public class UnitActivityObservableTests : IDisposable
         _proxyFactory.CreateActorProxy<IUnitActor>(new ActorId("unit-2"), nameof(UnitActor))
             .Returns(sub);
 
-        _directory.ResolveAsync(Address.For("unit", "unit-2"), Arg.Any<CancellationToken>())
+        var unit2Id = Guid.NewGuid();
+        _directory.ResolveAsync(Arg.Any<Address>(), Arg.Any<CancellationToken>())
             .Returns(new DirectoryEntry(
-                Address: Address.For("unit", "unit-2"),
-                ActorId: "unit-2",
+                Address: new Address("unit", unit2Id),
+                ActorId: unit2Id,
                 DisplayName: "unit-2",
                 Description: string.Empty,
                 Role: null,
