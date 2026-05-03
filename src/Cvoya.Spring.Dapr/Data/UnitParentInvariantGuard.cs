@@ -38,20 +38,18 @@ public class UnitParentInvariantGuard(
             return;
         }
 
-        // Top-level units have no parent-unit edges by design — the
-        // removal is either a no-op (the edge was never there) or
-        // already covered by the "registered but unrooted" case below.
+        // The unit's identity is its Guid; existence in this tenant's scope
+        // is enough to indicate "registered". Top-level units (no parent
+        // edges) are now expressed implicitly: a unit with zero parent
+        // memberships is top-level. Skip the guard when the child carries
+        // no parents at all — the resolver's empty result IS the signal.
         var unitEntity = await db.UnitDefinitions
-            .FirstOrDefaultAsync(u => u.UnitId == child.Path, cancellationToken);
+            .FirstOrDefaultAsync(u => u.Id == child.Id, cancellationToken);
         if (unitEntity is null)
         {
             // Child is not registered in this tenant's scope — removal is
             // a no-op for the unit actor too, so there's nothing to
             // protect. Matches the idempotent RemoveMember semantics.
-            return;
-        }
-        if (unitEntity.IsTopLevel)
-        {
             return;
         }
 
@@ -68,7 +66,7 @@ public class UnitParentInvariantGuard(
                 child.Path,
                 parent.Path,
                 $"Cannot remove unit '{child.Path}' from unit '{parent.Path}': this is the unit's last parent. "
-                + "Attach it to another parent unit first, promote it to top-level, or delete the unit itself.");
+                + "Attach it to another parent unit first or delete the unit itself.");
         }
     }
 }

@@ -26,7 +26,7 @@ public class RegisterAgentActivity(
         var address = Address.For("agent", input.AgentId);
         var entry = new DirectoryEntry(
             address,
-            ActorId: input.AgentId,
+            ActorId: address.Id,
             DisplayName: input.AgentName ?? input.AgentId,
             Description: $"Agent {input.AgentName ?? input.AgentId}",
             Role: input.Role,

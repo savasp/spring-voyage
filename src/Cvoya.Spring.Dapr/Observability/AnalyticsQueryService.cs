@@ -6,6 +6,7 @@ namespace Cvoya.Spring.Dapr.Observability;
 using System.Text.Json;
 
 using Cvoya.Spring.Core.Capabilities;
+using Cvoya.Spring.Core.Identifiers;
 using Cvoya.Spring.Core.Observability;
 using Cvoya.Spring.Dapr.Data;
 using Cvoya.Spring.Dapr.Data.Entities;
@@ -34,9 +35,9 @@ public class AnalyticsQueryService(SpringDbContext dbContext) : IAnalyticsQueryS
         var query = dbContext.ActivityEvents
             .Where(e => e.Timestamp >= from && e.Timestamp <= to);
 
-        if (!string.IsNullOrEmpty(sourceFilter))
+        if (!string.IsNullOrEmpty(sourceFilter) && GuidFormatter.TryParse(sourceFilter, out var sourceFilterId))
         {
-            query = query.Where(e => e.Source.Contains(sourceFilter));
+            query = query.Where(e => e.SourceId == sourceFilterId);
         }
 
         // EF translates nameof(...) constants for enum-typed event strings
@@ -48,16 +49,27 @@ public class AnalyticsQueryService(SpringDbContext dbContext) : IAnalyticsQueryS
         var toolCallName = nameof(ActivityEventType.DecisionMade);
 
         var grouped = await query
-            .GroupBy(e => e.Source)
-            .Select(g => new ThroughputEntry(
-                g.Key,
-                g.Count(e => e.EventType == receivedName),
-                g.Count(e => e.EventType == sentName),
-                g.Count(e => e.EventType == turnName),
-                g.Count(e => e.EventType == toolCallName)))
+            .GroupBy(e => e.SourceId)
+            .Select(g => new
+            {
+                SourceId = g.Key,
+                Received = g.Count(e => e.EventType == receivedName),
+                Sent = g.Count(e => e.EventType == sentName),
+                Turn = g.Count(e => e.EventType == turnName),
+                ToolCall = g.Count(e => e.EventType == toolCallName),
+            })
             .ToListAsync(cancellationToken);
 
-        return new ThroughputRollup(grouped, from, to);
+        var entries = grouped
+            .Select(g => new ThroughputEntry(
+                GuidFormatter.Format(g.SourceId),
+                g.Received,
+                g.Sent,
+                g.Turn,
+                g.ToolCall))
+            .ToList();
+
+        return new ThroughputRollup(entries, from, to);
     }
 
     /// <inheritdoc />
@@ -91,9 +103,9 @@ public class AnalyticsQueryService(SpringDbContext dbContext) : IAnalyticsQueryS
             .Where(e => e.EventType == stateChangedName)
             .Where(e => e.Timestamp >= from && e.Timestamp <= to);
 
-        if (!string.IsNullOrEmpty(sourceFilter))
+        if (!string.IsNullOrEmpty(sourceFilter) && GuidFormatter.TryParse(sourceFilter, out var sourceFilterId))
         {
-            query = query.Where(e => e.Source.Contains(sourceFilter));
+            query = query.Where(e => e.SourceId == sourceFilterId);
         }
 
         // Pull the events into memory: we need to parse the JSON `Details`
@@ -103,16 +115,16 @@ public class AnalyticsQueryService(SpringDbContext dbContext) : IAnalyticsQueryS
         // surfaces (not the hot path) so the materialisation cost is
         // acceptable.
         var rawEvents = await query
-            .OrderBy(e => e.Source)
+            .OrderBy(e => e.SourceId)
             .ThenBy(e => e.Timestamp)
-            .Select(e => new { e.Source, e.Timestamp, e.Details })
+            .Select(e => new { e.SourceId, e.Timestamp, e.Details })
             .ToListAsync(cancellationToken);
 
         var entries = rawEvents
-            .GroupBy(e => e.Source)
+            .GroupBy(e => e.SourceId)
             .Select(g => ComputeEntry(
-                g.Key,
-                g.Select(e => new StateChangedEvent(e.Source, e.Timestamp, e.Details)).ToList(),
+                GuidFormatter.Format(g.Key),
+                g.Select(e => new StateChangedEvent(GuidFormatter.Format(e.SourceId), e.Timestamp, e.Details)).ToList(),
                 to))
             .ToList();
 

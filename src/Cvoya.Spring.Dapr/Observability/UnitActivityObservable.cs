@@ -126,7 +126,9 @@ public sealed class UnitActivityObservable(
         try
         {
             var entry = await directoryService.ResolveAsync(member, ct);
-            return entry?.ActorId;
+            return entry is null
+                ? null
+                : Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(entry.ActorId);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

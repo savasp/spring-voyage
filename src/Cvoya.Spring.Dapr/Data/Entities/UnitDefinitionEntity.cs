@@ -19,42 +19,6 @@ public class UnitDefinitionEntity : ITenantScopedEntity
     /// <summary>Gets or sets the unique identifier for the unit definition (the actor identity).</summary>
     public Guid Id { get; set; }
 
-    /// <summary>
-    /// Convenience accessor for callers that historically used a separate
-    /// <c>ActorId</c> column. Identical to <see cref="Id"/> rendered as a
-    /// no-dash 32-char hex string — the canonical Dapr <c>ActorId</c>
-    /// keying form.
-    /// </summary>
-    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
-    public string ActorId => Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(Id);
-
-    /// <summary>
-    /// Convenience accessor mirroring the legacy <c>UnitId</c> column
-    /// (which carried a slug). Returns the canonical no-dash Guid
-    /// string form of <see cref="Id"/>; addressing now keys off the
-    /// Guid identity, never a slug.
-    /// </summary>
-    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
-    public string UnitId => Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(Id);
-
-    /// <summary>
-    /// Convenience accessor for callers that previously read the
-    /// per-row display name as <c>Name</c>. Aliased to
-    /// <see cref="DisplayName"/>.
-    /// </summary>
-    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
-    public string Name => DisplayName;
-
-    /// <summary>
-    /// Always returns <c>false</c>. Kept as a stub for legacy call sites
-    /// that read this flag; top-level membership is now expressed by a
-    /// <c>unit_subunit_memberships</c> row with <c>parent_id = tenant_id</c>.
-    /// Callers querying for top-level units should join the membership
-    /// table directly.
-    /// </summary>
-    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
-    public bool IsTopLevel { get; set; }
-
     /// <summary>Gets or sets the tenant that owns this unit definition.</summary>
     public Guid TenantId { get; set; }
 

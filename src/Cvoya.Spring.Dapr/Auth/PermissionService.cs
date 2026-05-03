@@ -350,7 +350,9 @@ public class PermissionService(
         {
             var entry = await directoryService.ResolveAsync(
                 Address.For("unit", unitId), cancellationToken);
-            return entry?.ActorId;
+            return entry is null
+                ? null
+                : Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(entry.ActorId);
         }
         catch (Exception ex)
         {

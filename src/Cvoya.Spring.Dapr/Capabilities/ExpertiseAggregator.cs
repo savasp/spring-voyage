@@ -157,24 +157,13 @@ public class ExpertiseAggregator(
             // membership repository is scoped (per-request EF context), so
             // we resolve it through IServiceScopeFactory to keep the
             // aggregator registration lifetime-clean as a singleton.
-            // UnitMembership.UnitId is now a Guid (#1492); resolve each UUID
-            // back to a slug via the directory so the rest of the walk can
-            // use slug-based addresses (the directory resolves by slug).
             var agentEntry = await directoryService.ResolveAsync(origin, cancellationToken);
-            if (agentEntry is not null && Guid.TryParse(agentEntry.ActorId, out var agentUuid))
+            if (agentEntry is not null)
             {
-                var memberships = await ListMembershipsAsync(agentUuid, cancellationToken);
-                var allEntries = await directoryService.ListAllAsync(cancellationToken);
+                var memberships = await ListMembershipsAsync(agentEntry.ActorId, cancellationToken);
                 foreach (var m in memberships)
                 {
-                    var unitUuidStr = m.UnitId.ToString();
-                    var unitEntry = allEntries.FirstOrDefault(
-                        e => string.Equals(e.Address.Scheme, "unit", StringComparison.OrdinalIgnoreCase)
-                          && string.Equals(e.ActorId, unitUuidStr, StringComparison.OrdinalIgnoreCase));
-                    if (unitEntry is not null)
-                    {
-                        queue.Enqueue((unitEntry.Address, 1));
-                    }
+                    queue.Enqueue((new Address("unit", m.UnitId), 1));
                 }
             }
         }
@@ -288,7 +277,7 @@ public class ExpertiseAggregator(
             try
             {
                 var proxy = actorProxyFactory.CreateActorProxy<IUnitActor>(
-                    new ActorId(entry.ActorId), nameof(UnitActor));
+                    new ActorId(Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(entry.ActorId)), nameof(UnitActor));
                 members = await proxy.GetMembersAsync(ct);
             }
             catch (Exception ex)
@@ -438,7 +427,7 @@ public class ExpertiseAggregator(
         try
         {
             var proxy = actorProxyFactory.CreateActorProxy<IUnitActor>(
-                new ActorId(entry.ActorId), nameof(UnitActor));
+                new ActorId(Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(entry.ActorId)), nameof(UnitActor));
             return await proxy.GetMembersAsync(ct) ?? Array.Empty<Address>();
         }
         catch (Exception ex)

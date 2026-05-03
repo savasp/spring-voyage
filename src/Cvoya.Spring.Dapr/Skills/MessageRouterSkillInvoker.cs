@@ -97,7 +97,9 @@ public class MessageRouterSkillInvoker(
         }
 
         var threadId = invocation.CorrelationId ?? Guid.NewGuid().ToString("N");
-        var from = invocation.Caller ?? new Address("skill", "anonymous");
+        // Skill-anonymous fallback: use a stable v5-style id to keep audit
+        // events deterministic when no caller is supplied.
+        var from = invocation.Caller ?? new Address("skill", Guid.Empty);
 
         var payload = BuildPayload(invocation.SkillName, invocation.Arguments, resolved);
 

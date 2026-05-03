@@ -20,32 +20,6 @@ public class AgentDefinitionEntity : ITenantScopedEntity
     /// <summary>Gets or sets the unique identifier for the agent definition (the actor identity).</summary>
     public Guid Id { get; set; }
 
-    /// <summary>
-    /// Convenience accessor for callers that historically used a separate
-    /// <c>ActorId</c> column. Identical to <see cref="Id"/> rendered as a
-    /// no-dash 32-char hex string — the canonical Dapr <c>ActorId</c>
-    /// keying form.
-    /// </summary>
-    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
-    public string ActorId => Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(Id);
-
-    /// <summary>
-    /// Convenience accessor mirroring the legacy <c>AgentId</c> column
-    /// (which carried a slug). Returns the canonical no-dash Guid
-    /// string form of <see cref="Id"/>; addressing now keys off the
-    /// Guid identity, never a slug.
-    /// </summary>
-    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
-    public string AgentId => Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(Id);
-
-    /// <summary>
-    /// Convenience accessor for callers that previously read the
-    /// per-row display name as <c>Name</c>. Aliased to
-    /// <see cref="DisplayName"/>.
-    /// </summary>
-    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
-    public string Name => DisplayName;
-
     /// <summary>Gets or sets the tenant that owns this agent definition.</summary>
     public Guid TenantId { get; set; }
 

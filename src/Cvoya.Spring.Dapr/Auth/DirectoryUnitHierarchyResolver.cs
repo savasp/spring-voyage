@@ -124,7 +124,7 @@ public class DirectoryUnitHierarchyResolver(
             try
             {
                 var proxy = actorProxyFactory.CreateActorProxy<IUnitActor>(
-                    new ActorId(entry.ActorId), nameof(UnitActor));
+                    new ActorId(Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(entry.ActorId)), nameof(UnitActor));
                 members = await proxy.GetMembersAsync(cancellationToken) ?? Array.Empty<Address>();
             }
             catch (Exception ex)

@@ -45,7 +45,7 @@ public class UnitMembershipTenantGuard(SpringDbContext db) : IUnitMembershipTena
             return false;
         }
 
-        if (!await UnitVisibleAsync(parent.Path, cancellationToken))
+        if (!await UnitVisibleAsync(parent.Id, cancellationToken))
         {
             return false;
         }
@@ -53,9 +53,9 @@ public class UnitMembershipTenantGuard(SpringDbContext db) : IUnitMembershipTena
         return member.Scheme switch
         {
             var s when string.Equals(s, "agent", StringComparison.OrdinalIgnoreCase) =>
-                await AgentVisibleAsync(member.Path, cancellationToken),
+                await AgentVisibleAsync(member.Id, cancellationToken),
             var s when string.Equals(s, "unit", StringComparison.OrdinalIgnoreCase) =>
-                await UnitVisibleAsync(member.Path, cancellationToken),
+                await UnitVisibleAsync(member.Id, cancellationToken),
             _ => false,
         };
     }
@@ -81,9 +81,9 @@ public class UnitMembershipTenantGuard(SpringDbContext db) : IUnitMembershipTena
             $"Cannot add '{member}' to '{parent}': the target is not visible in this tenant.");
     }
 
-    private Task<bool> UnitVisibleAsync(string unitId, CancellationToken cancellationToken) =>
-        db.UnitDefinitions.AnyAsync(u => u.UnitId == unitId, cancellationToken);
+    private Task<bool> UnitVisibleAsync(Guid unitId, CancellationToken cancellationToken) =>
+        db.UnitDefinitions.AnyAsync(u => u.Id == unitId, cancellationToken);
 
-    private Task<bool> AgentVisibleAsync(string agentId, CancellationToken cancellationToken) =>
-        db.AgentDefinitions.AnyAsync(a => a.AgentId == agentId, cancellationToken);
+    private Task<bool> AgentVisibleAsync(Guid agentId, CancellationToken cancellationToken) =>
+        db.AgentDefinitions.AnyAsync(a => a.Id == agentId, cancellationToken);
 }

@@ -50,7 +50,8 @@ public class DbUnitOrchestrationStore(
         string unitId,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(unitId))
+        if (string.IsNullOrWhiteSpace(unitId)
+            || !Cvoya.Spring.Core.Identifiers.GuidFormatter.TryParse(unitId, out var unitUuid))
         {
             return null;
         }
@@ -61,7 +62,7 @@ public class DbUnitOrchestrationStore(
         var entity = await db.UnitDefinitions
             .AsNoTracking()
             .FirstOrDefaultAsync(
-                u => u.UnitId == unitId && u.DeletedAt == null,
+                u => u.Id == unitUuid && u.DeletedAt == null,
                 cancellationToken);
 
         return entity is null ? null : ExtractStrategyKey(entity.Definition);
@@ -77,13 +78,18 @@ public class DbUnitOrchestrationStore(
         {
             throw new ArgumentException("Unit id must be supplied.", nameof(unitId));
         }
+        if (!Cvoya.Spring.Core.Identifiers.GuidFormatter.TryParse(unitId, out var unitUuid))
+        {
+            throw new ArgumentException(
+                $"Unit id '{unitId}' is not a valid Guid.", nameof(unitId));
+        }
 
         await using var scope = scopeFactory.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
 
         var entity = await db.UnitDefinitions
             .FirstOrDefaultAsync(
-                u => u.UnitId == unitId && u.DeletedAt == null,
+                u => u.Id == unitUuid && u.DeletedAt == null,
                 cancellationToken);
 
         if (entity is null)
@@ -130,15 +136,9 @@ public class DbUnitOrchestrationStore(
 
         // The caching provider keys on the Dapr actor id because that is
         // what UnitActor.HandleDomainMessageAsync passes at dispatch time.
-        // Look it up from the same row so in-process reads see the write
-        // on the next message. UnitDefinitionEntity.ActorId is nullable in
-        // the schema (historical rows pre-date #512); the read-model that
-        // feeds the cache only holds rows whose actor id is set, so a null
-        // here just means "no cache entry to invalidate".
-        if (!string.IsNullOrWhiteSpace(entity.ActorId))
-        {
-            cacheInvalidator.Invalidate(entity.ActorId);
-        }
+        // The unit's actor id is the canonical no-dash 32-char form of its
+        // Guid identity (post-#1629).
+        cacheInvalidator.Invalidate(Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(entity.Id));
     }
 
     /// <summary>

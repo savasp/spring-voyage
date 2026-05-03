@@ -34,9 +34,7 @@ public class HumanActor(
     /// (deployed before the migration ran) fall back to the navigation form
     /// <c>human://&lt;username&gt;</c>.
     /// </summary>
-    public Address Address => Guid.TryParse(Id.GetId(), out var id)
-        ? Address.ForIdentity("human", id)
-        : new Address("human", Id.GetId());
+    public Address Address => Address.For("human", Id.GetId());
 
     /// <inheritdoc />
     public async Task<Message?> ReceiveAsync(Message message, CancellationToken cancellationToken = default)

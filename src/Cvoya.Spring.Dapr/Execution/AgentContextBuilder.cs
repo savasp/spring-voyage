@@ -105,7 +105,7 @@ public class AgentContextBuilder(
         var envVars = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             // Static metadata.
-            [EnvTenantId] = launchContext.TenantId,
+            [EnvTenantId] = Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(launchContext.TenantId),
             [EnvAgentId] = launchContext.AgentId,
 
             // Bucket-2 endpoint.

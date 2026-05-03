@@ -54,7 +54,7 @@ public class ActorBackedExpertiseStore(
             if (string.Equals(entity.Scheme, "agent", StringComparison.OrdinalIgnoreCase))
             {
                 var proxy = actorProxyFactory.CreateActorProxy<IAgentActor>(
-                    new ActorId(entry.ActorId), nameof(AgentActor));
+                    new ActorId(Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(entry.ActorId)), nameof(AgentActor));
                 var domains = await proxy.GetExpertiseAsync(cancellationToken);
                 return domains ?? Array.Empty<ExpertiseDomain>();
             }
@@ -62,7 +62,7 @@ public class ActorBackedExpertiseStore(
             if (string.Equals(entity.Scheme, "unit", StringComparison.OrdinalIgnoreCase))
             {
                 var proxy = actorProxyFactory.CreateActorProxy<IUnitActor>(
-                    new ActorId(entry.ActorId), nameof(UnitActor));
+                    new ActorId(Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(entry.ActorId)), nameof(UnitActor));
                 var domains = await proxy.GetOwnExpertiseAsync(cancellationToken);
                 return domains ?? Array.Empty<ExpertiseDomain>();
             }

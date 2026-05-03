@@ -898,9 +898,9 @@ public class A2AExecutionDispatcher(
     /// The OSS platform has no separate tenant-config blob; the tenant id
     /// is the only tenant-level datum available at launch time.
     /// </summary>
-    private static string SerialiseTenantConfigJson(string tenantId)
+    private static string SerialiseTenantConfigJson(Guid tenantId)
     {
-        return JsonSerializer.Serialize(new { tenant_id = tenantId });
+        return JsonSerializer.Serialize(new { tenant_id = Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(tenantId) });
     }
 
     internal static SvMessage? MapA2AResponseToMessage(

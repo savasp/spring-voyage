@@ -3,6 +3,7 @@
 
 namespace Cvoya.Spring.Dapr.Observability;
 
+using Cvoya.Spring.Core.Identifiers;
 using Cvoya.Spring.Core.Observability;
 using Cvoya.Spring.Dapr.Data;
 
@@ -11,6 +12,14 @@ using Microsoft.EntityFrameworkCore;
 /// <summary>
 /// Queries activity events from the database with support for filtering, pagination,
 /// and cost aggregation.
+///
+/// <para>
+/// The persisted shape stores only a Guid <c>SourceId</c>; this service
+/// emits and accepts the canonical no-dash 32-char hex form on its public
+/// surface (string-typed <see cref="ActivityQueryParameters.Source"/> and
+/// <see cref="ActivityQueryResult.Item.Source"/>) so the wire format
+/// stays grep-able and stable.
+/// </para>
 /// </summary>
 public class ActivityQueryService(SpringDbContext dbContext) : IActivityQueryService
 {
@@ -19,9 +28,9 @@ public class ActivityQueryService(SpringDbContext dbContext) : IActivityQuerySer
     {
         var query = dbContext.ActivityEvents.AsQueryable();
 
-        if (!string.IsNullOrEmpty(parameters.Source))
+        if (!string.IsNullOrEmpty(parameters.Source) && GuidFormatter.TryParse(parameters.Source, out var sourceId))
         {
-            query = query.Where(e => e.Source == parameters.Source);
+            query = query.Where(e => e.SourceId == sourceId);
         }
 
         if (!string.IsNullOrEmpty(parameters.EventType))
@@ -46,14 +55,18 @@ public class ActivityQueryService(SpringDbContext dbContext) : IActivityQuerySer
 
         var totalCount = await query.CountAsync(cancellationToken);
 
-        var items = await query
+        var rawItems = await query
             .OrderByDescending(e => e.Timestamp)
             .Skip((parameters.Page - 1) * parameters.PageSize)
             .Take(parameters.PageSize)
-            .Select(e => new ActivityQueryResult.Item(
-                e.Id, e.Source, e.EventType, e.Severity, e.Summary,
-                e.CorrelationId, e.Cost, e.Timestamp))
+            .Select(e => new { e.Id, e.SourceId, e.EventType, e.Severity, e.Summary, e.CorrelationId, e.Cost, e.Timestamp })
             .ToListAsync(cancellationToken);
+
+        var items = rawItems
+            .Select(e => new ActivityQueryResult.Item(
+                e.Id, GuidFormatter.Format(e.SourceId), e.EventType, e.Severity, e.Summary,
+                e.CorrelationId, e.Cost, e.Timestamp))
+            .ToList();
 
         return new ActivityQueryResult(items, totalCount, parameters.Page, parameters.PageSize);
     }
@@ -63,9 +76,9 @@ public class ActivityQueryService(SpringDbContext dbContext) : IActivityQuerySer
     {
         var query = dbContext.ActivityEvents.AsQueryable();
 
-        if (!string.IsNullOrEmpty(source))
+        if (!string.IsNullOrEmpty(source) && GuidFormatter.TryParse(source, out var sourceId))
         {
-            query = query.Where(e => e.Source == source);
+            query = query.Where(e => e.SourceId == sourceId);
         }
 
         if (from.HasValue)
@@ -96,9 +109,13 @@ public class ActivityQueryService(SpringDbContext dbContext) : IActivityQuerySer
             query = query.Where(e => e.Timestamp <= to.Value);
         }
 
-        return await query
-            .GroupBy(e => e.Source)
-            .Select(g => new CostBySource(g.Key, g.Sum(e => e.Cost ?? 0)))
+        var grouped = await query
+            .GroupBy(e => e.SourceId)
+            .Select(g => new { SourceId = g.Key, TotalCost = g.Sum(e => e.Cost ?? 0) })
             .ToListAsync(cancellationToken);
+
+        return grouped
+            .Select(g => new CostBySource(GuidFormatter.Format(g.SourceId), g.TotalCost))
+            .ToList();
     }
 }

@@ -43,9 +43,15 @@ public class GitHubWebhookHandler : IGitHubWebhookHandler
     /// — callers log and ack but no delivery occurs. Configure
     /// <see cref="GitHubConnectorOptions.DefaultTargetUnitPath"/> to route to a real unit.
     /// </summary>
-    internal static readonly Address FallbackRouterAddress = new("system", "router");
+    // Stable sentinel Guids for synthetic connector addresses. These do not
+    // correspond to real directory entries — the router falls back via
+    // ADDRESS_NOT_FOUND when no target unit is configured. The Guids are
+    // pinned literals so they remain greppable across logs.
+    internal static readonly Address FallbackRouterAddress =
+        new("system", new Guid("00000000-0000-0000-0000-000000726f7574"));
 
-    private static readonly Address ConnectorAddress = new("connector", "github");
+    private static readonly Address ConnectorAddress =
+        new("connector", new Guid("00000000-0000-0000-0000-006769746875"));
 
     private readonly ILogger _logger;
 

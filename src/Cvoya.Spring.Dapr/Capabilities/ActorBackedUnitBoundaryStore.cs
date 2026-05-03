@@ -60,7 +60,7 @@ public class ActorBackedUnitBoundaryStore(
         try
         {
             var proxy = actorProxyFactory.CreateActorProxy<IUnitActor>(
-                new ActorId(entry.ActorId), nameof(UnitActor));
+                new ActorId(Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(entry.ActorId)), nameof(UnitActor));
             var boundary = await proxy.GetBoundaryAsync(cancellationToken);
             return boundary ?? UnitBoundary.Empty;
         }
@@ -98,7 +98,7 @@ public class ActorBackedUnitBoundaryStore(
         }
 
         var proxy = actorProxyFactory.CreateActorProxy<IUnitActor>(
-            new ActorId(entry.ActorId), nameof(UnitActor));
+            new ActorId(Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(entry.ActorId)), nameof(UnitActor));
         await proxy.SetBoundaryAsync(boundary, cancellationToken);
     }
 

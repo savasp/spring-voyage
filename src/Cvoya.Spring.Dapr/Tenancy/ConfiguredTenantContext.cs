@@ -32,11 +32,7 @@ public class ConfiguredTenantContext : ITenantContext
     public ConfiguredTenantContext(IOptions<SecretsOptions> options)
     {
         var configured = options.Value.DefaultTenantId;
-        CurrentTenantId = !string.IsNullOrWhiteSpace(configured)
-            && GuidFormatter.TryParse(configured, out var parsed)
-            && parsed != Guid.Empty
-                ? parsed
-                : DefaultTenantId;
+        CurrentTenantId = configured != Guid.Empty ? configured : DefaultTenantId;
     }
 
     /// <inheritdoc />

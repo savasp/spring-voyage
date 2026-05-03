@@ -131,7 +131,7 @@ public record SupervisorLaunchRequest(
     string? NetworkName = null,
     IReadOnlyList<string>? AdditionalNetworks = null,
     int? MaxRestarts = null,
-    string TenantId = "default",
+    Guid TenantId = default,
     string? UnitId = null,
     bool ConcurrentThreads = true);
 
@@ -206,6 +206,6 @@ public record SupervisorState(
     DateTimeOffset? LastStartedAt,
     DateTimeOffset? LastCrashAt,
     string? Image = null,
-    string TenantId = "default",
+    Guid TenantId = default,
     string? UnitId = null,
     bool ConcurrentThreads = true);

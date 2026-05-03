@@ -59,7 +59,7 @@ public class UnitActorConnectorConfigStore(
             return null;
         }
         return actorProxyFactory.CreateActorProxy<IUnitActor>(
-            new ActorId(entry.ActorId), nameof(UnitActor));
+            new ActorId(Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(entry.ActorId)), nameof(UnitActor));
     }
 }
 
@@ -106,6 +106,6 @@ public class UnitActorConnectorRuntimeStore(
             return null;
         }
         return actorProxyFactory.CreateActorProxy<IUnitActor>(
-            new ActorId(entry.ActorId), nameof(UnitActor));
+            new ActorId(Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(entry.ActorId)), nameof(UnitActor));
     }
 }

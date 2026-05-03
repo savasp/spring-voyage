@@ -88,7 +88,10 @@ public class WebSearchSkill
                 + "or rebind the unit to a supported provider.");
 
         string? apiKey = null;
-        string tenantId = string.Empty;
+        Guid tenantId = Guid.Empty;
+        Guid? unitOwnerId = Cvoya.Spring.Core.Identifiers.GuidFormatter.TryParse(unitId, out var parsedUnitId)
+            ? parsedUnitId
+            : null;
         using (var scope = _scopeFactory.CreateScope())
         {
             tenantId = scope.ServiceProvider.GetRequiredService<ITenantContext>().CurrentTenantId;
@@ -96,7 +99,7 @@ public class WebSearchSkill
             {
                 var resolver = scope.ServiceProvider.GetRequiredService<ISecretResolver>();
                 var secretRef = new SecretRef(
-                    SecretScope.Unit, unitId, config.ApiKeySecretName);
+                    SecretScope.Unit, unitOwnerId, config.ApiKeySecretName);
                 var resolution = await resolver.ResolveWithPathAsync(secretRef, cancellationToken);
                 // Log only the structural bits. Value is never logged.
                 _logger.LogInformation(
@@ -132,7 +135,7 @@ public class WebSearchSkill
                 source = r.Source,
             }).ToArray(),
             count = results.Count,
-            tenantId,
+            tenantId = Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(tenantId),
         });
     }
 

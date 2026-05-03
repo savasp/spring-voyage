@@ -31,7 +31,8 @@ public class DbAgentExecutionStore(
         string agentId,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(agentId))
+        if (string.IsNullOrWhiteSpace(agentId)
+            || !Cvoya.Spring.Core.Identifiers.GuidFormatter.TryParse(agentId, out var agentUuid))
         {
             return null;
         }
@@ -42,7 +43,7 @@ public class DbAgentExecutionStore(
         var entity = await db.AgentDefinitions
             .AsNoTracking()
             .FirstOrDefaultAsync(
-                a => a.AgentId == agentId && a.DeletedAt == null,
+                a => a.Id == agentUuid && a.DeletedAt == null,
                 cancellationToken);
 
         return entity is null ? null : Extract(entity.Definition);
@@ -58,13 +59,18 @@ public class DbAgentExecutionStore(
         {
             throw new ArgumentException("Agent id must be supplied.", nameof(agentId));
         }
+        if (!Cvoya.Spring.Core.Identifiers.GuidFormatter.TryParse(agentId, out var agentUuid))
+        {
+            throw new ArgumentException(
+                $"Agent id '{agentId}' is not a valid Guid.", nameof(agentId));
+        }
 
         await using var scope = scopeFactory.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
 
         var entity = await db.AgentDefinitions
             .FirstOrDefaultAsync(
-                a => a.AgentId == agentId && a.DeletedAt == null,
+                a => a.Id == agentUuid && a.DeletedAt == null,
                 cancellationToken);
 
         if (entity is null)
@@ -96,13 +102,18 @@ public class DbAgentExecutionStore(
         {
             throw new ArgumentException("Agent id must be supplied.", nameof(agentId));
         }
+        if (!Cvoya.Spring.Core.Identifiers.GuidFormatter.TryParse(agentId, out var agentUuid))
+        {
+            throw new ArgumentException(
+                $"Agent id '{agentId}' is not a valid Guid.", nameof(agentId));
+        }
 
         await using var scope = scopeFactory.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
 
         var entity = await db.AgentDefinitions
             .FirstOrDefaultAsync(
-                a => a.AgentId == agentId && a.DeletedAt == null,
+                a => a.Id == agentUuid && a.DeletedAt == null,
                 cancellationToken);
 
         if (entity is null)

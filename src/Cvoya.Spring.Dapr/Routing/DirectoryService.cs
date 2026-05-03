@@ -6,6 +6,7 @@ namespace Cvoya.Spring.Dapr.Routing;
 using System.Collections.Concurrent;
 
 using Cvoya.Spring.Core.Directory;
+using Cvoya.Spring.Core.Identifiers;
 using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Core.Secrets;
 using Cvoya.Spring.Dapr.Actors;
@@ -53,7 +54,7 @@ public class DirectoryService(
         await PersistEntryAsync(entry, cancellationToken);
 
         _logger.LogInformation("Registered directory entry for {Scheme}://{Path} with actor ID {ActorId}",
-            entry.Address.Scheme, entry.Address.Path, entry.ActorId);
+            entry.Address.Scheme, entry.Address.Path, GuidFormatter.Format(entry.ActorId));
     }
 
     /// <inheritdoc />
@@ -179,28 +180,18 @@ public class DirectoryService(
         await using var scope = scopeFactory.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
 
-        // Prefer the active (DeletedAt == null) row if one exists — there can
-        // be at most one such row thanks to the partial unique index. Only
-        // fall back to resurrecting a soft-deleted row when no active row is
-        // present; otherwise we'd flip a soft-deleted row's DeletedAt to null
-        // alongside the still-active one and trip the partial unique index
-        // (IX_unit_definitions_tenant_id_unit_id) on SaveChanges. Surfaces in
-        // the package re-install path: PackageInstallService Phase 1 inserts
-        // a fresh staging row with deleted_at=null, and Phase 2 then calls
-        // RegisterAsync → UpsertUnitAsync, which previously found the
-        // *soft-deleted* historical row first and flipped it back, producing
-        // two rows with deleted_at=null for the same tenant + unit_id.
+        // Identity is the entry's Guid id (== Address.Id == ActorId). Look up
+        // the row by primary key; if it exists (active or soft-deleted) we
+        // refresh and clear DeletedAt, otherwise we insert a fresh row.
+        var id = entry.ActorId;
+
         var existing = await db.UnitDefinitions
             .IgnoreQueryFilters()
-            .FirstOrDefaultAsync(u => u.UnitId == entry.Address.Path && u.DeletedAt == null, cancellationToken);
-        existing ??= await db.UnitDefinitions
-            .IgnoreQueryFilters()
-            .FirstOrDefaultAsync(u => u.UnitId == entry.Address.Path, cancellationToken);
+            .FirstOrDefaultAsync(u => u.Id == id, cancellationToken);
 
         if (existing is not null)
         {
-            existing.ActorId = entry.ActorId;
-            existing.Name = entry.DisplayName;
+            existing.DisplayName = entry.DisplayName;
             existing.Description = entry.Description;
             existing.DeletedAt = null;
         }
@@ -208,10 +199,8 @@ public class DirectoryService(
         {
             db.UnitDefinitions.Add(new UnitDefinitionEntity
             {
-                Id = Guid.NewGuid(),
-                UnitId = entry.Address.Path,
-                ActorId = entry.ActorId,
-                Name = entry.DisplayName,
+                Id = id,
+                DisplayName = entry.DisplayName,
                 Description = entry.Description,
             });
         }
@@ -224,20 +213,15 @@ public class DirectoryService(
         await using var scope = scopeFactory.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
 
-        // Same prefer-active-row contract as UpsertUnitAsync — see the comment
-        // there for the full reasoning. The agent_definitions partial unique
-        // index has the same shape (tenant_id, agent_id) WHERE deleted_at IS NULL.
+        var id = entry.ActorId;
+
         var existing = await db.AgentDefinitions
             .IgnoreQueryFilters()
-            .FirstOrDefaultAsync(a => a.AgentId == entry.Address.Path && a.DeletedAt == null, cancellationToken);
-        existing ??= await db.AgentDefinitions
-            .IgnoreQueryFilters()
-            .FirstOrDefaultAsync(a => a.AgentId == entry.Address.Path, cancellationToken);
+            .FirstOrDefaultAsync(a => a.Id == id, cancellationToken);
 
         if (existing is not null)
         {
-            existing.ActorId = entry.ActorId;
-            existing.Name = entry.DisplayName;
+            existing.DisplayName = entry.DisplayName;
             existing.Role = entry.Role;
             existing.DeletedAt = null;
         }
@@ -245,10 +229,8 @@ public class DirectoryService(
         {
             db.AgentDefinitions.Add(new AgentDefinitionEntity
             {
-                Id = Guid.NewGuid(),
-                AgentId = entry.Address.Path,
-                ActorId = entry.ActorId,
-                Name = entry.DisplayName,
+                Id = id,
+                DisplayName = entry.DisplayName,
                 Role = entry.Role,
             });
         }
@@ -268,7 +250,7 @@ public class DirectoryService(
             // list before touching the DB. Actor unavailability degrades to
             // "no sub-units found" — the unit still soft-deletes and its
             // memberships still get cleaned up.
-            var visited = new HashSet<string>(StringComparer.Ordinal);
+            var visited = new HashSet<Guid>();
             await CascadeDeleteUnitAsync(address, visited, cancellationToken);
         }
         else if (string.Equals(scheme, "agent", StringComparison.OrdinalIgnoreCase))
@@ -276,7 +258,7 @@ public class DirectoryService(
             await using var scope = scopeFactory.CreateAsyncScope();
             var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
             var entity = await db.AgentDefinitions
-                .FirstOrDefaultAsync(a => a.AgentId == address.Path, cancellationToken);
+                .FirstOrDefaultAsync(a => a.Id == address.Id, cancellationToken);
 
             if (entity is not null)
             {
@@ -292,21 +274,12 @@ public class DirectoryService(
     /// is walked depth-first via the unit actor's member list so a single
     /// parent delete cleans every descendant row in one call chain.
     /// </summary>
-    /// <remarks>
-    /// Semantics per acceptance criteria:
-    /// <list type="bullet">
-    /// <item><description>Sub-units are discovered from <see cref="IUnitActor.GetMembersAsync"/> and recursed first so their own cascade runs before the parent row is flipped to deleted.</description></item>
-    /// <item><description>Every <see cref="UnitMembershipEntity"/> row for the unit is hard-deleted — the entity has no <c>DeletedAt</c> column, so a "soft" delete is not representable. This matches the existing per-row <see cref="UnitMembershipRepository.DeleteAsync"/> behaviour.</description></item>
-    /// <item><description>For each agent that was a member of the unit, we check whether any other membership survives (rows the cascade did not just delete + the agent's own <c>DeletedAt == null</c>). If not, the agent is soft-deleted; otherwise only the membership edge is removed.</description></item>
-    /// <item><description><paramref name="visited"/> guards against pathological actor-state graphs that list the same sub-unit twice or self-reference — cycle detection is already enforced on add (<see cref="UnitActor.EnsureNoCycleAsync"/>), but a defensive check here keeps the delete path bounded even if state got corrupted.</description></item>
-    /// </list>
-    /// </remarks>
     private async Task CascadeDeleteUnitAsync(
         Address unitAddress,
-        HashSet<string> visited,
+        HashSet<Guid> visited,
         CancellationToken cancellationToken)
     {
-        var unitId = unitAddress.Path;
+        var unitId = unitAddress.Id;
         if (!visited.Add(unitId))
         {
             // Already processed in this cascade — skip to avoid pathological
@@ -315,23 +288,13 @@ public class DirectoryService(
         }
 
         // Discover sub-units from actor state before we soft-delete the row.
-        // After the row is gone from the directory its actor id becomes
-        // unaddressable for callers, but we already have it in our in-memory
-        // map.
         var subUnits = await TryReadUnitMembersAsync(unitAddress, cancellationToken);
 
-        // Depth-first: cascade each sub-unit first so the leaf rows flip to
-        // deleted before their parent. Each recursion opens its own DB scope,
-        // which keeps the per-unit unit-of-work atomic at the SaveChangesAsync
-        // call below.
         foreach (var sub in subUnits)
         {
             if (string.Equals(sub.Scheme, "unit", StringComparison.OrdinalIgnoreCase))
             {
                 await CascadeDeleteUnitAsync(sub, visited, cancellationToken);
-                // Evict cascaded sub-units from the in-memory map + cache so
-                // the warm path doesn't serve a stale entry for the actor
-                // whose row we just flipped to deleted.
                 var subKey = ToKey(sub);
                 _entries.TryRemove(subKey, out _);
                 cache.Invalidate(sub);
@@ -342,7 +305,7 @@ public class DirectoryService(
         var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
 
         var entity = await db.UnitDefinitions
-            .FirstOrDefaultAsync(u => u.UnitId == unitId, cancellationToken);
+            .FirstOrDefaultAsync(u => u.Id == unitId, cancellationToken);
 
         // Already-deleted or missing unit: short-circuit. Matches the pre-#652
         // "not found" semantic where DeleteEntryAsync silently returns.
@@ -351,37 +314,20 @@ public class DirectoryService(
             return;
         }
 
-        // #1492: membership rows are now keyed by stable UUIDs (actor IDs).
-        // Resolve the unit's actor UUID from the definition row so we can
-        // target only the memberships that belong to THIS instance of the
-        // unit — not any future unit recreated with the same slug.
-        var actorId = entity.ActorId;
-
         // Load every membership edge into the tracked change set so the same
         // SaveChangesAsync that flips the unit's DeletedAt also hard-deletes
         // the rows and commits the agent ref-count decisions below.
-        // Only proceed with UUID-keyed deletion when the unit has a valid UUID.
-        var memberships = new List<Cvoya.Spring.Dapr.Data.Entities.UnitMembershipEntity>();
-        if (!string.IsNullOrEmpty(actorId) && Guid.TryParse(actorId, out var unitActorUuid))
-        {
-            memberships = await db.UnitMemberships
-                .Where(m => m.UnitId == unitActorUuid)
-                .ToListAsync(cancellationToken);
+        var memberships = await db.UnitMemberships
+            .Where(m => m.UnitId == unitId)
+            .ToListAsync(cancellationToken);
 
-            foreach (var membership in memberships)
-            {
-                db.UnitMemberships.Remove(membership);
-            }
+        foreach (var membership in memberships)
+        {
+            db.UnitMemberships.Remove(membership);
         }
 
         // #1154: tear down every persistent sub-unit edge that mentions
-        // this unit on either side. The actor-state list is the source
-        // of truth for runtime dispatch and is gone the moment the
-        // unit's row is soft-deleted; if we leave the projection rows
-        // behind, the next tenant-tree fetch renders ghost children
-        // (parent edge) or orphans the new tenant root (child edge).
-        // Wrapped in the same SaveChangesAsync below so the cascade
-        // stays atomic.
+        // this unit on either side.
         var subunitEdges = await db.UnitSubunitMemberships
             .Where(e => e.ParentUnitId == unitId || e.ChildUnitId == unitId)
             .ToListAsync(cancellationToken);
@@ -391,68 +337,46 @@ public class DirectoryService(
             db.UnitSubunitMemberships.Remove(edge);
         }
 
-        // #1488: delete the unit's policy row. Policy rows are keyed by
-        // ActorId (UUID) so the delete targets the specific instance of this
-        // unit — not any future unit recreated with the same slug.
-        if (!string.IsNullOrEmpty(actorId))
+        // #1488: delete the unit's policy row.
+        var policyRow = await db.UnitPolicies
+            .FirstOrDefaultAsync(p => p.UnitId == unitId, cancellationToken);
+        if (policyRow is not null)
         {
-            var policyRow = await db.UnitPolicies
-                .FirstOrDefaultAsync(p => p.UnitId == actorId, cancellationToken);
-            if (policyRow is not null)
-            {
-                db.UnitPolicies.Remove(policyRow);
-            }
+            db.UnitPolicies.Remove(policyRow);
+        }
 
-            // #1488: delete all unit-scoped secret registry entries for this
-            // specific unit instance. Secret rows are keyed by OwnerId = ActorId
-            // so deleting by ActorId targets only this instance.
-            var secretRows = await db.SecretRegistryEntries
-                .Where(e => e.Scope == SecretScope.Unit && e.OwnerId == actorId)
-                .ToListAsync(cancellationToken);
-            if (secretRows.Count > 0)
-            {
-                db.SecretRegistryEntries.RemoveRange(secretRows);
-            }
+        // #1488: delete all unit-scoped secret registry entries for this
+        // specific unit instance. Secret rows are keyed by OwnerId = unit id.
+        var secretRows = await db.SecretRegistryEntries
+            .Where(e => e.Scope == SecretScope.Unit && e.OwnerId == unitId)
+            .ToListAsync(cancellationToken);
+        if (secretRows.Count > 0)
+        {
+            db.SecretRegistryEntries.RemoveRange(secretRows);
         }
 
         // Ref-count each affected agent. An agent is soft-deleted iff every
-        // other unit it's attached to is already deleted. We check against
-        // unit_definitions (IgnoreQueryFilters so soft-deleted units read
-        // back as "deleted") and EXCLUDE the unit we're tearing down so a
-        // single-membership agent always becomes orphaned and gets
-        // soft-deleted here, not just its edge removed.
-        //
-        // #1492: membership rows are now keyed by agent UUID (AgentId), not
-        // slug. Resolve the agent's definition row by UUID to get the slug
-        // needed for cache eviction.
+        // other unit it's attached to is already deleted.
         foreach (var membership in memberships)
         {
             var agentUuid = membership.AgentId;
-            var agentUuidStr = agentUuid.ToString();
 
-            // Resolve agent by UUID to get its slug-based address for cache eviction.
             var agentEntity = await db.AgentDefinitions
                 .IgnoreQueryFilters()
-                .FirstOrDefaultAsync(a => a.ActorId == agentUuidStr, cancellationToken);
+                .FirstOrDefaultAsync(a => a.Id == agentUuid, cancellationToken);
 
             // Check for surviving memberships via UUID keys (excluding this unit).
-            var hasLiveOtherUnit = false;
-            if (!string.IsNullOrEmpty(actorId) && Guid.TryParse(actorId, out var thisUnitUuid))
-            {
-                var otherUnitUuids = await db.UnitMemberships
-                    .Where(m => m.AgentId == agentUuid && m.UnitId != thisUnitUuid)
-                    .Select(m => m.UnitId)
-                    .ToListAsync(cancellationToken);
+            var otherUnitIds = await db.UnitMemberships
+                .Where(m => m.AgentId == agentUuid && m.UnitId != unitId)
+                .Select(m => m.UnitId)
+                .ToListAsync(cancellationToken);
 
-                if (otherUnitUuids.Count > 0)
-                {
-                    // At least one surviving membership edge — check if any of
-                    // those units is still live (not soft-deleted).
-                    var otherActorIds = otherUnitUuids.Select(u => u.ToString()).ToList();
-                    hasLiveOtherUnit = await db.UnitDefinitions
-                        .Where(u => otherActorIds.Contains(u.ActorId!) && u.DeletedAt == null)
-                        .AnyAsync(cancellationToken);
-                }
+            var hasLiveOtherUnit = false;
+            if (otherUnitIds.Count > 0)
+            {
+                hasLiveOtherUnit = await db.UnitDefinitions
+                    .Where(u => otherUnitIds.Contains(u.Id) && u.DeletedAt == null)
+                    .AnyAsync(cancellationToken);
             }
 
             if (hasLiveOtherUnit)
@@ -475,26 +399,16 @@ public class DirectoryService(
 
             // Evict from the in-memory map + cache so the next resolve falls
             // through to the DB and sees "deleted".
-            var agentKey = ToKey(Address.For("agent", agentEntity.AgentId));
+            var agentAddress = new Address("agent", agentEntity.Id);
+            var agentKey = ToKey(agentAddress);
             _entries.TryRemove(agentKey, out _);
-            cache.Invalidate(Address.For("agent", agentEntity.AgentId));
+            cache.Invalidate(agentAddress);
         }
 
         entity.DeletedAt = DateTimeOffset.UtcNow;
 
         await db.SaveChangesAsync(cancellationToken);
 
-        // #1135: re-evict the unit from the in-memory map and the cache
-        // *after* the soft-delete commits. Reading the cascade graph above
-        // can race with `ResolveAsync`'s write-through path, which may have
-        // repopulated `_entries`/`cache` from the still-live DB row mid-
-        // cascade (the `deleted_at` flip happens in the line above, not at
-        // the start of this method). Without this final eviction, every
-        // post-delete read served from `_entries` (e.g. `ListAllAsync`,
-        // `ResolveAsync`'s in-memory hit) would return a ghost entry for a
-        // unit the DB has already tombstoned, and the only recovery would be
-        // a host restart. The DB write is the source of truth; force the
-        // in-memory state to match it.
         var unitKey = ToKey(unitAddress);
         _entries.TryRemove(unitKey, out _);
         cache.Invalidate(unitAddress);
@@ -506,23 +420,8 @@ public class DirectoryService(
 
     /// <summary>
     /// Best-effort read of a unit's current member addresses via the unit
-    /// actor proxy. A missing <see cref="IActorProxyFactory"/> (legacy test
-    /// harness), missing directory entry, or failed remoting call all
-    /// degrade to "no members" — the cascade still soft-deletes the unit
-    /// row and its memberships, just without recursing into sub-units.
+    /// actor proxy.
     /// </summary>
-    /// <remarks>
-    /// #1135: this method runs as part of the unit-delete cascade, before
-    /// the row's <c>DeletedAt</c> column is set. We deliberately bypass
-    /// <see cref="ResolveAsync"/> because that method has a write-through
-    /// side effect — on a cache miss it repopulates <c>_entries</c> and the
-    /// shared <see cref="DirectoryCache"/> from the DB. Mid-cascade the DB
-    /// row is still live, so the write-through would re-add the entry we
-    /// are about to delete and the post-delete state would still serve a
-    /// ghost. Read directly from the in-memory map (no write) and fall back
-    /// to <see cref="LoadFromDatabaseAsync"/> for cold-path deletes; in
-    /// both cases we never write back into the cache from this code path.
-    /// </remarks>
     private async Task<IReadOnlyList<Address>> TryReadUnitMembersAsync(
         Address unitAddress, CancellationToken cancellationToken)
     {
@@ -535,8 +434,6 @@ public class DirectoryService(
         DirectoryEntry? entry;
         if (!_entries.TryGetValue(key, out entry))
         {
-            // Cold path: read the row directly. LoadFromDatabaseAsync only
-            // returns the entry; it does not mutate _entries or `cache`.
             entry = await LoadFromDatabaseAsync(unitAddress, cancellationToken);
         }
         if (entry is null)
@@ -547,16 +444,12 @@ public class DirectoryService(
         try
         {
             var proxy = actorProxyFactory.CreateActorProxy<IUnitActor>(
-                new ActorId(entry.ActorId), nameof(UnitActor));
+                new ActorId(GuidFormatter.Format(entry.ActorId)), nameof(UnitActor));
             var members = await proxy.GetMembersAsync(cancellationToken);
             return members ?? Array.Empty<Address>();
         }
         catch (Exception ex)
         {
-            // Actor unreachable (placement down, activation failure). Log and
-            // move on — the worst-case outcome is orphaned sub-units in the
-            // DB, which is still strictly better than the pre-#652 orphaned
-            // memberships we're fixing here.
             _logger.LogWarning(ex,
                 "Cascade delete: failed to read members of {Unit}; sub-unit recursion will be skipped.",
                 unitAddress);
@@ -567,15 +460,7 @@ public class DirectoryService(
     private async Task<DirectoryEntry?> LoadFromDatabaseAsync(Address address, CancellationToken cancellationToken)
     {
         var scheme = address.Scheme;
-        // When the navigation-form path is a UUID (e.g. participant lists
-        // produced from activity-event sources where the actor is keyed by
-        // its stable UUID, post-#1491), look it up by ActorId in addition
-        // to AgentId/UnitId. Without this fallback the engagement portal
-        // and inbox composer fail with 404 — they derive recipients from
-        // the thread's participants, which can carry UUID-pathed addresses,
-        // while the unit/agent Messages tab works because it sources the
-        // path from the slug-keyed URL (#1574 follow-up).
-        var pathIsUuid = Guid.TryParse(address.Path, out _);
+        var id = address.Id;
 
         if (string.Equals(scheme, "unit", StringComparison.OrdinalIgnoreCase))
         {
@@ -583,21 +468,14 @@ public class DirectoryService(
             var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
             var entity = await db.UnitDefinitions
                 .AsNoTracking()
-                .FirstOrDefaultAsync(u => u.UnitId == address.Path, cancellationToken);
-
-            if (entity is null && pathIsUuid)
-            {
-                entity = await db.UnitDefinitions
-                    .AsNoTracking()
-                    .FirstOrDefaultAsync(u => u.ActorId == address.Path, cancellationToken);
-            }
+                .FirstOrDefaultAsync(u => u.Id == id, cancellationToken);
 
             if (entity is not null)
             {
                 return new DirectoryEntry(
                     address,
-                    entity.ActorId ?? entity.UnitId,
-                    entity.Name,
+                    entity.Id,
+                    entity.DisplayName,
                     entity.Description ?? string.Empty,
                     Role: null,
                     entity.CreatedAt);
@@ -609,21 +487,14 @@ public class DirectoryService(
             var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
             var entity = await db.AgentDefinitions
                 .AsNoTracking()
-                .FirstOrDefaultAsync(a => a.AgentId == address.Path, cancellationToken);
-
-            if (entity is null && pathIsUuid)
-            {
-                entity = await db.AgentDefinitions
-                    .AsNoTracking()
-                    .FirstOrDefaultAsync(a => a.ActorId == address.Path, cancellationToken);
-            }
+                .FirstOrDefaultAsync(a => a.Id == id, cancellationToken);
 
             if (entity is not null)
             {
                 return new DirectoryEntry(
                     address,
-                    entity.ActorId ?? entity.AgentId,
-                    entity.Name,
+                    entity.Id,
+                    entity.DisplayName,
                     entity.Description ?? string.Empty,
                     entity.Role,
                     entity.CreatedAt);
@@ -659,11 +530,11 @@ public class DirectoryService(
 
         foreach (var u in units)
         {
-            var address = Address.For("unit", u.UnitId);
+            var address = new Address("unit", u.Id);
             var entry = new DirectoryEntry(
                 address,
-                u.ActorId ?? u.UnitId,
-                u.Name,
+                u.Id,
+                u.DisplayName,
                 u.Description ?? string.Empty,
                 Role: null,
                 u.CreatedAt);
@@ -679,11 +550,11 @@ public class DirectoryService(
 
         foreach (var a in agents)
         {
-            var address = Address.For("agent", a.AgentId);
+            var address = new Address("agent", a.Id);
             var entry = new DirectoryEntry(
                 address,
-                a.ActorId ?? a.AgentId,
-                a.Name,
+                a.Id,
+                a.DisplayName,
                 a.Description ?? string.Empty,
                 a.Role,
                 a.CreatedAt);

@@ -8,6 +8,7 @@ using System.Text.Json;
 using Cvoya.Spring.Core;
 using Cvoya.Spring.Core.Capabilities;
 using Cvoya.Spring.Core.Directory;
+using Cvoya.Spring.Core.Identifiers;
 using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Core.Observability;
 using Cvoya.Spring.Dapr.Actors;
@@ -45,11 +46,15 @@ public class ThreadQueryService(
         ThreadQueryFilters filters,
         CancellationToken cancellationToken)
     {
-        var rows = await dbContext.ActivityEvents
+        var raw = await dbContext.ActivityEvents
             .Where(e => e.CorrelationId != null)
-            .Select(e => new ThreadEventRow(
-                e.CorrelationId!, e.Id, e.Source, e.EventType, e.Severity, e.Summary, e.Timestamp))
+            .Select(e => new { e.CorrelationId, e.Id, e.SourceId, e.EventType, e.Severity, e.Summary, e.Timestamp })
             .ToListAsync(cancellationToken);
+
+        var rows = raw
+            .Select(e => new ThreadEventRow(
+                e.CorrelationId!, e.Id, RenderSource(e.SourceId), e.EventType, e.Severity, e.Summary, e.Timestamp))
+            .ToList();
 
         var summaries = BuildSummaries(rows);
         summaries = await ApplyFiltersAsync(summaries, filters, cancellationToken);
@@ -71,12 +76,16 @@ public class ThreadQueryService(
             return null;
         }
 
-        var rows = await dbContext.ActivityEvents
+        var raw = await dbContext.ActivityEvents
             .Where(e => e.CorrelationId == threadId)
             .OrderBy(e => e.Timestamp)
-            .Select(e => new ThreadEventRow(
-                e.CorrelationId!, e.Id, e.Source, e.EventType, e.Severity, e.Summary, e.Timestamp, e.Details))
+            .Select(e => new { e.CorrelationId, e.Id, e.SourceId, e.EventType, e.Severity, e.Summary, e.Timestamp, e.Details })
             .ToListAsync(cancellationToken);
+
+        var rows = raw
+            .Select(e => new ThreadEventRow(
+                e.CorrelationId!, e.Id, RenderSource(e.SourceId), e.EventType, e.Severity, e.Summary, e.Timestamp, e.Details))
+            .ToList();
 
         if (rows.Count == 0)
         {
@@ -182,11 +191,15 @@ public class ThreadQueryService(
         var humanSourceCanonical = ToPersistenceSource(humanAddress);
         var humanSourceDisplay = NormaliseSource(humanSourceCanonical);
 
-        var rows = await dbContext.ActivityEvents
+        var raw = await dbContext.ActivityEvents
             .Where(e => e.CorrelationId != null)
-            .Select(e => new ThreadEventRow(
-                e.CorrelationId!, e.Id, e.Source, e.EventType, e.Severity, e.Summary, e.Timestamp))
+            .Select(e => new { e.CorrelationId, e.Id, e.SourceId, e.EventType, e.Severity, e.Summary, e.Timestamp })
             .ToListAsync(cancellationToken);
+
+        var rows = raw
+            .Select(e => new ThreadEventRow(
+                e.CorrelationId!, e.Id, RenderSource(e.SourceId), e.EventType, e.Severity, e.Summary, e.Timestamp))
+            .ToList();
 
         var inbox = new List<InboxItem>();
 
@@ -391,28 +404,43 @@ public class ThreadQueryService(
             return new[] { literal };
         }
 
+        if (!isUuidValue)
+        {
+            // The post-#1629 directory service is keyed by Guid only; a
+            // slug needle that isn't already a Guid cannot resolve. Return
+            // the literal so direct-UUID filters and dev scenarios still
+            // work, and slug filters fall through with no match.
+            return new[] { literal };
+        }
+
         try
         {
             var entry = await directoryService.ResolveAsync(
-                new Address(scheme, value), cancellationToken);
+                Address.For(scheme, value), cancellationToken);
             if (entry is null)
             {
-                // Unknown entity — fall back to the literal so the filter
-                // still works for direct-UUID lookups or dev scenarios.
                 return new[] { literal };
             }
 
-            // NormaliseSource emits agent/unit sources as "scheme:id:<uuid>"
-            // when the stored path is a valid UUID. Return the same form so
-            // participant filter comparisons hit (#1490).
-            return new[] { $"{scheme}:id:{entry.ActorId}" };
+            // Identity form keyed off the entry's stable Guid id.
+            return new[] { $"{scheme}:id:{GuidFormatter.Format(entry.ActorId)}" };
         }
         catch
         {
-            // Directory failures should not break read-only thread listing.
             return new[] { literal };
         }
     }
+
+    /// <summary>
+    /// Renders the persistence-layer SourceId Guid into the string form
+    /// used by activity-derived projections in this service. The stored
+    /// scheme was discarded during persistence (#1629), so we synthesize
+    /// the most common scheme — <c>agent</c> — at projection time. Display
+    /// resolution to actual entity names happens in the rendering layer
+    /// (#1635).
+    /// </summary>
+    private static string RenderSource(Guid sourceId)
+        => $"agent:{GuidFormatter.Format(sourceId)}";
 
     /// <summary>
     /// Turns the persistence-layer source format (<c>scheme:path</c>) into the

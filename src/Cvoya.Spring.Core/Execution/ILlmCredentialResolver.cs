@@ -48,10 +48,10 @@ public interface ILlmCredentialResolver
     /// Canonical provider identifier — <c>claude</c>, <c>openai</c>,
     /// <c>google</c>, <c>ollama</c>. Unknown providers return <c>null</c>.
     /// </param>
-    /// <param name="unitName">
-    /// Optional unit identifier. When non-null the resolver consults the
+    /// <param name="unitId">
+    /// Optional unit Guid id. When non-null the resolver consults the
     /// unit-scoped secret first; when null the resolver starts at tenant
-    /// scope. Pass the unit name whenever the caller has it (agent runtime,
+    /// scope. Pass the unit id whenever the caller has it (agent runtime,
     /// launcher) — omitting it skips the unit-scoped tier even when a unit
     /// override exists.
     /// </param>
@@ -66,7 +66,7 @@ public interface ILlmCredentialResolver
     /// </returns>
     Task<LlmCredentialResolution> ResolveAsync(
         string providerId,
-        string? unitName,
+        Guid? unitId,
         CancellationToken cancellationToken = default);
 }
 

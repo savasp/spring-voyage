@@ -28,7 +28,7 @@ public interface ISecretsEncryptor
     /// <param name="plaintext">The value to encrypt. Must not be null.</param>
     /// <param name="tenantId">Tenant id, bound in as AAD.</param>
     /// <param name="storeKey">Opaque store key, bound in as AAD.</param>
-    string Encrypt(string plaintext, string tenantId, string storeKey);
+    string Encrypt(string plaintext, Guid tenantId, string storeKey);
 
     /// <summary>
     /// Decrypts a value previously produced by <see cref="Encrypt"/>.
@@ -41,5 +41,5 @@ public interface ISecretsEncryptor
     /// <param name="storeKey">Store key, expected to match the encryption AAD.</param>
     /// <param name="wasEnveloped">True if the value was a valid envelope; false if treated as legacy plaintext.</param>
     /// <returns>The plaintext value.</returns>
-    string Decrypt(string value, string tenantId, string storeKey, out bool wasEnveloped);
+    string Decrypt(string value, Guid tenantId, string storeKey, out bool wasEnveloped);
 }

@@ -10,6 +10,13 @@ using Cvoya.Spring.Dapr.Data.Entities;
 /// <summary>
 /// Maps between the Core <see cref="ActivityEvent"/> domain record and the EF
 /// <see cref="ActivityEventRecord"/> entity used for persistence.
+///
+/// <para>
+/// The persisted record carries only the source's stable Guid id; the
+/// scheme is not stored. Callers that need a typed <see cref="Address"/>
+/// supply the scheme at read time. Out-of-band rendering layers (UI,
+/// audit) join the live entity tables to resolve current display name.
+/// </para>
 /// </summary>
 public static class ActivityEventMapper
 {
@@ -21,7 +28,7 @@ public static class ActivityEventMapper
         return new ActivityEventRecord
         {
             Id = activityEvent.Id,
-            Source = $"{activityEvent.Source.Scheme}:{activityEvent.Source.Path}",
+            SourceId = activityEvent.Source.Id,
             EventType = activityEvent.EventType.ToString(),
             Severity = activityEvent.Severity.ToString(),
             Summary = activityEvent.Summary,
@@ -33,14 +40,16 @@ public static class ActivityEventMapper
     }
 
     /// <summary>
-    /// Converts a persistence <see cref="ActivityEventRecord"/> back to a domain <see cref="ActivityEvent"/>.
+    /// Converts a persistence <see cref="ActivityEventRecord"/> back to a
+    /// domain <see cref="ActivityEvent"/>. Because the persisted record
+    /// stores only <see cref="ActivityEventRecord.SourceId"/> (no scheme),
+    /// callers that need a scheme-typed address supply it via
+    /// <paramref name="defaultScheme"/>; the default <c>"agent"</c>
+    /// matches the most common emission site.
     /// </summary>
-    public static ActivityEvent ToDomain(ActivityEventRecord record)
+    public static ActivityEvent ToDomain(ActivityEventRecord record, string defaultScheme = "agent")
     {
-        var colonIndex = record.Source.IndexOf(':');
-        var address = colonIndex >= 0
-            ? new Address(record.Source[..colonIndex], record.Source[(colonIndex + 1)..])
-            : new Address(record.Source, string.Empty);
+        var address = new Address(defaultScheme, record.SourceId);
 
         return new ActivityEvent(
             record.Id,

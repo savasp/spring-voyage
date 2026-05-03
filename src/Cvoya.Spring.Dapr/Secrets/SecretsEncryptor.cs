@@ -76,10 +76,9 @@ public partial class SecretsEncryptor : ISecretsEncryptor
     }
 
     /// <inheritdoc />
-    public string Encrypt(string plaintext, string tenantId, string storeKey)
+    public string Encrypt(string plaintext, Guid tenantId, string storeKey)
     {
         ArgumentNullException.ThrowIfNull(plaintext);
-        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
         ArgumentException.ThrowIfNullOrWhiteSpace(storeKey);
 
         var plaintextBytes = Encoding.UTF8.GetBytes(plaintext);
@@ -101,10 +100,9 @@ public partial class SecretsEncryptor : ISecretsEncryptor
     }
 
     /// <inheritdoc />
-    public string Decrypt(string value, string tenantId, string storeKey, out bool wasEnveloped)
+    public string Decrypt(string value, Guid tenantId, string storeKey, out bool wasEnveloped)
     {
         ArgumentNullException.ThrowIfNull(value);
-        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
         ArgumentException.ThrowIfNullOrWhiteSpace(storeKey);
 
         // Legacy path: if the value is not a valid base64 envelope with
@@ -159,8 +157,8 @@ public partial class SecretsEncryptor : ISecretsEncryptor
         return Encoding.UTF8.GetString(plaintext);
     }
 
-    private static byte[] BuildAad(string tenantId, string storeKey)
-        => Encoding.UTF8.GetBytes($"{tenantId}:{storeKey}");
+    private static byte[] BuildAad(Guid tenantId, string storeKey)
+        => Encoding.UTF8.GetBytes($"{Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(tenantId)}:{storeKey}");
 
     private static bool TryDecodeEnvelope(string value, out byte[] envelope)
     {

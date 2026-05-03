@@ -32,7 +32,7 @@ public class RegisterCloneActivity(
 
         var entry = new DirectoryEntry(
             address,
-            ActorId: input.TargetAgentId,
+            ActorId: address.Id,
             DisplayName: $"Clone:{input.TargetAgentId}",
             Description: description,
             Role: null,

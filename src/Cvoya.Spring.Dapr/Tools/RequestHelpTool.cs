@@ -80,7 +80,7 @@ public class RequestHelpTool(
         var domainMessage = new Message(
             Guid.NewGuid(),
             executionContext.AgentAddress,
-            new Address(targetScheme, targetPath),
+            Address.For(targetScheme, targetPath),
             MessageType.Domain,
             executionContext.ThreadId,
             payload,

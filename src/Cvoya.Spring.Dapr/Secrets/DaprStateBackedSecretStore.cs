@@ -187,10 +187,10 @@ public class DaprStateBackedSecretStore : ISecretStore
     // Kept only for read-path fallback so operators who enable per-tenant
     // component isolation on existing data don't need to migrate rows
     // eagerly — the next write re-enveloped them under the canonical key.
-    private string BuildLegacyBackendKey(string tenantId, string storeKey) =>
-        $"{_options.Value.KeyPrefix}{tenantId}/{storeKey}";
+    private string BuildLegacyBackendKey(Guid tenantId, string storeKey) =>
+        $"{_options.Value.KeyPrefix}{Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(tenantId)}/{storeKey}";
 
-    private string ResolveComponent(string tenantId)
+    private string ResolveComponent(Guid tenantId)
     {
         var format = _options.Value.ComponentNameFormat;
         if (string.IsNullOrWhiteSpace(format))
@@ -198,6 +198,6 @@ public class DaprStateBackedSecretStore : ISecretStore
             return _options.Value.StoreComponent;
         }
 
-        return format.Replace("{tenantId}", tenantId, StringComparison.Ordinal);
+        return format.Replace("{tenantId}", Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(tenantId), StringComparison.Ordinal);
     }
 }

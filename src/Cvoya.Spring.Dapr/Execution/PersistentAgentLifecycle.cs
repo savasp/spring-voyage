@@ -125,6 +125,7 @@ public class PersistentAgentLifecycle(
             Prompt: prompt,
             McpEndpoint: mcpServer.Endpoint,
             McpToken: session.Token,
+            TenantId: Cvoya.Spring.Core.Tenancy.OssTenantIds.Default,
             Provider: definition.Execution.Provider,
             Model: definition.Execution.Model);
 

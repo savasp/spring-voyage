@@ -34,11 +34,11 @@ public interface IUnitSubunitMembershipProjector
     /// repeatedly from the actor's add path and from the startup
     /// reconciliation service.
     /// </summary>
-    Task ProjectAddAsync(string parentUnitId, string childUnitId, CancellationToken cancellationToken = default);
+    Task ProjectAddAsync(Guid parentUnitId, Guid childUnitId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Removes the parent → child edge. Idempotent — a missing row is
     /// a no-op.
     /// </summary>
-    Task ProjectRemoveAsync(string parentUnitId, string childUnitId, CancellationToken cancellationToken = default);
+    Task ProjectRemoveAsync(Guid parentUnitId, Guid childUnitId, CancellationToken cancellationToken = default);
 }

@@ -16,7 +16,7 @@ namespace Cvoya.Spring.Connectors;
 /// <param name="UpdatedAt">Timestamp when the install row was last updated.</param>
 public sealed record InstalledConnector(
     string ConnectorId,
-    string TenantId,
+    Guid TenantId,
     ConnectorInstallConfig Config,
     DateTimeOffset InstalledAt,
     DateTimeOffset UpdatedAt);
