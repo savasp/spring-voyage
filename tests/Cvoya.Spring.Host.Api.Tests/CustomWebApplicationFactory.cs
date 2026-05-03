@@ -265,7 +265,7 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
         stub.IsAuthorizedAsync(
                 Arg.Any<SecretAccessAction>(),
                 Arg.Any<SecretScope>(),
-                Arg.Any<string>(),
+                Arg.Any<Guid?>(),
                 Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(true));
         return stub;
