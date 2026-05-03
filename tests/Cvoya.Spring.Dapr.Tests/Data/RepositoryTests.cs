@@ -37,8 +37,7 @@ public class RepositoryTests : IDisposable
         var agent = new AgentDefinitionEntity
         {
             Id = Guid.NewGuid(),
-            AgentId = "test-agent",
-            Name = "Test Agent"
+            DisplayName = "Test Agent"
         };
 
         await _repository.CreateAsync(agent, ct);
@@ -46,7 +45,7 @@ public class RepositoryTests : IDisposable
         var result = await _repository.GetByIdAsync(agent.Id, ct);
 
         result.ShouldNotBeNull();
-        result!.Name.ShouldBe("Test Agent");
+        result!.DisplayName.ShouldBe("Test Agent");
     }
 
     [Fact]
@@ -63,9 +62,9 @@ public class RepositoryTests : IDisposable
     public async Task GetAllAsync_MultipleEntities_ReturnsAllNonDeleted()
     {
         var ct = TestContext.Current.CancellationToken;
-        var agent1 = new AgentDefinitionEntity { Id = Guid.NewGuid(), AgentId = "agent-1", Name = "Agent 1" };
-        var agent2 = new AgentDefinitionEntity { Id = Guid.NewGuid(), AgentId = "agent-2", Name = "Agent 2" };
-        var deleted = new AgentDefinitionEntity { Id = Guid.NewGuid(), AgentId = "agent-d", Name = "Deleted", DeletedAt = DateTimeOffset.UtcNow };
+        var agent1 = new AgentDefinitionEntity { Id = Guid.NewGuid(), DisplayName = "Agent 1" };
+        var agent2 = new AgentDefinitionEntity { Id = Guid.NewGuid(), DisplayName = "Agent 2" };
+        var deleted = new AgentDefinitionEntity { Id = Guid.NewGuid(), DisplayName = "Deleted", DeletedAt = DateTimeOffset.UtcNow };
 
         await _repository.CreateAsync(agent1, ct);
         await _repository.CreateAsync(agent2, ct);
@@ -74,8 +73,8 @@ public class RepositoryTests : IDisposable
         var results = await _repository.GetAllAsync(ct);
 
         results.Count().ShouldBe(2);
-        results.ShouldContain(a => a.Name == "Agent 1");
-        results.ShouldContain(a => a.Name == "Agent 2");
+        results.ShouldContain(a => a.DisplayName == "Agent 1");
+        results.ShouldContain(a => a.DisplayName == "Agent 2");
     }
 
     [Fact]
@@ -85,8 +84,7 @@ public class RepositoryTests : IDisposable
         var agent = new AgentDefinitionEntity
         {
             Id = Guid.NewGuid(),
-            AgentId = "to-delete",
-            Name = "To Delete"
+            DisplayName = "To Delete"
         };
 
         await _repository.CreateAsync(agent, ct);
@@ -104,8 +102,7 @@ public class RepositoryTests : IDisposable
         var agent = new AgentDefinitionEntity
         {
             Id = Guid.NewGuid(),
-            AgentId = "will-delete",
-            Name = "Will Be Deleted"
+            DisplayName = "Will Be Deleted"
         };
 
         await _repository.CreateAsync(agent, ct);
@@ -123,18 +120,17 @@ public class RepositoryTests : IDisposable
         var agent = new AgentDefinitionEntity
         {
             Id = Guid.NewGuid(),
-            AgentId = "original",
-            Name = "Original Name"
+            DisplayName = "Original Name"
         };
 
         await _repository.CreateAsync(agent, ct);
 
-        agent.Name = "Updated Name";
+        agent.DisplayName = "Updated Name";
         await _repository.UpdateAsync(agent, ct);
 
         var result = await _repository.GetByIdAsync(agent.Id, ct);
         result.ShouldNotBeNull();
-        result!.Name.ShouldBe("Updated Name");
+        result!.DisplayName.ShouldBe("Updated Name");
     }
 
     public void Dispose()

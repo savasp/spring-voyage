@@ -26,7 +26,7 @@ using Xunit;
 public class ContainerSupervisorActorTests
 {
     private const string TestAgentId = "test-agent-123";
-    private const string TestTenantId = "tenant-acme";
+    private static readonly Guid TestTenantId = new("acacacac-0000-0000-0000-000000000001");
 
     private readonly IActorStateManager _stateManager = Substitute.For<IActorStateManager>();
     private readonly IContainerRuntime _containerRuntime = Substitute.For<IContainerRuntime>();
@@ -76,7 +76,7 @@ public class ContainerSupervisorActorTests
             .Returns(ci => Task.FromResult(new AgentBootstrapContext(
                 new Dictionary<string, string>(StringComparer.Ordinal)
                 {
-                    ["SPRING_TENANT_ID"] = ((SupervisorRestartContext)ci[0]).TenantId,
+                    ["SPRING_TENANT_ID"] = ((SupervisorRestartContext)ci[0]).TenantId.ToString("N"),
                     ["SPRING_AGENT_ID"] = ((SupervisorRestartContext)ci[0]).AgentId,
                     ["SPRING_BUCKET2_TOKEN"] = $"fresh-bucket2-{Guid.NewGuid():N}",
                     ["SPRING_LLM_PROVIDER_TOKEN"] = $"fresh-llm-{Guid.NewGuid():N}",
@@ -153,7 +153,7 @@ public class ContainerSupervisorActorTests
         var callerEnv = new Dictionary<string, string>
         {
             ["SPRING_AGENT_ID"] = TestAgentId,
-            ["SPRING_TENANT_ID"] = "tenant-acme",
+            ["SPRING_TENANT_ID"] = TestTenantId.ToString("N"),
         };
 
         var request = new SupervisorLaunchRequest(
