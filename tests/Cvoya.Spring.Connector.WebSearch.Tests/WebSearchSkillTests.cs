@@ -28,9 +28,10 @@ public class WebSearchSkillTests
     {
         // Arrange: unit is bound to the 'brave' provider, secret is named
         // 'brave-api-key' and resolves to "super-secret".
+        var unitId = new Guid("a1a1a1a1-0000-0000-0000-000000000001");
         var configStore = Substitute.For<IUnitConnectorConfigStore>();
         var config = new UnitWebSearchConfig("brave", "brave-api-key", 5, true);
-        configStore.GetAsync("unit-1", Arg.Any<CancellationToken>())
+        configStore.GetAsync(unitId.ToString("N"), Arg.Any<CancellationToken>())
             .Returns(new UnitConnectorBinding(
                 WebSearchConnectorType.WebSearchTypeId,
                 JsonSerializer.SerializeToElement(config)));
@@ -39,13 +40,13 @@ public class WebSearchSkillTests
         resolver.ResolveWithPathAsync(
                 Arg.Is<SecretRef>(r =>
                     r.Scope == SecretScope.Unit
-                    && r.OwnerId == "unit-1"
+                    && r.OwnerId == unitId
                     && r.Name == "brave-api-key"),
                 Arg.Any<CancellationToken>())
             .Returns(new SecretResolution(
                 "super-secret",
                 SecretResolvePath.Direct,
-                new SecretRef(SecretScope.Unit, "unit-1", "brave-api-key")));
+                new SecretRef(SecretScope.Unit, unitId, "brave-api-key")));
 
         var provider = Substitute.For<IWebSearchProvider>();
         provider.Id.Returns("brave");
@@ -58,7 +59,7 @@ public class WebSearchSkillTests
             });
 
         var tenant = Substitute.For<ITenantContext>();
-        tenant.CurrentTenantId.Returns("local");
+        tenant.CurrentTenantId.Returns(new Guid("c0c0c0c0-0000-0000-0000-000000000001"));
 
         var scopeFactory = BuildScopeFactory(resolver, tenant);
         var skill = new WebSearchSkill(
@@ -67,7 +68,7 @@ public class WebSearchSkillTests
             NullLoggerFactory.Instance);
 
         // Act
-        var result = await skill.ExecuteAsync("unit-1", "what is spring voyage", limit: null, safesearch: null, TestContext.Current.CancellationToken);
+        var result = await skill.ExecuteAsync(unitId.ToString("N"), "what is spring voyage", limit: null, safesearch: null, TestContext.Current.CancellationToken);
 
         // Assert
         captured.ShouldNotBeNull();

@@ -227,9 +227,9 @@ public class DefaultTenantBootstrapTests : IDisposable
         public IReadOnlyList<string> SeededTenantIds => _calls.ToArray();
         public int CallCount => SeededTenantIds.Count;
 
-        public Task ApplySeedsAsync(string tenantId, CancellationToken cancellationToken)
+        public Task ApplySeedsAsync(Guid tenantId, CancellationToken cancellationToken)
         {
-            _calls.Enqueue(tenantId);
+            _calls.Enqueue(tenantId.ToString("N"));
             return Task.CompletedTask;
         }
     }

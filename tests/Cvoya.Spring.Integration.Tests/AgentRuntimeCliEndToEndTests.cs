@@ -84,7 +84,7 @@ public sealed class AgentRuntimeCliEndToEndTests : IDisposable
 {
     private readonly StubHttpHandler _openAiHandler = new();
     private readonly StubAuthConnectorType _stubAuthConnector = new();
-    private readonly MutableTenantContext _tenantContext = new("default");
+    private readonly MutableTenantContext _tenantContext = new(Cvoya.Spring.Core.Tenancy.OssTenantIds.Default);
     private readonly E2EFactory _factory;
     private readonly HttpClient _client;
 
@@ -286,13 +286,13 @@ public sealed class AgentRuntimeCliEndToEndTests : IDisposable
         // Open a scope so the scoped binding service (and its DbContext)
         // resolve against the default tenant context the factory wired.
         await using var scope = _factory.Services.CreateAsyncScope();
-        _tenantContext.Set("default");
+        _tenantContext.Set(Cvoya.Spring.Core.Tenancy.OssTenantIds.Default);
         var bindings = scope.ServiceProvider.GetRequiredService<ITenantSkillBundleBindingService>();
 
         var packageBinding = await bindings.GetAsync(E2EFactory.SeededSkillBundleId, ct);
         packageBinding.ShouldNotBeNull();
         packageBinding!.Enabled.ShouldBeTrue();
-        packageBinding.TenantId.ShouldBe("default");
+        packageBinding.TenantId.ShouldBe(Cvoya.Spring.Core.Tenancy.OssTenantIds.Default);
         packageBinding.BundleId.ShouldBe(E2EFactory.SeededSkillBundleId);
     }
 
@@ -387,10 +387,10 @@ public sealed class AgentRuntimeCliEndToEndTests : IDisposable
     /// </summary>
     private sealed class MutableTenantContext : ITenantContext
     {
-        private string _tenantId;
-        public MutableTenantContext(string initial) { _tenantId = initial; }
-        public string CurrentTenantId => _tenantId;
-        public void Set(string tenantId) => _tenantId = tenantId;
+        private Guid _tenantId;
+        public MutableTenantContext(Guid initial) { _tenantId = initial; }
+        public Guid CurrentTenantId => _tenantId;
+        public void Set(Guid tenantId) => _tenantId = tenantId;
     }
 
     /// <summary>
