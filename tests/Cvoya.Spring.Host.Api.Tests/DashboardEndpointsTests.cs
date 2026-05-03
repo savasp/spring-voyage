@@ -67,13 +67,13 @@ public class DashboardEndpointsTests : IClassFixture<CustomWebApplicationFactory
 
         _factory.ActorProxyFactory
             .CreateActorProxy<IUnitActor>(
-                Arg.Is<ActorId>(id => id.GetId() == Actor1_Id),
+                Arg.Is<ActorId>(id => id.GetId() == Actor1_Id.ToString("N")),
                 Arg.Any<string>())
             .Returns(runningProxy);
 
         _factory.ActorProxyFactory
             .CreateActorProxy<IUnitActor>(
-                Arg.Is<ActorId>(id => id.GetId() == Actor2_Id),
+                Arg.Is<ActorId>(id => id.GetId() == Actor2_Id.ToString("N")),
                 Arg.Any<string>())
             .Returns(_ => throw new Exception("Actor unavailable"));
 

@@ -59,7 +59,7 @@ public class UnitCreationServiceOrchestrationTests
         using var verifyScope = scopeFactory.CreateScope();
         var db = verifyScope.ServiceProvider.GetRequiredService<SpringDbContext>();
         var persisted = await db.UnitDefinitions.FirstAsync(
-            u => u.UnitId == "triage-cell",
+            u => u.DisplayName == "triage-cell",
             TestContext.Current.CancellationToken);
 
         persisted.Definition.ShouldNotBeNull();
@@ -85,7 +85,7 @@ public class UnitCreationServiceOrchestrationTests
         using var verifyScope = scopeFactory.CreateScope();
         var db = verifyScope.ServiceProvider.GetRequiredService<SpringDbContext>();
         var persisted = await db.UnitDefinitions.FirstAsync(
-            u => u.UnitId == "plain-cell",
+            u => u.DisplayName == "plain-cell",
             TestContext.Current.CancellationToken);
 
         // Definition may still be null (no seed blocks at all) or an empty
@@ -119,7 +119,7 @@ public class UnitCreationServiceOrchestrationTests
         using var verifyScope = scopeFactory.CreateScope();
         var db = verifyScope.ServiceProvider.GetRequiredService<SpringDbContext>();
         var persisted = await db.UnitDefinitions.FirstAsync(
-            u => u.UnitId == "rich-cell",
+            u => u.DisplayName == "rich-cell",
             TestContext.Current.CancellationToken);
 
         var json = persisted.Definition!.Value;
@@ -146,7 +146,7 @@ public class UnitCreationServiceOrchestrationTests
         using var verifyScope = scopeFactory.CreateScope();
         var db = verifyScope.ServiceProvider.GetRequiredService<SpringDbContext>();
         var persisted = await db.UnitDefinitions.FirstAsync(
-            u => u.UnitId == "blank-strategy-cell",
+            u => u.DisplayName == "blank-strategy-cell",
             TestContext.Current.CancellationToken);
 
         if (persisted.Definition is { ValueKind: JsonValueKind.Object } doc)

@@ -150,7 +150,7 @@ public class UnitParentEndpointTests : IClassFixture<CustomWebApplicationFactory
         using var verifyScope = _factory.Services.CreateScope();
         var verifyDb = verifyScope.ServiceProvider.GetRequiredService<SpringDbContext>();
         var row = await verifyDb.UnitDefinitions
-            .FirstAsync(u => u.UnitId == "root-unit", ct);
+            .FirstAsync(u => u.DisplayName == "root-unit", ct);
         row.IsTopLevel.ShouldBeTrue();
 
         // No parent actor proxy should have been called to add the new
@@ -187,7 +187,7 @@ public class UnitParentEndpointTests : IClassFixture<CustomWebApplicationFactory
         var parentProxy = Substitute.For<IUnitActor>();
         _factory.ActorProxyFactory
             .CreateActorProxy<IUnitActor>(
-                Arg.Is<ActorId>(a => a.GetId() == ActorParent_Id),
+                Arg.Is<ActorId>(a => a.GetId() == ActorParent_Id.ToString("N")),
                 Arg.Any<string>())
             .Returns(parentProxy);
         var childProxy = Substitute.For<IUnitActor>();

@@ -290,7 +290,7 @@ public class ThreadContractTests : IClassFixture<ThreadContractTests.Factory>
         _factory.ActorProxyFactory.ClearSubstitute();
         _factory.ActorProxyFactory
             .CreateActorProxy<IAgentActor>(
-                Arg.Is<ActorId>(id => id.GetId() == ActorContractBot_Id),
+                Arg.Is<ActorId>(id => id.GetId() == ActorContractBot_Id.ToString("N")),
                 nameof(AgentActor))
             .Returns(agentProxy);
 

@@ -285,19 +285,19 @@ public class UnitCreationServiceTests
         // After #1492, UnitMembership.UnitId and AgentId are Guids (not slugs).
         await fixture.MembershipRepository.Received(1).UpsertAsync(
             Arg.Is<UnitMembership>(u =>
-                u.UnitId == unitUuid && u.AgentId == techLeadUuid
+                u.DisplayName == unitUuid && u.AgentId == techLeadUuid
                 && u.Enabled && u.Model == null && u.Specialty == null && u.ExecutionMode == null),
             Arg.Any<CancellationToken>());
 
         await fixture.MembershipRepository.Received(1).UpsertAsync(
             Arg.Is<UnitMembership>(u =>
-                u.UnitId == unitUuid && u.AgentId == backendUuid
+                u.DisplayName == unitUuid && u.AgentId == backendUuid
                 && u.Enabled && u.Model == null && u.Specialty == null && u.ExecutionMode == null),
             Arg.Any<CancellationToken>());
 
         await fixture.MembershipRepository.Received(1).UpsertAsync(
             Arg.Is<UnitMembership>(u =>
-                u.UnitId == unitUuid && u.AgentId == qaUuid
+                u.DisplayName == unitUuid && u.AgentId == qaUuid
                 && u.Enabled && u.Model == null && u.Specialty == null && u.ExecutionMode == null),
             Arg.Any<CancellationToken>());
     }

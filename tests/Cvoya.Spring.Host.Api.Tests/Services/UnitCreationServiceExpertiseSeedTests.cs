@@ -114,7 +114,7 @@ public class UnitCreationServiceExpertiseSeedTests
         using var verifyScope = scopeFactory.CreateScope();
         var verifyDb = verifyScope.ServiceProvider.GetRequiredService<SpringDbContext>();
         var persisted = await verifyDb.UnitDefinitions.FirstAsync(
-            u => u.UnitId == "research-cell",
+            u => u.DisplayName == "research-cell",
             TestContext.Current.CancellationToken);
         persisted.Definition.ShouldNotBeNull();
 
