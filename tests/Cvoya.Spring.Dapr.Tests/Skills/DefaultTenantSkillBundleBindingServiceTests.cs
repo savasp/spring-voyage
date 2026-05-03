@@ -21,8 +21,8 @@ using Xunit;
 /// </summary>
 public class DefaultTenantSkillBundleBindingServiceTests
 {
-    private const string TenantA = "tenant-a";
-    private const string TenantB = "tenant-b";
+    private static readonly Guid TenantA = new("aaaaaaaa-1111-1111-1111-000000000001");
+    private static readonly Guid TenantB = new("aaaaaaaa-1111-1111-1111-000000000002");
 
     [Fact]
     public async Task BindAsync_CreatesRowOnFirstCall()
@@ -86,7 +86,7 @@ public class DefaultTenantSkillBundleBindingServiceTests
         (await sutB.ListAsync(ct)).Select(b => b.BundleId).ShouldBe(new[] { "research" });
     }
 
-    private static DefaultTenantSkillBundleBindingService CreateSut(string dbName, string tenantId)
+    private static DefaultTenantSkillBundleBindingService CreateSut(string dbName, Guid tenantId)
     {
         var options = new DbContextOptionsBuilder<SpringDbContext>()
             .UseInMemoryDatabase(databaseName: dbName)

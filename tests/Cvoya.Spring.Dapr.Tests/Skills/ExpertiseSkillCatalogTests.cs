@@ -42,12 +42,13 @@ public class ExpertiseSkillCatalogTests
         _loggerFactory.CreateLogger(Arg.Any<string>()).Returns(Substitute.For<ILogger>());
 
         // Default: one unit, empty expertise. Per-test overrides replace this.
+        var engId = Guid.NewGuid();
         _directory.ListAllAsync(Arg.Any<CancellationToken>())
             .Returns(new[]
             {
                 new DirectoryEntry(
-                    Address.For("unit", "eng"),
-                    "eng", "Engineering", string.Empty, null, DateTimeOffset.UtcNow),
+                    new Address("unit", engId),
+                    engId, "Engineering", string.Empty, null, DateTimeOffset.UtcNow),
             });
 
         _aggregator
