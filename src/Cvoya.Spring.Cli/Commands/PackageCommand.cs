@@ -73,6 +73,16 @@ public static class PackageCommand
         new("path", w => w.Path),
     };
 
+    private static readonly OutputFormatter.Column<PackageInputSummary>[] InputColumns =
+    {
+        new("name", i => i.Name),
+        new("type", i => i.Type),
+        new("required", i => i.Required == true ? "yes" : "no"),
+        new("secret", i => i.Secret == true ? "yes" : "no"),
+        new("default", i => i.Default),
+        new("description", i => i.Description),
+    };
+
     /// <summary>
     /// Creates the <c>package</c> command root with all subcommands.
     /// </summary>
@@ -515,6 +525,7 @@ public static class PackageCommand
                 Console.WriteLine($"  {detail.Description}");
             }
 
+            WriteSection("Inputs", detail.Inputs, InputColumns);
             WriteSection("Unit templates", detail.UnitTemplates, UnitTemplateColumns);
             WriteSection("Agent templates", detail.AgentTemplates, AgentTemplateColumns);
             WriteSection("Skills", detail.Skills, SkillColumns);

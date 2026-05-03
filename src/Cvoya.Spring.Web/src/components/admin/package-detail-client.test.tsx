@@ -54,6 +54,7 @@ function makePackage(overrides?: Partial<PackageDetail>): PackageDetail {
   return {
     name: "my-pkg",
     description: "A test package",
+    inputs: [],
     unitTemplates: [],
     agentTemplates: [],
     skills: [],

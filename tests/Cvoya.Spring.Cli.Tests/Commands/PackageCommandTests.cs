@@ -179,7 +179,7 @@ public class PackageCommandTests
             expectedPath: "/api/v1/tenant/packages/software-engineering",
             expectedMethod: HttpMethod.Get,
             responseBody:
-                """{"name":"software-engineering","description":null,"unitTemplates":[],"agentTemplates":[],"skills":[],"connectors":[],"workflows":[]}""");
+                """{"name":"software-engineering","description":null,"inputs":[],"unitTemplates":[],"agentTemplates":[],"skills":[],"connectors":[],"workflows":[]}""");
 
         var httpClient = new HttpClient(handler);
         var client = new SpringApiClient(httpClient, BaseUrl);

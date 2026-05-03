@@ -135,6 +135,102 @@ public sealed class FileSystemPackageCatalogServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task GetPackageAsync_PopulatesInputsFromManifest()
+    {
+        // #1615: PackageDetail.Inputs surfaces the package's declared inputs
+        // schema so the wizard can render the right form fields without a
+        // round-trip to fetch the manifest separately.
+        var pkg = SeedPackage("with-inputs");
+        File.WriteAllText(
+            Path.Combine(pkg, "package.yaml"),
+            """
+            apiVersion: spring.voyage/v1
+            kind: UnitPackage
+            metadata:
+              name: with-inputs
+              description: example
+            inputs:
+              - name: github_owner
+                type: string
+                required: true
+                description: GitHub owner.
+              - name: retry_count
+                type: int
+                default: "3"
+                description: How many times to retry.
+              - name: api_key
+                type: string
+                required: true
+                secret: true
+                description: API key.
+            unit: alpha
+            """);
+        File.WriteAllText(
+            Path.Combine(pkg, "units", "alpha.yaml"),
+            "unit:\n  name: alpha\n");
+
+        var detail = await _service.GetPackageAsync("with-inputs", CancellationToken.None);
+
+        detail.ShouldNotBeNull();
+        detail!.Inputs.Count.ShouldBe(3);
+
+        detail.Inputs[0].Name.ShouldBe("github_owner");
+        detail.Inputs[0].Type.ShouldBe("string");
+        detail.Inputs[0].Required.ShouldBeTrue();
+        detail.Inputs[0].Secret.ShouldBeFalse();
+        detail.Inputs[0].Description.ShouldBe("GitHub owner.");
+        detail.Inputs[0].Default.ShouldBeNull();
+
+        detail.Inputs[1].Name.ShouldBe("retry_count");
+        detail.Inputs[1].Type.ShouldBe("int");
+        detail.Inputs[1].Required.ShouldBeFalse();
+        detail.Inputs[1].Default.ShouldBe("3");
+
+        detail.Inputs[2].Name.ShouldBe("api_key");
+        detail.Inputs[2].Secret.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task GetPackageAsync_ReturnsEmptyInputs_WhenManifestHasNoInputsBlock()
+    {
+        var pkg = SeedPackage("no-inputs");
+        File.WriteAllText(
+            Path.Combine(pkg, "package.yaml"),
+            """
+            apiVersion: spring.voyage/v1
+            kind: UnitPackage
+            metadata:
+              name: no-inputs
+              description: example
+            unit: alpha
+            """);
+        File.WriteAllText(
+            Path.Combine(pkg, "units", "alpha.yaml"),
+            "unit:\n  name: alpha\n");
+
+        var detail = await _service.GetPackageAsync("no-inputs", CancellationToken.None);
+
+        detail.ShouldNotBeNull();
+        detail!.Inputs.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task GetPackageAsync_ReturnsEmptyInputs_WhenManifestIsMissing()
+    {
+        // No package.yaml on disk — browse remains best-effort, the package
+        // still appears with an empty inputs list.
+        var pkg = SeedPackage("no-manifest");
+        File.WriteAllText(
+            Path.Combine(pkg, "units", "alpha.yaml"),
+            "unit:\n  name: alpha\n");
+
+        var detail = await _service.GetPackageAsync("no-manifest", CancellationToken.None);
+
+        detail.ShouldNotBeNull();
+        detail!.Inputs.ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task GetPackageAsync_ReturnsNull_ForMissingPackage()
     {
         var result = await _service.GetPackageAsync("no-such-pkg", CancellationToken.None);

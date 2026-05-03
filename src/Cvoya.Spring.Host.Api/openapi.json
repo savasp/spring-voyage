@@ -10882,6 +10882,7 @@
         "required": [
           "name",
           "description",
+          "inputs",
           "unitTemplates",
           "agentTemplates",
           "skills",
@@ -10898,6 +10899,12 @@
               "null",
               "string"
             ]
+          },
+          "inputs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PackageInputSummary"
+            }
           },
           "unitTemplates": {
             "type": "array",
@@ -10949,6 +10956,43 @@
           },
           "withValues": {
             "type": "boolean"
+          }
+        }
+      },
+      "PackageInputSummary": {
+        "required": [
+          "name",
+          "type",
+          "required",
+          "secret",
+          "description",
+          "default"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "secret": {
+            "type": "boolean"
+          },
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "default": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
