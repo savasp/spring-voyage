@@ -50,10 +50,12 @@ public class AgentEndpointsTests : IClassFixture<CustomWebApplicationFactory>
     public async Task ListAgents_ReturnsAgentsFromDirectory()
     {
         var ct = TestContext.Current.CancellationToken;
+        var agentId = Guid.NewGuid();
+        var unitId = Guid.NewGuid();
         var entries = new List<DirectoryEntry>
         {
-            new(Address.For("agent", "test-agent"), "actor-1", "Test Agent", "A test agent", "backend", DateTimeOffset.UtcNow),
-            new(Address.For("unit", "test-unit"), "actor-2", "Test Unit", "A test unit", null, DateTimeOffset.UtcNow)
+            new(new Address("agent", agentId), agentId, "Test Agent", "A test agent", "backend", DateTimeOffset.UtcNow),
+            new(new Address("unit", unitId), unitId, "Test Unit", "A test unit", null, DateTimeOffset.UtcNow),
         };
         _factory.DirectoryService.ListAllAsync(Arg.Any<CancellationToken>()).Returns(entries);
 
@@ -63,7 +65,7 @@ public class AgentEndpointsTests : IClassFixture<CustomWebApplicationFactory>
 
         var agents = await response.Content.ReadFromJsonAsync<List<AgentResponse>>(JsonOptions, ct);
         agents!.Count().ShouldBe(1);
-        agents![0].Name.ShouldBe("test-agent");
+        agents![0].Name.ShouldBe(agentId.ToString("N"));
         agents[0].DisplayName.ShouldBe("Test Agent");
         agents[0].Role.ShouldBe("backend");
     }
@@ -75,7 +77,7 @@ public class AgentEndpointsTests : IClassFixture<CustomWebApplicationFactory>
         // Clear any residual membership rows from previous tests that share
         // the IClassFixture in-memory DB.
         ClearMemberships();
-        ArrangeUnitEntry("engineering", UnitEngineeringUuid.ToString());
+        ArrangeUnitEntry("engineering", UnitEngineeringUuid);
         ArrangeAgentActorProxy();
 
         var request = new CreateAgentRequest(
@@ -141,25 +143,25 @@ public class AgentEndpointsTests : IClassFixture<CustomWebApplicationFactory>
             Arg.Any<CancellationToken>());
     }
 
-    private void ArrangeUnitEntry(string unitId, string actorId)
+    private void ArrangeUnitEntry(string displayName, Guid actorId)
     {
         var entry = new DirectoryEntry(
-            new Address("unit", unitId),
+            new Address("unit", actorId),
             actorId,
-            unitId,
-            $"unit {unitId}",
+            displayName,
+            $"unit {displayName}",
             null,
             DateTimeOffset.UtcNow);
         _factory.DirectoryService
             .ResolveAsync(
-                Arg.Is<Address>(a => a.Scheme == "unit" && a.Path == unitId),
+                Arg.Is<Address>(a => a.Scheme == "unit" && a.Id == actorId),
                 Arg.Any<CancellationToken>())
             .Returns(entry);
 
         var proxy = Substitute.For<IUnitActor>();
         _factory.ActorProxyFactory
             .CreateActorProxy<IUnitActor>(
-                Arg.Is<ActorId>(a => a.GetId() == actorId),
+                Arg.Is<ActorId>(a => a.GetId() == actorId.ToString("N")),
                 Arg.Any<string>())
             .Returns(proxy);
     }

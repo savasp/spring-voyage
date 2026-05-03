@@ -21,6 +21,17 @@ using Xunit;
 
 public class MessageEndpointsTests : IClassFixture<CustomWebApplicationFactory>
 {
+    private static readonly Guid UnknownAgentId = new("11111111-0000-0000-0000-000000000099");
+    private static readonly Guid TestAgentId = new("11111111-0000-0000-0000-000000000001");
+    private static readonly Guid ConvAgentId = new("11111111-0000-0000-0000-000000000002");
+    private static readonly Guid PassthroughAgentId = new("11111111-0000-0000-0000-000000000003");
+    private static readonly Guid EngineeringTeamId = new("22222222-0000-0000-0000-000000000001");
+    private static readonly Guid PingAgentId = new("11111111-0000-0000-0000-000000000004");
+    private static readonly Guid ValidatingAgentId = new("11111111-0000-0000-0000-000000000005");
+    private static readonly Guid StrictAgentId = new("11111111-0000-0000-0000-000000000006");
+    private static readonly Guid RemotedAgentId = new("11111111-0000-0000-0000-000000000007");
+    private static readonly Guid FlakyAgentId = new("11111111-0000-0000-0000-000000000008");
+
     private readonly CustomWebApplicationFactory _factory;
     private readonly HttpClient _client;
 
@@ -37,12 +48,12 @@ public class MessageEndpointsTests : IClassFixture<CustomWebApplicationFactory>
 
         // Directory returns null for this address, so routing fails with ADDRESS_NOT_FOUND.
         _factory.DirectoryService.ResolveAsync(
-            Arg.Is<Address>(a => a.Scheme == "agent" && a.Path == "unknown-agent"),
+            Arg.Is<Address>(a => a.Scheme == "agent" && a.Id == UnknownAgentId),
             Arg.Any<CancellationToken>())
             .Returns((DirectoryEntry?)null);
 
         var request = new SendMessageRequest(
-            new AddressDto("agent", "unknown-agent"),
+            new AddressDto("agent", UnknownAgentId.ToString("N")),
             "Domain",
             "conv-1",
             JsonSerializer.SerializeToElement(new { Text = "hello" }));
@@ -58,7 +69,7 @@ public class MessageEndpointsTests : IClassFixture<CustomWebApplicationFactory>
         var ct = TestContext.Current.CancellationToken;
 
         var request = new SendMessageRequest(
-            new AddressDto("agent", "test-agent"),
+            new AddressDto("agent", TestAgentId.ToString("N")),
             "InvalidType",
             null,
             JsonSerializer.SerializeToElement(new { Text = "hello" }));
@@ -80,14 +91,14 @@ public class MessageEndpointsTests : IClassFixture<CustomWebApplicationFactory>
         var ct = TestContext.Current.CancellationToken;
 
         var entry = new DirectoryEntry(
-            Address.For("agent", "test-agent"),
-            "actor-1",
+            new Address("agent", TestAgentId),
+            TestAgentId,
             "Test Agent",
             "A test agent",
             null,
             DateTimeOffset.UtcNow);
         _factory.DirectoryService
-            .ResolveAsync(Arg.Is<Address>(a => a.Scheme == "agent" && a.Path == "test-agent"),
+            .ResolveAsync(Arg.Is<Address>(a => a.Scheme == "agent" && a.Id == TestAgentId),
                 Arg.Any<CancellationToken>())
             .Returns(entry);
 
@@ -97,11 +108,11 @@ public class MessageEndpointsTests : IClassFixture<CustomWebApplicationFactory>
             .Returns((Message?)null);
         _factory.AgentProxyResolver
             .Resolve(Arg.Is<string>(s => string.Equals(s, "agent", StringComparison.OrdinalIgnoreCase)),
-                "actor-1")
+                TestAgentId.ToString("N"))
             .Returns(agent);
 
         var request = new SendMessageRequest(
-            new AddressDto("agent", "test-agent"),
+            new AddressDto("agent", TestAgentId.ToString("N")),
             "Domain",
             "conv-1",
             JsonSerializer.SerializeToElement(new { Text = "hello" }));
@@ -111,11 +122,9 @@ public class MessageEndpointsTests : IClassFixture<CustomWebApplicationFactory>
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
         observed.ShouldNotBeNull();
         observed!.From.Scheme.ShouldBe("human");
-        // #1491: GetCallerAddressAsync now resolves the username to a stable UUID
-        // via IHumanIdentityResolver and returns the identity form human:id:<uuid>.
-        observed.From.IsIdentity.ShouldBeTrue();
-        // And it must NOT be the pre-#339 synthetic 'api' identity.
-        observed.From.Path.ShouldNotBe(AuthenticatedCallerAccessor.FallbackHumanId);
+        // #1491 / #1629: GetCallerAddressAsync resolves the username to a
+        // stable Guid via IHumanIdentityResolver and emits Address(human, id).
+        observed.From.Id.ShouldNotBe(Guid.Empty);
     }
 
     [Fact]
@@ -130,14 +139,14 @@ public class MessageEndpointsTests : IClassFixture<CustomWebApplicationFactory>
         var ct = TestContext.Current.CancellationToken;
 
         var entry = new DirectoryEntry(
-            Address.For("agent", "conv-agent"),
-            "actor-conv",
+            new Address("agent", ConvAgentId),
+            ConvAgentId,
             "Conv Agent",
             "A test agent",
             null,
             DateTimeOffset.UtcNow);
         _factory.DirectoryService
-            .ResolveAsync(Arg.Is<Address>(a => a.Scheme == "agent" && a.Path == "conv-agent"),
+            .ResolveAsync(Arg.Is<Address>(a => a.Scheme == "agent" && a.Id == ConvAgentId),
                 Arg.Any<CancellationToken>())
             .Returns(entry);
 
@@ -147,11 +156,11 @@ public class MessageEndpointsTests : IClassFixture<CustomWebApplicationFactory>
             .Returns((Message?)null);
         _factory.AgentProxyResolver
             .Resolve(Arg.Is<string>(s => string.Equals(s, "agent", StringComparison.OrdinalIgnoreCase)),
-                "actor-conv")
+                ConvAgentId.ToString("N"))
             .Returns(agent);
 
         var request = new SendMessageRequest(
-            new AddressDto("agent", "conv-agent"),
+            new AddressDto("agent", ConvAgentId.ToString("N")),
             "Domain",
             null,
             JsonSerializer.SerializeToElement(new { Text = "hello" }));
@@ -178,14 +187,14 @@ public class MessageEndpointsTests : IClassFixture<CustomWebApplicationFactory>
         var ct = TestContext.Current.CancellationToken;
 
         var entry = new DirectoryEntry(
-            Address.For("agent", "passthrough-agent"),
-            "actor-pass",
+            new Address("agent", PassthroughAgentId),
+            PassthroughAgentId,
             "Passthrough Agent",
             "A test agent",
             null,
             DateTimeOffset.UtcNow);
         _factory.DirectoryService
-            .ResolveAsync(Arg.Is<Address>(a => a.Scheme == "agent" && a.Path == "passthrough-agent"),
+            .ResolveAsync(Arg.Is<Address>(a => a.Scheme == "agent" && a.Id == PassthroughAgentId),
                 Arg.Any<CancellationToken>())
             .Returns(entry);
 
@@ -195,12 +204,12 @@ public class MessageEndpointsTests : IClassFixture<CustomWebApplicationFactory>
             .Returns((Message?)null);
         _factory.AgentProxyResolver
             .Resolve(Arg.Is<string>(s => string.Equals(s, "agent", StringComparison.OrdinalIgnoreCase)),
-                "actor-pass")
+                PassthroughAgentId.ToString("N"))
             .Returns(agent);
 
         const string suppliedId = "caller-supplied-conversation-1";
         var request = new SendMessageRequest(
-            new AddressDto("agent", "passthrough-agent"),
+            new AddressDto("agent", PassthroughAgentId.ToString("N")),
             "Domain",
             suppliedId,
             JsonSerializer.SerializeToElement(new { Text = "hello" }));
@@ -224,14 +233,14 @@ public class MessageEndpointsTests : IClassFixture<CustomWebApplicationFactory>
         var ct = TestContext.Current.CancellationToken;
 
         var entry = new DirectoryEntry(
-            Address.For("unit", "engineering-team"),
-            "unit-1",
+            new Address("unit", EngineeringTeamId),
+            EngineeringTeamId,
             "Engineering",
             "Team",
             null,
             DateTimeOffset.UtcNow);
         _factory.DirectoryService
-            .ResolveAsync(Arg.Is<Address>(a => a.Scheme == "unit" && a.Path == "engineering-team"),
+            .ResolveAsync(Arg.Is<Address>(a => a.Scheme == "unit" && a.Id == EngineeringTeamId),
                 Arg.Any<CancellationToken>())
             .Returns(entry);
 
@@ -241,7 +250,7 @@ public class MessageEndpointsTests : IClassFixture<CustomWebApplicationFactory>
         var permissionService = (Cvoya.Spring.Dapr.Auth.IPermissionService)_factory.Services
             .GetService(typeof(Cvoya.Spring.Dapr.Auth.IPermissionService))!;
         permissionService.ResolveEffectivePermissionAsync(
-                Arg.Any<string>(), "unit-1", Arg.Any<CancellationToken>())
+                Arg.Any<string>(), EngineeringTeamId.ToString("N"), Arg.Any<CancellationToken>())
             .Returns(Cvoya.Spring.Dapr.Actors.PermissionLevel.Viewer);
 
         var unit = Substitute.For<IAgent>();
@@ -250,11 +259,11 @@ public class MessageEndpointsTests : IClassFixture<CustomWebApplicationFactory>
             .Returns((Message?)null);
         _factory.AgentProxyResolver
             .Resolve(Arg.Is<string>(s => string.Equals(s, "unit", StringComparison.OrdinalIgnoreCase)),
-                "unit-1")
+                EngineeringTeamId.ToString("N"))
             .Returns(unit);
 
         var request = new SendMessageRequest(
-            new AddressDto("unit", "engineering-team"),
+            new AddressDto("unit", EngineeringTeamId.ToString("N")),
             "Domain",
             null,
             JsonSerializer.SerializeToElement(new { Text = "hello" }));
@@ -278,14 +287,14 @@ public class MessageEndpointsTests : IClassFixture<CustomWebApplicationFactory>
         var ct = TestContext.Current.CancellationToken;
 
         var entry = new DirectoryEntry(
-            Address.For("agent", "ping-agent"),
-            "actor-ping",
+            new Address("agent", PingAgentId),
+            PingAgentId,
             "Ping Agent",
             "A test agent",
             null,
             DateTimeOffset.UtcNow);
         _factory.DirectoryService
-            .ResolveAsync(Arg.Is<Address>(a => a.Scheme == "agent" && a.Path == "ping-agent"),
+            .ResolveAsync(Arg.Is<Address>(a => a.Scheme == "agent" && a.Id == PingAgentId),
                 Arg.Any<CancellationToken>())
             .Returns(entry);
 
@@ -295,11 +304,11 @@ public class MessageEndpointsTests : IClassFixture<CustomWebApplicationFactory>
             .Returns((Message?)null);
         _factory.AgentProxyResolver
             .Resolve(Arg.Is<string>(s => string.Equals(s, "agent", StringComparison.OrdinalIgnoreCase)),
-                "actor-ping")
+                PingAgentId.ToString("N"))
             .Returns(agent);
 
         var request = new SendMessageRequest(
-            new AddressDto("agent", "ping-agent"),
+            new AddressDto("agent", PingAgentId.ToString("N")),
             "HealthCheck",
             null,
             JsonSerializer.SerializeToElement(new { }));
@@ -326,14 +335,14 @@ public class MessageEndpointsTests : IClassFixture<CustomWebApplicationFactory>
         var ct = TestContext.Current.CancellationToken;
 
         var entry = new DirectoryEntry(
-            Address.For("agent", "validating-agent"),
-            "actor-validating",
+            new Address("agent", ValidatingAgentId),
+            ValidatingAgentId,
             "Validating Agent",
             "A test agent",
             null,
             DateTimeOffset.UtcNow);
         _factory.DirectoryService
-            .ResolveAsync(Arg.Is<Address>(a => a.Scheme == "agent" && a.Path == "validating-agent"),
+            .ResolveAsync(Arg.Is<Address>(a => a.Scheme == "agent" && a.Id == ValidatingAgentId),
                 Arg.Any<CancellationToken>())
             .Returns(entry);
 
@@ -344,7 +353,7 @@ public class MessageEndpointsTests : IClassFixture<CustomWebApplicationFactory>
                 "Domain messages must have a ThreadId"));
         _factory.AgentProxyResolver
             .Resolve(Arg.Is<string>(s => string.Equals(s, "agent", StringComparison.OrdinalIgnoreCase)),
-                "actor-validating")
+                ValidatingAgentId.ToString("N"))
             .Returns(agent);
 
         // Bypass the #985 auto-gen by using a non-agent target is not
@@ -352,7 +361,7 @@ public class MessageEndpointsTests : IClassFixture<CustomWebApplicationFactory>
         // use the HealthCheck type (no auto-gen) and let the stubbed
         // actor throw for whatever reason. The endpoint must map 400.
         var request = new SendMessageRequest(
-            new AddressDto("agent", "validating-agent"),
+            new AddressDto("agent", ValidatingAgentId.ToString("N")),
             "HealthCheck",
             null,
             JsonSerializer.SerializeToElement(new { }));
@@ -373,14 +382,14 @@ public class MessageEndpointsTests : IClassFixture<CustomWebApplicationFactory>
         var ct = TestContext.Current.CancellationToken;
 
         var entry = new DirectoryEntry(
-            Address.For("agent", "strict-agent"),
-            "actor-strict",
+            new Address("agent", StrictAgentId),
+            StrictAgentId,
             "Strict Agent",
             "A test agent",
             null,
             DateTimeOffset.UtcNow);
         _factory.DirectoryService
-            .ResolveAsync(Arg.Is<Address>(a => a.Scheme == "agent" && a.Path == "strict-agent"),
+            .ResolveAsync(Arg.Is<Address>(a => a.Scheme == "agent" && a.Id == StrictAgentId),
                 Arg.Any<CancellationToken>())
             .Returns(entry);
 
@@ -391,11 +400,11 @@ public class MessageEndpointsTests : IClassFixture<CustomWebApplicationFactory>
                 "Unknown message type: Amendment"));
         _factory.AgentProxyResolver
             .Resolve(Arg.Is<string>(s => string.Equals(s, "agent", StringComparison.OrdinalIgnoreCase)),
-                "actor-strict")
+                StrictAgentId.ToString("N"))
             .Returns(agent);
 
         var request = new SendMessageRequest(
-            new AddressDto("agent", "strict-agent"),
+            new AddressDto("agent", StrictAgentId.ToString("N")),
             "Amendment",
             "conv-x",
             JsonSerializer.SerializeToElement(new { }));
@@ -420,14 +429,14 @@ public class MessageEndpointsTests : IClassFixture<CustomWebApplicationFactory>
         var ct = TestContext.Current.CancellationToken;
 
         var entry = new DirectoryEntry(
-            Address.For("agent", "remoted-agent"),
-            "actor-remoted",
+            new Address("agent", RemotedAgentId),
+            RemotedAgentId,
             "Remoted Agent",
             "A test agent",
             null,
             DateTimeOffset.UtcNow);
         _factory.DirectoryService
-            .ResolveAsync(Arg.Is<Address>(a => a.Scheme == "agent" && a.Path == "remoted-agent"),
+            .ResolveAsync(Arg.Is<Address>(a => a.Scheme == "agent" && a.Id == RemotedAgentId),
                 Arg.Any<CancellationToken>())
             .Returns(entry);
 
@@ -440,11 +449,11 @@ public class MessageEndpointsTests : IClassFixture<CustomWebApplicationFactory>
             .Returns<Task<Message?>>(_ => throw new InvalidOperationException(encodedMessage));
         _factory.AgentProxyResolver
             .Resolve(Arg.Is<string>(s => string.Equals(s, "agent", StringComparison.OrdinalIgnoreCase)),
-                "actor-remoted")
+                RemotedAgentId.ToString("N"))
             .Returns(agent);
 
         var request = new SendMessageRequest(
-            new AddressDto("agent", "remoted-agent"),
+            new AddressDto("agent", RemotedAgentId.ToString("N")),
             "HealthCheck",
             null,
             JsonSerializer.SerializeToElement(new { }));
@@ -466,14 +475,14 @@ public class MessageEndpointsTests : IClassFixture<CustomWebApplicationFactory>
         var ct = TestContext.Current.CancellationToken;
 
         var entry = new DirectoryEntry(
-            Address.For("agent", "flaky-agent"),
-            "actor-flaky",
+            new Address("agent", FlakyAgentId),
+            FlakyAgentId,
             "Flaky Agent",
             "A test agent",
             null,
             DateTimeOffset.UtcNow);
         _factory.DirectoryService
-            .ResolveAsync(Arg.Is<Address>(a => a.Scheme == "agent" && a.Path == "flaky-agent"),
+            .ResolveAsync(Arg.Is<Address>(a => a.Scheme == "agent" && a.Id == FlakyAgentId),
                 Arg.Any<CancellationToken>())
             .Returns(entry);
 
@@ -482,11 +491,11 @@ public class MessageEndpointsTests : IClassFixture<CustomWebApplicationFactory>
             .Returns<Task<Message?>>(_ => throw new InvalidOperationException("Database unavailable"));
         _factory.AgentProxyResolver
             .Resolve(Arg.Is<string>(s => string.Equals(s, "agent", StringComparison.OrdinalIgnoreCase)),
-                "actor-flaky")
+                FlakyAgentId.ToString("N"))
             .Returns(agent);
 
         var request = new SendMessageRequest(
-            new AddressDto("agent", "flaky-agent"),
+            new AddressDto("agent", FlakyAgentId.ToString("N")),
             "HealthCheck",
             null,
             JsonSerializer.SerializeToElement(new { }));
