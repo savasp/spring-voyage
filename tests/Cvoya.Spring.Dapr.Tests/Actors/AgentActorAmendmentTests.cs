@@ -42,8 +42,9 @@ public class AgentActorAmendmentTests
     // Use stable UUIDs as actor IDs so the UUID-keyed membership repo resolves correctly.
     private static readonly Guid AgentActorUuid = new("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
     private static readonly Guid UnitActorUuid = new("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
-    private const string AgentId = "ada";             // slug / address path
-    private const string UnitId = "engineering";      // slug / address path
+    // Address paths are the no-dash hex form of the actor UUIDs (post #1629).
+    private static readonly string AgentId = AgentActorUuid.ToString("N");
+    private static readonly string UnitId = UnitActorUuid.ToString("N");
 
     private readonly IActorStateManager _stateManager = Substitute.For<IActorStateManager>();
     private readonly IActivityEventBus _activityEventBus = Substitute.For<IActivityEventBus>();
@@ -66,12 +67,12 @@ public class AgentActorAmendmentTests
             Substitute.For<IPermissionService>(),
             loggerFactory);
 
-        // Wire directory service: unit slug → UUID entry.
+        // Wire directory service: unit address → its directory entry.
         _directoryService
-            .ResolveAsync(Arg.Is<Address>(a => a.Scheme == "unit" && a.Path == UnitId), Arg.Any<CancellationToken>())
+            .ResolveAsync(Arg.Is<Address>(a => a.Scheme == "unit" && a.Id == UnitActorUuid), Arg.Any<CancellationToken>())
             .Returns(new DirectoryEntry(
-                new Address("unit", UnitId),
-                UnitActorUuid.ToString(),
+                new Address("unit", UnitActorUuid),
+                UnitActorUuid,
                 UnitId,
                 string.Empty,
                 null,
@@ -146,7 +147,7 @@ public class AgentActorAmendmentTests
         return new Message(
             Guid.NewGuid(),
             from,
-            new Address("agent", AgentId),
+            new Address("agent", AgentActorUuid),
             MessageType.Amendment,
             threadId,
             payload,
@@ -159,7 +160,7 @@ public class AgentActorAmendmentTests
         _membershipRepository.GetAsync(UnitActorUuid, AgentActorUuid, Arg.Any<CancellationToken>())
             .Returns(new UnitMembership(UnitActorUuid, AgentActorUuid));
 
-        var message = CreateAmendment(new Address("unit", UnitId));
+        var message = CreateAmendment(new Address("unit", UnitActorUuid));
         await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
 
         await _stateManager.Received().SetStateAsync(
@@ -177,7 +178,7 @@ public class AgentActorAmendmentTests
         _membershipRepository.GetAsync(UnitActorUuid, AgentActorUuid, Arg.Any<CancellationToken>())
             .Returns((UnitMembership?)null);
 
-        var message = CreateAmendment(new Address("unit", UnitId));
+        var message = CreateAmendment(new Address("unit", UnitActorUuid));
         await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
 
         await _stateManager.DidNotReceive().SetStateAsync(
@@ -193,7 +194,7 @@ public class AgentActorAmendmentTests
     public async Task Amendment_FromSelf_Accepted()
     {
         // The actor's ID is the UUID, so self-amendments come from the UUID-based address.
-        var message = CreateAmendment(new Address("agent", AgentActorUuid.ToString()));
+        var message = CreateAmendment(new Address("agent", AgentActorUuid));
         await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
 
         await _stateManager.Received().SetStateAsync(
@@ -226,7 +227,7 @@ public class AgentActorAmendmentTests
         _membershipRepository.GetAsync(UnitActorUuid, AgentActorUuid, Arg.Any<CancellationToken>())
             .Returns(new UnitMembership(UnitActorUuid, AgentActorUuid, Enabled: false));
 
-        var message = CreateAmendment(new Address("unit", UnitId));
+        var message = CreateAmendment(new Address("unit", UnitActorUuid));
         await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
 
         await _stateManager.DidNotReceive().SetStateAsync(
@@ -243,8 +244,8 @@ public class AgentActorAmendmentTests
     {
         var message = new Message(
             Guid.NewGuid(),
-            new Address("agent", AgentId),
-            new Address("agent", AgentId),
+            new Address("agent", AgentActorUuid),
+            new Address("agent", AgentActorUuid),
             MessageType.Amendment,
             "conv-live",
             JsonSerializer.SerializeToElement(new { not = "an amendment" }),
@@ -264,7 +265,7 @@ public class AgentActorAmendmentTests
     [Fact]
     public async Task Amendment_StopAndWaitPriority_SetsPausedFlag()
     {
-        var message = CreateAmendment(new Address("agent", AgentActorUuid.ToString()),
+        var message = CreateAmendment(new Address("agent", AgentActorUuid),
             priority: AmendmentPriority.StopAndWait);
 
         await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
@@ -278,7 +279,7 @@ public class AgentActorAmendmentTests
     [Fact]
     public async Task Amendment_InformationalPriority_DoesNotPause()
     {
-        var message = CreateAmendment(new Address("agent", AgentId),
+        var message = CreateAmendment(new Address("agent", AgentActorUuid),
             priority: AmendmentPriority.Informational);
 
         await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
@@ -294,7 +295,7 @@ public class AgentActorAmendmentTests
     {
         var existing = new PendingAmendment(
             Guid.NewGuid(),
-            new Address("agent", AgentId),
+            new Address("agent", AgentActorUuid),
             "prior",
             AmendmentPriority.Informational,
             null,
@@ -303,7 +304,7 @@ public class AgentActorAmendmentTests
         _stateManager.TryGetStateAsync<List<PendingAmendment>>(StateKeys.AgentPendingAmendments, Arg.Any<CancellationToken>())
             .Returns(new ConditionalValue<List<PendingAmendment>>(true, [existing]));
 
-        var message = CreateAmendment(new Address("agent", AgentActorUuid.ToString()), text: "new one");
+        var message = CreateAmendment(new Address("agent", AgentActorUuid), text: "new one");
         await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
 
         await _stateManager.Received().SetStateAsync(

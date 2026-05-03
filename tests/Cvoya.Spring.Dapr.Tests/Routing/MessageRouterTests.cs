@@ -6,6 +6,7 @@ namespace Cvoya.Spring.Dapr.Tests.Routing;
 using System.Text.Json;
 
 using Cvoya.Spring.Core.Directory;
+using Cvoya.Spring.Core.Identifiers;
 using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Dapr.Actors;
 using Cvoya.Spring.Dapr.Auth;
@@ -22,9 +23,22 @@ using Xunit;
 
 /// <summary>
 /// Unit tests for <see cref="MessageRouter"/>.
+///
+/// Post #1629: every Address path is a no-dash 32-hex Guid; tests use named
+/// Guid constants for the actor identities.
 /// </summary>
 public class MessageRouterTests
 {
+    private static readonly Guid AdaId = new("aaaaaaaa-0000-0000-0000-000000000001");
+    private static readonly Guid BobId = new("aaaaaaaa-0000-0000-0000-000000000002");
+    private static readonly Guid SenderId = new("aaaaaaaa-0000-0000-0000-000000000003");
+    private static readonly Guid UnitOneId = new("bbbbbbbb-0000-0000-0000-000000000001");
+    private static readonly Guid HumanLocalId = new("cccccccc-0000-0000-0000-000000000001");
+    private static readonly Guid HumanAuthorisedId = new("cccccccc-0000-0000-0000-000000000002");
+    private static readonly Guid HumanUnauthorisedId = new("cccccccc-0000-0000-0000-000000000003");
+
+    private static string Hex(Guid g) => g.ToString("N");
+
     private readonly IDirectoryService _directoryService = Substitute.For<IDirectoryService>();
     private readonly IAgentProxyResolver _agentProxyResolver = Substitute.For<IAgentProxyResolver>();
     private readonly IPermissionService _permissionService = Substitute.For<IPermissionService>();
@@ -42,8 +56,8 @@ public class MessageRouterTests
     public async Task RouteAsync_path_address_resolves_and_delivers_message()
     {
         var ct = TestContext.Current.CancellationToken;
-        var destination = Address.For("agent", "engineering-team/ada");
-        var entry = new DirectoryEntry(destination, "actor-ada", "Ada", "Engineer", null, DateTimeOffset.UtcNow);
+        var destination = new Address("agent", AdaId);
+        var entry = new DirectoryEntry(destination, AdaId, "Ada", "Engineer", null, DateTimeOffset.UtcNow);
         var message = CreateMessage(destination);
         var expectedResponse = CreateResponse(message);
 
@@ -54,43 +68,19 @@ public class MessageRouterTests
         actorProxy.ReceiveAsync(message, Arg.Any<CancellationToken>())
             .Returns(expectedResponse);
 
-        _agentProxyResolver.Resolve("agent", "actor-ada").Returns(actorProxy);
+        _agentProxyResolver.Resolve("agent", Hex(AdaId)).Returns(actorProxy);
 
         var result = await _router.RouteAsync(message, ct);
 
         result.IsSuccess.ShouldBeTrue();
         result.Value.ShouldBe(expectedResponse);
-    }
-
-    [Fact]
-    public async Task RouteAsync_direct_uuid_address_resolves_without_directory_lookup()
-    {
-        var ct = TestContext.Current.CancellationToken;
-        var uuid = Guid.NewGuid().ToString();
-        var destination = new Address("agent", $"@{uuid}");
-        var message = CreateMessage(destination);
-        var expectedResponse = CreateResponse(message);
-
-        var actorProxy = Substitute.For<IAgent>();
-        actorProxy.ReceiveAsync(message, Arg.Any<CancellationToken>())
-            .Returns(expectedResponse);
-
-        _agentProxyResolver.Resolve("agent", uuid).Returns(actorProxy);
-
-        var result = await _router.RouteAsync(message, ct);
-
-        result.IsSuccess.ShouldBeTrue();
-        result.Value.ShouldBe(expectedResponse);
-
-        // Directory service should NOT have been called.
-        await _directoryService.DidNotReceive().ResolveAsync(Arg.Any<Address>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
     public async Task RouteAsync_unknown_address_returns_AddressNotFound()
     {
         var ct = TestContext.Current.CancellationToken;
-        var destination = Address.For("agent", "nonexistent/agent");
+        var destination = new Address("agent", Guid.NewGuid());
         var message = CreateMessage(destination);
 
         _directoryService.ResolveAsync(destination, Arg.Any<CancellationToken>())
@@ -106,15 +96,15 @@ public class MessageRouterTests
     public async Task RouteAsync_multicast_role_address_fans_out_to_multiple_actors()
     {
         var ct = TestContext.Current.CancellationToken;
-        var roleAddress = Address.For("role", "backend-engineer");
+        var roleAddress = new Address("role", Guid.NewGuid()); // Role address: scheme triggers multicast.
         var message = CreateMessage(roleAddress);
 
         var entry1 = new DirectoryEntry(
-            Address.For("agent", "team/ada"), "actor-1", "Ada", "Engineer", "backend-engineer", DateTimeOffset.UtcNow);
+            new Address("agent", AdaId), AdaId, "Ada", "Engineer", "backend-engineer", DateTimeOffset.UtcNow);
         var entry2 = new DirectoryEntry(
-            Address.For("agent", "team/bob"), "actor-2", "Bob", "Engineer", "backend-engineer", DateTimeOffset.UtcNow);
+            new Address("agent", BobId), BobId, "Bob", "Engineer", "backend-engineer", DateTimeOffset.UtcNow);
 
-        _directoryService.ResolveByRoleAsync("backend-engineer", Arg.Any<CancellationToken>())
+        _directoryService.ResolveByRoleAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns([entry1, entry2]);
 
         var proxy1 = Substitute.For<IAgent>();
@@ -125,8 +115,8 @@ public class MessageRouterTests
         proxy2.ReceiveAsync(message, Arg.Any<CancellationToken>())
             .Returns(CreateResponse(message, "response-2"));
 
-        _agentProxyResolver.Resolve("agent", "actor-1").Returns(proxy1);
-        _agentProxyResolver.Resolve("agent", "actor-2").Returns(proxy2);
+        _agentProxyResolver.Resolve("agent", Hex(AdaId)).Returns(proxy1);
+        _agentProxyResolver.Resolve("agent", Hex(BobId)).Returns(proxy2);
 
         var result = await _router.RouteAsync(message, ct);
 
@@ -138,8 +128,8 @@ public class MessageRouterTests
     public async Task RouteAsync_delivery_failure_returns_DeliveryFailed()
     {
         var ct = TestContext.Current.CancellationToken;
-        var destination = Address.For("agent", "engineering-team/ada");
-        var entry = new DirectoryEntry(destination, "actor-ada", "Ada", "Engineer", null, DateTimeOffset.UtcNow);
+        var destination = new Address("agent", AdaId);
+        var entry = new DirectoryEntry(destination, AdaId, "Ada", "Engineer", null, DateTimeOffset.UtcNow);
         var message = CreateMessage(destination);
 
         _directoryService.ResolveAsync(destination, Arg.Any<CancellationToken>())
@@ -149,7 +139,7 @@ public class MessageRouterTests
         actorProxy.ReceiveAsync(Arg.Any<Message>(), Arg.Any<CancellationToken>())
             .Throws(new InvalidOperationException("Actor unavailable"));
 
-        _agentProxyResolver.Resolve("agent", "actor-ada").Returns(actorProxy);
+        _agentProxyResolver.Resolve("agent", Hex(AdaId)).Returns(actorProxy);
 
         var result = await _router.RouteAsync(message, ct);
 
@@ -157,19 +147,12 @@ public class MessageRouterTests
         result.Error!.Code.ShouldBe("DELIVERY_FAILED");
     }
 
-    // #993: caller-side validation failures thrown by the destination actor
-    // should be classified as CALLER_VALIDATION (→ HTTP 400) rather than
-    // DELIVERY_FAILED (→ HTTP 502), so operators can tell bad request shape
-    // apart from genuine downstream/infra failures. The router catches both
-    // the direct exception type (in-process / test path) and the encoded
-    // message form that survives Dapr actor-remoting.
-
     [Fact]
     public async Task RouteAsync_caller_validation_exception_returns_CallerValidation()
     {
         var ct = TestContext.Current.CancellationToken;
-        var destination = Address.For("agent", "engineering-team/ada");
-        var entry = new DirectoryEntry(destination, "actor-ada", "Ada", "Engineer", null, DateTimeOffset.UtcNow);
+        var destination = new Address("agent", AdaId);
+        var entry = new DirectoryEntry(destination, AdaId, "Ada", "Engineer", null, DateTimeOffset.UtcNow);
         var message = CreateMessage(destination);
 
         _directoryService.ResolveAsync(destination, Arg.Any<CancellationToken>())
@@ -181,7 +164,7 @@ public class MessageRouterTests
                 CallerValidationCodes.MissingThreadId,
                 "Domain messages must have a ThreadId"));
 
-        _agentProxyResolver.Resolve("agent", "actor-ada").Returns(actorProxy);
+        _agentProxyResolver.Resolve("agent", Hex(AdaId)).Returns(actorProxy);
 
         var result = await _router.RouteAsync(message, ct);
 
@@ -195,15 +178,13 @@ public class MessageRouterTests
     public async Task RouteAsync_caller_validation_encoded_in_message_survives_remoting()
     {
         var ct = TestContext.Current.CancellationToken;
-        var destination = Address.For("agent", "engineering-team/ada");
-        var entry = new DirectoryEntry(destination, "actor-ada", "Ada", "Engineer", null, DateTimeOffset.UtcNow);
+        var destination = new Address("agent", AdaId);
+        var entry = new DirectoryEntry(destination, AdaId, "Ada", "Engineer", null, DateTimeOffset.UtcNow);
         var message = CreateMessage(destination);
 
         _directoryService.ResolveAsync(destination, Arg.Any<CancellationToken>())
             .Returns(entry);
 
-        // Simulate the Dapr remoting hop: the custom exception type is gone
-        // but the encoded message survives.
         var encodedMessage = new CallerValidationException(
             CallerValidationCodes.UnknownMessageType,
             "Unknown message type: Amendment").Message;
@@ -212,7 +193,7 @@ public class MessageRouterTests
         actorProxy.ReceiveAsync(Arg.Any<Message>(), Arg.Any<CancellationToken>())
             .Throws(new InvalidOperationException(encodedMessage));
 
-        _agentProxyResolver.Resolve("agent", "actor-ada").Returns(actorProxy);
+        _agentProxyResolver.Resolve("agent", Hex(AdaId)).Returns(actorProxy);
 
         var result = await _router.RouteAsync(message, ct);
 
@@ -228,19 +209,19 @@ public class MessageRouterTests
     public async Task RouteAsync_HumanToUnitWithPermission_Succeeds()
     {
         var ct = TestContext.Current.CancellationToken;
-        var destination = Address.For("unit", "engineering-team");
-        var entry = new DirectoryEntry(destination, "unit-1", "Engineering", "Team", null, DateTimeOffset.UtcNow);
-        var message = CreateMessageFromHuman(destination, "human-1");
+        var destination = new Address("unit", UnitOneId);
+        var entry = new DirectoryEntry(destination, UnitOneId, "Engineering", "Team", null, DateTimeOffset.UtcNow);
+        var message = CreateMessageFromHuman(destination, HumanAuthorisedId);
         var expectedResponse = CreateResponse(message);
 
         _directoryService.ResolveAsync(destination, Arg.Any<CancellationToken>()).Returns(entry);
-        _permissionService.ResolveEffectivePermissionAsync("human-1", "unit-1", Arg.Any<CancellationToken>())
+        _permissionService.ResolveEffectivePermissionAsync(Hex(HumanAuthorisedId), Hex(UnitOneId), Arg.Any<CancellationToken>())
             .Returns(PermissionLevel.Operator);
 
         var unitProxy = Substitute.For<IAgent>();
         unitProxy.ReceiveAsync(Arg.Any<Message>(), Arg.Any<CancellationToken>()).Returns(expectedResponse);
 
-        _agentProxyResolver.Resolve("unit", "unit-1").Returns(unitProxy);
+        _agentProxyResolver.Resolve("unit", Hex(UnitOneId)).Returns(unitProxy);
 
         var result = await _router.RouteAsync(message, ct);
 
@@ -251,12 +232,12 @@ public class MessageRouterTests
     public async Task RouteAsync_HumanToUnitWithoutPermission_ReturnsPermissionDenied()
     {
         var ct = TestContext.Current.CancellationToken;
-        var destination = Address.For("unit", "engineering-team");
-        var entry = new DirectoryEntry(destination, "unit-1", "Engineering", "Team", null, DateTimeOffset.UtcNow);
-        var message = CreateMessageFromHuman(destination, "unauthorized-human");
+        var destination = new Address("unit", UnitOneId);
+        var entry = new DirectoryEntry(destination, UnitOneId, "Engineering", "Team", null, DateTimeOffset.UtcNow);
+        var message = CreateMessageFromHuman(destination, HumanUnauthorisedId);
 
         _directoryService.ResolveAsync(destination, Arg.Any<CancellationToken>()).Returns(entry);
-        _permissionService.ResolveEffectivePermissionAsync("unauthorized-human", "unit-1", Arg.Any<CancellationToken>())
+        _permissionService.ResolveEffectivePermissionAsync(Hex(HumanUnauthorisedId), Hex(UnitOneId), Arg.Any<CancellationToken>())
             .Returns((PermissionLevel?)null);
 
         var result = await _router.RouteAsync(message, ct);
@@ -266,17 +247,12 @@ public class MessageRouterTests
     }
 
     // #1037: human:// addresses must resolve directly to their actor id
-    // without a directory lookup. The platform has no general flow that
-    // registers humans in the directory; insisting on a directory hit broke
-    // the LocalDev scenario where the worker tried to route an agent's
-    // response back to human://local-dev-user. Humans are 1:1 with their
-    // address so the directory adds no routing value here.
-
+    // without a directory lookup.
     [Fact]
     public async Task RouteAsync_HumanDestination_BypassesDirectoryAndDelivers()
     {
         var ct = TestContext.Current.CancellationToken;
-        var destination = Address.For("human", "local-dev-user");
+        var destination = new Address("human", HumanLocalId);
         var message = CreateMessage(destination);
         var expectedResponse = CreateResponse(message);
 
@@ -288,7 +264,7 @@ public class MessageRouterTests
         humanProxy.ReceiveAsync(message, Arg.Any<CancellationToken>())
             .Returns(expectedResponse);
 
-        _agentProxyResolver.Resolve("human", "local-dev-user").Returns(humanProxy);
+        _agentProxyResolver.Resolve("human", Hex(HumanLocalId)).Returns(humanProxy);
 
         var result = await _router.RouteAsync(message, ct);
 
@@ -300,28 +276,11 @@ public class MessageRouterTests
     }
 
     [Fact]
-    public async Task RouteAsync_HumanDestinationEmptyPath_FailsWithAddressNotFound()
-    {
-        var ct = TestContext.Current.CancellationToken;
-        var destination = new Address("human", string.Empty);
-        var message = CreateMessage(destination);
-
-        var result = await _router.RouteAsync(message, ct);
-
-        result.IsSuccess.ShouldBeFalse();
-        result.Error!.Code.ShouldBe("ADDRESS_NOT_FOUND");
-
-        // Directory service should not have been called either — the empty
-        // path is rejected before any lookup.
-        await _directoryService.DidNotReceive().ResolveAsync(Arg.Any<Address>(), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
     public async Task RouteAsync_AgentToUnit_SkipsPermissionCheck()
     {
         var ct = TestContext.Current.CancellationToken;
-        var destination = Address.For("unit", "engineering-team");
-        var entry = new DirectoryEntry(destination, "unit-1", "Engineering", "Team", null, DateTimeOffset.UtcNow);
+        var destination = new Address("unit", UnitOneId);
+        var entry = new DirectoryEntry(destination, UnitOneId, "Engineering", "Team", null, DateTimeOffset.UtcNow);
         var message = CreateMessage(destination); // From agent, not human
         var expectedResponse = CreateResponse(message);
 
@@ -330,7 +289,7 @@ public class MessageRouterTests
         var unitProxy = Substitute.For<IAgent>();
         unitProxy.ReceiveAsync(Arg.Any<Message>(), Arg.Any<CancellationToken>()).Returns(expectedResponse);
 
-        _agentProxyResolver.Resolve("unit", "unit-1").Returns(unitProxy);
+        _agentProxyResolver.Resolve("unit", Hex(UnitOneId)).Returns(unitProxy);
 
         var result = await _router.RouteAsync(message, ct);
 
@@ -340,7 +299,7 @@ public class MessageRouterTests
             Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
-    private static Message CreateMessageFromHuman(Address to, string humanId) =>
+    private static Message CreateMessageFromHuman(Address to, Guid humanId) =>
         new(
             Guid.NewGuid(),
             new Address("human", humanId),
@@ -353,7 +312,7 @@ public class MessageRouterTests
     private static Message CreateMessage(Address to) =>
         new(
             Guid.NewGuid(),
-            Address.For("agent", "test-sender"),
+            new Address("agent", SenderId),
             to,
             MessageType.Domain,
             Guid.NewGuid().ToString(),
