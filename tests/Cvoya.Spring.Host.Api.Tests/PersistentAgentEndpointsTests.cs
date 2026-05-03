@@ -64,7 +64,7 @@ public class PersistentAgentEndpointsTests : IClassFixture<CustomWebApplicationF
         _factory.DirectoryService
             .ResolveAsync(Arg.Is<Address>(a => a.Path == "idle"), Arg.Any<CancellationToken>())
             .Returns(new DirectoryEntry(
-                new Address("agent", "idle"),
+                Address.For("agent", "idle"),
                 "actor-1",
                 "Idle",
                 "",
@@ -89,7 +89,7 @@ public class PersistentAgentEndpointsTests : IClassFixture<CustomWebApplicationF
         _factory.DirectoryService
             .ResolveAsync(Arg.Is<Address>(a => a.Path == "a"), Arg.Any<CancellationToken>())
             .Returns(new DirectoryEntry(
-                new Address("agent", "a"),
+                Address.For("agent", "a"),
                 "actor-1",
                 "A",
                 "",
@@ -111,7 +111,7 @@ public class PersistentAgentEndpointsTests : IClassFixture<CustomWebApplicationF
         _factory.DirectoryService
             .ResolveAsync(Arg.Is<Address>(a => a.Path == "a"), Arg.Any<CancellationToken>())
             .Returns(new DirectoryEntry(
-                new Address("agent", "a"),
+                Address.For("agent", "a"),
                 "actor-1",
                 "A",
                 "",
@@ -136,7 +136,7 @@ public class PersistentAgentEndpointsTests : IClassFixture<CustomWebApplicationF
         _factory.DirectoryService
             .ResolveAsync(Arg.Is<Address>(a => a.Path == "a"), Arg.Any<CancellationToken>())
             .Returns(new DirectoryEntry(
-                new Address("agent", "a"),
+                Address.For("agent", "a"),
                 "actor-1",
                 "A",
                 "",

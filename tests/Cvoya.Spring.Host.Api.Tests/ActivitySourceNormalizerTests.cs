@@ -29,9 +29,9 @@ public class ActivitySourceNormalizerTests
     public async Task NormalizeQuerySourceAsync_UnitSlug_ResolvesToActorId()
     {
         var directoryService = Substitute.For<IDirectoryService>();
-        directoryService.ResolveAsync(new Address("unit", "portal-scratch-1"), Arg.Any<CancellationToken>())
+        directoryService.ResolveAsync(Address.For("unit", "portal-scratch-1"), Arg.Any<CancellationToken>())
             .Returns(new DirectoryEntry(
-                new Address("unit", "portal-scratch-1"),
+                Address.For("unit", "portal-scratch-1"),
                 UnitActorId,
                 "Portal Scratch 1",
                 string.Empty,
@@ -48,9 +48,9 @@ public class ActivitySourceNormalizerTests
     public async Task NormalizeQuerySourceAsync_AgentSlug_ResolvesToActorId()
     {
         var directoryService = Substitute.For<IDirectoryService>();
-        directoryService.ResolveAsync(new Address("agent", "ada"), Arg.Any<CancellationToken>())
+        directoryService.ResolveAsync(Address.For("agent", "ada"), Arg.Any<CancellationToken>())
             .Returns(new DirectoryEntry(
-                new Address("agent", "ada"),
+                Address.For("agent", "ada"),
                 AgentActorId,
                 "Ada",
                 string.Empty,
@@ -109,9 +109,9 @@ public class ActivitySourceNormalizerTests
         // `://` form. Accept both shapes on the REST surface so a future
         // client that sends `unit://slug` doesn't regress to empty.
         var directoryService = Substitute.For<IDirectoryService>();
-        directoryService.ResolveAsync(new Address("unit", "eng-team"), Arg.Any<CancellationToken>())
+        directoryService.ResolveAsync(Address.For("unit", "eng-team"), Arg.Any<CancellationToken>())
             .Returns(new DirectoryEntry(
-                new Address("unit", "eng-team"),
+                Address.For("unit", "eng-team"),
                 UnitActorId,
                 "Eng Team",
                 string.Empty,
@@ -165,9 +165,9 @@ public class ActivitySourceNormalizerTests
         // The SSE filter compares against `{scheme}://{path}` — the stream
         // shape needs the URL form, not the single-colon persisted shape.
         var directoryService = Substitute.For<IDirectoryService>();
-        directoryService.ResolveAsync(new Address("unit", "eng-team"), Arg.Any<CancellationToken>())
+        directoryService.ResolveAsync(Address.For("unit", "eng-team"), Arg.Any<CancellationToken>())
             .Returns(new DirectoryEntry(
-                new Address("unit", "eng-team"),
+                Address.For("unit", "eng-team"),
                 UnitActorId,
                 "Eng Team",
                 string.Empty,

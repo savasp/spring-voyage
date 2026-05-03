@@ -53,8 +53,8 @@ public class ConnectorActorTests
     {
         return new Message(
             Guid.NewGuid(),
-            new Address("agent", "test-sender"),
-            new Address("connector", "test-connector"),
+            Address.For("agent", "test-sender"),
+            Address.For("connector", "test-connector"),
             type,
             threadId ?? Guid.NewGuid().ToString(),
             payload ?? JsonSerializer.SerializeToElement(new { }),
@@ -89,8 +89,8 @@ public class ConnectorActorTests
 
         result.ShouldNotBeNull();
         result!.Type.ShouldBe(MessageType.StatusQuery);
-        result.From.ShouldBe(new Address("connector", "test-connector"));
-        result.To.ShouldBe(new Address("agent", "test-sender"));
+        result.From.ShouldBe(Address.For("connector", "test-connector"));
+        result.To.ShouldBe(Address.For("agent", "test-sender"));
 
         var payload = result.Payload.Deserialize<JsonElement>();
         payload.GetProperty("Status").GetString().ShouldBe("Connected");

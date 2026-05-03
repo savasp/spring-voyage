@@ -33,8 +33,8 @@ public class StateSerializationTests
             [
                 new Message(
                     Guid.Parse("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"),
-                    new Address("agent", "sender-1"),
-                    new Address("agent", "receiver-1"),
+                    Address.For("agent", "sender-1"),
+                    Address.For("agent", "receiver-1"),
                     MessageType.Domain,
                     "conv-123",
                     JsonSerializer.SerializeToElement(new { Task = "implement feature" }),
@@ -64,8 +64,8 @@ public class StateSerializationTests
     {
         var original = new Message(
             Guid.Parse("11111111-2222-3333-4444-555555555555"),
-            new Address("unit", "engineering/backend"),
-            new Address("agent", "ada"),
+            Address.For("unit", "engineering/backend"),
+            Address.For("agent", "ada"),
             MessageType.StatusQuery,
             "conv-456",
             JsonSerializer.SerializeToElement(new { Status = "Active", Items = new[] { 1, 2, 3 } }),
@@ -87,7 +87,7 @@ public class StateSerializationTests
     [Fact]
     public void Address_RoundTrip_PreservesSchemeAndPath()
     {
-        var original = new Address("connector", "github/spring-voyage");
+        var original = Address.For("connector", "github/spring-voyage");
 
         var json = JsonSerializer.Serialize(original, Options);
         var deserialized = JsonSerializer.Deserialize<Address>(json, Options);
@@ -102,8 +102,8 @@ public class StateSerializationTests
     {
         var original = new Message(
             Guid.NewGuid(),
-            new Address("agent", "sender"),
-            new Address("agent", "receiver"),
+            Address.For("agent", "sender"),
+            Address.For("agent", "receiver"),
             MessageType.HealthCheck,
             null,
             JsonSerializer.SerializeToElement(new { Healthy = true }),

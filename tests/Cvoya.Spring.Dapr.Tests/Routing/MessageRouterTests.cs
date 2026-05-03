@@ -42,7 +42,7 @@ public class MessageRouterTests
     public async Task RouteAsync_path_address_resolves_and_delivers_message()
     {
         var ct = TestContext.Current.CancellationToken;
-        var destination = new Address("agent", "engineering-team/ada");
+        var destination = Address.For("agent", "engineering-team/ada");
         var entry = new DirectoryEntry(destination, "actor-ada", "Ada", "Engineer", null, DateTimeOffset.UtcNow);
         var message = CreateMessage(destination);
         var expectedResponse = CreateResponse(message);
@@ -90,7 +90,7 @@ public class MessageRouterTests
     public async Task RouteAsync_unknown_address_returns_AddressNotFound()
     {
         var ct = TestContext.Current.CancellationToken;
-        var destination = new Address("agent", "nonexistent/agent");
+        var destination = Address.For("agent", "nonexistent/agent");
         var message = CreateMessage(destination);
 
         _directoryService.ResolveAsync(destination, Arg.Any<CancellationToken>())
@@ -106,13 +106,13 @@ public class MessageRouterTests
     public async Task RouteAsync_multicast_role_address_fans_out_to_multiple_actors()
     {
         var ct = TestContext.Current.CancellationToken;
-        var roleAddress = new Address("role", "backend-engineer");
+        var roleAddress = Address.For("role", "backend-engineer");
         var message = CreateMessage(roleAddress);
 
         var entry1 = new DirectoryEntry(
-            new Address("agent", "team/ada"), "actor-1", "Ada", "Engineer", "backend-engineer", DateTimeOffset.UtcNow);
+            Address.For("agent", "team/ada"), "actor-1", "Ada", "Engineer", "backend-engineer", DateTimeOffset.UtcNow);
         var entry2 = new DirectoryEntry(
-            new Address("agent", "team/bob"), "actor-2", "Bob", "Engineer", "backend-engineer", DateTimeOffset.UtcNow);
+            Address.For("agent", "team/bob"), "actor-2", "Bob", "Engineer", "backend-engineer", DateTimeOffset.UtcNow);
 
         _directoryService.ResolveByRoleAsync("backend-engineer", Arg.Any<CancellationToken>())
             .Returns([entry1, entry2]);
@@ -138,7 +138,7 @@ public class MessageRouterTests
     public async Task RouteAsync_delivery_failure_returns_DeliveryFailed()
     {
         var ct = TestContext.Current.CancellationToken;
-        var destination = new Address("agent", "engineering-team/ada");
+        var destination = Address.For("agent", "engineering-team/ada");
         var entry = new DirectoryEntry(destination, "actor-ada", "Ada", "Engineer", null, DateTimeOffset.UtcNow);
         var message = CreateMessage(destination);
 
@@ -168,7 +168,7 @@ public class MessageRouterTests
     public async Task RouteAsync_caller_validation_exception_returns_CallerValidation()
     {
         var ct = TestContext.Current.CancellationToken;
-        var destination = new Address("agent", "engineering-team/ada");
+        var destination = Address.For("agent", "engineering-team/ada");
         var entry = new DirectoryEntry(destination, "actor-ada", "Ada", "Engineer", null, DateTimeOffset.UtcNow);
         var message = CreateMessage(destination);
 
@@ -195,7 +195,7 @@ public class MessageRouterTests
     public async Task RouteAsync_caller_validation_encoded_in_message_survives_remoting()
     {
         var ct = TestContext.Current.CancellationToken;
-        var destination = new Address("agent", "engineering-team/ada");
+        var destination = Address.For("agent", "engineering-team/ada");
         var entry = new DirectoryEntry(destination, "actor-ada", "Ada", "Engineer", null, DateTimeOffset.UtcNow);
         var message = CreateMessage(destination);
 
@@ -228,7 +228,7 @@ public class MessageRouterTests
     public async Task RouteAsync_HumanToUnitWithPermission_Succeeds()
     {
         var ct = TestContext.Current.CancellationToken;
-        var destination = new Address("unit", "engineering-team");
+        var destination = Address.For("unit", "engineering-team");
         var entry = new DirectoryEntry(destination, "unit-1", "Engineering", "Team", null, DateTimeOffset.UtcNow);
         var message = CreateMessageFromHuman(destination, "human-1");
         var expectedResponse = CreateResponse(message);
@@ -251,7 +251,7 @@ public class MessageRouterTests
     public async Task RouteAsync_HumanToUnitWithoutPermission_ReturnsPermissionDenied()
     {
         var ct = TestContext.Current.CancellationToken;
-        var destination = new Address("unit", "engineering-team");
+        var destination = Address.For("unit", "engineering-team");
         var entry = new DirectoryEntry(destination, "unit-1", "Engineering", "Team", null, DateTimeOffset.UtcNow);
         var message = CreateMessageFromHuman(destination, "unauthorized-human");
 
@@ -276,7 +276,7 @@ public class MessageRouterTests
     public async Task RouteAsync_HumanDestination_BypassesDirectoryAndDelivers()
     {
         var ct = TestContext.Current.CancellationToken;
-        var destination = new Address("human", "local-dev-user");
+        var destination = Address.For("human", "local-dev-user");
         var message = CreateMessage(destination);
         var expectedResponse = CreateResponse(message);
 
@@ -320,7 +320,7 @@ public class MessageRouterTests
     public async Task RouteAsync_AgentToUnit_SkipsPermissionCheck()
     {
         var ct = TestContext.Current.CancellationToken;
-        var destination = new Address("unit", "engineering-team");
+        var destination = Address.For("unit", "engineering-team");
         var entry = new DirectoryEntry(destination, "unit-1", "Engineering", "Team", null, DateTimeOffset.UtcNow);
         var message = CreateMessage(destination); // From agent, not human
         var expectedResponse = CreateResponse(message);
@@ -353,7 +353,7 @@ public class MessageRouterTests
     private static Message CreateMessage(Address to) =>
         new(
             Guid.NewGuid(),
-            new Address("agent", "test-sender"),
+            Address.For("agent", "test-sender"),
             to,
             MessageType.Domain,
             Guid.NewGuid().ToString(),

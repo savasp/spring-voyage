@@ -44,9 +44,9 @@ public class DashboardContractTests : IClassFixture<CustomWebApplicationFactory>
 
         var entries = new List<DirectoryEntry>
         {
-            new(new Address("unit", "contract-unit-dash"), "actor-dash-unit",
+            new(Address.For("unit", "contract-unit-dash"), "actor-dash-unit",
                 "Contract Unit", "A unit", null, now),
-            new(new Address("agent", "contract-agent-dash"), "actor-dash-agent",
+            new(Address.For("agent", "contract-agent-dash"), "actor-dash-agent",
                 "Contract Agent", "An agent", "backend", now),
         };
         _factory.DirectoryService.ListAllAsync(Arg.Any<CancellationToken>()).Returns(entries);
@@ -85,7 +85,7 @@ public class DashboardContractTests : IClassFixture<CustomWebApplicationFactory>
         _factory.DirectoryService.ListAllAsync(Arg.Any<CancellationToken>())
             .Returns(new List<DirectoryEntry>
             {
-                new(new Address("agent", "contract-agent-list"), "actor-agent-list",
+                new(Address.For("agent", "contract-agent-list"), "actor-agent-list",
                     "Contract Agent List", "An agent", "backend", now),
             });
 
@@ -106,7 +106,7 @@ public class DashboardContractTests : IClassFixture<CustomWebApplicationFactory>
         _factory.DirectoryService.ListAllAsync(Arg.Any<CancellationToken>())
             .Returns(new List<DirectoryEntry>
             {
-                new(new Address("unit", "contract-unit-list"), "actor-unit-list",
+                new(Address.For("unit", "contract-unit-list"), "actor-unit-list",
                     "Contract Unit List", "A unit", null, now),
             });
 

@@ -52,8 +52,8 @@ public class AgentEndpointsTests : IClassFixture<CustomWebApplicationFactory>
         var ct = TestContext.Current.CancellationToken;
         var entries = new List<DirectoryEntry>
         {
-            new(new Address("agent", "test-agent"), "actor-1", "Test Agent", "A test agent", "backend", DateTimeOffset.UtcNow),
-            new(new Address("unit", "test-unit"), "actor-2", "Test Unit", "A test unit", null, DateTimeOffset.UtcNow)
+            new(Address.For("agent", "test-agent"), "actor-1", "Test Agent", "A test agent", "backend", DateTimeOffset.UtcNow),
+            new(Address.For("unit", "test-unit"), "actor-2", "Test Unit", "A test unit", null, DateTimeOffset.UtcNow)
         };
         _factory.DirectoryService.ListAllAsync(Arg.Any<CancellationToken>()).Returns(entries);
 

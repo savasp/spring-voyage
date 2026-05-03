@@ -47,9 +47,9 @@ public class DashboardEndpointsTests : IClassFixture<CustomWebApplicationFactory
         // Two units (one Running, one Draft) and one agent.
         var entries = new List<DirectoryEntry>
         {
-            new(new Address("unit", "unit-1"), "actor-1", "Unit One", "First unit", null, DateTimeOffset.UtcNow),
-            new(new Address("unit", "unit-2"), "actor-2", "Unit Two", "Second unit", null, DateTimeOffset.UtcNow),
-            new(new Address("agent", "agent-1"), "actor-3", "Agent One", "An agent", "backend", DateTimeOffset.UtcNow),
+            new(Address.For("unit", "unit-1"), "actor-1", "Unit One", "First unit", null, DateTimeOffset.UtcNow),
+            new(Address.For("unit", "unit-2"), "actor-2", "Unit Two", "Second unit", null, DateTimeOffset.UtcNow),
+            new(Address.For("agent", "agent-1"), "actor-3", "Agent One", "An agent", "backend", DateTimeOffset.UtcNow),
         };
         _factory.DirectoryService.ListAllAsync(Arg.Any<CancellationToken>()).Returns(entries);
 
@@ -116,9 +116,9 @@ public class DashboardEndpointsTests : IClassFixture<CustomWebApplicationFactory
         var ct = TestContext.Current.CancellationToken;
         var entries = new List<DirectoryEntry>
         {
-            new(new Address("agent", "agent-1"), "actor-1", "Agent One", "First agent", "backend", DateTimeOffset.UtcNow),
-            new(new Address("unit", "unit-1"), "actor-2", "Unit One", "A unit", null, DateTimeOffset.UtcNow),
-            new(new Address("agent", "agent-2"), "actor-3", "Agent Two", "Second agent", "frontend", DateTimeOffset.UtcNow)
+            new(Address.For("agent", "agent-1"), "actor-1", "Agent One", "First agent", "backend", DateTimeOffset.UtcNow),
+            new(Address.For("unit", "unit-1"), "actor-2", "Unit One", "A unit", null, DateTimeOffset.UtcNow),
+            new(Address.For("agent", "agent-2"), "actor-3", "Agent Two", "Second agent", "frontend", DateTimeOffset.UtcNow)
         };
         _factory.DirectoryService.ListAllAsync(Arg.Any<CancellationToken>()).Returns(entries);
 
@@ -140,9 +140,9 @@ public class DashboardEndpointsTests : IClassFixture<CustomWebApplicationFactory
         var ct = TestContext.Current.CancellationToken;
         var entries = new List<DirectoryEntry>
         {
-            new(new Address("agent", "agent-1"), "actor-1", "Agent One", "An agent", "backend", DateTimeOffset.UtcNow),
-            new(new Address("unit", "unit-1"), "actor-2", "Unit One", "First unit", null, DateTimeOffset.UtcNow),
-            new(new Address("unit", "unit-2"), "actor-3", "Unit Two", "Second unit", null, DateTimeOffset.UtcNow)
+            new(Address.For("agent", "agent-1"), "actor-1", "Agent One", "An agent", "backend", DateTimeOffset.UtcNow),
+            new(Address.For("unit", "unit-1"), "actor-2", "Unit One", "First unit", null, DateTimeOffset.UtcNow),
+            new(Address.For("unit", "unit-2"), "actor-3", "Unit Two", "Second unit", null, DateTimeOffset.UtcNow)
         };
         _factory.DirectoryService.ListAllAsync(Arg.Any<CancellationToken>()).Returns(entries);
 

@@ -115,9 +115,9 @@ public class BoundaryFilteringExpertiseAggregatorTests
     public async Task GetAsync_Outside_OpacityRule_StripsMatchingEntries()
     {
         var aggregator = CreateAggregator();
-        var unit = new Address("unit", "eng");
-        var ada = new Address("agent", "ada");
-        var kay = new Address("agent", "kay");
+        var unit = Address.For("unit", "eng");
+        var ada = Address.For("agent", "ada");
+        var kay = Address.For("agent", "kay");
 
         RegisterUnit("eng", ada, kay);
         ArrangeExpertise(ada, new ExpertiseDomain("internal-secrets", "", ExpertiseLevel.Expert));
@@ -137,8 +137,8 @@ public class BoundaryFilteringExpertiseAggregatorTests
     public async Task GetAsync_Inside_OpacityRule_IsBypassed()
     {
         var aggregator = CreateAggregator();
-        var unit = new Address("unit", "eng");
-        var ada = new Address("agent", "ada");
+        var unit = Address.For("unit", "eng");
+        var ada = Address.For("agent", "ada");
 
         RegisterUnit("eng", ada);
         ArrangeExpertise(ada, new ExpertiseDomain("internal-secrets", "", ExpertiseLevel.Expert));
@@ -157,9 +157,9 @@ public class BoundaryFilteringExpertiseAggregatorTests
     public async Task GetAsync_Outside_OpacityByOrigin_StripsMatchingContributor()
     {
         var aggregator = CreateAggregator();
-        var unit = new Address("unit", "eng");
-        var ada = new Address("agent", "ada");
-        var kay = new Address("agent", "kay");
+        var unit = Address.For("unit", "eng");
+        var ada = Address.For("agent", "ada");
+        var kay = Address.For("agent", "kay");
 
         RegisterUnit("eng", ada, kay);
         ArrangeExpertise(ada, new ExpertiseDomain("python", "", ExpertiseLevel.Advanced));
@@ -182,8 +182,8 @@ public class BoundaryFilteringExpertiseAggregatorTests
     public async Task GetAsync_Outside_ProjectionRule_RenamesEntries()
     {
         var aggregator = CreateAggregator();
-        var unit = new Address("unit", "eng");
-        var ada = new Address("agent", "ada");
+        var unit = Address.For("unit", "eng");
+        var ada = Address.For("agent", "ada");
 
         RegisterUnit("eng", ada);
         ArrangeExpertise(ada, new ExpertiseDomain("python/fastapi", "internal name", ExpertiseLevel.Expert));
@@ -213,8 +213,8 @@ public class BoundaryFilteringExpertiseAggregatorTests
     public async Task GetAsync_Outside_ProjectionFirstMatchWins()
     {
         var aggregator = CreateAggregator();
-        var unit = new Address("unit", "eng");
-        var ada = new Address("agent", "ada");
+        var unit = Address.For("unit", "eng");
+        var ada = Address.For("agent", "ada");
 
         RegisterUnit("eng", ada);
         ArrangeExpertise(ada, new ExpertiseDomain("react", "", ExpertiseLevel.Advanced));
@@ -238,8 +238,8 @@ public class BoundaryFilteringExpertiseAggregatorTests
     public async Task GetAsync_Outside_OpacityTakesPrecedenceOverProjection()
     {
         var aggregator = CreateAggregator();
-        var unit = new Address("unit", "eng");
-        var ada = new Address("agent", "ada");
+        var unit = Address.For("unit", "eng");
+        var ada = Address.For("agent", "ada");
 
         RegisterUnit("eng", ada);
         ArrangeExpertise(ada, new ExpertiseDomain("secret-sauce", "", ExpertiseLevel.Expert));
@@ -264,10 +264,10 @@ public class BoundaryFilteringExpertiseAggregatorTests
     public async Task GetAsync_Outside_SynthesisCollapsesRawMembersIntoUnitAggregate()
     {
         var aggregator = CreateAggregator();
-        var unit = new Address("unit", "eng");
-        var a1 = new Address("agent", "a1");
-        var a2 = new Address("agent", "a2");
-        var a3 = new Address("agent", "a3");
+        var unit = Address.For("unit", "eng");
+        var a1 = Address.For("agent", "a1");
+        var a2 = Address.For("agent", "a2");
+        var a3 = Address.For("agent", "a3");
 
         RegisterUnit("eng", a1, a2, a3);
         ArrangeExpertise(a1, new ExpertiseDomain("react", "", ExpertiseLevel.Advanced));
@@ -301,8 +301,8 @@ public class BoundaryFilteringExpertiseAggregatorTests
     public async Task GetAsync_Outside_SynthesisWithNoMatches_IsDropped()
     {
         var aggregator = CreateAggregator();
-        var unit = new Address("unit", "eng");
-        var ada = new Address("agent", "ada");
+        var unit = Address.For("unit", "eng");
+        var ada = Address.For("agent", "ada");
 
         RegisterUnit("eng", ada);
         ArrangeExpertise(ada, new ExpertiseDomain("python", "", ExpertiseLevel.Expert));
@@ -327,9 +327,9 @@ public class BoundaryFilteringExpertiseAggregatorTests
     public async Task GetAsync_Outside_SynthesisExplicitLevelOverridesStrongestSeen()
     {
         var aggregator = CreateAggregator();
-        var unit = new Address("unit", "eng");
-        var a1 = new Address("agent", "a1");
-        var a2 = new Address("agent", "a2");
+        var unit = Address.For("unit", "eng");
+        var a1 = Address.For("agent", "a1");
+        var a2 = Address.For("agent", "a2");
 
         RegisterUnit("eng", a1, a2);
         ArrangeExpertise(a1, new ExpertiseDomain("react", "", ExpertiseLevel.Expert));
@@ -356,8 +356,8 @@ public class BoundaryFilteringExpertiseAggregatorTests
     public async Task GetAsync_Legacy_NoContext_ReturnsRawView()
     {
         var aggregator = CreateAggregator();
-        var unit = new Address("unit", "eng");
-        var ada = new Address("agent", "ada");
+        var unit = Address.For("unit", "eng");
+        var ada = Address.For("agent", "ada");
 
         RegisterUnit("eng", ada);
         ArrangeExpertise(ada, new ExpertiseDomain("internal-secrets", "", ExpertiseLevel.Expert));
@@ -378,8 +378,8 @@ public class BoundaryFilteringExpertiseAggregatorTests
     public async Task GetAsync_Outside_EmptyBoundary_PassesThrough()
     {
         var aggregator = CreateAggregator();
-        var unit = new Address("unit", "eng");
-        var ada = new Address("agent", "ada");
+        var unit = Address.For("unit", "eng");
+        var ada = Address.For("agent", "ada");
 
         RegisterUnit("eng", ada);
         ArrangeExpertise(ada, new ExpertiseDomain("python", "", ExpertiseLevel.Expert));
@@ -399,8 +399,8 @@ public class BoundaryFilteringExpertiseAggregatorTests
     public async Task GetAsync_Outside_BoundaryStoreThrows_FallsBackToTransparent()
     {
         var aggregator = CreateAggregator();
-        var unit = new Address("unit", "eng");
-        var ada = new Address("agent", "ada");
+        var unit = Address.For("unit", "eng");
+        var ada = Address.For("agent", "ada");
 
         RegisterUnit("eng", ada);
         ArrangeExpertise(ada, new ExpertiseDomain("python", "", ExpertiseLevel.Expert));

@@ -154,7 +154,7 @@ public class PermissionServiceTests
         _ = Unit("child");
         Unit("parent").GetHumanPermissionAsync(HumanGuid, ct).Returns(PermissionLevel.Operator);
 
-        _hierarchyResolver.GetParentsAsync(new Address("unit", "child"), Arg.Any<CancellationToken>())
+        _hierarchyResolver.GetParentsAsync(Address.For("unit", "child"), Arg.Any<CancellationToken>())
             .Returns(new Address[] { new("unit", "parent") });
 
         var result = await _service.ResolveEffectivePermissionAsync(HumanId, "child", ct);
@@ -197,7 +197,7 @@ public class PermissionServiceTests
             .Returns(UnitPermissionInheritance.Isolated);
         Unit("parent").GetHumanPermissionAsync(HumanGuid, ct).Returns(PermissionLevel.Owner);
 
-        _hierarchyResolver.GetParentsAsync(new Address("unit", "child"), Arg.Any<CancellationToken>())
+        _hierarchyResolver.GetParentsAsync(Address.For("unit", "child"), Arg.Any<CancellationToken>())
             .Returns(new Address[] { new("unit", "parent") });
 
         var result = await _service.ResolveEffectivePermissionAsync(HumanId, "child", ct);
@@ -224,9 +224,9 @@ public class PermissionServiceTests
         _ = Unit("child");
         Unit("root").GetHumanPermissionAsync(HumanGuid, ct).Returns(PermissionLevel.Owner);
 
-        _hierarchyResolver.GetParentsAsync(new Address("unit", "grandchild"), Arg.Any<CancellationToken>())
+        _hierarchyResolver.GetParentsAsync(Address.For("unit", "grandchild"), Arg.Any<CancellationToken>())
             .Returns(new Address[] { new("unit", "child") });
-        _hierarchyResolver.GetParentsAsync(new Address("unit", "child"), Arg.Any<CancellationToken>())
+        _hierarchyResolver.GetParentsAsync(Address.For("unit", "child"), Arg.Any<CancellationToken>())
             .Returns(new Address[] { new("unit", "root") });
 
         var result = await _service.ResolveEffectivePermissionAsync(HumanId, "grandchild", ct);
@@ -245,9 +245,9 @@ public class PermissionServiceTests
             .Returns(UnitPermissionInheritance.Isolated);
         Unit("root").GetHumanPermissionAsync(HumanGuid, ct).Returns(PermissionLevel.Owner);
 
-        _hierarchyResolver.GetParentsAsync(new Address("unit", "grandchild"), Arg.Any<CancellationToken>())
+        _hierarchyResolver.GetParentsAsync(Address.For("unit", "grandchild"), Arg.Any<CancellationToken>())
             .Returns(new Address[] { new("unit", "child") });
-        _hierarchyResolver.GetParentsAsync(new Address("unit", "child"), Arg.Any<CancellationToken>())
+        _hierarchyResolver.GetParentsAsync(Address.For("unit", "child"), Arg.Any<CancellationToken>())
             .Returns(new Address[] { new("unit", "root") });
 
         var result = await _service.ResolveEffectivePermissionAsync(HumanId, "grandchild", ct);
@@ -265,9 +265,9 @@ public class PermissionServiceTests
         Unit("child").GetHumanPermissionAsync(HumanGuid, ct).Returns(PermissionLevel.Viewer);
         Unit("root").GetHumanPermissionAsync(HumanGuid, ct).Returns(PermissionLevel.Owner);
 
-        _hierarchyResolver.GetParentsAsync(new Address("unit", "grandchild"), Arg.Any<CancellationToken>())
+        _hierarchyResolver.GetParentsAsync(Address.For("unit", "grandchild"), Arg.Any<CancellationToken>())
             .Returns(new Address[] { new("unit", "child") });
-        _hierarchyResolver.GetParentsAsync(new Address("unit", "child"), Arg.Any<CancellationToken>())
+        _hierarchyResolver.GetParentsAsync(Address.For("unit", "child"), Arg.Any<CancellationToken>())
             .Returns(new Address[] { new("unit", "root") });
 
         var result = await _service.ResolveEffectivePermissionAsync(HumanId, "grandchild", ct);
@@ -287,7 +287,7 @@ public class PermissionServiceTests
             .ThrowsAsync(new InvalidOperationException("state store down"));
         Unit("parent").GetHumanPermissionAsync(HumanGuid, ct).Returns(PermissionLevel.Owner);
 
-        _hierarchyResolver.GetParentsAsync(new Address("unit", "child"), Arg.Any<CancellationToken>())
+        _hierarchyResolver.GetParentsAsync(Address.For("unit", "child"), Arg.Any<CancellationToken>())
             .Returns(new Address[] { new("unit", "parent") });
 
         var result = await _service.ResolveEffectivePermissionAsync(HumanId, "child", ct);

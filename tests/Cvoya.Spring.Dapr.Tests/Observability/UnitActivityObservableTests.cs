@@ -46,8 +46,8 @@ public class UnitActivityObservableTests : IDisposable
         unit.GetMembersAsync(Arg.Any<CancellationToken>())
             .Returns(new[]
             {
-                new Address("agent", "agent-a"),
-                new Address("agent", "agent-b"),
+                Address.For("agent", "agent-a"),
+                Address.For("agent", "agent-b"),
             });
         _proxyFactory.CreateActorProxy<IUnitActor>(new ActorId("unit-1"), nameof(UnitActor))
             .Returns(unit);
@@ -58,10 +58,10 @@ public class UnitActivityObservableTests : IDisposable
         var observed = new List<ActivityEvent>();
         using var subscription = stream.Subscribe(observed.Add);
 
-        _bus.Publish(Evt(new Address("agent", "agent-a"), ActivityEventType.MessageReceived));
-        _bus.Publish(Evt(new Address("agent", "agent-c"), ActivityEventType.MessageReceived));
-        _bus.Publish(Evt(new Address("unit", "unit-1"), ActivityEventType.DecisionMade));
-        _bus.Publish(Evt(new Address("agent", "agent-b"), ActivityEventType.TokenDelta));
+        _bus.Publish(Evt(Address.For("agent", "agent-a"), ActivityEventType.MessageReceived));
+        _bus.Publish(Evt(Address.For("agent", "agent-c"), ActivityEventType.MessageReceived));
+        _bus.Publish(Evt(Address.For("unit", "unit-1"), ActivityEventType.DecisionMade));
+        _bus.Publish(Evt(Address.For("agent", "agent-b"), ActivityEventType.TokenDelta));
 
         observed.Count.ShouldBe(3);
         observed[0].Source.Path.ShouldBe("agent-a");
@@ -75,19 +75,19 @@ public class UnitActivityObservableTests : IDisposable
         // Parent unit-1 contains sub-unit unit-2 contains agent-z.
         var parent = Substitute.For<IUnitActor>();
         parent.GetMembersAsync(Arg.Any<CancellationToken>())
-            .Returns(new[] { new Address("unit", "unit-2") });
+            .Returns(new[] { Address.For("unit", "unit-2") });
         _proxyFactory.CreateActorProxy<IUnitActor>(new ActorId("unit-1"), nameof(UnitActor))
             .Returns(parent);
 
         var sub = Substitute.For<IUnitActor>();
         sub.GetMembersAsync(Arg.Any<CancellationToken>())
-            .Returns(new[] { new Address("agent", "agent-z") });
+            .Returns(new[] { Address.For("agent", "agent-z") });
         _proxyFactory.CreateActorProxy<IUnitActor>(new ActorId("unit-2"), nameof(UnitActor))
             .Returns(sub);
 
-        _directory.ResolveAsync(new Address("unit", "unit-2"), Arg.Any<CancellationToken>())
+        _directory.ResolveAsync(Address.For("unit", "unit-2"), Arg.Any<CancellationToken>())
             .Returns(new DirectoryEntry(
-                Address: new Address("unit", "unit-2"),
+                Address: Address.For("unit", "unit-2"),
                 ActorId: "unit-2",
                 DisplayName: "unit-2",
                 Description: string.Empty,
@@ -100,9 +100,9 @@ public class UnitActivityObservableTests : IDisposable
         var observed = new List<ActivityEvent>();
         using var subscription = stream.Subscribe(observed.Add);
 
-        _bus.Publish(Evt(new Address("agent", "agent-z"), ActivityEventType.ToolCall));
-        _bus.Publish(Evt(new Address("unit", "unit-2"), ActivityEventType.StateChanged));
-        _bus.Publish(Evt(new Address("agent", "agent-not-mine"), ActivityEventType.MessageReceived));
+        _bus.Publish(Evt(Address.For("agent", "agent-z"), ActivityEventType.ToolCall));
+        _bus.Publish(Evt(Address.For("unit", "unit-2"), ActivityEventType.StateChanged));
+        _bus.Publish(Evt(Address.For("agent", "agent-not-mine"), ActivityEventType.MessageReceived));
 
         observed.Count.ShouldBe(2);
         observed.ShouldContain(e => e.Source.Path == "agent-z");
@@ -124,7 +124,7 @@ public class UnitActivityObservableTests : IDisposable
         var observed = new List<ActivityEvent>();
         using var subscription = stream.Subscribe(observed.Add);
 
-        _bus.Publish(Evt(new Address("agent", "agent-x"), ActivityEventType.MessageReceived));
+        _bus.Publish(Evt(Address.For("agent", "agent-x"), ActivityEventType.MessageReceived));
 
         // Unit itself is always included in the member set, so an event
         // published from it would land here. No such event above → empty.

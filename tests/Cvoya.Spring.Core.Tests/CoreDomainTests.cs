@@ -17,8 +17,8 @@ public class AddressTests
     [Fact]
     public void Equals_SameSchemeAndPath_ReturnsTrue()
     {
-        var address1 = new Address("agent", "engineering-team/ada");
-        var address2 = new Address("agent", "engineering-team/ada");
+        var address1 = Address.For("agent", "engineering-team/ada");
+        var address2 = Address.For("agent", "engineering-team/ada");
 
         address1.ShouldBe(address2);
     }
@@ -26,8 +26,8 @@ public class AddressTests
     [Fact]
     public void Equals_DifferentScheme_ReturnsFalse()
     {
-        var address1 = new Address("agent", "engineering-team/ada");
-        var address2 = new Address("unit", "engineering-team/ada");
+        var address1 = Address.For("agent", "engineering-team/ada");
+        var address2 = Address.For("unit", "engineering-team/ada");
 
         address1.ShouldNotBe(address2);
     }
@@ -35,8 +35,8 @@ public class AddressTests
     [Fact]
     public void Equals_DifferentPath_ReturnsFalse()
     {
-        var address1 = new Address("agent", "engineering-team/ada");
-        var address2 = new Address("agent", "engineering-team/bob");
+        var address1 = Address.For("agent", "engineering-team/ada");
+        var address2 = Address.For("agent", "engineering-team/bob");
 
         address1.ShouldNotBe(address2);
     }
@@ -44,8 +44,8 @@ public class AddressTests
     [Fact]
     public void GetHashCode_EqualAddresses_ReturnsSameHashCode()
     {
-        var address1 = new Address("agent", "engineering-team/ada");
-        var address2 = new Address("agent", "engineering-team/ada");
+        var address1 = Address.For("agent", "engineering-team/ada");
+        var address2 = Address.For("agent", "engineering-team/ada");
 
         address1.GetHashCode().ShouldBe(address2.GetHashCode());
     }
@@ -53,7 +53,7 @@ public class AddressTests
     [Fact]
     public void ToString_ReturnsSchemeColonPath()
     {
-        var address = new Address("human", "local-dev-user");
+        var address = Address.For("human", "local-dev-user");
 
         address.ToString().ShouldBe("human:local-dev-user");
     }
@@ -61,7 +61,7 @@ public class AddressTests
     [Fact]
     public void ToString_InterpolatedIntoString_ReturnsSchemeColonPath()
     {
-        var address = new Address("agent", "engineering-team/ada");
+        var address = Address.For("agent", "engineering-team/ada");
 
         $"from {address}".ShouldBe("from agent:engineering-team/ada");
     }
@@ -73,7 +73,7 @@ public class AddressTests
     [Fact]
     public void ToCanonicalUri_AgentScheme_ReturnsSchemeSlashSlashPath()
     {
-        new Address("agent", "engineering-team/ada")
+        Address.For("agent", "engineering-team/ada")
             .ToCanonicalUri()
             .ShouldBe("agent://engineering-team/ada");
     }
@@ -81,7 +81,7 @@ public class AddressTests
     [Fact]
     public void ToCanonicalUri_UnitScheme_ReturnsSchemeSlashSlashPath()
     {
-        new Address("unit", "engineering-team")
+        Address.For("unit", "engineering-team")
             .ToCanonicalUri()
             .ShouldBe("unit://engineering-team");
     }
@@ -255,7 +255,7 @@ public class AddressTests
     [Fact]
     public void NavigationAddress_IsIdentity_DefaultsFalse()
     {
-        var address = new Address("agent", "ada");
+        var address = Address.For("agent", "ada");
         address.IsIdentity.ShouldBeFalse();
     }
 
@@ -279,8 +279,8 @@ public class MessageTests
     public void Constructor_WithValidParameters_CreatesMessage()
     {
         var id = Guid.NewGuid();
-        var from = new Address("agent", "sender");
-        var to = new Address("agent", "receiver");
+        var from = Address.For("agent", "sender");
+        var to = Address.For("agent", "receiver");
         var payload = JsonDocument.Parse("{\"key\":\"value\"}").RootElement;
         var timestamp = DateTimeOffset.UtcNow;
 
@@ -302,8 +302,8 @@ public class MessageTests
 
         var message = new Message(
             Guid.NewGuid(),
-            new Address("agent", "sender"),
-            new Address("agent", "receiver"),
+            Address.For("agent", "sender"),
+            Address.For("agent", "receiver"),
             MessageType.HealthCheck,
             null,
             payload,
@@ -316,8 +316,8 @@ public class MessageTests
     public void Equals_SameValues_ReturnsTrue()
     {
         var id = Guid.NewGuid();
-        var from = new Address("agent", "sender");
-        var to = new Address("agent", "receiver");
+        var from = Address.For("agent", "sender");
+        var to = Address.For("agent", "receiver");
         var payload = JsonDocument.Parse("{}").RootElement;
         var timestamp = DateTimeOffset.UtcNow;
 
@@ -372,7 +372,7 @@ public class ActivityEventTests
     {
         var id = Guid.NewGuid();
         var timestamp = DateTimeOffset.UtcNow;
-        var source = new Address("agent", "engineering-team/ada");
+        var source = Address.For("agent", "engineering-team/ada");
 
         var activityEvent = new ActivityEvent(
             id, timestamp, source,
@@ -396,7 +396,7 @@ public class ActivityEventTests
     {
         var id = Guid.NewGuid();
         var timestamp = DateTimeOffset.UtcNow;
-        var source = new Address("agent", "engineering-team/ada");
+        var source = Address.For("agent", "engineering-team/ada");
         var details = JsonDocument.Parse("{\"tokens\":150}").RootElement;
 
         var activityEvent = new ActivityEvent(
@@ -419,7 +419,7 @@ public class ActivityEventTests
     {
         var id = Guid.NewGuid();
         var timestamp = DateTimeOffset.UtcNow;
-        var source = new Address("agent", "engineering-team/ada");
+        var source = Address.For("agent", "engineering-team/ada");
 
         var event1 = new ActivityEvent(id, timestamp, source, ActivityEventType.MessageSent, ActivitySeverity.Info, "Done");
         var event2 = new ActivityEvent(id, timestamp, source, ActivityEventType.MessageSent, ActivitySeverity.Info, "Done");

@@ -44,8 +44,8 @@ public class UnitParentInvariantGuardTests : IDisposable
         var (guard, _) = CreateGuard();
 
         await guard.EnsureParentRemainsAsync(
-            new Address("unit", "team"),
-            new Address("agent", "ada"),
+            Address.For("unit", "team"),
+            Address.For("agent", "ada"),
             TestContext.Current.CancellationToken);
     }
 
@@ -58,8 +58,8 @@ public class UnitParentInvariantGuardTests : IDisposable
         // removal as a no-op, not a 409. Mirrors the idempotent
         // RemoveMember contract.
         await guard.EnsureParentRemainsAsync(
-            new Address("unit", "team"),
-            new Address("unit", "phantom"),
+            Address.For("unit", "team"),
+            Address.For("unit", "phantom"),
             TestContext.Current.CancellationToken);
     }
 
@@ -70,8 +70,8 @@ public class UnitParentInvariantGuardTests : IDisposable
         SeedUnit("root-unit", isTopLevel: true);
 
         await guard.EnsureParentRemainsAsync(
-            new Address("unit", "team"),
-            new Address("unit", "root-unit"),
+            Address.For("unit", "team"),
+            Address.For("unit", "root-unit"),
             TestContext.Current.CancellationToken);
 
         // Top-level: no need to consult the hierarchy resolver, since
@@ -97,8 +97,8 @@ public class UnitParentInvariantGuardTests : IDisposable
             });
 
         await guard.EnsureParentRemainsAsync(
-            new Address("unit", "parent-a"),
-            new Address("unit", "child"),
+            Address.For("unit", "parent-a"),
+            Address.For("unit", "child"),
             TestContext.Current.CancellationToken);
     }
 
@@ -118,8 +118,8 @@ public class UnitParentInvariantGuardTests : IDisposable
 
         var ex = await Should.ThrowAsync<UnitParentRequiredException>(() =>
             guard.EnsureParentRemainsAsync(
-                new Address("unit", "parent-a"),
-                new Address("unit", "child"),
+                Address.For("unit", "parent-a"),
+                Address.For("unit", "child"),
                 TestContext.Current.CancellationToken));
 
         ex.UnitAddress.ShouldBe("child");

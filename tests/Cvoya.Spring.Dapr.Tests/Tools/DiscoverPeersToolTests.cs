@@ -38,14 +38,14 @@ public class DiscoverPeersToolTests
         var entries = new List<DirectoryEntry>
         {
             new(
-                new Address("agent", "team/ada"),
+                Address.For("agent", "team/ada"),
                 "actor-1",
                 "Ada",
                 "Backend engineer",
                 "backend-engineer",
                 DateTimeOffset.UtcNow),
             new(
-                new Address("agent", "team/bob"),
+                Address.For("agent", "team/bob"),
                 "actor-2",
                 "Bob",
                 "Backend engineer",

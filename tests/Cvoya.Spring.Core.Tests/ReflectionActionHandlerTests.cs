@@ -41,7 +41,7 @@ public class ReflectionActionHandlerTests
 
         message.ShouldNotBeNull();
         message!.From.ShouldBe(AgentAddress);
-        message.To.ShouldBe(new Address("agent", "bob"));
+        message.To.ShouldBe(Address.For("agent", "bob"));
         message.Type.ShouldBe(MessageType.Domain);
         message.ThreadId.ShouldBe("conv-42");
         message.Payload.GetProperty("Content").GetString().ShouldBe("hello there");

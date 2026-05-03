@@ -70,7 +70,7 @@ public class MessageRouterSkillInvokerTests
     public async Task InvokeAsync_TranslatesToRouterDispatchWithCorrectTarget()
     {
         var invoker = CreateInvoker();
-        var agent = new Address("agent", "ada");
+        var agent = Address.For("agent", "ada");
         var skill = MakeSkill("python", agent);
 
         _catalog
@@ -97,7 +97,7 @@ public class MessageRouterSkillInvokerTests
         var invocation = new SkillInvocation(
             skill.SkillName,
             args.RootElement.Clone(),
-            Caller: new Address("agent", "caller"),
+            Caller: Address.For("agent", "caller"),
             CorrelationId: "conv-42");
 
         var result = await invoker.InvokeAsync(invocation, TestContext.Current.CancellationToken);
@@ -144,7 +144,7 @@ public class MessageRouterSkillInvokerTests
         // so the caller's view is enforced at call time, not just at
         // enumeration time.
         var invoker = CreateInvoker();
-        var agent = new Address("agent", "ada");
+        var agent = Address.For("agent", "ada");
         var skill = MakeSkill("python", agent);
 
         _catalog
@@ -174,13 +174,13 @@ public class MessageRouterSkillInvokerTests
     public async Task InvokeAsync_RoutingFailure_SurfacesErrorCode()
     {
         var invoker = CreateInvoker();
-        var skill = MakeSkill("python", new Address("agent", "ada"));
+        var skill = MakeSkill("python", Address.For("agent", "ada"));
         _catalog.ResolveAsync(skill.SkillName, Arg.Any<BoundaryViewContext>(), Arg.Any<CancellationToken>())
             .Returns(skill);
 
         _router.RouteAsync(Arg.Any<Message>(), Arg.Any<CancellationToken>())
             .Returns(Result<Message?, RoutingError>.Failure(
-                RoutingError.PermissionDenied(new Address("agent", "ada"))));
+                RoutingError.PermissionDenied(Address.For("agent", "ada"))));
 
         using var args = JsonDocument.Parse("{}");
         var invocation = new SkillInvocation(skill.SkillName, args.RootElement.Clone());
@@ -195,7 +195,7 @@ public class MessageRouterSkillInvokerTests
     public async Task InvokeAsync_MissingCorrelationId_GeneratesOne()
     {
         var invoker = CreateInvoker();
-        var skill = MakeSkill("python", new Address("agent", "ada"));
+        var skill = MakeSkill("python", Address.For("agent", "ada"));
         _catalog.ResolveAsync(skill.SkillName, Arg.Any<BoundaryViewContext>(), Arg.Any<CancellationToken>())
             .Returns(skill);
 

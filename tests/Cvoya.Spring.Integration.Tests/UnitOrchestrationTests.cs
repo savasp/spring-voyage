@@ -47,8 +47,8 @@ public class UnitOrchestrationTests
     public async Task ReceiveAsync_DomainMessage_PassesMembersInContext()
     {
         var (actor, stateManager, strategy) = ActorTestHost.CreateUnitActor(actorId: "orch-unit");
-        var member1 = new Address("agent", "agent-1");
-        var member2 = new Address("agent", "agent-2");
+        var member1 = Address.For("agent", "agent-1");
+        var member2 = Address.For("agent", "agent-2");
 
         stateManager.TryGetStateAsync<List<Address>>(StateKeys.Members, Arg.Any<CancellationToken>())
             .Returns(new ConditionalValue<List<Address>>(true, [member1, member2]));
@@ -74,8 +74,8 @@ public class UnitOrchestrationTests
     public async Task AddMemberAsync_ThenGetMembers_ReturnsAddedMembers()
     {
         var (actor, stateManager, _) = ActorTestHost.CreateUnitActor(actorId: "member-unit");
-        var member1 = new Address("agent", "agent-a");
-        var member2 = new Address("agent", "agent-b");
+        var member1 = Address.For("agent", "agent-a");
+        var member2 = Address.For("agent", "agent-b");
 
         // Add first member.
         await actor.AddMemberAsync(member1, TestContext.Current.CancellationToken);
@@ -130,7 +130,7 @@ public class UnitOrchestrationTests
         await actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
 
         capturedContext.ShouldNotBeNull();
-        capturedContext!.UnitAddress.ShouldBe(new Address("unit", "addr-unit"));
+        capturedContext!.UnitAddress.ShouldBe(Address.For("unit", "addr-unit"));
     }
 
     // --- Nested Unit Membership (#98) ---
@@ -146,8 +146,8 @@ public class UnitOrchestrationTests
         // selected target so the test stays tied to the seam rather than
         // the AI round-trip.
         var (parent, parentState, parentStrategy) = ActorTestHost.CreateUnitActor(actorId: "parent-unit");
-        var agentMember = new Address("agent", "ada");
-        var subUnitMember = new Address("unit", "sub-unit");
+        var agentMember = Address.For("agent", "ada");
+        var subUnitMember = Address.For("unit", "sub-unit");
 
         parentState.TryGetStateAsync<List<Address>>(StateKeys.Members, Arg.Any<CancellationToken>())
             .Returns(new ConditionalValue<List<Address>>(true, [agentMember, subUnitMember]));
@@ -183,7 +183,7 @@ public class UnitOrchestrationTests
         var directory = Substitute.For<IDirectoryService>();
         var factory = Substitute.For<IActorProxyFactory>();
 
-        var subAddress = new Address("unit", "sub-team");
+        var subAddress = Address.For("unit", "sub-team");
         directory.ResolveAsync(subAddress, Arg.Any<CancellationToken>())
             .Returns(new DirectoryEntry(
                 subAddress,
@@ -222,7 +222,7 @@ public class UnitOrchestrationTests
         var directory = Substitute.For<IDirectoryService>();
         var factory = Substitute.For<IActorProxyFactory>();
 
-        var subAddress = new Address("unit", "sub-team");
+        var subAddress = Address.For("unit", "sub-team");
         directory.ResolveAsync(subAddress, Arg.Any<CancellationToken>())
             .Returns(new DirectoryEntry(
                 subAddress,
@@ -234,16 +234,16 @@ public class UnitOrchestrationTests
 
         var subProxy = Substitute.For<IUnitActor>();
         subProxy.GetMembersAsync(Arg.Any<CancellationToken>())
-            .Returns(new[] { new Address("unit", "parent-team") });
+            .Returns(new[] { Address.For("unit", "parent-team") });
         factory.CreateActorProxy<IUnitActor>(
                 Arg.Is<ActorId>(a => a.GetId() == "sub-actor"),
                 nameof(UnitActor))
             .Returns(subProxy);
 
         // "parent-team" resolves back to the "parent-unit" actor.
-        directory.ResolveAsync(new Address("unit", "parent-team"), Arg.Any<CancellationToken>())
+        directory.ResolveAsync(Address.For("unit", "parent-team"), Arg.Any<CancellationToken>())
             .Returns(new DirectoryEntry(
-                new Address("unit", "parent-team"),
+                Address.For("unit", "parent-team"),
                 "parent-unit",
                 "parent-team",
                 "Parent team",

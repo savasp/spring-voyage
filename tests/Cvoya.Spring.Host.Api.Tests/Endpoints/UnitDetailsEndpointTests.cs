@@ -62,9 +62,9 @@ public class UnitDetailsEndpointTests : IClassFixture<CustomWebApplicationFactor
         proxy.GetMembersAsync(Arg.Any<CancellationToken>())
             .Returns(new[]
             {
-                new Address("agent", "alpha"),
-                new Address("agent", "beta"),
-                new Address("unit", "child"),
+                Address.For("agent", "alpha"),
+                Address.For("agent", "beta"),
+                Address.For("unit", "child"),
             });
 
         ArrangeResolved(proxy);

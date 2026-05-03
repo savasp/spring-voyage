@@ -58,8 +58,8 @@ public class HumanActorTests
     {
         return new Message(
             Guid.NewGuid(),
-            new Address("agent", "test-sender"),
-            new Address("human", "test-human"),
+            Address.For("agent", "test-sender"),
+            Address.For("human", "test-human"),
             type,
             threadId ?? Guid.NewGuid().ToString(),
             payload ?? JsonSerializer.SerializeToElement(new { }),
@@ -94,8 +94,8 @@ public class HumanActorTests
 
         result.ShouldNotBeNull();
         result!.Type.ShouldBe(MessageType.StatusQuery);
-        result.From.ShouldBe(new Address("human", "test-human"));
-        result.To.ShouldBe(new Address("agent", "test-sender"));
+        result.From.ShouldBe(Address.For("human", "test-human"));
+        result.To.ShouldBe(Address.For("agent", "test-sender"));
 
         var payload = result.Payload.Deserialize<JsonElement>();
         payload.GetProperty("Permission").GetString().ShouldBe("Operator");

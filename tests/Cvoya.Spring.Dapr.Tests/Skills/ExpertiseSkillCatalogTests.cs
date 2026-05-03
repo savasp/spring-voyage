@@ -46,7 +46,7 @@ public class ExpertiseSkillCatalogTests
             .Returns(new[]
             {
                 new DirectoryEntry(
-                    new Address("unit", "eng"),
+                    Address.For("unit", "eng"),
                     "eng", "Engineering", string.Empty, null, DateTimeOffset.UtcNow),
             });
 
@@ -69,7 +69,7 @@ public class ExpertiseSkillCatalogTests
     public async Task EnumerateAsync_NoTypedContract_SkipsConsultativeEntries()
     {
         var catalog = CreateCatalog();
-        var unit = new Address("unit", "eng");
+        var unit = Address.For("unit", "eng");
         var entries = new[]
         {
             // Typed contract — should surface.
@@ -97,8 +97,8 @@ public class ExpertiseSkillCatalogTests
     public async Task EnumerateAsync_ExternalCaller_HidesAgentLevelExpertiseThatIsNotUnitProjected()
     {
         var catalog = CreateCatalog();
-        var unit = new Address("unit", "eng");
-        var agent = new Address("agent", "ada");
+        var unit = Address.For("unit", "eng");
+        var agent = Address.For("agent", "ada");
 
         // Outside caller: only unit-projected entries should be visible.
         _aggregator
@@ -123,8 +123,8 @@ public class ExpertiseSkillCatalogTests
     public async Task EnumerateAsync_InsideCaller_SeesAgentLevelExpertise()
     {
         var catalog = CreateCatalog();
-        var unit = new Address("unit", "eng");
-        var agent = new Address("agent", "ada");
+        var unit = Address.For("unit", "eng");
+        var agent = Address.For("agent", "ada");
 
         _aggregator
             .GetAsync(unit, Arg.Is<BoundaryViewContext>(c => c.Internal), Arg.Any<CancellationToken>())
@@ -144,8 +144,8 @@ public class ExpertiseSkillCatalogTests
     public async Task EnumerateAsync_AgentNameNeverAppearsInSkillName()
     {
         var catalog = CreateCatalog();
-        var unit = new Address("unit", "eng");
-        var agent = new Address("agent", "ada-the-senior-engineer");
+        var unit = Address.For("unit", "eng");
+        var agent = Address.For("agent", "ada-the-senior-engineer");
         _aggregator
             .GetAsync(unit, Arg.Any<BoundaryViewContext>(), Arg.Any<CancellationToken>())
             .Returns(new AggregatedExpertise(unit, new[]
@@ -165,7 +165,7 @@ public class ExpertiseSkillCatalogTests
     public async Task EnumerateAsync_LiveResolution_NewExpertisePropagatesWithoutRestart()
     {
         var catalog = CreateCatalog();
-        var unit = new Address("unit", "eng");
+        var unit = Address.For("unit", "eng");
 
         // First call: no expertise at all.
         _aggregator
@@ -195,8 +195,8 @@ public class ExpertiseSkillCatalogTests
     public async Task ResolveAsync_HiddenFromCaller_ReturnsNull()
     {
         var catalog = CreateCatalog();
-        var unit = new Address("unit", "eng");
-        var agent = new Address("agent", "ada");
+        var unit = Address.For("unit", "eng");
+        var agent = Address.For("agent", "ada");
 
         // Boundary is caller-aware: external caller sees nothing; internal sees the agent entry.
         _aggregator

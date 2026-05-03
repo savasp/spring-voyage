@@ -38,7 +38,7 @@ public class MessageContractTests : IClassFixture<CustomWebApplicationFactory>
         var ct = TestContext.Current.CancellationToken;
 
         var entry = new DirectoryEntry(
-            new Address("agent", "contract-send-target"),
+            Address.For("agent", "contract-send-target"),
             "actor-contract-send",
             "Contract Send Target",
             "An agent for contract tests",
@@ -60,8 +60,8 @@ public class MessageContractTests : IClassFixture<CustomWebApplicationFactory>
         // emit.
         var reply = new Message(
             Guid.NewGuid(),
-            new Address("agent", "contract-send-target"),
-            new Address("human", "local-dev-user"),
+            Address.For("agent", "contract-send-target"),
+            Address.For("human", "local-dev-user"),
             MessageType.Domain,
             "contract-conv-1",
             JsonSerializer.SerializeToElement(new { ack = "received" }),
@@ -119,7 +119,7 @@ public class MessageContractTests : IClassFixture<CustomWebApplicationFactory>
         var ct = TestContext.Current.CancellationToken;
 
         var entry = new DirectoryEntry(
-            new Address("agent", "contract-null-payload-target"),
+            Address.For("agent", "contract-null-payload-target"),
             "actor-contract-null-payload",
             "Contract Null Payload Target",
             "An agent that returns no reply payload",

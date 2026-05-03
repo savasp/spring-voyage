@@ -24,7 +24,7 @@ public class ThreadContextBuilderTests
         return new Message(
             Guid.NewGuid(),
             new Address("agent", senderPath),
-            new Address("agent", "receiver"),
+            Address.For("agent", "receiver"),
             MessageType.Domain,
             "conv-1",
             JsonSerializer.SerializeToElement(new { text }),
@@ -87,8 +87,8 @@ public class ThreadContextBuilderTests
     {
         var message = new Message(
             Guid.NewGuid(),
-            new Address("agent", "human"),
-            new Address("agent", "receiver"),
+            Address.For("agent", "human"),
+            Address.For("agent", "receiver"),
             MessageType.Domain,
             "conv-1",
             JsonSerializer.SerializeToElement("Say hello in one sentence."),
@@ -108,8 +108,8 @@ public class ThreadContextBuilderTests
     {
         var message = new Message(
             Guid.NewGuid(),
-            new Address("agent", "human"),
-            new Address("agent", "receiver"),
+            Address.For("agent", "human"),
+            Address.For("agent", "receiver"),
             MessageType.Domain,
             "conv-1",
             JsonSerializer.SerializeToElement(new { Task = "do-work" }),

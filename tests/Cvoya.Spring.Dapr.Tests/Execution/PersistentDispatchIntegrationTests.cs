@@ -130,7 +130,7 @@ public class PersistentDispatchIntegrationTests
     {
         return new SvMessage(
             Guid.NewGuid(),
-            new Address("agent", "sender"),
+            Address.For("agent", "sender"),
             new Address("agent", AgentId),
             MessageType.Domain,
             threadId ?? Guid.NewGuid().ToString(),

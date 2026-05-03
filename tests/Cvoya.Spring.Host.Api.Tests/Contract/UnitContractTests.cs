@@ -45,7 +45,7 @@ public class UnitContractTests : IClassFixture<CustomWebApplicationFactory>
         _factory.DirectoryService.ListAllAsync(Arg.Any<CancellationToken>())
             .Returns(new List<DirectoryEntry>
             {
-                new(new Address("unit", "contract-list-unit"),
+                new(Address.For("unit", "contract-list-unit"),
                     "actor-list-unit",
                     "Contract List Unit",
                     "A unit for contract tests",

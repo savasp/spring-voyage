@@ -86,7 +86,7 @@ public static class MessageFactory
 
         return new Message(
             Guid.NewGuid(),
-            new Address("connector", "github-connector"),
+            Address.For("connector", "github-connector"),
             new Address(toType, toId ?? "test-unit"),
             MessageType.Domain,
             threadId ?? Guid.NewGuid().ToString(),

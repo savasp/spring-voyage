@@ -121,8 +121,8 @@ public class ThreadContractTests : IClassFixture<ThreadContractTests.Factory>
         // produce.
         var reply = new Message(
             Guid.NewGuid(),
-            new Address("agent", "contract-bot"),
-            new Address("human", "local-dev-user"),
+            Address.For("agent", "contract-bot"),
+            Address.For("human", "local-dev-user"),
             MessageType.Domain,
             "contract-conv-post",
             System.Text.Json.JsonSerializer.SerializeToElement(new { ack = "received" }),
@@ -161,8 +161,8 @@ public class ThreadContractTests : IClassFixture<ThreadContractTests.Factory>
 
         var reply = new Message(
             Guid.NewGuid(),
-            new Address("agent", "contract-bot"),
-            new Address("human", "local-dev-user"),
+            Address.For("agent", "contract-bot"),
+            Address.For("human", "local-dev-user"),
             MessageType.Domain,
             $"contract-conv-kind-{kind}",
             System.Text.Json.JsonSerializer.SerializeToElement(new { ack = "received" }),
@@ -197,8 +197,8 @@ public class ThreadContractTests : IClassFixture<ThreadContractTests.Factory>
 
         var reply = new Message(
             Guid.NewGuid(),
-            new Address("agent", "contract-bot"),
-            new Address("human", "local-dev-user"),
+            Address.For("agent", "contract-bot"),
+            Address.For("human", "local-dev-user"),
             MessageType.Domain,
             "contract-conv-kind-default",
             System.Text.Json.JsonSerializer.SerializeToElement(new { ack = "received" }),
@@ -268,7 +268,7 @@ public class ThreadContractTests : IClassFixture<ThreadContractTests.Factory>
             .Returns(beforeDetail, afterDetail);
 
         var entry = new DirectoryEntry(
-            new Address("agent", "contract-bot"),
+            Address.For("agent", "contract-bot"),
             ActorId: "actor-contract-bot",
             DisplayName: "Bot",
             Description: "",

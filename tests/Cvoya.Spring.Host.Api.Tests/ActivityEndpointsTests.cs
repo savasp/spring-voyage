@@ -130,7 +130,7 @@ public class ActivityEndpointsTests : IClassFixture<CustomWebApplicationFactory>
             expected.Add(new ActivityEvent(
                 Id: Guid.NewGuid(),
                 Timestamp: DateTimeOffset.UtcNow,
-                Source: new Address("agent", "agent-int-test"),
+                Source: Address.For("agent", "agent-int-test"),
                 EventType: type,
                 Severity: ActivitySeverity.Info,
                 Summary: $"{type}-summary"));
@@ -302,7 +302,7 @@ public class ActivityEndpointsTests : IClassFixture<CustomWebApplicationFactory>
     {
         var ct = TestContext.Current.CancellationToken;
 
-        _factory.DirectoryService.ResolveAsync(new Address("unit", "ghost"), Arg.Any<CancellationToken>())
+        _factory.DirectoryService.ResolveAsync(Address.For("unit", "ghost"), Arg.Any<CancellationToken>())
             .Returns((DirectoryEntry?)null);
 
         _factory.ActivityQueryService.QueryAsync(Arg.Any<ActivityQueryParameters>(), Arg.Any<CancellationToken>())

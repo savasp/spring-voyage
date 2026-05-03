@@ -80,7 +80,7 @@ public class MessageEndpointsTests : IClassFixture<CustomWebApplicationFactory>
         var ct = TestContext.Current.CancellationToken;
 
         var entry = new DirectoryEntry(
-            new Address("agent", "test-agent"),
+            Address.For("agent", "test-agent"),
             "actor-1",
             "Test Agent",
             "A test agent",
@@ -130,7 +130,7 @@ public class MessageEndpointsTests : IClassFixture<CustomWebApplicationFactory>
         var ct = TestContext.Current.CancellationToken;
 
         var entry = new DirectoryEntry(
-            new Address("agent", "conv-agent"),
+            Address.For("agent", "conv-agent"),
             "actor-conv",
             "Conv Agent",
             "A test agent",
@@ -178,7 +178,7 @@ public class MessageEndpointsTests : IClassFixture<CustomWebApplicationFactory>
         var ct = TestContext.Current.CancellationToken;
 
         var entry = new DirectoryEntry(
-            new Address("agent", "passthrough-agent"),
+            Address.For("agent", "passthrough-agent"),
             "actor-pass",
             "Passthrough Agent",
             "A test agent",
@@ -224,7 +224,7 @@ public class MessageEndpointsTests : IClassFixture<CustomWebApplicationFactory>
         var ct = TestContext.Current.CancellationToken;
 
         var entry = new DirectoryEntry(
-            new Address("unit", "engineering-team"),
+            Address.For("unit", "engineering-team"),
             "unit-1",
             "Engineering",
             "Team",
@@ -278,7 +278,7 @@ public class MessageEndpointsTests : IClassFixture<CustomWebApplicationFactory>
         var ct = TestContext.Current.CancellationToken;
 
         var entry = new DirectoryEntry(
-            new Address("agent", "ping-agent"),
+            Address.For("agent", "ping-agent"),
             "actor-ping",
             "Ping Agent",
             "A test agent",
@@ -326,7 +326,7 @@ public class MessageEndpointsTests : IClassFixture<CustomWebApplicationFactory>
         var ct = TestContext.Current.CancellationToken;
 
         var entry = new DirectoryEntry(
-            new Address("agent", "validating-agent"),
+            Address.For("agent", "validating-agent"),
             "actor-validating",
             "Validating Agent",
             "A test agent",
@@ -373,7 +373,7 @@ public class MessageEndpointsTests : IClassFixture<CustomWebApplicationFactory>
         var ct = TestContext.Current.CancellationToken;
 
         var entry = new DirectoryEntry(
-            new Address("agent", "strict-agent"),
+            Address.For("agent", "strict-agent"),
             "actor-strict",
             "Strict Agent",
             "A test agent",
@@ -420,7 +420,7 @@ public class MessageEndpointsTests : IClassFixture<CustomWebApplicationFactory>
         var ct = TestContext.Current.CancellationToken;
 
         var entry = new DirectoryEntry(
-            new Address("agent", "remoted-agent"),
+            Address.For("agent", "remoted-agent"),
             "actor-remoted",
             "Remoted Agent",
             "A test agent",
@@ -466,7 +466,7 @@ public class MessageEndpointsTests : IClassFixture<CustomWebApplicationFactory>
         var ct = TestContext.Current.CancellationToken;
 
         var entry = new DirectoryEntry(
-            new Address("agent", "flaky-agent"),
+            Address.For("agent", "flaky-agent"),
             "actor-flaky",
             "Flaky Agent",
             "A test agent",

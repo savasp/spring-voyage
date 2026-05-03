@@ -108,7 +108,7 @@ public class ThreadQueryServiceTests : IDisposable
                 Arg.Is<Address>(a => a.Scheme == "agent" && a.Path == "backend-engineer"),
                 Arg.Any<CancellationToken>())
             .Returns(new DirectoryEntry(
-                Address: new Address("agent", "backend-engineer"),
+                Address: Address.For("agent", "backend-engineer"),
                 ActorId: actorId,
                 DisplayName: "backend-engineer",
                 Description: string.Empty,
@@ -374,8 +374,8 @@ public class ThreadQueryServiceTests : IDisposable
         var messageId = Guid.NewGuid();
         var message = new Message(
             messageId,
-            new Address("human", "savasp"),
-            new Address("agent", "ada"),
+            Address.For("human", "savasp"),
+            Address.For("agent", "ada"),
             MessageType.Domain,
             "c-1",
             JsonSerializer.SerializeToElement("Approve merge?"),
@@ -423,8 +423,8 @@ public class ThreadQueryServiceTests : IDisposable
         });
         var message = new Message(
             messageId,
-            new Address("agent", "ada"),
-            new Address("human", "savasp"),
+            Address.For("agent", "ada"),
+            Address.For("human", "savasp"),
             MessageType.Domain,
             "c-reply",
             replyPayload,
@@ -683,7 +683,7 @@ public class ThreadQueryServiceTests : IDisposable
                 Arg.Is<Address>(a => a.Scheme == "agent" && a.Path == "backend-engineer"),
                 Arg.Any<CancellationToken>())
             .Returns(new DirectoryEntry(
-                Address: new Address("agent", "backend-engineer"),
+                Address: Address.For("agent", "backend-engineer"),
                 ActorId: actorId,
                 DisplayName: "backend-engineer",
                 Description: string.Empty,

@@ -34,8 +34,8 @@ public class DirectoryEndpointsTests : IClassFixture<CustomWebApplicationFactory
         var ct = TestContext.Current.CancellationToken;
         var entries = new List<DirectoryEntry>
         {
-            new(new Address("agent", "agent-1"), "actor-1", "Agent One", "First agent", "backend", DateTimeOffset.UtcNow),
-            new(new Address("unit", "unit-1"), "actor-2", "Unit One", "First unit", null, DateTimeOffset.UtcNow)
+            new(Address.For("agent", "agent-1"), "actor-1", "Agent One", "First agent", "backend", DateTimeOffset.UtcNow),
+            new(Address.For("unit", "unit-1"), "actor-2", "Unit One", "First unit", null, DateTimeOffset.UtcNow)
         };
         _factory.DirectoryService.ListAllAsync(Arg.Any<CancellationToken>()).Returns(entries);
 
@@ -55,7 +55,7 @@ public class DirectoryEndpointsTests : IClassFixture<CustomWebApplicationFactory
         var ct = TestContext.Current.CancellationToken;
         var entries = new List<DirectoryEntry>
         {
-            new(new Address("agent", "agent-1"), "actor-1", "Agent One", "First agent", "backend", DateTimeOffset.UtcNow)
+            new(Address.For("agent", "agent-1"), "actor-1", "Agent One", "First agent", "backend", DateTimeOffset.UtcNow)
         };
         _factory.DirectoryService.ResolveByRoleAsync("backend", Arg.Any<CancellationToken>()).Returns(entries);
 
@@ -80,7 +80,7 @@ public class DirectoryEndpointsTests : IClassFixture<CustomWebApplicationFactory
                     new ExpertiseSearchHit(
                         Slug: "python",
                         Domain: new ExpertiseDomain("python", "Python expertise", ExpertiseLevel.Advanced, "{\"type\":\"object\"}"),
-                        Owner: new Address("unit", "eng"),
+                        Owner: Address.For("unit", "eng"),
                         OwnerDisplayName: "Engineering",
                         AggregatingUnit: null,
                         TypedContract: true,
@@ -121,16 +121,16 @@ public class DirectoryEndpointsTests : IClassFixture<CustomWebApplicationFactory
                     new ExpertiseSearchHit(
                         Slug: "translation",
                         Domain: new ExpertiseDomain("translation", "Translation expertise", ExpertiseLevel.Advanced, null),
-                        Owner: new Address("unit", "origin"),
+                        Owner: Address.For("unit", "origin"),
                         OwnerDisplayName: "Origin",
-                        AggregatingUnit: new Address("unit", "root"),
+                        AggregatingUnit: Address.For("unit", "root"),
                         TypedContract: false,
                         Score: 20,
                         MatchReason: "aggregated coverage",
                         AncestorChain: new[]
                         {
-                            new Address("unit", "mid"),
-                            new Address("unit", "root"),
+                            Address.For("unit", "mid"),
+                            Address.For("unit", "root"),
                         },
                         ProjectionPaths: new[]
                         {
@@ -173,7 +173,7 @@ public class DirectoryEndpointsTests : IClassFixture<CustomWebApplicationFactory
                     new ExpertiseSearchHit(
                         Slug: "python",
                         Domain: new ExpertiseDomain("python", "Python expertise", ExpertiseLevel.Advanced, null),
-                        Owner: new Address("unit", "eng"),
+                        Owner: Address.For("unit", "eng"),
                         OwnerDisplayName: "Engineering",
                         AggregatingUnit: null,
                         TypedContract: false,

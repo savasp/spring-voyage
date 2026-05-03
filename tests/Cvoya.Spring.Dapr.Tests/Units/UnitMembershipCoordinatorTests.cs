@@ -43,7 +43,7 @@ public class UnitMembershipCoordinatorTests
     [Fact]
     public async Task AddMemberAsync_DuplicateMember_DoesNotCallPersist()
     {
-        var member = new Address("agent", "agent-1");
+        var member = Address.For("agent", "agent-1");
         var existing = new List<Address> { member };
         var persistCalled = false;
 
@@ -63,7 +63,7 @@ public class UnitMembershipCoordinatorTests
     [Fact]
     public async Task AddMemberAsync_NewMember_CallsPersistWithUpdatedList()
     {
-        var member = new Address("agent", "agent-new");
+        var member = Address.For("agent", "agent-new");
         var existing = new List<Address>();
         List<Address>? persisted = null;
 
@@ -107,7 +107,7 @@ public class UnitMembershipCoordinatorTests
     {
         // Candidate has a different address form ("my-team") but resolves
         // to the same actor id as the parent unit.
-        var aliasAddress = new Address("unit", "my-team");
+        var aliasAddress = Address.For("unit", "my-team");
         var parentEntry = MakeEntry("my-team", ParentActorId);
 
         var ex = await Should.ThrowAsync<CyclicMembershipException>(() =>
@@ -129,9 +129,9 @@ public class UnitMembershipCoordinatorTests
     public async Task AddMemberAsync_TwoCycle_Throws()
     {
         // B already contains A. Adding B to A must be rejected.
-        var bAddress = new Address("unit", "team-b");
+        var bAddress = Address.For("unit", "team-b");
         var bEntry = MakeEntry("team-b", "b-actor");
-        var aAliasAddress = new Address("unit", "team-a");
+        var aAliasAddress = Address.For("unit", "team-a");
         var aEntry = MakeEntry("team-a", ParentActorId);
 
         var ex = await Should.ThrowAsync<CyclicMembershipException>(() =>
@@ -164,9 +164,9 @@ public class UnitMembershipCoordinatorTests
     public async Task AddMemberAsync_DeepCycle_ThreeLevels_Throws()
     {
         // C -> B -> A (A is the parent). Adding C to A must be rejected.
-        var cAddress = new Address("unit", "team-c");
-        var bAddress = new Address("unit", "team-b");
-        var aAliasAddress = new Address("unit", "team-a");
+        var cAddress = Address.For("unit", "team-c");
+        var bAddress = Address.For("unit", "team-b");
+        var aAliasAddress = Address.For("unit", "team-a");
 
         var ex = await Should.ThrowAsync<CyclicMembershipException>(() =>
             _coordinator.AddMemberAsync(
@@ -199,7 +199,7 @@ public class UnitMembershipCoordinatorTests
     public async Task AddMemberAsync_AgentMember_SkipsCycleDetection_NeverCallsResolve()
     {
         // Agents are leaves — resolveAddress must never be called.
-        var agentAddress = new Address("agent", "agent-x");
+        var agentAddress = Address.For("agent", "agent-x");
         var resolveCalled = false;
 
         await _coordinator.AddMemberAsync(
@@ -220,7 +220,7 @@ public class UnitMembershipCoordinatorTests
     {
         // The directory returns null for the candidate (deleted unit). Should
         // not block the add.
-        var ghostAddress = new Address("unit", "ghost-team");
+        var ghostAddress = Address.For("unit", "ghost-team");
 
         await _coordinator.AddMemberAsync(
             unitActorId: ParentActorId,
@@ -239,7 +239,7 @@ public class UnitMembershipCoordinatorTests
     public async Task AddMemberAsync_GetSubUnitMembersThrows_TreatsAsDeadEnd_Succeeds()
     {
         // Actor unreachable mid-walk. Should not block the add.
-        var flakyAddress = new Address("unit", "flaky-team");
+        var flakyAddress = Address.For("unit", "flaky-team");
         var flakyEntry = MakeEntry("flaky-team", "flaky-actor");
 
         await _coordinator.AddMemberAsync(
@@ -260,8 +260,8 @@ public class UnitMembershipCoordinatorTests
     {
         // X -> Y -> X (benign side-cycle not involving the parent). Must not
         // block adding X to the parent.
-        var xAddress = new Address("unit", "team-x");
-        var yAddress = new Address("unit", "team-y");
+        var xAddress = Address.For("unit", "team-x");
+        var yAddress = Address.For("unit", "team-y");
 
         await _coordinator.AddMemberAsync(
             unitActorId: ParentActorId,
@@ -330,7 +330,7 @@ public class UnitMembershipCoordinatorTests
     [Fact]
     public async Task RemoveMemberAsync_ExistingMember_CallsPersistWithSmallerList()
     {
-        var member = new Address("agent", "agent-1");
+        var member = Address.For("agent", "agent-1");
         var existing = new List<Address> { member };
         List<Address>? persisted = null;
 
@@ -348,7 +348,7 @@ public class UnitMembershipCoordinatorTests
     [Fact]
     public async Task RemoveMemberAsync_NonExistentMember_DoesNotCallPersist()
     {
-        var member = new Address("agent", "ghost");
+        var member = Address.For("agent", "ghost");
         var existing = new List<Address>();
         var persistCalled = false;
 
@@ -370,7 +370,7 @@ public class UnitMembershipCoordinatorTests
         var projector = Substitute.For<IUnitSubunitMembershipProjector>();
         var coordinator = new UnitMembershipCoordinator(projector, _logger);
 
-        var subUnit = new Address("unit", "child-team");
+        var subUnit = Address.For("unit", "child-team");
         var childEntry = MakeEntry("child-team", "child-actor");
 
         await coordinator.AddMemberAsync(
@@ -393,7 +393,7 @@ public class UnitMembershipCoordinatorTests
         var projector = Substitute.For<IUnitSubunitMembershipProjector>();
         var coordinator = new UnitMembershipCoordinator(projector, _logger);
 
-        var subUnit = new Address("unit", "child-team");
+        var subUnit = Address.For("unit", "child-team");
         var existing = new List<Address> { subUnit };
 
         await coordinator.RemoveMemberAsync(
@@ -413,7 +413,7 @@ public class UnitMembershipCoordinatorTests
         var projector = Substitute.For<IUnitSubunitMembershipProjector>();
         var coordinator = new UnitMembershipCoordinator(projector, _logger);
 
-        var agent = new Address("agent", "agent-1");
+        var agent = Address.For("agent", "agent-1");
 
         await coordinator.AddMemberAsync(
             unitActorId: ParentActorId,

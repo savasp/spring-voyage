@@ -47,7 +47,7 @@ public class AgentContractTests : IClassFixture<CustomWebApplicationFactory>
         _factory.DirectoryService.ListAllAsync(Arg.Any<CancellationToken>())
             .Returns(new List<DirectoryEntry>
             {
-                new(new Address("agent", "contract-list"),
+                new(Address.For("agent", "contract-list"),
                     "actor-contract-list",
                     "Contract List",
                     "An agent for contract tests",
@@ -131,7 +131,7 @@ public class AgentContractTests : IClassFixture<CustomWebApplicationFactory>
                 Arg.Is<Address>(a => a.Scheme == "agent" && a.Path == "contract-undeploy"),
                 Arg.Any<CancellationToken>())
             .Returns(new DirectoryEntry(
-                new Address("agent", "contract-undeploy"),
+                Address.For("agent", "contract-undeploy"),
                 "actor-contract-undeploy",
                 "Contract Undeploy",
                 "",
@@ -164,7 +164,7 @@ public class AgentContractTests : IClassFixture<CustomWebApplicationFactory>
         _factory.DirectoryService.ListAllAsync(Arg.Any<CancellationToken>())
             .Returns(new List<DirectoryEntry>
             {
-                new(new Address("agent", "contract-hosting-initiative"),
+                new(Address.For("agent", "contract-hosting-initiative"),
                     "actor-hosting-initiative",
                     "Hosting + Initiative",
                     "Contract test for new fields",
@@ -212,13 +212,13 @@ public class AgentContractTests : IClassFixture<CustomWebApplicationFactory>
         _factory.DirectoryService.ListAllAsync(Arg.Any<CancellationToken>())
             .Returns(new List<DirectoryEntry>
             {
-                new(new Address("agent", "agent-ephemeral"),
+                new(Address.For("agent", "agent-ephemeral"),
                     "actor-ephemeral",
                     "Ephemeral Agent",
                     "",
                     null,
                     DateTimeOffset.UtcNow),
-                new(new Address("agent", "agent-persistent"),
+                new(Address.For("agent", "agent-persistent"),
                     "actor-persistent",
                     "Persistent Agent",
                     "",
@@ -265,19 +265,19 @@ public class AgentContractTests : IClassFixture<CustomWebApplicationFactory>
         _factory.DirectoryService.ListAllAsync(Arg.Any<CancellationToken>())
             .Returns(new List<DirectoryEntry>
             {
-                new(new Address("agent", "agent-passive"),
+                new(Address.For("agent", "agent-passive"),
                     "actor-passive",
                     "Passive Agent",
                     "",
                     null,
                     DateTimeOffset.UtcNow),
-                new(new Address("agent", "agent-proactive"),
+                new(Address.For("agent", "agent-proactive"),
                     "actor-proactive",
                     "Proactive Agent",
                     "",
                     null,
                     DateTimeOffset.UtcNow),
-                new(new Address("agent", "agent-autonomous"),
+                new(Address.For("agent", "agent-autonomous"),
                     "actor-autonomous",
                     "Autonomous Agent",
                     "",

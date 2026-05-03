@@ -33,7 +33,7 @@ public class CloneEndpointsTests : IClassFixture<CustomWebApplicationFactory>
     public async Task ListClones_AgentExists_NoClones_ReturnsEmptyList()
     {
         var ct = TestContext.Current.CancellationToken;
-        var agentAddress = new Address("agent", "test-agent");
+        var agentAddress = Address.For("agent", "test-agent");
         var entry = new DirectoryEntry(agentAddress, "actor-1", "Test Agent", "A test agent", "backend", DateTimeOffset.UtcNow);
         _factory.DirectoryService.ResolveAsync(agentAddress, Arg.Any<CancellationToken>()).Returns(entry);
         _factory.StateStore.GetAsync<List<string>>(
@@ -72,11 +72,11 @@ public class CloneEndpointsTests : IClassFixture<CustomWebApplicationFactory>
             $"clone-b:{StateKeys.CloneIdentity}", Arg.Any<CancellationToken>())
             .Returns(identityB);
 
-        var cloneEntryA = new DirectoryEntry(new Address("agent", "clone-a"), "clone-a", "Clone:clone-a", "Clone of list-parent", null, DateTimeOffset.UtcNow);
-        _factory.DirectoryService.ResolveAsync(new Address("agent", "clone-a"), Arg.Any<CancellationToken>()).Returns(cloneEntryA);
+        var cloneEntryA = new DirectoryEntry(Address.For("agent", "clone-a"), "clone-a", "Clone:clone-a", "Clone of list-parent", null, DateTimeOffset.UtcNow);
+        _factory.DirectoryService.ResolveAsync(Address.For("agent", "clone-a"), Arg.Any<CancellationToken>()).Returns(cloneEntryA);
 
-        var cloneEntryB = new DirectoryEntry(new Address("agent", "clone-b"), "clone-b", "Clone:clone-b", "Clone of list-parent", null, DateTimeOffset.UtcNow);
-        _factory.DirectoryService.ResolveAsync(new Address("agent", "clone-b"), Arg.Any<CancellationToken>()).Returns(cloneEntryB);
+        var cloneEntryB = new DirectoryEntry(Address.For("agent", "clone-b"), "clone-b", "Clone:clone-b", "Clone of list-parent", null, DateTimeOffset.UtcNow);
+        _factory.DirectoryService.ResolveAsync(Address.For("agent", "clone-b"), Arg.Any<CancellationToken>()).Returns(cloneEntryB);
 
         var response = await _client.GetAsync($"/api/v1/tenant/agents/{agentId}/clones", ct);
 
@@ -101,7 +101,7 @@ public class CloneEndpointsTests : IClassFixture<CustomWebApplicationFactory>
     public async Task ListClones_AgentNotFound_Returns404()
     {
         var ct = TestContext.Current.CancellationToken;
-        var agentAddress = new Address("agent", "nonexistent-list-agent");
+        var agentAddress = Address.For("agent", "nonexistent-list-agent");
         _factory.DirectoryService.ResolveAsync(agentAddress, Arg.Any<CancellationToken>()).Returns((DirectoryEntry?)null);
 
         var response = await _client.GetAsync("/api/v1/tenant/agents/nonexistent-list-agent/clones", ct);
@@ -113,7 +113,7 @@ public class CloneEndpointsTests : IClassFixture<CustomWebApplicationFactory>
     public async Task CreateClone_AgentNotFound_Returns404()
     {
         var ct = TestContext.Current.CancellationToken;
-        var agentAddress = new Address("agent", "nonexistent-agent");
+        var agentAddress = Address.For("agent", "nonexistent-agent");
         _factory.DirectoryService.ResolveAsync(agentAddress, Arg.Any<CancellationToken>()).Returns((DirectoryEntry?)null);
 
         var request = new CreateCloneRequest(CloningPolicy.EphemeralNoMemory, AttachmentMode.Detached);
@@ -169,7 +169,7 @@ public class CloneEndpointsTests : IClassFixture<CustomWebApplicationFactory>
     public async Task GetClone_CloneNotFound_Returns404()
     {
         var ct = TestContext.Current.CancellationToken;
-        var cloneAddress = new Address("agent", "nonexistent-clone");
+        var cloneAddress = Address.For("agent", "nonexistent-clone");
         _factory.DirectoryService.ResolveAsync(cloneAddress, Arg.Any<CancellationToken>()).Returns((DirectoryEntry?)null);
 
         var response = await _client.GetAsync("/api/v1/tenant/agents/test-agent/clones/nonexistent-clone", ct);
@@ -181,7 +181,7 @@ public class CloneEndpointsTests : IClassFixture<CustomWebApplicationFactory>
     public async Task DeleteClone_CloneNotFound_Returns404()
     {
         var ct = TestContext.Current.CancellationToken;
-        var cloneAddress = new Address("agent", "nonexistent-clone");
+        var cloneAddress = Address.For("agent", "nonexistent-clone");
         _factory.DirectoryService.ResolveAsync(cloneAddress, Arg.Any<CancellationToken>()).Returns((DirectoryEntry?)null);
 
         var response = await _client.DeleteAsync("/api/v1/tenant/agents/test-agent/clones/nonexistent-clone", ct);

@@ -53,16 +53,16 @@ public class WorkflowOrchestrationStrategyTests
             Options.Create(_options),
             _loggerFactory);
 
-        _context.UnitAddress.Returns(new Address("unit", "test-unit"));
-        _context.Members.Returns([new Address("agent", "agent-1")]);
+        _context.UnitAddress.Returns(Address.For("unit", "test-unit"));
+        _context.Members.Returns([Address.For("agent", "agent-1")]);
     }
 
     private static Message CreateMessage(string? threadId = null)
     {
         return new Message(
             Guid.NewGuid(),
-            new Address("agent", "test-sender"),
-            new Address("unit", "test-unit"),
+            Address.For("agent", "test-sender"),
+            Address.For("unit", "test-unit"),
             MessageType.Domain,
             threadId ?? Guid.NewGuid().ToString(),
             JsonSerializer.SerializeToElement(new { Task = "run workflow" }),

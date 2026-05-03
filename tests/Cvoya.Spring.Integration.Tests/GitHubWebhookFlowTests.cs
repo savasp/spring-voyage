@@ -30,7 +30,7 @@ public class GitHubWebhookFlowTests
         var (unitActor, unitStateManager, strategy) = ActorTestHost.CreateUnitActor(actorId: "webhook-unit");
 
         // Register an agent member on the unit.
-        var agentAddress = new Address("agent", "webhook-agent");
+        var agentAddress = Address.For("agent", "webhook-agent");
         unitStateManager.TryGetStateAsync<List<Address>>(StateKeys.Members, Arg.Any<CancellationToken>())
             .Returns(new ConditionalValue<List<Address>>(true, [agentAddress]));
 
@@ -71,7 +71,7 @@ public class GitHubWebhookFlowTests
         var (unitActor, unitStateManager, strategy) = ActorTestHost.CreateUnitActor(actorId: "flow-unit");
         var (agentActor, agentStateManager) = ActorTestHost.CreateAgentActor("flow-agent");
 
-        var agentAddress = new Address("agent", "flow-agent");
+        var agentAddress = Address.For("agent", "flow-agent");
         unitStateManager.TryGetStateAsync<List<Address>>(StateKeys.Members, Arg.Any<CancellationToken>())
             .Returns(new ConditionalValue<List<Address>>(true, [agentAddress]));
 
@@ -86,7 +86,7 @@ public class GitHubWebhookFlowTests
                 // Create a forwarded message addressed to the agent.
                 forwardedMessage = new Message(
                     Guid.NewGuid(),
-                    new Address("unit", "flow-unit"),
+                    Address.For("unit", "flow-unit"),
                     agentAddress,
                     MessageType.Domain,
                     originalMessage.ThreadId,
@@ -128,8 +128,8 @@ public class GitHubWebhookFlowTests
 
         var message = new Message(
             Guid.NewGuid(),
-            new Address("unit", "test-unit"),
-            new Address("agent", "payload-agent"),
+            Address.For("unit", "test-unit"),
+            Address.For("agent", "payload-agent"),
             MessageType.Domain,
             "webhook-conv-1",
             webhookPayload,

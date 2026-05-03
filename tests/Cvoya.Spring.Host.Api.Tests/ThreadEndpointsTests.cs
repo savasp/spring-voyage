@@ -264,7 +264,7 @@ public class ThreadEndpointsTests : IClassFixture<ThreadEndpointsTests.Factory>
         _factory.MessageRouter
             .RouteAsync(Arg.Any<Message>(), Arg.Any<CancellationToken>())
             .Returns(Result<Message?, RoutingError>.Failure(
-                RoutingError.PermissionDenied(new Address("agent", "ada"))));
+                RoutingError.PermissionDenied(Address.For("agent", "ada"))));
 
         var body = new ThreadMessageRequest(new AddressDto("agent", "ada"), "hi");
 
@@ -285,7 +285,7 @@ public class ThreadEndpointsTests : IClassFixture<ThreadEndpointsTests.Factory>
             .RouteAsync(Arg.Any<Message>(), Arg.Any<CancellationToken>())
             .Returns(Result<Message?, RoutingError>.Failure(
                 RoutingError.CallerValidation(
-                    new Address("agent", "ada"),
+                    Address.For("agent", "ada"),
                     CallerValidationCodes.UnknownMessageType,
                     "Unknown message type: Amendment")));
 
@@ -309,7 +309,7 @@ public class ThreadEndpointsTests : IClassFixture<ThreadEndpointsTests.Factory>
         _factory.MessageRouter
             .RouteAsync(Arg.Any<Message>(), Arg.Any<CancellationToken>())
             .Returns(Result<Message?, RoutingError>.Failure(
-                RoutingError.DeliveryFailed(new Address("agent", "ada"), "Actor unavailable")));
+                RoutingError.DeliveryFailed(Address.For("agent", "ada"), "Actor unavailable")));
 
         var body = new ThreadMessageRequest(new AddressDto("agent", "ada"), "hi");
 
@@ -349,7 +349,7 @@ public class ThreadEndpointsTests : IClassFixture<ThreadEndpointsTests.Factory>
             .Returns(beforeDetail, afterDetail);
 
         var entry = new DirectoryEntry(
-            new Address("agent", "ada"),
+            Address.For("agent", "ada"),
             ActorId: "ada",
             DisplayName: "Ada",
             Description: "Test agent",

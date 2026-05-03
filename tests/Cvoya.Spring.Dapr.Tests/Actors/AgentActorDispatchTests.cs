@@ -107,8 +107,8 @@ public class AgentActorDispatchTests
     {
         return new Message(
             Guid.NewGuid(),
-            new Address("unit", "my-unit"),
-            new Address("agent", "test-agent"),
+            Address.For("unit", "my-unit"),
+            Address.For("agent", "test-agent"),
             MessageType.Domain,
             threadId,
             JsonSerializer.SerializeToElement(new { task = "do-it" }),
@@ -142,7 +142,7 @@ public class AgentActorDispatchTests
         var message = CreateDomainMessage();
         var response = new Message(
             Guid.NewGuid(),
-            new Address("agent", "test-agent"),
+            Address.For("agent", "test-agent"),
             message.From,
             MessageType.Domain,
             message.ThreadId,

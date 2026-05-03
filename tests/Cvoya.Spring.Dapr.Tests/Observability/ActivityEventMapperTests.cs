@@ -23,7 +23,7 @@ public class ActivityEventMapperTests
         var activityEvent = new ActivityEvent(
             Guid.NewGuid(),
             DateTimeOffset.UtcNow,
-            new Address("agent", "team/ada"),
+            Address.For("agent", "team/ada"),
             ActivityEventType.DecisionMade,
             ActivitySeverity.Debug,
             "Decision recorded",
@@ -64,7 +64,7 @@ public class ActivityEventMapperTests
         var domain = ActivityEventMapper.ToDomain(record);
 
         domain.Id.ShouldBe(record.Id);
-        domain.Source.ShouldBe(new Address("unit", "engineering"));
+        domain.Source.ShouldBe(Address.For("unit", "engineering"));
         domain.EventType.ShouldBe(ActivityEventType.CostIncurred);
         domain.Severity.ShouldBe(ActivitySeverity.Warning);
         domain.Summary.ShouldBe("High cost");
@@ -80,7 +80,7 @@ public class ActivityEventMapperTests
         var original = new ActivityEvent(
             Guid.NewGuid(),
             DateTimeOffset.UtcNow,
-            new Address("agent", "test-agent"),
+            Address.For("agent", "test-agent"),
             ActivityEventType.MessageReceived,
             ActivitySeverity.Info,
             "Message received",
@@ -108,7 +108,7 @@ public class ActivityEventMapperTests
         var activityEvent = new ActivityEvent(
             Guid.NewGuid(),
             DateTimeOffset.UtcNow,
-            new Address("agent", "test"),
+            Address.For("agent", "test"),
             ActivityEventType.StateChanged,
             ActivitySeverity.Info,
             "State changed");

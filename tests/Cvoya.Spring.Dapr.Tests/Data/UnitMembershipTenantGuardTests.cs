@@ -59,8 +59,8 @@ public class UnitMembershipTenantGuardTests : IDisposable
         var guard = CreateGuard(TenantA);
 
         await guard.EnsureSameTenantAsync(
-            new Address("unit", "engineering"),
-            new Address("agent", "ada"),
+            Address.For("unit", "engineering"),
+            Address.For("agent", "ada"),
             TestContext.Current.CancellationToken);
     }
 
@@ -71,8 +71,8 @@ public class UnitMembershipTenantGuardTests : IDisposable
 
         var ex = await Should.ThrowAsync<CrossTenantMembershipException>(() =>
             guard.EnsureSameTenantAsync(
-                new Address("unit", "engineering"),
-                new Address("agent", "hopper"),
+                Address.For("unit", "engineering"),
+                Address.For("agent", "hopper"),
                 TestContext.Current.CancellationToken));
 
         ex.ParentUnit.Path.ShouldBe("engineering");
@@ -86,8 +86,8 @@ public class UnitMembershipTenantGuardTests : IDisposable
 
         await Should.ThrowAsync<CrossTenantMembershipException>(() =>
             guard.EnsureSameTenantAsync(
-                new Address("unit", "engineering"),
-                new Address("unit", "marketing"),
+                Address.For("unit", "engineering"),
+                Address.For("unit", "marketing"),
                 TestContext.Current.CancellationToken));
     }
 
@@ -98,8 +98,8 @@ public class UnitMembershipTenantGuardTests : IDisposable
 
         await Should.ThrowAsync<CrossTenantMembershipException>(() =>
             guard.EnsureSameTenantAsync(
-                new Address("unit", "engineering"),
-                new Address("agent", "ghost"),
+                Address.For("unit", "engineering"),
+                Address.For("agent", "ghost"),
                 TestContext.Current.CancellationToken));
     }
 
@@ -109,8 +109,8 @@ public class UnitMembershipTenantGuardTests : IDisposable
         var guard = CreateGuard(TenantA);
 
         var result = await guard.ShareTenantAsync(
-            new Address("unit", "engineering"),
-            new Address("agent", "ada"),
+            Address.For("unit", "engineering"),
+            Address.For("agent", "ada"),
             TestContext.Current.CancellationToken);
 
         result.ShouldBeTrue();
@@ -122,8 +122,8 @@ public class UnitMembershipTenantGuardTests : IDisposable
         var guard = CreateGuard(TenantA);
 
         var result = await guard.ShareTenantAsync(
-            new Address("unit", "engineering"),
-            new Address("agent", "hopper"),
+            Address.For("unit", "engineering"),
+            Address.For("agent", "hopper"),
             TestContext.Current.CancellationToken);
 
         result.ShouldBeFalse();
@@ -137,8 +137,8 @@ public class UnitMembershipTenantGuardTests : IDisposable
         var guard = CreateGuard(TenantA);
 
         var result = await guard.ShareTenantAsync(
-            new Address("agent", "ada"),
-            new Address("agent", "ada"),
+            Address.For("agent", "ada"),
+            Address.For("agent", "ada"),
             TestContext.Current.CancellationToken);
 
         result.ShouldBeFalse();

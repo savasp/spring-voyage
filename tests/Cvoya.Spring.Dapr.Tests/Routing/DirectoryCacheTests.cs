@@ -21,7 +21,7 @@ public class DirectoryCacheTests
     [Fact]
     public void Set_and_TryGet_round_trips_entry()
     {
-        var address = new Address("agent", "engineering-team/ada");
+        var address = Address.For("agent", "engineering-team/ada");
         var entry = CreateEntry(address);
 
         _cache.Set(address, entry);
@@ -33,7 +33,7 @@ public class DirectoryCacheTests
     [Fact]
     public void Invalidate_removes_entry()
     {
-        var address = new Address("agent", "engineering-team/ada");
+        var address = Address.For("agent", "engineering-team/ada");
         var entry = CreateEntry(address);
 
         _cache.Set(address, entry);
@@ -45,8 +45,8 @@ public class DirectoryCacheTests
     [Fact]
     public void Clear_removes_all_entries()
     {
-        var address1 = new Address("agent", "team/ada");
-        var address2 = new Address("connector", "team/github");
+        var address1 = Address.For("agent", "team/ada");
+        var address2 = Address.For("connector", "team/github");
 
         _cache.Set(address1, CreateEntry(address1));
         _cache.Set(address2, CreateEntry(address2));

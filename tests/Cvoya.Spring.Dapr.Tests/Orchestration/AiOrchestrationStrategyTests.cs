@@ -34,7 +34,7 @@ public class AiOrchestrationStrategyTests
         _loggerFactory.CreateLogger(Arg.Any<string>()).Returns(Substitute.For<ILogger>());
         _strategy = new AiOrchestrationStrategy(_aiProvider, _loggerFactory);
 
-        _context.UnitAddress.Returns(new Address("unit", "test-unit"));
+        _context.UnitAddress.Returns(Address.For("unit", "test-unit"));
     }
 
     private static Message CreateMessage(
@@ -43,8 +43,8 @@ public class AiOrchestrationStrategyTests
     {
         return new Message(
             Guid.NewGuid(),
-            new Address("agent", "test-sender"),
-            new Address("unit", "test-unit"),
+            Address.For("agent", "test-sender"),
+            Address.For("unit", "test-unit"),
             type,
             threadId ?? Guid.NewGuid().ToString(),
             JsonSerializer.SerializeToElement(new { Task = "process data" }),
@@ -54,8 +54,8 @@ public class AiOrchestrationStrategyTests
     [Fact]
     public async Task OrchestrateAsync_CallsAiProviderWithMemberContext()
     {
-        var member1 = new Address("agent", "agent-1");
-        var member2 = new Address("agent", "agent-2");
+        var member1 = Address.For("agent", "agent-1");
+        var member2 = Address.For("agent", "agent-2");
         _context.Members.Returns([member1, member2]);
         _aiProvider.CompleteAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns("agent://agent-1");
@@ -71,8 +71,8 @@ public class AiOrchestrationStrategyTests
     [Fact]
     public async Task OrchestrateAsync_ForwardsToMemberReturnedByAi()
     {
-        var member1 = new Address("agent", "agent-1");
-        var member2 = new Address("agent", "agent-2");
+        var member1 = Address.For("agent", "agent-1");
+        var member2 = Address.For("agent", "agent-2");
         _context.Members.Returns([member1, member2]);
         _aiProvider.CompleteAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns("agent://agent-2");
@@ -93,7 +93,7 @@ public class AiOrchestrationStrategyTests
     [Fact]
     public async Task OrchestrateAsync_ReturnsNull_WhenAiResponseDoesNotMatchAnyMember()
     {
-        var member1 = new Address("agent", "agent-1");
+        var member1 = Address.For("agent", "agent-1");
         _context.Members.Returns([member1]);
         _aiProvider.CompleteAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns("unknown://nonexistent");
@@ -120,8 +120,8 @@ public class AiOrchestrationStrategyTests
     [Fact]
     public void BuildRoutingPrompt_IncludesAllMembers()
     {
-        var member1 = new Address("agent", "agent-1");
-        var member2 = new Address("unit", "sub-unit");
+        var member1 = Address.For("agent", "agent-1");
+        var member2 = Address.For("unit", "sub-unit");
         _context.Members.Returns([member1, member2]);
 
         var message = CreateMessage();
@@ -135,8 +135,8 @@ public class AiOrchestrationStrategyTests
     [Fact]
     public void ParseRoutingDecision_FindsMatchingMember()
     {
-        var member1 = new Address("agent", "agent-1");
-        var member2 = new Address("agent", "agent-2");
+        var member1 = Address.For("agent", "agent-1");
+        var member2 = Address.For("agent", "agent-2");
         var members = new List<Address> { member1, member2 };
 
         var result = AiOrchestrationStrategy.ParseRoutingDecision("agent://agent-2", members);
@@ -147,7 +147,7 @@ public class AiOrchestrationStrategyTests
     [Fact]
     public void ParseRoutingDecision_ReturnsNull_WhenNoMatch()
     {
-        var member1 = new Address("agent", "agent-1");
+        var member1 = Address.For("agent", "agent-1");
         var members = new List<Address> { member1 };
 
         var result = AiOrchestrationStrategy.ParseRoutingDecision("unknown://foo", members);

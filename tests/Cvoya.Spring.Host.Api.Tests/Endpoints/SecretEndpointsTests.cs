@@ -55,7 +55,7 @@ public class SecretEndpointsTests : IClassFixture<CustomWebApplicationFactory>
     {
         var ct = TestContext.Current.CancellationToken;
         _factory.DirectoryService.ResolveAsync(
-            new Address("unit", "missing"), Arg.Any<CancellationToken>())
+            Address.For("unit", "missing"), Arg.Any<CancellationToken>())
             .Returns((DirectoryEntry?)null);
 
         var response = await _client.GetAsync("/api/v1/tenant/units/missing/secrets", ct);

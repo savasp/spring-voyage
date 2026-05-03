@@ -235,7 +235,7 @@ public class PackageInstallEndpointsTests : IClassFixture<PackageInstallEndpoint
                 Arg.Is<Address>(a => a.Path == "main"),
                 Arg.Any<CancellationToken>())
             .Returns(new DirectoryEntry(
-                new Address("unit", "main"),
+                Address.For("unit", "main"),
                 "existing-actor",
                 "main",
                 string.Empty,

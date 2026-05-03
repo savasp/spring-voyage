@@ -164,7 +164,7 @@ public class UnitParentEndpointTests : IClassFixture<CustomWebApplicationFactory
         ResetMocks();
 
         // Parent unit is registered and reachable.
-        var parentAddress = new Address("unit", "eng-team");
+        var parentAddress = Address.For("unit", "eng-team");
         var parentEntry = new DirectoryEntry(
             parentAddress, "actor-parent", "eng-team", "parent", null, DateTimeOffset.UtcNow);
         _factory.DirectoryService
@@ -240,7 +240,7 @@ public class UnitParentEndpointTests : IClassFixture<CustomWebApplicationFactory
         ResetMocks();
 
         // Parent unit exists and resolves.
-        var parentAddress = new Address("unit", "parent-a");
+        var parentAddress = Address.For("unit", "parent-a");
         var parentEntry = new DirectoryEntry(
             parentAddress, "actor-parent-a", "parent-a", "parent", null, DateTimeOffset.UtcNow);
         _factory.DirectoryService

@@ -295,7 +295,7 @@ public class SecretResolverDecorationTests
         return services;
     }
 
-    private record ResolverCall(SecretRef Ref, string TenantId, SecretResolution Resolution);
+    private record ResolverCall(SecretRef Ref, Guid TenantId, SecretResolution Resolution);
 
     /// <summary>
     /// Minimal resolver decorator — the call-shape stand-in for the
@@ -338,7 +338,7 @@ public class SecretResolverDecorationTests
             return resolution;
         }
 
-        public Task<IReadOnlyList<SecretRef>> ListAsync(SecretScope scope, string ownerId, CancellationToken ct)
+        public Task<IReadOnlyList<SecretRef>> ListAsync(SecretScope scope, Guid? ownerId, CancellationToken ct)
             => _inner.ListAsync(scope, ownerId, ct);
     }
 
@@ -384,7 +384,7 @@ public class SecretResolverDecorationTests
         public Task<(SecretPointer Pointer, int? Version)?> LookupWithVersionAsync(SecretRef @ref, int? version, CancellationToken ct)
             => _inner.LookupWithVersionAsync(@ref, version, ct);
 
-        public Task<IReadOnlyList<SecretRef>> ListAsync(SecretScope scope, string ownerId, CancellationToken ct)
+        public Task<IReadOnlyList<SecretRef>> ListAsync(SecretScope scope, Guid? ownerId, CancellationToken ct)
             => _inner.ListAsync(scope, ownerId, ct);
 
         public Task<IReadOnlyList<SecretVersionInfo>> ListVersionsAsync(SecretRef @ref, CancellationToken ct)

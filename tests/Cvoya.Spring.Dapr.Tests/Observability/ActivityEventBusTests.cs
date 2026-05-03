@@ -24,7 +24,7 @@ public class ActivityEventBusTests
         return new ActivityEvent(
             Guid.NewGuid(),
             DateTimeOffset.UtcNow,
-            new Address("agent", "test-agent"),
+            Address.For("agent", "test-agent"),
             type,
             severity,
             summary);

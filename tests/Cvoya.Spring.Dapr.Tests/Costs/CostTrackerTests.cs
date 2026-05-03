@@ -156,7 +156,7 @@ public class CostTrackerTests : IDisposable
         var nonCostEvent = new ActivityEvent(
             Guid.NewGuid(),
             DateTimeOffset.UtcNow,
-            new Address("agent", "test"),
+            Address.For("agent", "test"),
             ActivityEventType.MessageReceived,
             ActivitySeverity.Info,
             "Not a cost event");
@@ -239,7 +239,7 @@ public class CostTrackerTests : IDisposable
         var costEvent = new ActivityEvent(
             Guid.NewGuid(),
             DateTimeOffset.UtcNow,
-            new Address("agent", "test"),
+            Address.For("agent", "test"),
             ActivityEventType.CostIncurred,
             ActivitySeverity.Info,
             "Cost incurred",

@@ -46,8 +46,8 @@ public class UnitActorStrategyResolverTests
 
         var incoming = new Message(
             Id: Guid.NewGuid(),
-            From: new Address("agent", "sender"),
-            To: new Address("unit", "resolver-unit"),
+            From: Address.For("agent", "sender"),
+            To: Address.For("unit", "resolver-unit"),
             Type: MessageType.Domain,
             ThreadId: Guid.NewGuid().ToString(),
             Payload: System.Text.Json.JsonSerializer.SerializeToElement(new { }),
@@ -72,8 +72,8 @@ public class UnitActorStrategyResolverTests
 
         var incoming = new Message(
             Id: Guid.NewGuid(),
-            From: new Address("agent", "sender"),
-            To: new Address("unit", "bare-unit"),
+            From: Address.For("agent", "sender"),
+            To: Address.For("unit", "bare-unit"),
             Type: MessageType.Domain,
             ThreadId: Guid.NewGuid().ToString(),
             Payload: System.Text.Json.JsonSerializer.SerializeToElement(new { }),
@@ -100,8 +100,8 @@ public class UnitActorStrategyResolverTests
 
         var incoming = new Message(
             Id: Guid.NewGuid(),
-            From: new Address("agent", "sender"),
-            To: new Address("unit", "scope-unit"),
+            From: Address.For("agent", "sender"),
+            To: Address.For("unit", "scope-unit"),
             Type: MessageType.Domain,
             ThreadId: Guid.NewGuid().ToString(),
             Payload: System.Text.Json.JsonSerializer.SerializeToElement(new { }),

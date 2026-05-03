@@ -57,7 +57,7 @@ public class DataContractSerializationTests
     [Fact]
     public void Address_RoundTripsThroughDataContractSerializer()
     {
-        var original = new Address("unit", "engineering-team");
+        var original = Address.For("unit", "engineering-team");
 
         var roundTripped = RoundTrip(original);
 

@@ -220,7 +220,7 @@ public class AgentMailboxCoordinatorTests
     private static Message CreateMessage(string? threadId = null) =>
         new(
             Guid.NewGuid(),
-            new Address("agent", "sender"),
+            Address.For("agent", "sender"),
             new Address("agent", AgentId),
             MessageType.Domain,
             threadId ?? ThreadId,

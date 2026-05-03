@@ -101,8 +101,8 @@ public class AgentActorTests
     {
         return new Message(
             Guid.NewGuid(),
-            new Address("agent", "test-sender"),
-            new Address("agent", "test-agent"),
+            Address.For("agent", "test-sender"),
+            Address.For("agent", "test-agent"),
             type,
             threadId ?? Guid.NewGuid().ToString(),
             payload ?? JsonSerializer.SerializeToElement(new { }),
@@ -204,8 +204,8 @@ public class AgentActorTests
 
         result.ShouldNotBeNull();
         result!.Type.ShouldBe(MessageType.StatusQuery);
-        result.From.ShouldBe(new Address("agent", "test-agent"));
-        result.To.ShouldBe(new Address("agent", "test-sender"));
+        result.From.ShouldBe(Address.For("agent", "test-agent"));
+        result.To.ShouldBe(Address.For("agent", "test-sender"));
 
         var payload = result.Payload.Deserialize<JsonElement>();
         payload.GetProperty("Status").GetString().ShouldBe("Idle");
@@ -805,7 +805,7 @@ public class AgentActorTests
         });
         var failureResponse = new Message(
             Guid.NewGuid(),
-            new Address("agent", "test-agent"),
+            Address.For("agent", "test-agent"),
             inbound.From,
             MessageType.Domain,
             threadId,
@@ -987,7 +987,7 @@ public class AgentActorTests
         var successPayload = JsonSerializer.SerializeToElement(new { Output = "ok" });
         var successResponse = new Message(
             Guid.NewGuid(),
-            new Address("agent", "test-agent"),
+            Address.For("agent", "test-agent"),
             inbound.From,
             MessageType.Domain,
             threadId,

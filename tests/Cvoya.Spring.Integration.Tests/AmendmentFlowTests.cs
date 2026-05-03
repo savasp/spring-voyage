@@ -160,7 +160,7 @@ public class AmendmentFlowTests
 
         var amendment = new Message(
             Guid.NewGuid(),
-            new Address("unit", "other-unit"),
+            Address.For("unit", "other-unit"),
             new Address("agent", AgentId),
             MessageType.Amendment,
             "conv-live",

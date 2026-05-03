@@ -453,7 +453,7 @@ public class PackageInstallServiceTests
                 Arg.Is<Address>(a => a.Path == "main"),
                 Arg.Any<CancellationToken>())
             .Returns(new DirectoryEntry(
-                new Address("unit", "main"),
+                Address.For("unit", "main"),
                 Guid.NewGuid().ToString(),
                 "main", string.Empty, null, DateTimeOffset.UtcNow));
         dir.ResolveAsync(

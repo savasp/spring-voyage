@@ -45,7 +45,7 @@ public class CloningPolicyEndpointsTests : IClassFixture<CustomWebApplicationFac
     {
         var ct = TestContext.Current.CancellationToken;
         _factory.DirectoryService
-            .ResolveAsync(new Address("agent", "missing-agent"), Arg.Any<CancellationToken>())
+            .ResolveAsync(Address.For("agent", "missing-agent"), Arg.Any<CancellationToken>())
             .Returns((DirectoryEntry?)null);
 
         var response = await _client.GetAsync("/api/v1/tenant/agents/missing-agent/cloning-policy", ct);
@@ -57,7 +57,7 @@ public class CloningPolicyEndpointsTests : IClassFixture<CustomWebApplicationFac
     public async Task GetAgentCloningPolicy_NoPersistedPolicy_ReturnsEmptyShape()
     {
         var ct = TestContext.Current.CancellationToken;
-        var address = new Address("agent", "ada-get");
+        var address = Address.For("agent", "ada-get");
         _factory.DirectoryService.ResolveAsync(address, Arg.Any<CancellationToken>())
             .Returns(new DirectoryEntry(address, "ada-get", "Ada", "Ada", null, DateTimeOffset.UtcNow));
         _factory.StateStore
@@ -79,7 +79,7 @@ public class CloningPolicyEndpointsTests : IClassFixture<CustomWebApplicationFac
     public async Task SetAgentCloningPolicy_RoundTripsWireShape()
     {
         var ct = TestContext.Current.CancellationToken;
-        var address = new Address("agent", "ada-set");
+        var address = Address.For("agent", "ada-set");
         _factory.DirectoryService.ResolveAsync(address, Arg.Any<CancellationToken>())
             .Returns(new DirectoryEntry(address, "ada-set", "Ada", "Ada", null, DateTimeOffset.UtcNow));
 
@@ -107,7 +107,7 @@ public class CloningPolicyEndpointsTests : IClassFixture<CustomWebApplicationFac
     {
         var ct = TestContext.Current.CancellationToken;
         _factory.DirectoryService
-            .ResolveAsync(new Address("agent", "missing-clear"), Arg.Any<CancellationToken>())
+            .ResolveAsync(Address.For("agent", "missing-clear"), Arg.Any<CancellationToken>())
             .Returns((DirectoryEntry?)null);
 
         var response = await _client.DeleteAsync(

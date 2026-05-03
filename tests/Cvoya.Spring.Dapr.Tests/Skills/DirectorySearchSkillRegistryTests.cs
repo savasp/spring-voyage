@@ -71,7 +71,7 @@ public class DirectorySearchSkillRegistryTests
                     new ExpertiseSearchHit(
                         Slug: "python",
                         Domain: new ExpertiseDomain("python", "Python expertise", ExpertiseLevel.Advanced, "{\"type\":\"object\"}"),
-                        Owner: new Address("unit", "eng"),
+                        Owner: Address.For("unit", "eng"),
                         OwnerDisplayName: "Engineering",
                         AggregatingUnit: null,
                         TypedContract: true,

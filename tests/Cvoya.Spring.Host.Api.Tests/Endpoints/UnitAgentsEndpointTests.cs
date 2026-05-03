@@ -246,7 +246,7 @@ public class UnitAgentsEndpointTests : IClassFixture<CustomWebApplicationFactory
                 Arg.Any<CancellationToken>())
             .Returns(Task.FromException(new CrossTenantMembershipException(
                 new Address("unit", UnitName),
-                new Address("agent", "foreign-ada"),
+                Address.For("agent", "foreign-ada"),
                 "cross-tenant")));
 
         var response = await _client.PostAsync(
@@ -389,7 +389,7 @@ public class UnitAgentsEndpointTests : IClassFixture<CustomWebApplicationFactory
                 Arg.Any<CancellationToken>())
             .Returns(Task.FromException(new CrossTenantMembershipException(
                 new Address("unit", UnitName),
-                new Address("unit", "foreign-sub"),
+                Address.For("unit", "foreign-sub"),
                 "cross-tenant")));
 
         var body = new AddMemberRequest(new AddressDto("unit", "foreign-sub"));

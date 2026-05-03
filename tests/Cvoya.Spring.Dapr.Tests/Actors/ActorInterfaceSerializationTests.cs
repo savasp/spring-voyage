@@ -73,8 +73,8 @@ public class ActorInterfaceSerializationTests
         // to #319 Bug 1 — the failing case used a ReadOnlyCollection wrapper.
         var original = new[]
         {
-            new Address("agent", "ada"),
-            new Address("unit", "engineering"),
+            Address.For("agent", "ada"),
+            Address.For("unit", "engineering"),
         };
 
         var roundTripped = RoundTrip(original);

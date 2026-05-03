@@ -62,7 +62,7 @@ public class DirectoryServiceTests : IDisposable
     public async Task RegisterAsync_and_ResolveAsync_returns_correct_entry()
     {
         var ct = TestContext.Current.CancellationToken;
-        var address = new Address("agent", "engineering-team/ada");
+        var address = Address.For("agent", "engineering-team/ada");
         var entry = new DirectoryEntry(address, "actor-1", "Ada", "Backend engineer", "backend-engineer", DateTimeOffset.UtcNow);
 
         await _service.RegisterAsync(entry, ct);
@@ -78,7 +78,7 @@ public class DirectoryServiceTests : IDisposable
     public async Task UnregisterAsync_and_ResolveAsync_returns_null()
     {
         var ct = TestContext.Current.CancellationToken;
-        var address = new Address("agent", "engineering-team/ada");
+        var address = Address.For("agent", "engineering-team/ada");
         var entry = new DirectoryEntry(address, "actor-1", "Ada", "Backend engineer", null, DateTimeOffset.UtcNow);
 
         await _service.RegisterAsync(entry, ct);
@@ -92,7 +92,7 @@ public class DirectoryServiceTests : IDisposable
     public async Task UpdateEntryAsync_updates_displayName_and_description()
     {
         var ct = TestContext.Current.CancellationToken;
-        var address = new Address("unit", "engineering");
+        var address = Address.For("unit", "engineering");
         var entry = new DirectoryEntry(address, "actor-1", "old-display", "old-desc", null, DateTimeOffset.UtcNow);
 
         await _service.RegisterAsync(entry, ct);
@@ -112,7 +112,7 @@ public class DirectoryServiceTests : IDisposable
     public async Task UpdateEntryAsync_null_fields_leave_existing_values()
     {
         var ct = TestContext.Current.CancellationToken;
-        var address = new Address("unit", "engineering");
+        var address = Address.For("unit", "engineering");
         var entry = new DirectoryEntry(address, "actor-1", "display", "description", null, DateTimeOffset.UtcNow);
 
         await _service.RegisterAsync(entry, ct);
@@ -128,7 +128,7 @@ public class DirectoryServiceTests : IDisposable
     public async Task UpdateEntryAsync_unknown_address_returns_null()
     {
         var ct = TestContext.Current.CancellationToken;
-        var address = new Address("unit", "missing");
+        var address = Address.For("unit", "missing");
 
         var updated = await _service.UpdateEntryAsync(address, "display", "desc", ct);
 
@@ -140,11 +140,11 @@ public class DirectoryServiceTests : IDisposable
     {
         var ct = TestContext.Current.CancellationToken;
         var entry1 = new DirectoryEntry(
-            new Address("agent", "team/ada"), "actor-1", "Ada", "Engineer", "backend-engineer", DateTimeOffset.UtcNow);
+            Address.For("agent", "team/ada"), "actor-1", "Ada", "Engineer", "backend-engineer", DateTimeOffset.UtcNow);
         var entry2 = new DirectoryEntry(
-            new Address("agent", "team/bob"), "actor-2", "Bob", "Engineer", "backend-engineer", DateTimeOffset.UtcNow);
+            Address.For("agent", "team/bob"), "actor-2", "Bob", "Engineer", "backend-engineer", DateTimeOffset.UtcNow);
         var entry3 = new DirectoryEntry(
-            new Address("agent", "team/charlie"), "actor-3", "Charlie", "Designer", "frontend-engineer", DateTimeOffset.UtcNow);
+            Address.For("agent", "team/charlie"), "actor-3", "Charlie", "Designer", "frontend-engineer", DateTimeOffset.UtcNow);
 
         await _service.RegisterAsync(entry1, ct);
         await _service.RegisterAsync(entry2, ct);
@@ -160,7 +160,7 @@ public class DirectoryServiceTests : IDisposable
     public async Task RegisterAsync_persists_unit_to_database()
     {
         var ct = TestContext.Current.CancellationToken;
-        var address = new Address("unit", "engineering");
+        var address = Address.For("unit", "engineering");
         var entry = new DirectoryEntry(address, "unit-actor-1", "Engineering", "Engineering unit", null, DateTimeOffset.UtcNow);
 
         await _service.RegisterAsync(entry, ct);
@@ -179,7 +179,7 @@ public class DirectoryServiceTests : IDisposable
     public async Task RegisterAsync_persists_agent_to_database()
     {
         var ct = TestContext.Current.CancellationToken;
-        var address = new Address("agent", "team/ada");
+        var address = Address.For("agent", "team/ada");
         var entry = new DirectoryEntry(address, "agent-actor-1", "Ada", "Backend engineer", "backend-engineer", DateTimeOffset.UtcNow);
 
         await _service.RegisterAsync(entry, ct);
@@ -223,7 +223,7 @@ public class DirectoryServiceTests : IDisposable
             _serviceProvider.GetRequiredService<IServiceScopeFactory>(),
             _loggerFactory);
 
-        var resolved = await freshService.ResolveAsync(new Address("agent", "team/seeded"), ct);
+        var resolved = await freshService.ResolveAsync(Address.For("agent", "team/seeded"), ct);
 
         resolved.ShouldNotBeNull();
         resolved!.ActorId.ShouldBe("seeded-actor");
@@ -311,7 +311,7 @@ public class DirectoryServiceTests : IDisposable
     public async Task UnregisterAsync_soft_deletes_from_database()
     {
         var ct = TestContext.Current.CancellationToken;
-        var address = new Address("unit", "to-remove");
+        var address = Address.For("unit", "to-remove");
         var entry = new DirectoryEntry(address, "actor-rm", "Remove Me", "Will be removed", null, DateTimeOffset.UtcNow);
 
         await _service.RegisterAsync(entry, ct);
@@ -335,7 +335,7 @@ public class DirectoryServiceTests : IDisposable
     public async Task RegisterAsync_idempotent_upserts_existing_row()
     {
         var ct = TestContext.Current.CancellationToken;
-        var address = new Address("agent", "team/idempotent");
+        var address = Address.For("agent", "team/idempotent");
         var entry1 = new DirectoryEntry(address, "actor-v1", "V1", "First", "role-a", DateTimeOffset.UtcNow);
         var entry2 = new DirectoryEntry(address, "actor-v2", "V2", "Second", "role-b", DateTimeOffset.UtcNow);
 
@@ -356,7 +356,7 @@ public class DirectoryServiceTests : IDisposable
     public async Task RoundTrip_survives_service_restart()
     {
         var ct = TestContext.Current.CancellationToken;
-        var address = new Address("unit", "persistent-unit");
+        var address = Address.For("unit", "persistent-unit");
         var entry = new DirectoryEntry(address, "unit-actor-99", "Persistent", "Survives restart", null, DateTimeOffset.UtcNow);
 
         // Register in the first service instance.
@@ -427,7 +427,7 @@ public class DirectoryServiceTests : IDisposable
         var proxyFactory = Substitute.For<IActorProxyFactory>();
         var service = CreateServiceWithActorFactory(proxyFactory);
 
-        var unitAddress = new Address("unit", "engineering");
+        var unitAddress = Address.For("unit", "engineering");
         await service.RegisterAsync(
             new DirectoryEntry(unitAddress, unitEngUuid.ToString(), "Engineering", "", null, DateTimeOffset.UtcNow),
             ct);
@@ -464,12 +464,12 @@ public class DirectoryServiceTests : IDisposable
         var proxyFactory = Substitute.For<IActorProxyFactory>();
         var service = CreateServiceWithActorFactory(proxyFactory);
 
-        var unitAddress = new Address("unit", "engineering");
+        var unitAddress = Address.For("unit", "engineering");
         await service.RegisterAsync(
             new DirectoryEntry(unitAddress, unitEngUuid.ToString(), "Engineering", "", null, DateTimeOffset.UtcNow),
             ct);
         await service.RegisterAsync(
-            new DirectoryEntry(new Address("agent", "ada"), agentAdaUuid.ToString(), "Ada", "", "engineer", DateTimeOffset.UtcNow),
+            new DirectoryEntry(Address.For("agent", "ada"), agentAdaUuid.ToString(), "Ada", "", "engineer", DateTimeOffset.UtcNow),
             ct);
 
         StubUnitMembers(proxyFactory, unitEngUuid.ToString(), Array.Empty<Address>());
@@ -501,14 +501,14 @@ public class DirectoryServiceTests : IDisposable
         var proxyFactory = Substitute.For<IActorProxyFactory>();
         var service = CreateServiceWithActorFactory(proxyFactory);
 
-        var unitX = new Address("unit", "x");
-        var unitY = new Address("unit", "y");
+        var unitX = Address.For("unit", "x");
+        var unitY = Address.For("unit", "y");
         await service.RegisterAsync(
             new DirectoryEntry(unitX, unitXUuid.ToString(), "X", "", null, DateTimeOffset.UtcNow), ct);
         await service.RegisterAsync(
             new DirectoryEntry(unitY, unitYUuid.ToString(), "Y", "", null, DateTimeOffset.UtcNow), ct);
         await service.RegisterAsync(
-            new DirectoryEntry(new Address("agent", "ada"), agentAdaUuid.ToString(), "Ada", "", null, DateTimeOffset.UtcNow), ct);
+            new DirectoryEntry(Address.For("agent", "ada"), agentAdaUuid.ToString(), "Ada", "", null, DateTimeOffset.UtcNow), ct);
 
         StubUnitMembers(proxyFactory, unitXUuid.ToString(), Array.Empty<Address>());
         await SeedMembershipAsync(unitXUuid, agentAdaUuid, ct);
@@ -548,14 +548,14 @@ public class DirectoryServiceTests : IDisposable
         var proxyFactory = Substitute.For<IActorProxyFactory>();
         var service = CreateServiceWithActorFactory(proxyFactory);
 
-        var parent = new Address("unit", "p");
-        var sub = new Address("unit", "s");
+        var parent = Address.For("unit", "p");
+        var sub = Address.For("unit", "s");
         await service.RegisterAsync(
             new DirectoryEntry(parent, unitPUuid.ToString(), "P", "", null, DateTimeOffset.UtcNow), ct);
         await service.RegisterAsync(
             new DirectoryEntry(sub, unitSUuid.ToString(), "S", "", null, DateTimeOffset.UtcNow), ct);
         await service.RegisterAsync(
-            new DirectoryEntry(new Address("agent", "exclusive"), agentExclusiveUuid.ToString(), "Ex", "", null, DateTimeOffset.UtcNow),
+            new DirectoryEntry(Address.For("agent", "exclusive"), agentExclusiveUuid.ToString(), "Ex", "", null, DateTimeOffset.UtcNow),
             ct);
 
         // Parent lists sub as a unit-typed member; sub has no further nesting.
@@ -604,9 +604,9 @@ public class DirectoryServiceTests : IDisposable
         var proxyFactory = Substitute.For<IActorProxyFactory>();
         var service = CreateServiceWithActorFactory(proxyFactory);
 
-        var parent = new Address("unit", "p");
-        var sub = new Address("unit", "s");
-        var unrelated = new Address("unit", "u");
+        var parent = Address.For("unit", "p");
+        var sub = Address.For("unit", "s");
+        var unrelated = Address.For("unit", "u");
         await service.RegisterAsync(
             new DirectoryEntry(parent, unitPUuid.ToString(), "P", "", null, DateTimeOffset.UtcNow), ct);
         await service.RegisterAsync(
@@ -614,7 +614,7 @@ public class DirectoryServiceTests : IDisposable
         await service.RegisterAsync(
             new DirectoryEntry(unrelated, unitUUuid.ToString(), "U", "", null, DateTimeOffset.UtcNow), ct);
         await service.RegisterAsync(
-            new DirectoryEntry(new Address("agent", "shared"), agentSharedUuid.ToString(), "Sh", "", null, DateTimeOffset.UtcNow),
+            new DirectoryEntry(Address.For("agent", "shared"), agentSharedUuid.ToString(), "Sh", "", null, DateTimeOffset.UtcNow),
             ct);
 
         StubUnitMembers(proxyFactory, unitPUuid.ToString(), new[] { sub });
@@ -666,7 +666,7 @@ public class DirectoryServiceTests : IDisposable
         var proxyFactory = Substitute.For<IActorProxyFactory>();
         var service = CreateServiceWithActorFactory(proxyFactory);
 
-        var unitAddress = new Address("unit", "ghost");
+        var unitAddress = Address.For("unit", "ghost");
         await service.RegisterAsync(
             new DirectoryEntry(unitAddress, "unit-actor-ghost", "Ghost", "", null, DateTimeOffset.UtcNow),
             ct);
@@ -709,7 +709,7 @@ public class DirectoryServiceTests : IDisposable
         var proxyFactory = Substitute.For<IActorProxyFactory>();
         var service = CreateServiceWithActorFactory(proxyFactory);
 
-        var unitAddress = new Address("unit", "ghost-resolve");
+        var unitAddress = Address.For("unit", "ghost-resolve");
         await service.RegisterAsync(
             new DirectoryEntry(unitAddress, "unit-actor-ghost", "Ghost", "", null, DateTimeOffset.UtcNow),
             ct);
@@ -738,7 +738,7 @@ public class DirectoryServiceTests : IDisposable
         var proxyFactory = Substitute.For<IActorProxyFactory>();
         var service = CreateServiceWithActorFactory(proxyFactory);
 
-        var unitAddress = new Address("unit", "ghost-list");
+        var unitAddress = Address.For("unit", "ghost-list");
         await service.RegisterAsync(
             new DirectoryEntry(unitAddress, "unit-actor-ghost-list", "Ghost", "", null, DateTimeOffset.UtcNow),
             ct);
@@ -770,8 +770,8 @@ public class DirectoryServiceTests : IDisposable
         var proxyFactory = Substitute.For<IActorProxyFactory>();
         var service = CreateServiceWithActorFactory(proxyFactory);
 
-        var parent = new Address("unit", "ghost-parent");
-        var sub = new Address("unit", "ghost-sub");
+        var parent = Address.For("unit", "ghost-parent");
+        var sub = Address.For("unit", "ghost-sub");
         await service.RegisterAsync(
             new DirectoryEntry(parent, "unit-actor-ghost-parent", "P", "", null, DateTimeOffset.UtcNow), ct);
         await service.RegisterAsync(

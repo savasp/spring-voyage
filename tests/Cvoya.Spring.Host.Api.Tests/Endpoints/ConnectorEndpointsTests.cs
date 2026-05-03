@@ -302,11 +302,11 @@ public class ConnectorEndpointsTests : IClassFixture<CustomWebApplicationFactory
 
         var entries = new List<DirectoryEntry>
         {
-            new(new Address("unit", "alpha"), "actor-alpha", "Alpha", "", null, DateTimeOffset.UtcNow),
-            new(new Address("unit", "beta"), "actor-beta", "Beta", "", null, DateTimeOffset.UtcNow),
-            new(new Address("unit", "gamma"), "actor-gamma", "Gamma", "", null, DateTimeOffset.UtcNow),
-            new(new Address("unit", "delta"), "actor-delta", "Delta", "", null, DateTimeOffset.UtcNow),
-            new(new Address("agent", "noise"), "actor-noise", "Noise", "", null, DateTimeOffset.UtcNow),
+            new(Address.For("unit", "alpha"), "actor-alpha", "Alpha", "", null, DateTimeOffset.UtcNow),
+            new(Address.For("unit", "beta"), "actor-beta", "Beta", "", null, DateTimeOffset.UtcNow),
+            new(Address.For("unit", "gamma"), "actor-gamma", "Gamma", "", null, DateTimeOffset.UtcNow),
+            new(Address.For("unit", "delta"), "actor-delta", "Delta", "", null, DateTimeOffset.UtcNow),
+            new(Address.For("agent", "noise"), "actor-noise", "Noise", "", null, DateTimeOffset.UtcNow),
         };
         _factory.DirectoryService.ListAllAsync(Arg.Any<CancellationToken>()).Returns(entries);
 
@@ -348,8 +348,8 @@ public class ConnectorEndpointsTests : IClassFixture<CustomWebApplicationFactory
 
         var entries = new List<DirectoryEntry>
         {
-            new(new Address("unit", "u1"), "actor-u1", "Unit 1", "", null, DateTimeOffset.UtcNow),
-            new(new Address("unit", "u2"), "actor-u2", "Unit 2", "", null, DateTimeOffset.UtcNow),
+            new(Address.For("unit", "u1"), "actor-u1", "Unit 1", "", null, DateTimeOffset.UtcNow),
+            new(Address.For("unit", "u2"), "actor-u2", "Unit 2", "", null, DateTimeOffset.UtcNow),
         };
         _factory.DirectoryService.ListAllAsync(Arg.Any<CancellationToken>()).Returns(entries);
         _factory.ConnectorConfigStore.GetAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
@@ -387,7 +387,7 @@ public class ConnectorEndpointsTests : IClassFixture<CustomWebApplicationFactory
 
         var visibleEntries = new List<DirectoryEntry>
         {
-            new(new Address("unit", "visible"), "actor-visible", "Visible", "", null, DateTimeOffset.UtcNow),
+            new(Address.For("unit", "visible"), "actor-visible", "Visible", "", null, DateTimeOffset.UtcNow),
         };
         _factory.DirectoryService.ListAllAsync(Arg.Any<CancellationToken>()).Returns(visibleEntries);
 

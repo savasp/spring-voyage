@@ -282,9 +282,9 @@ public class PackageExportServiceTests
             scopeFactory, TenantA, packageName, formattedYaml);
 
         // Directory resolves the unit.
-        dir.ResolveAsync(new Address("unit", "main"), Arg.Any<CancellationToken>())
+        dir.ResolveAsync(Address.For("unit", "main"), Arg.Any<CancellationToken>())
             .Returns(new DirectoryEntry(
-                new Address("unit", "main"),
+                Address.For("unit", "main"),
                 Guid.NewGuid().ToString(),
                 "Main Unit",
                 string.Empty,
@@ -401,9 +401,9 @@ public class PackageExportServiceTests
         // Arrange: directory resolves the unit but there's no unit_definitions row
         // with an InstallId (e.g. a unit created before the install feature landed).
         var (svc, scopeFactory, dir) = BuildService();
-        dir.ResolveAsync(new Address("unit", "orphan-unit"), Arg.Any<CancellationToken>())
+        dir.ResolveAsync(Address.For("unit", "orphan-unit"), Arg.Any<CancellationToken>())
             .Returns(new DirectoryEntry(
-                new Address("unit", "orphan-unit"),
+                Address.For("unit", "orphan-unit"),
                 Guid.NewGuid().ToString(),
                 "Orphan",
                 string.Empty, null,
@@ -510,9 +510,9 @@ public class PackageExportServiceTests
         var installId = await SeedInstallAsync(
             scopeFactory, TenantA, packageName, yamlRaw, inputs);
 
-        dir.ResolveAsync(new Address("unit", "main"), Arg.Any<CancellationToken>())
+        dir.ResolveAsync(Address.For("unit", "main"), Arg.Any<CancellationToken>())
             .Returns(new DirectoryEntry(
-                new Address("unit", "main"),
+                Address.For("unit", "main"),
                 Guid.NewGuid().ToString(),
                 "Main", string.Empty, null,
                 DateTimeOffset.UtcNow));
