@@ -4,6 +4,7 @@
 namespace Cvoya.Spring.Dapr.Tests.Units;
 
 using Cvoya.Spring.Core.Directory;
+using Cvoya.Spring.Core.Identifiers;
 using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Core.Units;
 using Cvoya.Spring.Dapr.Units;
@@ -20,11 +21,28 @@ using Xunit;
 /// Tests for <see cref="UnitMembershipCoordinator"/> exercised directly
 /// (without going through <c>UnitActor</c>) to validate cycle-detection
 /// edge cases and duplicate handling in isolation.
+///
+/// Post #1629: every actor identifier is the no-dash hex of a Guid; tests
+/// build the addresses from named Guid constants.
 /// </summary>
 public class UnitMembershipCoordinatorTests
 {
-    private const string ParentActorId = "parent-unit";
-    private static readonly Address ParentAddress = new("unit", ParentActorId);
+    private static readonly Guid ParentUnitGuid = new("11111111-0000-0000-0000-000000000001");
+    private static readonly Guid AgentOneGuid = new("22222222-0000-0000-0000-000000000001");
+    private static readonly Guid AgentNewGuid = new("22222222-0000-0000-0000-000000000002");
+    private static readonly Guid AgentXGuid = new("22222222-0000-0000-0000-000000000099");
+    private static readonly Guid AliasUnitGuid = new("33333333-0000-0000-0000-000000000001");
+    private static readonly Guid TeamAGuid = new("44444444-0000-0000-0000-00000000000a");
+    private static readonly Guid TeamBGuid = new("44444444-0000-0000-0000-00000000000b");
+    private static readonly Guid TeamCGuid = new("44444444-0000-0000-0000-00000000000c");
+    private static readonly Guid TeamXGuid = new("55555555-0000-0000-0000-00000000000a");
+    private static readonly Guid TeamYGuid = new("55555555-0000-0000-0000-00000000000b");
+    private static readonly Guid GhostUnitGuid = new("66666666-0000-0000-0000-000000000001");
+    private static readonly Guid FlakyUnitGuid = new("77777777-0000-0000-0000-000000000001");
+    private static readonly Guid ChildTeamGuid = new("88888888-0000-0000-0000-000000000001");
+
+    private static readonly string ParentActorId = ParentUnitGuid.ToString("N");
+    private static readonly Address ParentAddress = new("unit", ParentUnitGuid);
 
     private readonly ILogger<UnitMembershipCoordinator> _logger =
         Substitute.For<ILogger<UnitMembershipCoordinator>>();
@@ -38,12 +56,15 @@ public class UnitMembershipCoordinatorTests
             logger: _logger);
     }
 
+    private static DirectoryEntry MakeEntry(Guid actorId, string displayName) =>
+        new(new Address("unit", actorId), actorId, displayName, string.Empty, null, DateTimeOffset.UtcNow);
+
     // --- AddMemberAsync — duplicate detection ---
 
     [Fact]
     public async Task AddMemberAsync_DuplicateMember_DoesNotCallPersist()
     {
-        var member = Address.For("agent", "agent-1");
+        var member = new Address("agent", AgentOneGuid);
         var existing = new List<Address> { member };
         var persistCalled = false;
 
@@ -63,7 +84,7 @@ public class UnitMembershipCoordinatorTests
     [Fact]
     public async Task AddMemberAsync_NewMember_CallsPersistWithUpdatedList()
     {
-        var member = Address.For("agent", "agent-new");
+        var member = new Address("agent", AgentNewGuid);
         var existing = new List<Address>();
         List<Address>? persisted = null;
 
@@ -105,10 +126,10 @@ public class UnitMembershipCoordinatorTests
     [Fact]
     public async Task AddMemberAsync_SelfLoop_ViaDirectoryResolution_Throws()
     {
-        // Candidate has a different address form ("my-team") but resolves
-        // to the same actor id as the parent unit.
-        var aliasAddress = Address.For("unit", "my-team");
-        var parentEntry = MakeEntry("my-team", ParentActorId);
+        // Candidate has a different address but resolves to the same actor
+        // id as the parent unit.
+        var aliasAddress = new Address("unit", AliasUnitGuid);
+        var parentEntry = MakeEntry(ParentUnitGuid, "parent");
 
         var ex = await Should.ThrowAsync<CyclicMembershipException>(() =>
             _coordinator.AddMemberAsync(
@@ -129,10 +150,11 @@ public class UnitMembershipCoordinatorTests
     public async Task AddMemberAsync_TwoCycle_Throws()
     {
         // B already contains A. Adding B to A must be rejected.
-        var bAddress = Address.For("unit", "team-b");
-        var bEntry = MakeEntry("team-b", "b-actor");
-        var aAliasAddress = Address.For("unit", "team-a");
-        var aEntry = MakeEntry("team-a", ParentActorId);
+        var bAddress = new Address("unit", TeamBGuid);
+        var bEntry = MakeEntry(TeamBGuid, "team-b");
+        var aAliasAddress = new Address("unit", TeamAGuid);
+        var aEntry = MakeEntry(ParentUnitGuid, "team-a");
+        var bActorId = GuidFormatter.Format(TeamBGuid);
 
         var ex = await Should.ThrowAsync<CyclicMembershipException>(() =>
             _coordinator.AddMemberAsync(
@@ -149,7 +171,7 @@ public class UnitMembershipCoordinatorTests
                 },
                 getSubUnitMembers: (actorId, _) =>
                 {
-                    if (actorId == "b-actor")
+                    if (actorId == bActorId)
                         return Task.FromResult(new[] { aAliasAddress });
                     return Task.FromResult(Array.Empty<Address>());
                 },
@@ -164,9 +186,11 @@ public class UnitMembershipCoordinatorTests
     public async Task AddMemberAsync_DeepCycle_ThreeLevels_Throws()
     {
         // C -> B -> A (A is the parent). Adding C to A must be rejected.
-        var cAddress = Address.For("unit", "team-c");
-        var bAddress = Address.For("unit", "team-b");
-        var aAliasAddress = Address.For("unit", "team-a");
+        var cAddress = new Address("unit", TeamCGuid);
+        var bAddress = new Address("unit", TeamBGuid);
+        var aAliasAddress = new Address("unit", TeamAGuid);
+        var cActorId = GuidFormatter.Format(TeamCGuid);
+        var bActorId = GuidFormatter.Format(TeamBGuid);
 
         var ex = await Should.ThrowAsync<CyclicMembershipException>(() =>
             _coordinator.AddMemberAsync(
@@ -177,16 +201,16 @@ public class UnitMembershipCoordinatorTests
                 persistMembers: (_, _) => Task.CompletedTask,
                 resolveAddress: (addr, _) =>
                 {
-                    if (addr == cAddress) return Task.FromResult<DirectoryEntry?>(MakeEntry("team-c", "c-actor"));
-                    if (addr == bAddress) return Task.FromResult<DirectoryEntry?>(MakeEntry("team-b", "b-actor"));
-                    if (addr == aAliasAddress) return Task.FromResult<DirectoryEntry?>(MakeEntry("team-a", ParentActorId));
+                    if (addr == cAddress) return Task.FromResult<DirectoryEntry?>(MakeEntry(TeamCGuid, "team-c"));
+                    if (addr == bAddress) return Task.FromResult<DirectoryEntry?>(MakeEntry(TeamBGuid, "team-b"));
+                    if (addr == aAliasAddress) return Task.FromResult<DirectoryEntry?>(MakeEntry(ParentUnitGuid, "team-a"));
                     return Task.FromResult<DirectoryEntry?>(null);
                 },
                 getSubUnitMembers: (actorId, _) =>
                 {
-                    if (actorId == "c-actor")
+                    if (actorId == cActorId)
                         return Task.FromResult(new[] { bAddress });
-                    if (actorId == "b-actor")
+                    if (actorId == bActorId)
                         return Task.FromResult(new[] { aAliasAddress });
                     return Task.FromResult(Array.Empty<Address>());
                 },
@@ -198,8 +222,7 @@ public class UnitMembershipCoordinatorTests
     [Fact]
     public async Task AddMemberAsync_AgentMember_SkipsCycleDetection_NeverCallsResolve()
     {
-        // Agents are leaves — resolveAddress must never be called.
-        var agentAddress = Address.For("agent", "agent-x");
+        var agentAddress = new Address("agent", AgentXGuid);
         var resolveCalled = false;
 
         await _coordinator.AddMemberAsync(
@@ -218,9 +241,7 @@ public class UnitMembershipCoordinatorTests
     [Fact]
     public async Task AddMemberAsync_UnknownSubUnit_TreatsAsDeadEnd_Succeeds()
     {
-        // The directory returns null for the candidate (deleted unit). Should
-        // not block the add.
-        var ghostAddress = Address.For("unit", "ghost-team");
+        var ghostAddress = new Address("unit", GhostUnitGuid);
 
         await _coordinator.AddMemberAsync(
             unitActorId: ParentActorId,
@@ -231,16 +252,13 @@ public class UnitMembershipCoordinatorTests
             resolveAddress: (_, _) => Task.FromResult<DirectoryEntry?>(null),
             getSubUnitMembers: (_, _) => Task.FromResult(Array.Empty<Address>()),
             cancellationToken: TestContext.Current.CancellationToken);
-
-        // No throw — success is the assertion.
     }
 
     [Fact]
     public async Task AddMemberAsync_GetSubUnitMembersThrows_TreatsAsDeadEnd_Succeeds()
     {
-        // Actor unreachable mid-walk. Should not block the add.
-        var flakyAddress = Address.For("unit", "flaky-team");
-        var flakyEntry = MakeEntry("flaky-team", "flaky-actor");
+        var flakyAddress = new Address("unit", FlakyUnitGuid);
+        var flakyEntry = MakeEntry(FlakyUnitGuid, "flaky-team");
 
         await _coordinator.AddMemberAsync(
             unitActorId: ParentActorId,
@@ -251,17 +269,16 @@ public class UnitMembershipCoordinatorTests
             resolveAddress: (_, _) => Task.FromResult<DirectoryEntry?>(flakyEntry),
             getSubUnitMembers: (_, _) => throw new InvalidOperationException("actor unavailable"),
             cancellationToken: TestContext.Current.CancellationToken);
-
-        // No throw — success is the assertion.
     }
 
     [Fact]
     public async Task AddMemberAsync_BenignSubGraphCycle_DoesNotFalsePositive()
     {
-        // X -> Y -> X (benign side-cycle not involving the parent). Must not
-        // block adding X to the parent.
-        var xAddress = Address.For("unit", "team-x");
-        var yAddress = Address.For("unit", "team-y");
+        // X -> Y -> X (benign side-cycle not involving the parent).
+        var xAddress = new Address("unit", TeamXGuid);
+        var yAddress = new Address("unit", TeamYGuid);
+        var xActorId = GuidFormatter.Format(TeamXGuid);
+        var yActorId = GuidFormatter.Format(TeamYGuid);
 
         await _coordinator.AddMemberAsync(
             unitActorId: ParentActorId,
@@ -271,36 +288,38 @@ public class UnitMembershipCoordinatorTests
             persistMembers: (_, _) => Task.CompletedTask,
             resolveAddress: (addr, _) =>
             {
-                if (addr == xAddress) return Task.FromResult<DirectoryEntry?>(MakeEntry("team-x", "x-actor"));
-                if (addr == yAddress) return Task.FromResult<DirectoryEntry?>(MakeEntry("team-y", "y-actor"));
+                if (addr == xAddress) return Task.FromResult<DirectoryEntry?>(MakeEntry(TeamXGuid, "team-x"));
+                if (addr == yAddress) return Task.FromResult<DirectoryEntry?>(MakeEntry(TeamYGuid, "team-y"));
                 return Task.FromResult<DirectoryEntry?>(null);
             },
             getSubUnitMembers: (actorId, _) =>
             {
-                if (actorId == "x-actor") return Task.FromResult(new[] { yAddress });
-                if (actorId == "y-actor") return Task.FromResult(new[] { xAddress });
+                if (actorId == xActorId) return Task.FromResult(new[] { yAddress });
+                if (actorId == yActorId) return Task.FromResult(new[] { xAddress });
                 return Task.FromResult(Array.Empty<Address>());
             },
             cancellationToken: TestContext.Current.CancellationToken);
-
-        // No throw — success is the assertion.
     }
 
     [Fact]
     public async Task AddMemberAsync_MaxDepthExceeded_Throws()
     {
-        // Build a chain of length > MaxCycleDetectionDepth that does NOT
-        // loop back to the parent. The depth bound must still reject it.
         const int chainLength = UnitMembershipCoordinator.MaxCycleDetectionDepth + 2;
 
-        // Create addresses and entries for each node in the chain.
+        // Build a chain of Guid-addressed nodes.
         var addresses = Enumerable.Range(0, chainLength)
-            .Select(i => new Address("unit", $"node-{i}"))
+            .Select(i =>
+            {
+                var bytes = new byte[16];
+                BitConverter.GetBytes(i + 1).CopyTo(bytes, 0);
+                return new Address("unit", new Guid(bytes));
+            })
             .ToArray();
 
-        // Each node points to the next (linear chain — no cycle back to parent).
+        var actorIds = addresses.Select(a => a.Path).ToArray();
+
         var entries = addresses
-            .Select((addr, i) => MakeEntry(addr.Path, $"actor-{i}"))
+            .Select((addr, i) => MakeEntry(addr.Id, $"node-{i}"))
             .ToArray();
 
         await Should.ThrowAsync<CyclicMembershipException>(() =>
@@ -317,8 +336,8 @@ public class UnitMembershipCoordinatorTests
                 },
                 getSubUnitMembers: (actorId, _) =>
                 {
-                    var idx = int.Parse(actorId.Replace("actor-", ""));
-                    if (idx + 1 < chainLength)
+                    var idx = Array.IndexOf(actorIds, actorId);
+                    if (idx >= 0 && idx + 1 < chainLength)
                         return Task.FromResult(new[] { addresses[idx + 1] });
                     return Task.FromResult(Array.Empty<Address>());
                 },
@@ -330,7 +349,7 @@ public class UnitMembershipCoordinatorTests
     [Fact]
     public async Task RemoveMemberAsync_ExistingMember_CallsPersistWithSmallerList()
     {
-        var member = Address.For("agent", "agent-1");
+        var member = new Address("agent", AgentOneGuid);
         var existing = new List<Address> { member };
         List<Address>? persisted = null;
 
@@ -348,7 +367,7 @@ public class UnitMembershipCoordinatorTests
     [Fact]
     public async Task RemoveMemberAsync_NonExistentMember_DoesNotCallPersist()
     {
-        var member = Address.For("agent", "ghost");
+        var member = new Address("agent", AgentXGuid);
         var existing = new List<Address>();
         var persistCalled = false;
 
@@ -370,8 +389,8 @@ public class UnitMembershipCoordinatorTests
         var projector = Substitute.For<IUnitSubunitMembershipProjector>();
         var coordinator = new UnitMembershipCoordinator(projector, _logger);
 
-        var subUnit = Address.For("unit", "child-team");
-        var childEntry = MakeEntry("child-team", "child-actor");
+        var subUnit = new Address("unit", ChildTeamGuid);
+        var childEntry = MakeEntry(ChildTeamGuid, "child-team");
 
         await coordinator.AddMemberAsync(
             unitActorId: ParentActorId,
@@ -384,7 +403,7 @@ public class UnitMembershipCoordinatorTests
             cancellationToken: TestContext.Current.CancellationToken);
 
         await projector.Received(1).ProjectAddAsync(
-            ParentActorId, subUnit.Path, Arg.Any<CancellationToken>());
+            ParentUnitGuid, ChildTeamGuid, Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -393,7 +412,7 @@ public class UnitMembershipCoordinatorTests
         var projector = Substitute.For<IUnitSubunitMembershipProjector>();
         var coordinator = new UnitMembershipCoordinator(projector, _logger);
 
-        var subUnit = Address.For("unit", "child-team");
+        var subUnit = new Address("unit", ChildTeamGuid);
         var existing = new List<Address> { subUnit };
 
         await coordinator.RemoveMemberAsync(
@@ -404,7 +423,7 @@ public class UnitMembershipCoordinatorTests
             cancellationToken: TestContext.Current.CancellationToken);
 
         await projector.Received(1).ProjectRemoveAsync(
-            ParentActorId, subUnit.Path, Arg.Any<CancellationToken>());
+            ParentUnitGuid, ChildTeamGuid, Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -413,7 +432,7 @@ public class UnitMembershipCoordinatorTests
         var projector = Substitute.For<IUnitSubunitMembershipProjector>();
         var coordinator = new UnitMembershipCoordinator(projector, _logger);
 
-        var agent = Address.For("agent", "agent-1");
+        var agent = new Address("agent", AgentOneGuid);
 
         await coordinator.AddMemberAsync(
             unitActorId: ParentActorId,
@@ -425,16 +444,6 @@ public class UnitMembershipCoordinatorTests
             getSubUnitMembers: (_, _) => Task.FromResult(Array.Empty<Address>()),
             cancellationToken: TestContext.Current.CancellationToken);
 
-        await projector.DidNotReceive().ProjectAddAsync(
-            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await projector.DidNotReceiveWithAnyArgs().ProjectAddAsync(default, default, default);
     }
-
-    private static DirectoryEntry MakeEntry(string path, string actorId) =>
-        new(
-            new Address("unit", path),
-            actorId,
-            path,
-            $"Unit {path}",
-            null,
-            DateTimeOffset.UtcNow);
 }
