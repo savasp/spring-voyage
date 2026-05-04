@@ -456,7 +456,7 @@ public class UnitAgentsEndpointTests : IClassFixture<CustomWebApplicationFactory
             .Returns((DirectoryEntry?)null);
 
         var patch = new UpdateAgentMetadataRequest(Model: "gpt-4");
-        using var request = new HttpRequestMessage(HttpMethod.Patch, "/api/v1/tenant/agents/ghost")
+        using var request = new HttpRequestMessage(HttpMethod.Patch, $"/api/v1/tenant/agents/{Guid.NewGuid():N}")
         {
             Content = JsonContent.Create(patch, options: JsonOptions),
         };

@@ -740,6 +740,9 @@ public class UnitCreationService : IUnitCreationService
             }
 
             var membersAdded = 0;
+            // Cache the directory listing once per call so the resolve-by-name
+            // path below stays O(1) per member.
+            IReadOnlyList<DirectoryEntry>? memberDirectoryEntries = null;
             foreach (var member in members)
             {
                 var resolved = ResolveMemberAddress(member);
@@ -749,7 +752,25 @@ public class UnitCreationService : IUnitCreationService
                     continue;
                 }
 
-                var memberAddress = Address.For(resolved.Value.Scheme, resolved.Value.Path);
+                // Manifests carry the member's display name, not its Guid.
+                // Resolve through the directory; mint a fresh Guid for
+                // auto-register paths (the agent-scheme branch below registers
+                // the new entry with this Guid as the actor identity).
+                Guid memberGuid;
+                if (Cvoya.Spring.Core.Identifiers.GuidFormatter.TryParse(resolved.Value.Path, out var parsedGuid))
+                {
+                    memberGuid = parsedGuid;
+                }
+                else
+                {
+                    memberDirectoryEntries ??= await _directoryService.ListAllAsync(cancellationToken);
+                    var match = memberDirectoryEntries.FirstOrDefault(
+                        e => string.Equals(e.Address.Scheme, resolved.Value.Scheme, StringComparison.OrdinalIgnoreCase)
+                             && string.Equals(e.DisplayName, resolved.Value.Path, StringComparison.Ordinal));
+                    memberGuid = match?.ActorId ?? Guid.NewGuid();
+                }
+
+                var memberAddress = Address.ForIdentity(resolved.Value.Scheme, memberGuid);
 
                 // #745: for pre-existing members (not auto-registered below)
                 // enforce the same-tenant invariant before the actor-state

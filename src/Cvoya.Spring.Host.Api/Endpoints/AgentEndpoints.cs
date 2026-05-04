@@ -907,7 +907,7 @@ public static class AgentEndpoints
         InitiativeLevel? initiativeLevel = null) =>
         new(
             Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(entry.ActorId),
-            entry.Address.Path,
+            entry.DisplayName,
             entry.DisplayName,
             entry.Description,
             entry.Role,
