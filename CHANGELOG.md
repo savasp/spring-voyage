@@ -101,6 +101,10 @@ No versions have been tagged yet. The entries below capture the repository's his
 - **Skills tab** for per-agent skill configuration ([#165](https://github.com/cvoya-com/spring-voyage/pull/165)).
 - **Foundation documentation refresh.** Architecture docs updated for shipped A2A / policy / secrets features; docs-with-feature convention ([#424](https://github.com/cvoya-com/spring-voyage/pull/424), [#425](https://github.com/cvoya-com/spring-voyage/pull/425)).
 
+#### Operations & deployment
+
+- **`deploy.sh init` subcommand** — first-run bootstrap that copies `deployment/spring.env.example` to `deployment/spring.env` (creating it if missing) and provisions a freshly-generated `SPRING_SECRETS_AES_KEY` in one step. Refuses to overwrite an existing non-placeholder key — rotating it would orphan every encrypted secret in the state store, so rotation is documented as an explicit follow-up (see `docs/developer/secret-store.md`). Pairs with the secrets-key removal of `Secrets:AllowEphemeralDevKey`: `deploy.sh up` now validates a non-placeholder key at start time and points operators at `init` when missing, instead of failing later with a cryptic encryptor exception.
+
 ### Changed
 
 #### Single-identity model (#1629 — pre-v0.1 cutover)
@@ -126,6 +130,7 @@ No versions have been tagged yet. The entries below capture the repository's his
 
 ### Removed
 
+- **Breaking:** the `Secrets:AllowEphemeralDevKey` flag and its in-memory random-key fallback. The platform now requires a real AES-256 key on every deployment via `SPRING_SECRETS_AES_KEY` (env) or `Secrets:AesKeyFile` (mounted file); a startup configuration validator refuses to come up otherwise. Rationale: a per-process random key cannot work in the platform's multi-process topology — `spring-api` and `spring-worker` share the same encrypted secret store, and an in-memory key meant the worker silently failed to decrypt secrets the API host wrote. **Migration:** run `deployment/deploy.sh init` (added in this release) to provision `spring.env` and a freshly-generated key in one step, then re-set any tenant- or unit-scoped secrets that were stored under the old random key (existing ciphertexts are unreadable under the new key, as expected). Operators who prefer to manage the file by hand can `openssl rand -base64 32` and set `SPRING_SECRETS_AES_KEY=` in `deployment/spring.env` themselves; `deploy.sh up` validates a non-placeholder value at start time and fails fast with a precise message when missing.
 - Legacy `v`-prefixed OCI tag (`ghcr.io/cvoya-com/agent-base:vX.Y.Z`) from the agent-base release workflow; the unprefixed `:X.Y.Z` and `:latest` tags continue to be published ([#1121](https://github.com/cvoya-com/spring-voyage/issues/1121)).
 - Hosted (in-process) execution path; all agentic work now delegated to containers ([#118](https://github.com/cvoya-com/spring-voyage/pull/118)).
 - Container-launch responsibilities removed from unit start/stop API endpoints ([#373](https://github.com/cvoya-com/spring-voyage/pull/373)).

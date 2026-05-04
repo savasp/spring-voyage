@@ -31,11 +31,6 @@ using Microsoft.Extensions.Options;
 /// </para>
 /// <list type="bullet">
 ///   <item><see cref="SecretsKeySource.EnvironmentVariable"/> or <see cref="SecretsKeySource.File"/> → <see cref="ConfigurationStatus.Met"/>.</item>
-///   <item>
-///     <see cref="SecretsKeySource.EphemeralDev"/> → <see cref="ConfigurationStatus.Met"/> with
-///     <see cref="SeverityLevel.Warning"/> — the "met but degraded" case the framework exists to express.
-///     Encrypted values become unreadable after a host restart; safe only for <c>dotnet run</c> dev.
-///   </item>
 ///   <item>Every failure classification (<see cref="SecretsKeySource.NotConfigured"/>,
 ///   <see cref="SecretsKeySource.MissingFile"/>, <see cref="SecretsKeySource.Malformed"/>,
 ///   <see cref="SecretsKeySource.WeakKey"/>) → <see cref="ConfigurationStatus.Invalid"/> with a fatal error.</item>
@@ -66,14 +61,14 @@ public sealed class SecretsConfigurationRequirement(
 
     /// <inheritdoc />
     public IReadOnlyList<string> EnvironmentVariableNames { get; } =
-        new[] { SecretsKeyClassifier.KeyEnvironmentVariable, "Secrets__AesKeyFile", "Secrets__AllowEphemeralDevKey" };
+        new[] { SecretsKeyClassifier.KeyEnvironmentVariable, "Secrets__AesKeyFile" };
 
     /// <inheritdoc />
     public string? ConfigurationSectionPath => SecretsOptions.SectionName;
 
     /// <inheritdoc />
     public string Description =>
-        "AES-256 key used to envelope-encrypt platform secrets at rest. Sourced (in priority order) from SPRING_SECRETS_AES_KEY, the Secrets:AesKeyFile path, or — only when Secrets:AllowEphemeralDevKey=true — an ephemeral in-memory key generated at startup.";
+        "AES-256 key used to envelope-encrypt platform secrets at rest. Sourced (in priority order) from SPRING_SECRETS_AES_KEY or the Secrets:AesKeyFile path. One of the two is required — the platform refuses to start without a usable key source so cross-process secrets reads stay decryptable.";
 
     /// <inheritdoc />
     public Uri? DocumentationUrl { get; } =
@@ -89,15 +84,6 @@ public sealed class SecretsConfigurationRequirement(
             case SecretsKeySource.EnvironmentVariable:
             case SecretsKeySource.File:
                 return Task.FromResult(ConfigurationRequirementStatus.Met());
-
-            case SecretsKeySource.EphemeralDev:
-                return Task.FromResult(ConfigurationRequirementStatus.MetWithWarning(
-                    reason:
-                        "Ephemeral in-memory AES key generated at startup (Secrets:AllowEphemeralDevKey=true). " +
-                        "Previously encrypted values become unreadable after a host restart.",
-                    suggestion:
-                        "For staging / production, set SPRING_SECRETS_AES_KEY to a base64-encoded 32-byte key " +
-                        "or mount a key file and point Secrets:AesKeyFile at it."));
 
             case SecretsKeySource.NotConfigured:
                 {

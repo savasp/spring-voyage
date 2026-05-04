@@ -60,12 +60,30 @@ internal static class ServiceCollectionExtensionsExecution
         // the proxied path with AddCvoyaSpringDispatcherProxiedLlm.
         services.AddCvoyaSpringDirectLlmDispatcher();
 
-        // Execution — AnthropicProvider needs HttpClient. Primary
-        // handler is LlmHttpMessageHandler so the call flows through
-        // ILlmDispatcher.
+        // Execution — every IAiProvider implementation talks through an
+        // HttpClient whose primary handler is LlmHttpMessageHandler so the
+        // call flows through ILlmDispatcher (ADR 0028 / #1168).
+        //
+        // Multiple IAiProvider entries are registered. The order matters:
+        // GetService<IAiProvider>() returns the *last* registration, so
+        // platform-level singletons that still consume IAiProvider directly
+        // (Tier1CognitionProvider, Tier2CognitionProvider, …) land on the
+        // OSS default — Anthropic. Unit-scoped orchestration resolves
+        // IAiProviderRegistry instead and selects per-unit by the
+        // manifest's execution.provider slot (#1696).
+        services.AddHttpClient<IAiProvider, OllamaProvider>()
+            .ConfigurePrimaryHttpMessageHandler(static sp =>
+                new LlmHttpMessageHandler(sp.GetRequiredService<ILlmDispatcher>()));
         services.AddHttpClient<IAiProvider, AnthropicProvider>()
             .ConfigurePrimaryHttpMessageHandler(static sp =>
                 new LlmHttpMessageHandler(sp.GetRequiredService<ILlmDispatcher>()));
+
+        // Registry that lets unit-scoped consumers resolve a provider by
+        // the unit's declared execution.provider value. Singleton: the
+        // index it builds at construction is immutable. TryAdd so the
+        // private cloud overlay can substitute a tenant-aware
+        // implementation without touching this registration.
+        services.TryAddSingleton<IAiProviderRegistry, AiProviderRegistry>();
         services.AddSingleton<IPromptAssembler, PromptAssembler>();
         services.AddSingleton<IPlatformPromptProvider, PlatformPromptProvider>();
 

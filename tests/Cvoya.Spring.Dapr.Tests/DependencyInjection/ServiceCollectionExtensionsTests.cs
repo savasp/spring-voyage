@@ -154,15 +154,14 @@ public class ServiceCollectionExtensionsTests
         var services = new ServiceCollection();
         services.AddLogging();
         // #639 — the validator now runs every mandatory requirement at
-        // StartAsync. Give Secrets a legal-for-tests ephemeral-key config
-        // so the only failing mandatory requirement is the missing DB
-        // connection string. Without this, the assertion would have to
-        // untangle an AggregateException of multiple mandatory failures.
+        // StartAsync. The secrets requirement is satisfied by the
+        // SPRING_SECRETS_AES_KEY env var set process-wide via this test
+        // assembly's SecretsTestEnvironmentInitializer; that leaves the
+        // missing DB connection string as the only failing mandatory
+        // requirement, so the assertion does not have to untangle an
+        // AggregateException of multiple mandatory failures.
         var config = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["Secrets:AllowEphemeralDevKey"] = "true",
-            })
+            .AddInMemoryCollection(new Dictionary<string, string?>())
             .Build();
         // IConfiguration needs to be present in DI for the requirement's
         // constructor injection; AddCvoyaSpringDapr does not register it

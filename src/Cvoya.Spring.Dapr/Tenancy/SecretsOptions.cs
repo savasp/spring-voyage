@@ -67,16 +67,6 @@ public class SecretsOptions
     public string? AesKeyFile { get; set; }
 
     /// <summary>
-    /// When <c>true</c> and no key is configured via
-    /// <c>SPRING_SECRETS_AES_KEY</c> or <see cref="AesKeyFile"/>, the OSS
-    /// encryptor generates a random key in memory at startup and logs a
-    /// warning. Intended to keep <c>dotnet run</c> frictionless in dev;
-    /// any encrypted values become unreadable after a restart. Defaults
-    /// to <c>false</c> so production misconfiguration fails fast.
-    /// </summary>
-    public bool AllowEphemeralDevKey { get; set; }
-
-    /// <summary>
     /// The key prefix used by the OSS secret store inside the shared Dapr
     /// state store component. Keeps secret keys visually distinct from
     /// other state keys (budgets, policies, etc.) that share the same

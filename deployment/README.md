@@ -175,8 +175,11 @@ user network with:
 
 ```bash
 cd deployment/
-cp spring.env.example spring.env
-$EDITOR spring.env             # deploy-time config: hostname, DB password, image tags
+./deploy.sh init               # first-run only: copies spring.env.example -> spring.env
+                               #                 and provisions SPRING_SECRETS_AES_KEY (mode 0600).
+                               #                 Refuses to overwrite an existing key.
+$EDITOR spring.env             # deploy-time config: hostname, DB password, image tags,
+                               # GitHub__*, Anthropic / OpenAI / Google credentials, …
 
 ./deploy.sh build              # build platform + agent images, publish dispatcher binary
 ./deploy.sh up                 # create network, start the stack + spring-dispatcher (host)
@@ -184,6 +187,11 @@ $EDITOR spring.env             # deploy-time config: hostname, DB password, imag
 ./deploy.sh logs spring-api    # tail a single container service
 ./deploy.sh down               # stop containers + host services (volumes preserved)
 ```
+
+The `SPRING_SECRETS_AES_KEY` provisioned by `init` is the only thing that
+can decrypt secrets in the state store. Back `spring.env` up alongside the
+postgres volume; deleting it permanently orphans every encrypted secret.
+See `docs/developer/secret-store.md` for rotation guidance.
 
 Volumes (`spring-postgres-data`, `spring-redis-data`, `spring-caddy-data`,
 `spring-caddy-config`) persist across `down`/`up` cycles. Remove them with
@@ -334,12 +342,16 @@ connection string. See deployment/README.md.
 PEM-parse failures for `GitHub__PrivateKeyPem` fail-fast the same way
 (carried forward from PR #621); a garbage value won't defer the failure
 to the first `list-installations` call. `SPRING_SECRETS_AES_KEY` fails
-the host the same way when it's unset and `Secrets:AllowEphemeralDevKey`
-is not enabled, or when it decodes to a weak / sentinel / wrong-length
-value (#639). `Secrets:AllowEphemeralDevKey=true` boots the host with
-a one-shot in-memory key and emits a `Met + Warning` entry in the
-report; restarts render existing envelopes unreadable, so leave it off
-in staging and production.
+the host the same way when no key is configured (env unset and
+`Secrets:AesKeyFile` not pointing at a readable file), or when the
+configured key decodes to a weak / sentinel / wrong-length value
+(#639). The previous `Secrets:AllowEphemeralDevKey` flag has been
+removed — a per-process random key cannot work in the platform's
+multi-process topology (spring-api / spring-worker share the same
+encrypted secret store, so an in-memory fallback silently corrupted
+every cross-process secret read). Configure a real key on every
+deployment, including local dev: `openssl rand -base64 32` ->
+`SPRING_SECRETS_AES_KEY` in `deployment/spring.env`.
 
 **Optional** requirements (GitHub App credentials when you haven't run
 `spring github-app register` yet, Ollama when it's still warming up with

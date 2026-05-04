@@ -36,8 +36,6 @@ public class ServiceRegistrationTests : IDisposable
                 // #639 SecretsConfigurationRequirement — use an ephemeral
                 // dev key so the validator reports Met+Warning instead of
                 // aborting on missing key material.
-                builder.UseSetting("Secrets:AllowEphemeralDevKey", "true");
-
                 builder.ConfigureServices(services =>
                 {
                     // This test validates endpoint DI resolution only. Keep the

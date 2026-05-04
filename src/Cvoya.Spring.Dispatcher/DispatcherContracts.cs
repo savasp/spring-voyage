@@ -120,6 +120,17 @@ public record RunContainerRequest
     /// </summary>
     [JsonPropertyName("contextWorkspace")]
     public WorkspaceRequest? ContextWorkspace { get; init; }
+
+    /// <summary>
+    /// Override for the image's <c>ENTRYPOINT</c> (#1686). When non-null, the
+    /// dispatcher emits <c>--entrypoint &lt;Entrypoint&gt;</c> to podman /
+    /// docker so the container runs the specified binary instead of the
+    /// image's declared entrypoint. Used by the validation probe to invoke a
+    /// one-shot tool (e.g. <c>claude --version</c>) on an image whose
+    /// entrypoint is the long-running A2A bridge sidecar.
+    /// </summary>
+    [JsonPropertyName("entrypoint")]
+    public string? Entrypoint { get; init; }
 }
 
 /// <summary>

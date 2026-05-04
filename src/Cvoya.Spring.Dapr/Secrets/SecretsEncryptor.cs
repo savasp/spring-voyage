@@ -16,10 +16,14 @@ using Microsoft.Extensions.Options;
 /// <summary>
 /// Default AES-GCM-256 implementation of <see cref="ISecretsEncryptor"/>.
 /// The key is loaded once at construction from (in priority order):
-/// the <c>SPRING_SECRETS_AES_KEY</c> environment variable (base64), the
-/// <see cref="SecretsOptions.AesKeyFile"/> path (base64 contents), or —
-/// only if <see cref="SecretsOptions.AllowEphemeralDevKey"/> is set —
-/// a random 32-byte key generated in memory.
+/// the <c>SPRING_SECRETS_AES_KEY</c> environment variable (base64) or the
+/// <see cref="SecretsOptions.AesKeyFile"/> path (base64 contents). One of
+/// the two MUST be configured — there is no in-memory fallback. The
+/// previous "ephemeral dev key" path was removed because a per-process
+/// random key cannot work in the platform's multi-process topology
+/// (spring-api / spring-worker share the same encrypted secret store);
+/// missing-key now fails loudly at host start instead of silently
+/// corrupting cross-process secret reads.
 ///
 /// <para>
 /// Envelope layout (version 1, AES-GCM-256):
@@ -210,10 +214,6 @@ public partial class SecretsEncryptor : ISecretsEncryptor
                 Log.UsingFileKey(logger, options.AesKeyFile!);
                 return result.Key!;
 
-            case SecretsKeySource.EphemeralDev:
-                Log.EphemeralDevKey(logger);
-                return RandomNumberGenerator.GetBytes(KeySize);
-
             case SecretsKeySource.MissingFile:
                 throw new InvalidOperationException(
                     result.Reason + " " + SecretsKeyClassifier.BuildKeySourceHelp());
@@ -245,10 +245,5 @@ public partial class SecretsEncryptor : ISecretsEncryptor
             Message = "Loaded Spring secrets AES key from file '{Path}'.")]
         public static partial void UsingFileKey(ILogger logger, string path);
 
-        [LoggerMessage(
-            EventId = 2412,
-            Level = LogLevel.Warning,
-            Message = "Spring secrets AES key was not configured and AllowEphemeralDevKey=true; generated a random in-memory key. DO NOT use this configuration in production: secrets become unreadable across restarts.")]
-        public static partial void EphemeralDevKey(ILogger logger);
     }
 }

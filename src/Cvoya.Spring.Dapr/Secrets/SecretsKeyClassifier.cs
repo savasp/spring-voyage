@@ -78,17 +78,13 @@ public static class SecretsKeyClassifier
             return ClassifyEncoded(contents, $"file '{path}'", SecretsKeySource.File);
         }
 
-        // 3) Ephemeral dev key — only if explicitly allowed.
-        if (options.AllowEphemeralDevKey)
-        {
-            return new SecretsKeySourceResult(
-                SecretsKeySource.EphemeralDev,
-                Key: null,
-                Source: "Secrets:AllowEphemeralDevKey=true",
-                Reason: "No durable key configured; SecretsEncryptor will generate a random in-memory key at startup. Encrypted values become unreadable after restart.");
-        }
-
-        // 4) No key source configured and ephemeral is not allowed.
+        // 3) No key source configured. The OSS deployment requires a real
+        // key (env var or file) so secrets remain readable across process
+        // restarts AND across the platform's multi-process topology
+        // (spring-api / spring-worker share the same encrypted secret
+        // store; a per-process random key would corrupt every cross-app
+        // read). The previous "ephemeral dev key" path was removed for
+        // exactly that reason — see CHANGELOG entry under v0.1.
         return new SecretsKeySourceResult(
             SecretsKeySource.NotConfigured,
             Key: null,
@@ -210,10 +206,10 @@ public static class SecretsKeyClassifier
     public static string BuildKeySourceHelp() =>
         "Configure one of: " +
         $"(1) the {KeyEnvironmentVariable} environment variable with a base64-encoded 32-byte key, " +
-        "(2) Secrets:AesKeyFile pointing to a file whose contents are a base64-encoded 32-byte key, " +
-        "or (3) Secrets:AllowEphemeralDevKey=true for dev-only in-memory key generation (not persisted; " +
-        "restart loses all encrypted values). Production deployments should externalize key material " +
-        "via a KMS-backed ISecretStore implementation rather than relying on this at-rest layer alone.";
+        "or (2) Secrets:AesKeyFile pointing to a file whose contents are a base64-encoded 32-byte key. " +
+        "Generate a key with: openssl rand -base64 32. " +
+        "Production deployments should externalize key material via a KMS-backed ISecretStore " +
+        "implementation rather than relying on this at-rest layer alone.";
 }
 
 /// <summary>
@@ -227,10 +223,7 @@ public enum SecretsKeySource
     /// <summary>Key supplied via <c>Secrets:AesKeyFile</c> and validated.</summary>
     File,
 
-    /// <summary>No key source configured, but <c>Secrets:AllowEphemeralDevKey</c> is <c>true</c>.</summary>
-    EphemeralDev,
-
-    /// <summary>No key source configured and the ephemeral fallback is disabled.</summary>
+    /// <summary>No key source configured.</summary>
     NotConfigured,
 
     /// <summary><c>Secrets:AesKeyFile</c> points to a missing or unreadable path.</summary>
@@ -252,7 +245,7 @@ public enum SecretsKeySource
 /// <param name="Kind">Classification of the key source.</param>
 /// <param name="Key">Decoded 32-byte AES key when the source is valid; <c>null</c> otherwise.</param>
 /// <param name="Source">Short operator-facing label identifying the source ("environment variable …", "file '…'"). May be <c>null</c> when no source is configured.</param>
-/// <param name="Reason">Human-readable reason describing why the source is not usable, or a warning message for ephemeral keys. <c>null</c> for the happy path.</param>
+/// <param name="Reason">Human-readable reason describing why the source is not usable. <c>null</c> for the happy path.</param>
 public sealed record SecretsKeySourceResult(
     SecretsKeySource Kind,
     byte[]? Key,

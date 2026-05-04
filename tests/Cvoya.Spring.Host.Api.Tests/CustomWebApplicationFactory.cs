@@ -307,8 +307,6 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
         // factory never configures a real AES key and the scoped tests
         // don't exercise the encryptor, so the ephemeral dev-key path is
         // the right fit.
-        builder.UseSetting("Secrets:AllowEphemeralDevKey", "true");
-
         builder.ConfigureServices(services =>
         {
             // Replace the real SpringDbContext with an in-memory database.

@@ -29,9 +29,8 @@ In priority order:
 
 1. **`SPRING_SECRETS_AES_KEY` environment variable** — base64-encoded 32-byte key.
 2. **`Secrets:AesKeyFile` config value** — filesystem path to a file whose contents are the base64-encoded key. Useful for container deployments that mount a secret volume.
-3. **Ephemeral dev key** — only if `Secrets:AllowEphemeralDevKey=true`. Generates a random key in memory at startup, logs a warning, and does **not** persist it. Intended only to keep `dotnet run` frictionless locally. Restarts leave pre-existing envelopes unreadable.
 
-If none of the above is satisfied, the service refuses to boot.
+If neither is satisfied, the service refuses to boot. Earlier versions accepted a `Secrets:AllowEphemeralDevKey=true` fallback that generated a random in-memory key per process; that path was removed because the platform's multi-process topology (spring-api / spring-worker share the same encrypted secret store) means a per-process random key silently corrupted every cross-process secret read. Configure a real key on every deployment, including local dev.
 
 ### Startup Self-Check
 
@@ -41,7 +40,7 @@ The encryptor fails fast on obviously weak keys:
 - All zeros or all `0xFF`.
 - Sentinel/test patterns (`0x00, 0x01, 0x02, …` ascending; ASCII `"changeme…"`; ASCII `"testtest…"`; all spaces; all `A`).
 
-Error messages name the key source and list all three configuration options, so operators don't have to guess.
+Error messages name the key source and list both configuration options (env var, key file), so operators don't have to guess.
 
 ### Generating a Key
 
@@ -113,10 +112,10 @@ A one-time rewrite is only needed if operators want to reclaim storage eagerly; 
 
 ## Recommended Defaults
 
-| Environment   | `SPRING_SECRETS_AES_KEY` | `AllowEphemeralDevKey` | `ComponentNameFormat` |
-|---------------|--------------------------|-------------------------|-----------------------|
-| Local dev     | unset                    | `true`                  | unset (shared)        |
-| CI            | generated per run        | `false`                 | unset                 |
-| Staging/Prod  | sourced from vault       | `false`                 | `"statestore-{tenantId}"` when running multi-tenant |
+| Environment   | `SPRING_SECRETS_AES_KEY` | `ComponentNameFormat` |
+|---------------|--------------------------|-----------------------|
+| Local dev     | generated once per workstation, kept in `deployment/spring.env` | unset (shared) |
+| CI            | generated per run, set in the pipeline env | unset |
+| Staging/Prod  | sourced from vault / mounted secret file | `"statestore-{tenantId}"` when running multi-tenant |
 
 Production deployments should not rely on this at-rest layer as their primary protection — use the KMS-backed store implementation provided by the cloud host. The envelope layer is a belt-and-braces guard against backup leaks and operator errors.

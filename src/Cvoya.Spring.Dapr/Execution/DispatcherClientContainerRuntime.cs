@@ -617,6 +617,7 @@ public class DispatcherClientContainerRuntime(
                 : new Dictionary<string, string>(config.Labels),
             ExtraHosts = config.ExtraHosts,
             ContainerName = config.ContainerName,
+            Entrypoint = config.Entrypoint,
             Detached = detached,
             Workspace = config.Workspace is { } ws
                 ? new DispatcherWorkspace
@@ -712,6 +713,15 @@ public class DispatcherClientContainerRuntime(
         /// </summary>
         [JsonPropertyName("contextWorkspace")]
         public DispatcherWorkspace? ContextWorkspace { get; init; }
+
+        /// <summary>
+        /// Override for the image's <c>ENTRYPOINT</c> (#1686). When non-null
+        /// the dispatcher emits <c>--entrypoint</c> to the container runtime.
+        /// Mirrors <c>RunContainerRequest.Entrypoint</c>; null means inherit
+        /// the image's declared entrypoint.
+        /// </summary>
+        [JsonPropertyName("entrypoint")]
+        public string? Entrypoint { get; init; }
     }
 
     /// <summary>
