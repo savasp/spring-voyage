@@ -38,6 +38,7 @@ public record PackageSummary(
 /// </summary>
 /// <param name="Name">The package name.</param>
 /// <param name="Description">Optional description from the package README.</param>
+/// <param name="Readme">Full README.md content in raw Markdown, when present.</param>
 /// <param name="Inputs">
 /// Input definitions declared by the package. Empty when the package has
 /// no inputs schema. Mirrors the <c>inputs:</c> block in <c>package.yaml</c>
@@ -52,6 +53,7 @@ public record PackageSummary(
 public record PackageDetail(
     string Name,
     string? Description,
+    string? Readme,
     IReadOnlyList<PackageInputSummary> Inputs,
     IReadOnlyList<UnitTemplateSummary> UnitTemplates,
     IReadOnlyList<AgentTemplateSummary> AgentTemplates,

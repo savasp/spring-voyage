@@ -72,8 +72,16 @@ public class PackageManifestParserLivePackagesTests
         var root = LivePackageRoot("product-management");
         var yaml = await File.ReadAllTextAsync(Path.Combine(root, "package.yaml"), ct);
 
+        // Provide the three required GitHub connector inputs.
+        var inputs = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["github_owner"] = "my-org",
+            ["github_repo"] = "my-repo",
+            ["github_installation_id"] = "99999999",
+        };
+
         var result = await PackageManifestParser.ParseAndResolveAsync(
-            yaml, root, cancellationToken: ct);
+            yaml, root, inputValues: inputs, cancellationToken: ct);
 
         result.Name.ShouldBe("product-management");
         result.Kind.ShouldBe(PackageKind.UnitPackage);
@@ -84,8 +92,18 @@ public class PackageManifestParserLivePackagesTests
         result.Units[0].Content.ShouldNotBeNull();
         result.Units[0].IsCrossPackage.ShouldBeFalse();
 
-        // No inputs declared.
-        result.InputValues.ShouldBeEmpty();
+        // Connector config must carry substituted values — no ${{ should survive.
+        var content = result.Units[0].Content!;
+        content.ShouldNotContain("${{");
+        content.ShouldContain("my-org");
+        content.ShouldContain("my-repo");
+        content.ShouldContain("99999999");
+
+        // Three required inputs resolved.
+        result.InputValues.Count.ShouldBe(3);
+        result.InputValues["github_owner"].ShouldBe("my-org");
+        result.InputValues["github_repo"].ShouldBe("my-repo");
+        result.InputValues["github_installation_id"].ShouldBe("99999999");
     }
 
     [Fact]

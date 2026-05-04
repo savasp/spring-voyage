@@ -116,6 +116,7 @@ public class FileSystemPackageCatalogService(
         var detail = new PackageDetail(
             Name: name,
             Description: TryReadReadmeSummary(packageDir),
+            Readme: TryReadReadmeFull(packageDir),
             Inputs: inputs,
             UnitTemplates: unitTemplates,
             AgentTemplates: agentTemplates,
@@ -620,6 +621,24 @@ public class FileSystemPackageCatalogService(
         }
 
         return null;
+    }
+
+    private static string? TryReadReadmeFull(string packageDir)
+    {
+        var readme = Path.Combine(packageDir, "README.md");
+        if (!File.Exists(readme))
+        {
+            return null;
+        }
+
+        try
+        {
+            return File.ReadAllText(readme);
+        }
+        catch (IOException)
+        {
+            return null;
+        }
     }
 
     private static AgentManifestView ReadAgentManifest(string file)
