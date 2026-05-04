@@ -88,7 +88,8 @@ public class DbAgentExecutionStore(
             Tool: PickTrimmed(shape.Tool, existing.Tool),
             Provider: PickTrimmed(shape.Provider, existing.Provider),
             Model: PickTrimmed(shape.Model, existing.Model),
-            Hosting: PickTrimmed(shape.Hosting, existing.Hosting));
+            Hosting: PickTrimmed(shape.Hosting, existing.Hosting),
+            Agent: PickTrimmed(shape.Agent, existing.Agent));
 
         await PersistAsync(db, entity, merged, cancellationToken);
     }
@@ -152,6 +153,7 @@ public class DbAgentExecutionStore(
             if (!string.IsNullOrWhiteSpace(shape.Provider)) block["provider"] = shape.Provider!.Trim();
             if (!string.IsNullOrWhiteSpace(shape.Model)) block["model"] = shape.Model!.Trim();
             if (!string.IsNullOrWhiteSpace(shape.Hosting)) block["hosting"] = shape.Hosting!.Trim();
+            if (!string.IsNullOrWhiteSpace(shape.Agent)) block["agent"] = shape.Agent!.Trim();
             payload["execution"] = block;
         }
 
@@ -178,7 +180,8 @@ public class DbAgentExecutionStore(
             Tool: GetStringOrNull(exec, "tool"),
             Provider: GetStringOrNull(exec, "provider"),
             Model: GetStringOrNull(exec, "model"),
-            Hosting: GetStringOrNull(exec, "hosting"));
+            Hosting: GetStringOrNull(exec, "hosting"),
+            Agent: GetStringOrNull(exec, "agent"));
 
         return shape.IsEmpty ? null : shape;
     }

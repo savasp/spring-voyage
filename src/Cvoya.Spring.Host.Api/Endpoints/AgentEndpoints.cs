@@ -181,7 +181,8 @@ public static class AgentEndpoints
             Tool: request.Tool,
             Provider: request.Provider,
             Model: request.Model,
-            Hosting: request.Hosting);
+            Hosting: request.Hosting,
+            Agent: request.Agent);
 
         if (shape.IsEmpty)
         {
@@ -238,7 +239,8 @@ public static class AgentEndpoints
                 Tool: shape.Tool,
                 Provider: shape.Provider,
                 Model: shape.Model,
-                Hosting: shape.Hosting);
+                Hosting: shape.Hosting,
+                Agent: shape.Agent);
 
     private static async Task<IResult> DeployPersistentAgentAsync(
         string id,

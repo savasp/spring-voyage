@@ -45,8 +45,8 @@ public class GoogleAgentRuntimeRegistryIntegrationTests
         runtime.ShouldNotBeNull();
         runtime!.ShouldBeOfType<GoogleAgentRuntime>();
         runtime.Id.ShouldBe("google");
-        runtime.DisplayName.ShouldBe("Google AI (dapr-agent + Google AI API)");
-        runtime.ToolKind.ShouldBe("dapr-agent");
+        runtime.DisplayName.ShouldBe("Spring Voyage Agent (Google AI)");
+        runtime.ToolKind.ShouldBe("spring-voyage");
 
         // Lookup is case-insensitive per the contract on IAgentRuntimeRegistry.
         registry.Get("GOOGLE").ShouldBeSameAs(runtime);

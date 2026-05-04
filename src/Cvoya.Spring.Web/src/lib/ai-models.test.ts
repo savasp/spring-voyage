@@ -20,7 +20,7 @@ describe("execution tools", () => {
     expect(ids).toContain("claude-code");
     expect(ids).toContain("codex");
     expect(ids).toContain("gemini");
-    expect(ids).toContain("dapr-agent");
+    expect(ids).toContain("spring-voyage");
     expect(ids).toContain("custom");
   });
 });
@@ -45,7 +45,7 @@ describe("getToolRuntimeId", () => {
   });
 
   it("returns null for tools that don't imply a runtime", () => {
-    expect(getToolRuntimeId("dapr-agent")).toBeNull();
+    expect(getToolRuntimeId("spring-voyage")).toBeNull();
     expect(getToolRuntimeId("custom")).toBeNull();
   });
 });
@@ -57,9 +57,9 @@ describe("getToolWireProvider", () => {
     expect(getToolWireProvider("gemini", null)).toBe("google");
   });
 
-  it("passes the dapr-agent runtime id through verbatim", () => {
-    expect(getToolWireProvider("dapr-agent", "ollama")).toBe("ollama");
-    expect(getToolWireProvider("dapr-agent", null)).toBeUndefined();
+  it("passes the spring-voyage runtime id through verbatim", () => {
+    expect(getToolWireProvider("spring-voyage", "ollama")).toBe("ollama");
+    expect(getToolWireProvider("spring-voyage", null)).toBeUndefined();
   });
 
   it("returns undefined for custom tools", () => {

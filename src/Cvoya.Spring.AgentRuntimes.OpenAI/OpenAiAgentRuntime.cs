@@ -15,7 +15,7 @@ using Microsoft.Extensions.Logging;
 
 /// <summary>
 /// <see cref="IAgentRuntime"/> for the OpenAI Platform API combined with
-/// the in-process <c>dapr-agent</c> execution tool. Updated in T-03 (#945)
+/// the in-process <c>spring-voyage</c> execution tool. Updated in T-03 (#945)
 /// to produce in-container probe plans for the Dapr
 /// <c>UnitValidationWorkflow</c>.
 /// </summary>
@@ -41,7 +41,7 @@ public class OpenAiAgentRuntime : IAgentRuntime
 
     /// <summary>
     /// Default container image the portal wizard pre-fills when the operator
-    /// selects this runtime. Ships the Codex CLI and dapr-agent pre-installed.
+    /// selects this runtime. Ships the Codex CLI and Spring Voyage Agent pre-installed.
     /// </summary>
     public const string DefaultContainerImage = "ghcr.io/cvoya-com/spring-voyage-agent-codex:latest";
 
@@ -98,10 +98,10 @@ public class OpenAiAgentRuntime : IAgentRuntime
     public string Id => "openai";
 
     /// <inheritdoc />
-    public string DisplayName => "OpenAI (dapr-agent + OpenAI API)";
+    public string DisplayName => "Spring Voyage Agent (OpenAI)";
 
     /// <inheritdoc />
-    public string ToolKind => "dapr-agent";
+    public string ToolKind => "spring-voyage";
 
     /// <inheritdoc />
     public AgentRuntimeCredentialSchema CredentialSchema { get; } = new(
@@ -271,7 +271,7 @@ public class OpenAiAgentRuntime : IAgentRuntime
     /// <remarks>
     /// OpenAI does not issue distinct credential prefixes that need
     /// per-path gating. Both dispatch paths (REST host-side completions
-    /// and the in-container <c>dapr-agent</c> runtime) accept whatever
+    /// and the in-container <c>spring-voyage</c> runtime) accept whatever
     /// API key shape OpenAI issues; invalid values surface at the
     /// network layer rather than as a pre-flight format rejection.
     /// </remarks>

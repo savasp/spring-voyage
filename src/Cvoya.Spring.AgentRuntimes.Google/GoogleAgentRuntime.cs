@@ -15,7 +15,7 @@ using Microsoft.Extensions.Logging;
 
 /// <summary>
 /// <see cref="IAgentRuntime"/> for the Google AI (Generative Language) API
-/// combined with the in-process <c>dapr-agent</c> execution tool. Updated
+/// combined with the in-process <c>spring-voyage</c> execution tool. Updated
 /// in T-03 (#945) to produce in-container probe plans for the Dapr
 /// <c>UnitValidationWorkflow</c>.
 /// </summary>
@@ -44,7 +44,7 @@ public class GoogleAgentRuntime : IAgentRuntime
 
     /// <summary>
     /// Default container image the portal wizard pre-fills when the operator
-    /// selects this runtime. Ships the dapr-agent with Google AI integration pre-installed.
+    /// selects this runtime. Ships the spring-voyage-agent with Google AI integration pre-installed.
     /// </summary>
     public const string DefaultContainerImage = "ghcr.io/cvoya-com/spring-voyage-agent-google:latest";
 
@@ -109,10 +109,10 @@ public class GoogleAgentRuntime : IAgentRuntime
     public string Id => "google";
 
     /// <inheritdoc />
-    public string DisplayName => "Google AI (dapr-agent + Google AI API)";
+    public string DisplayName => "Spring Voyage Agent (Google AI)";
 
     /// <inheritdoc />
-    public string ToolKind => "dapr-agent";
+    public string ToolKind => "spring-voyage";
 
     /// <inheritdoc />
     public AgentRuntimeCredentialSchema CredentialSchema { get; } = new(

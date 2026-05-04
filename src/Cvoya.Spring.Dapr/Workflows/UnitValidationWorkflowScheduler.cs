@@ -186,7 +186,7 @@ public class UnitValidationWorkflowScheduler(
     /// the <c>agent</c> slot existed where <c>Runtime</c> held the agent-runtime id
     /// (e.g. <c>ollama</c>) — container-runtime selectors (<c>docker</c> /
     /// <c>podman</c>) are filtered out so they cannot land as an agent-runtime id;
-    /// <c>Provider</c> is a last-ditch fallback because dapr-agent-style runtimes
+    /// <c>Provider</c> is a last-ditch fallback because spring-voyage-style runtimes
     /// carry the same string in both their <c>provider</c> and <c>id</c> slots.
     /// </para>
     /// <para>

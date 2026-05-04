@@ -36,8 +36,8 @@ public class GoogleAgentRuntimeTests
         var runtime = BuildRuntime(_ => new HttpResponseMessage(HttpStatusCode.OK));
 
         runtime.Id.ShouldBe("google");
-        runtime.DisplayName.ShouldBe("Google AI (dapr-agent + Google AI API)");
-        runtime.ToolKind.ShouldBe("dapr-agent");
+        runtime.DisplayName.ShouldBe("Spring Voyage Agent (Google AI)");
+        runtime.ToolKind.ShouldBe("spring-voyage");
         runtime.CredentialSchema.Kind.ShouldBe(AgentRuntimeCredentialKind.ApiKey);
         runtime.CredentialSchema.DisplayHint.ShouldNotBeNullOrWhiteSpace();
     }

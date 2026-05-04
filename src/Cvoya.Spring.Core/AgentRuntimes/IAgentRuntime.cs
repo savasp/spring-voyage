@@ -5,7 +5,7 @@ namespace Cvoya.Spring.Core.AgentRuntimes;
 
 /// <summary>
 /// Describes an agent runtime — a plugin bundling an execution tool
-/// (e.g. <c>claude-code-cli</c>, <c>codex-cli</c>, <c>dapr-agent</c>) with a
+/// (e.g. <c>claude-code-cli</c>, <c>codex-cli</c>, <c>spring-voyage</c>) with a
 /// compatible LLM backend, its credential schema, and its supported model
 /// catalog. The API layer, wizard, and CLI consume this abstraction via
 /// dependency injection and never import any concrete runtime package, so a
@@ -22,7 +22,7 @@ namespace Cvoya.Spring.Core.AgentRuntimes;
 /// </para>
 /// <para>
 /// The <see cref="ToolKind"/> groups runtimes by the execution tool they use
-/// (e.g. multiple runtimes may share <c>dapr-agent</c>). This lets the host
+/// (e.g. multiple runtimes may share <c>spring-voyage</c>). This lets the host
 /// reason about container baseline requirements without knowing the full
 /// runtime list.
 /// </para>
@@ -60,7 +60,7 @@ public interface IAgentRuntime
 
     /// <summary>
     /// Identifier for the execution tool this runtime uses — for example
-    /// <c>claude-code-cli</c>, <c>codex-cli</c>, or <c>dapr-agent</c>. Two
+    /// <c>claude-code-cli</c>, <c>codex-cli</c>, or <c>spring-voyage</c>. Two
     /// distinct runtimes may share the same tool kind if they differ only in
     /// the LLM backend they target.
     /// </summary>

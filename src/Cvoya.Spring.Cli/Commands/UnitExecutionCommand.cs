@@ -26,12 +26,12 @@ using Cvoya.Spring.Cli.Output;
 /// clears one field only.
 /// </para>
 /// <para>
-/// <c>--provider</c> is meaningful only when <c>--tool dapr-agent</c>
+/// <c>--provider</c> is meaningful only when <c>--tool spring-voyage</c>
 /// is set on the unit (or the agent inheriting from it); the other
 /// tools bake their provider in. <c>--model</c> is meaningful for every
 /// tool that carries a known provider family — <c>claude-code</c>
 /// (Anthropic), <c>codex</c> (OpenAI), <c>gemini</c> (Google), and
-/// <c>dapr-agent</c> — and the CLI treats the value as opaque per the
+/// <c>spring-voyage</c> — and the CLI treats the value as opaque per the
 /// #644 parity fix. The <c>set</c> verb does not enforce either rule
 /// today (no whitelist on the server either) so the gating behaviour
 /// lives in one place (<c>UnitCommand.ValidateProviderModelAgainstTool</c>);
@@ -53,7 +53,7 @@ public static class UnitExecutionCommand
     /// </summary>
     internal static readonly string[] ToolKeys =
     {
-        "claude-code", "codex", "gemini", "dapr-agent", "custom",
+        "claude-code", "codex", "gemini", "spring-voyage", "custom",
     };
 
     /// <summary>Container runtime keys offered on <c>--runtime</c>.</summary>
@@ -156,7 +156,7 @@ public static class UnitExecutionCommand
         {
             Description =
                 "Default model identifier. Meaningful for every tool that carries a known provider family " +
-                "(claude-code, codex, gemini, dapr-agent); the value is accepted as opaque and validated at " +
+                "(claude-code, codex, gemini, spring-voyage); the value is accepted as opaque and validated at " +
                 "unit activation.",
         };
 

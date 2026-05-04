@@ -42,8 +42,8 @@ public class OllamaAgentRuntimeRegistrationTests
         var resolved = registry.Get("ollama");
         resolved.ShouldNotBeNull();
         resolved!.Id.ShouldBe("ollama");
-        resolved.ToolKind.ShouldBe("dapr-agent");
-        resolved.DisplayName.ShouldBe("Ollama (dapr-agent + local Ollama)");
+        resolved.ToolKind.ShouldBe("spring-voyage");
+        resolved.DisplayName.ShouldBe("Spring Voyage Agent (Ollama)");
     }
 
     [Fact]

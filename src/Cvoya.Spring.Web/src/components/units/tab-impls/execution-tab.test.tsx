@@ -87,7 +87,7 @@ describe("ExecutionTab", () => {
     });
   });
 
-  it("renders all five execution fields with tool defaulting to unset (Provider + Model visible)", async () => {
+  it("renders Image, Agent Runtime and Model fields by default; Model Provider hidden until tool=spring-voyage", async () => {
     getUnitExecution.mockResolvedValue({});
 
     render(
@@ -100,21 +100,23 @@ describe("ExecutionTab", () => {
     expect(
       screen.getByTestId("execution-image-input"),
     ).toBeInTheDocument();
+    // #1702: Runtime row is gone.
     expect(
-      screen.getByTestId("execution-runtime-select"),
-    ).toBeInTheDocument();
+      screen.queryByTestId("execution-runtime-select"),
+    ).not.toBeInTheDocument();
     expect(screen.getByTestId("execution-tool-select")).toBeInTheDocument();
-    // tool unset → provider + model slots visible.
+    // tool unset → Model Provider hidden (only renders for spring-voyage).
     expect(
-      screen.getByTestId("execution-provider-select"),
-    ).toBeInTheDocument();
-    // Model starts as a plain input because no provider is selected yet.
+      screen.queryByTestId("execution-provider-select"),
+    ).not.toBeInTheDocument();
+    // Model is always rendered — starts as plain input because no
+    // catalog has loaded.
     expect(screen.getByTestId("execution-model-input")).toBeInTheDocument();
   });
 
-  it("hides Provider but keeps Model visible when tool is claude-code (#641)", async () => {
+  it("hides Model Provider but keeps Model visible when tool is claude-code (#641)", async () => {
     // #641 (PR #645 on wizard/agent; this issue is the unit tab parity):
-    // Provider stays hidden for non-dapr-agent launchers, but the Model
+    // Provider stays hidden for non-spring-voyage launchers, but the Model
     // dropdown is now rendered against the tool's catalog so the operator
     // can still pick a model family (e.g. claude-opus-4 for Claude Code).
     getUnitExecution.mockResolvedValue({ tool: "claude-code" });
@@ -164,14 +166,14 @@ describe("ExecutionTab", () => {
     )) as HTMLSelectElement;
     const options = Array.from(modelSelect.options).map((o) => o.value);
     expect(options).toContain("gpt-4o");
-    // Provider stays hidden — the tool implies it.
+    // Model Provider stays hidden — the tool implies it.
     expect(
       screen.queryByTestId("execution-provider-select"),
     ).not.toBeInTheDocument();
   });
 
-  it("shows both Provider and Model when tool=dapr-agent (#641)", async () => {
-    getUnitExecution.mockResolvedValue({ tool: "dapr-agent" });
+  it("shows both Model Provider and Model when tool=spring-voyage (#641)", async () => {
+    getUnitExecution.mockResolvedValue({ tool: "spring-voyage" });
     getAgentRuntimeModels.mockResolvedValue([]);
 
     render(
@@ -189,7 +191,7 @@ describe("ExecutionTab", () => {
     expect(screen.getByTestId("execution-model-input")).toBeInTheDocument();
   });
 
-  it("omits the Model slot when tool=custom (no known catalog) (#641)", async () => {
+  it("keeps the Model slot visible when tool=custom (always rendered post-#1702)", async () => {
     getUnitExecution.mockResolvedValue({ tool: "custom" });
     getAgentRuntimeModels.mockResolvedValue([]);
 
@@ -203,16 +205,14 @@ describe("ExecutionTab", () => {
     expect(
       screen.queryByTestId("execution-provider-select"),
     ).not.toBeInTheDocument();
-    // Neither a Model select nor a free-text Model input is rendered.
+    // Model is always rendered — a free-text input is shown when no
+    // catalog is available for the chosen tool.
     expect(
-      screen.queryByTestId("execution-model-select"),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByTestId("execution-model-input"),
-    ).not.toBeInTheDocument();
+      screen.getByTestId("execution-model-input"),
+    ).toBeInTheDocument();
   });
 
-  it("shows Provider and Model again when tool flips back to dapr-agent", async () => {
+  it("shows Model Provider and Model again when tool flips back to spring-voyage", async () => {
     getUnitExecution.mockResolvedValue({ tool: "codex" });
 
     render(
@@ -228,15 +228,15 @@ describe("ExecutionTab", () => {
       screen.queryByTestId("execution-provider-select"),
     ).not.toBeInTheDocument();
 
-    fireEvent.change(toolSelect, { target: { value: "dapr-agent" } });
+    fireEvent.change(toolSelect, { target: { value: "spring-voyage" } });
     await screen.findByTestId("execution-provider-select");
   });
 
-  it("PUTs only the fields the operator declared on Save", async () => {
+  it("PUTs only the fields the operator declared on Save (no runtime, with agent)", async () => {
     getUnitExecution.mockResolvedValue({});
     setUnitExecution.mockResolvedValue({
       image: "ghcr.io/acme/spring-agent:v1",
-      runtime: "podman",
+      tool: "claude-code",
     });
 
     render(
@@ -248,14 +248,14 @@ describe("ExecutionTab", () => {
     const imageInput = (await screen.findByTestId(
       "execution-image-input",
     )) as HTMLInputElement;
-    const runtimeSelect = screen.getByTestId(
-      "execution-runtime-select",
+    const toolSelect = screen.getByTestId(
+      "execution-tool-select",
     ) as HTMLSelectElement;
 
     fireEvent.change(imageInput, {
       target: { value: "ghcr.io/acme/spring-agent:v1" },
     });
-    fireEvent.change(runtimeSelect, { target: { value: "podman" } });
+    fireEvent.change(toolSelect, { target: { value: "claude-code" } });
 
     fireEvent.click(screen.getByRole("button", { name: /^Save$/i }));
 
@@ -265,19 +265,22 @@ describe("ExecutionTab", () => {
     const [id, body] = setUnitExecution.mock.calls[0];
     expect(id).toBe("eng-team");
     expect(body?.image).toBe("ghcr.io/acme/spring-agent:v1");
-    expect(body?.runtime).toBe("podman");
-    expect(body?.tool).toBeNull();
+    expect(body?.tool).toBe("claude-code");
+    // #1702: agent mirrors tool — sourced from the tool selection.
+    expect((body as { agent?: string | null })?.agent).toBe("claude-code");
+    // #1702: portal no longer sends runtime — the legacy field is gone.
+    expect((body as { runtime?: string | null })?.runtime).toBeUndefined();
     expect(body?.provider).toBeNull();
     expect(body?.model).toBeNull();
   });
 
   it("per-field Clear re-PUTs with the remaining fields via the partial-update contract (#628)", async () => {
-    // Initial state: image + runtime set.
+    // Initial state: image + tool set.
     getUnitExecution.mockResolvedValue({
       image: "ghcr.io/acme/spring-agent:v1",
-      runtime: "docker",
+      tool: "claude-code",
     });
-    setUnitExecution.mockResolvedValue({ runtime: "docker" });
+    setUnitExecution.mockResolvedValue({ tool: "claude-code" });
 
     render(
       <Wrapper>
@@ -292,9 +295,9 @@ describe("ExecutionTab", () => {
       expect(setUnitExecution).toHaveBeenCalledTimes(1);
     });
     const [, body] = setUnitExecution.mock.calls[0];
-    // Image cleared, runtime carried through verbatim.
+    // Image cleared, tool carried through verbatim.
     expect(body?.image).toBeNull();
-    expect(body?.runtime).toBe("docker");
+    expect(body?.tool).toBe("claude-code");
   });
 
   it("DELETEs the execution block when the operator clears every field", async () => {

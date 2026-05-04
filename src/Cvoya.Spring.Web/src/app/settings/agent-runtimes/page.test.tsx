@@ -94,7 +94,7 @@ describe("SettingsAgentRuntimesPage", () => {
       makeRuntime({
         id: "openai",
         displayName: "OpenAI",
-        toolKind: "dapr-agent",
+        toolKind: "spring-voyage",
         models: ["gpt-4o", "gpt-4o-mini"],
         defaultModel: "gpt-4o",
       }),

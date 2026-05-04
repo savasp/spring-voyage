@@ -30,8 +30,8 @@ public class OllamaAgentRuntimeTests
             Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK))));
 
         runtime.Id.ShouldBe("ollama");
-        runtime.DisplayName.ShouldBe("Ollama (dapr-agent + local Ollama)");
-        runtime.ToolKind.ShouldBe("dapr-agent");
+        runtime.DisplayName.ShouldBe("Spring Voyage Agent (Ollama)");
+        runtime.ToolKind.ShouldBe("spring-voyage");
         runtime.CredentialSchema.Kind.ShouldBe(AgentRuntimeCredentialKind.None);
     }
 

@@ -37,8 +37,8 @@ public class OpenAiAgentRuntimeTests
         var runtime = CreateRuntime(new StubHandler());
 
         runtime.Id.ShouldBe("openai");
-        runtime.DisplayName.ShouldBe("OpenAI (dapr-agent + OpenAI API)");
-        runtime.ToolKind.ShouldBe("dapr-agent");
+        runtime.DisplayName.ShouldBe("Spring Voyage Agent (OpenAI)");
+        runtime.ToolKind.ShouldBe("spring-voyage");
     }
 
     [Fact]

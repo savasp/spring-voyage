@@ -301,7 +301,7 @@ public static class StateKeys
 
     /// <summary>
     /// State key for the unit's external agent-tool identifier
-    /// (e.g. <c>claude-code</c>, <c>dapr-agent</c>). Surfaced through
+    /// (e.g. <c>claude-code</c>, <c>spring-voyage</c>). Surfaced through
     /// <see cref="Core.Units.UnitMetadata"/> so the unit-detail GET
     /// returns the value the operator passed at create time. Distinct
     /// from the unit's <c>execution:</c> block (which the scheduler

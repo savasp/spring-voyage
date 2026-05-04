@@ -513,7 +513,7 @@ function ErrorActions({
 
   // The secret the backend reads for this unit's runtime. The runtime
   // id is carried on the unit as `tool` for fixed-provider launchers
-  // (claude-code → "claude", etc.) OR `provider` for dapr-agent. We
+  // (claude-code → "claude", etc.) OR `provider` for spring-voyage. We
   // map through `getRuntimeSecretName` so the name stays in sync with
   // the wizard's and the backend's naming conventions.
   const runtimeIdForSecret = resolveRuntimeId(unit);
@@ -672,7 +672,7 @@ function resolveRuntimeId(unit: UnitResponse): string | null {
       return "openai";
     case "gemini":
       return "google";
-    case "dapr-agent": {
+    case "spring-voyage": {
       const normalised = provider.trim().toLowerCase();
       if (!normalised || normalised === "ollama") return null;
       return normalised === "anthropic" ? "claude" : normalised;

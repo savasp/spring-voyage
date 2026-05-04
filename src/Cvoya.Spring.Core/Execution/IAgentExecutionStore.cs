@@ -66,16 +66,18 @@ public interface IAgentExecutionStore
 /// <param name="Image">Container image reference.</param>
 /// <param name="Runtime">Container runtime identifier.</param>
 /// <param name="Tool">External agent tool identifier.</param>
-/// <param name="Provider">LLM provider (Dapr-Agent-tool-specific).</param>
-/// <param name="Model">Model identifier (Dapr-Agent-tool-specific).</param>
+/// <param name="Provider">LLM model provider (Spring Voyage Agent–specific).</param>
+/// <param name="Model">Model identifier (Spring Voyage Agent–specific).</param>
 /// <param name="Hosting">Hosting mode (ephemeral / persistent). Agent-exclusive.</param>
+/// <param name="Agent">Agent-runtime registry id (e.g. <c>ollama</c>, <c>claude</c>, <c>openai</c>). Takes precedence over <c>Provider</c> when resolving which <see cref="Cvoya.Spring.Core.AgentRuntimes.IAgentRuntime"/> plugin to use for validation and dispatch.</param>
 public record AgentExecutionShape(
     string? Image = null,
     string? Runtime = null,
     string? Tool = null,
     string? Provider = null,
     string? Model = null,
-    string? Hosting = null)
+    string? Hosting = null,
+    string? Agent = null)
 {
     /// <summary>True when every field is null / whitespace.</summary>
     public bool IsEmpty =>
@@ -84,5 +86,6 @@ public record AgentExecutionShape(
         && string.IsNullOrWhiteSpace(Tool)
         && string.IsNullOrWhiteSpace(Provider)
         && string.IsNullOrWhiteSpace(Model)
-        && string.IsNullOrWhiteSpace(Hosting);
+        && string.IsNullOrWhiteSpace(Hosting)
+        && string.IsNullOrWhiteSpace(Agent);
 }

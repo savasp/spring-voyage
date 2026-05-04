@@ -395,13 +395,13 @@ export const EXECUTION_TOOL_KEYS = [
   "claude-code",
   "codex",
   "gemini",
-  "dapr-agent",
+  "spring-voyage",
   "custom",
 ] as const;
 
 /**
  * Provider keys accepted by the unit/agent Execution surfaces when the
- * launcher is `dapr-agent`. The backend's canonical mapping now lives on
+ * launcher is `spring-voyage`. The backend's canonical mapping now lives on
  * each runtime's <c>IAgentRuntime.CredentialSecretName</c>; the
  * credential-status endpoint (<c>GET /system/credentials/&lcub;provider&rcub;/status</c>)
  * accepts `anthropic`, `openai`, `google`, `ollama` and translates

@@ -17,7 +17,7 @@ using Microsoft.Extensions.Options;
 
 /// <summary>
 /// <see cref="IAgentRuntime"/> implementation for the local Ollama endpoint
-/// running through the <c>dapr-agent</c> execution tool. Updated in T-03
+/// running through the <c>spring-voyage</c> execution tool. Updated in T-03
 /// (#945) to emit an in-container probe plan (no credential step; Ollama
 /// runs credential-less).
 /// </summary>
@@ -50,10 +50,10 @@ public class OllamaAgentRuntime : IAgentRuntime
 
     /// <summary>
     /// The execution-tool identifier the runtime delegates to. Shared with
-    /// other dapr-agent-backed runtimes so the host can reason about
+    /// other Spring Voyage–backed runtimes so the host can reason about
     /// container-baseline requirements without enumerating every runtime.
     /// </summary>
-    public const string DaprAgentToolKind = "dapr-agent";
+    public const string SpringVoyageToolKind = "spring-voyage";
 
     /// <summary>
     /// The named <see cref="HttpClient"/> the runtime uses for outbound
@@ -65,7 +65,7 @@ public class OllamaAgentRuntime : IAgentRuntime
 
     /// <summary>
     /// Default container image the portal wizard pre-fills when the operator
-    /// selects this runtime. Ships the dapr-agent with Ollama integration pre-installed.
+    /// selects this runtime. Ships the spring-voyage-agent with Ollama integration pre-installed.
     /// </summary>
     public const string DefaultContainerImage = "ghcr.io/cvoya-com/spring-voyage-agent-ollama:latest";
 
@@ -104,10 +104,10 @@ public class OllamaAgentRuntime : IAgentRuntime
     public string Id => RuntimeId;
 
     /// <inheritdoc />
-    public string DisplayName => "Ollama (dapr-agent + local Ollama)";
+    public string DisplayName => "Spring Voyage Agent (Ollama)";
 
     /// <inheritdoc />
-    public string ToolKind => DaprAgentToolKind;
+    public string ToolKind => SpringVoyageToolKind;
 
     /// <inheritdoc />
     public AgentRuntimeCredentialSchema CredentialSchema { get; } = new(

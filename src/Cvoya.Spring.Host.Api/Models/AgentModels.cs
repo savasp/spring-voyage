@@ -26,7 +26,7 @@ using Cvoya.Spring.Core.Agents;
 /// </param>
 /// <param name="DefinitionJson">
 /// Optional agent-definition JSON document serialised as a string (e.g.
-/// <c>{"execution":{"tool":"dapr-agent","image":"…","provider":"ollama","model":"llama3.2:3b"}}</c>).
+/// <c>{"execution":{"tool":"spring-voyage","image":"…","provider":"ollama","model":"llama3.2:3b"}}</c>).
 /// When supplied, the server parses it and persists the <see cref="JsonElement"/>
 /// to <c>AgentDefinitions.Definition</c> so the execution layer can read
 /// <see cref="Cvoya.Spring.Core.Execution.AgentExecutionConfig"/> from it.

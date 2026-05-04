@@ -139,7 +139,7 @@ public record AgentLaunchContext(
 /// command. Each element becomes one argv entry — the dispatcher does not
 /// shell-split the string. An empty list means "use the image's default
 /// ENTRYPOINT/CMD" — the launch contract for images that already speak A2A
-/// (e.g. <c>dapr-agents</c>) or images whose ENTRYPOINT is the Spring
+/// (e.g. <c>spring-voyages</c>) or images whose ENTRYPOINT is the Spring
 /// agent-base bridge.
 /// </param>
 /// <param name="User">
@@ -155,7 +155,7 @@ public record AgentLaunchContext(
 /// TCP port the in-container A2A endpoint listens on. The dispatcher uses
 /// this for the readiness probe (<c>GET /.well-known/agent.json</c>) and
 /// for the A2A <c>message/send</c> call. Defaults to 8999, which is what
-/// the Spring agent-base bridge and <c>dapr-agents</c> both listen on.
+/// the Spring agent-base bridge and <c>spring-voyages</c> both listen on.
 /// </param>
 /// <param name="ResponseCapture">
 /// How the dispatcher should capture the agent's response. Defaults to

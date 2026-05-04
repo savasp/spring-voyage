@@ -47,7 +47,7 @@ export interface AgentCreateFormInput {
   runtime?: string;
   /**
    * Execution tool key (`execution.tool`) — `claude-code`, `codex`,
-   * `gemini`, `dapr-agent`, `custom`. Defaulted into the agent
+   * `gemini`, `spring-voyage`, `custom`. Defaulted into the agent
    * definition document when supplied.
    */
   tool?: string;

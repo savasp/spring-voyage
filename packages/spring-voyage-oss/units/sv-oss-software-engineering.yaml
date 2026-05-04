@@ -59,7 +59,6 @@ unit:
     - agent: docs-writer
   execution:
     image: ghcr.io/cvoya-com/spring-voyage-agent-oss-software-engineering:latest
-    runtime: podman
     hosting: permanent
   connectors:
     - type: github

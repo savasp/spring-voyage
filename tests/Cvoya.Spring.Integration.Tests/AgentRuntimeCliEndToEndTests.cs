@@ -147,7 +147,7 @@ public sealed class AgentRuntimeCliEndToEndTests : IDisposable
         show!.Id.ShouldBe("openai");
         show.DefaultModel.ShouldBe("gpt-4o");
         show.Models.ShouldBe(new[] { "gpt-4o", "gpt-4o-mini" });
-        show.ToolKind.ShouldBe("dapr-agent");
+        show.ToolKind.ShouldBe("spring-voyage");
     }
 
     // ─── Scenario 2: models set / add / remove → wizard endpoint ───

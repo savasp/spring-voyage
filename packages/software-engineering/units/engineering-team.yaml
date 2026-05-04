@@ -20,7 +20,6 @@ unit:
     - agent: qa-engineer
   execution:
     image: localhost/spring-voyage-agent-claude-code:latest
-    runtime: podman
   connectors:
     - type: github
       config:
