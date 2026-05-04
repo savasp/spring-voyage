@@ -43,9 +43,11 @@ public class UnitDetailsEndpointTests : IClassFixture<CustomWebApplicationFactor
     private static readonly Guid Unit_Child_Id = new("00000003-1234-5678-9abc-000000000000");
     private static readonly Guid ActorEngineering_Id = new("00000004-1234-5678-9abc-000000000000");
 
-    private const string UnitName = "engineering";
+    private const string UnitDisplayName = "engineering";
     private static readonly Guid ActorId_Guid = ActorEngineering_Id;
     private static readonly string ActorId = ActorId_Guid.ToString("N");
+    // Post-#1629 URL paths carry the unit's Guid hex.
+    private static readonly string UnitName = ActorId;
 
     private readonly CustomWebApplicationFactory _factory;
     private readonly HttpClient _client;
@@ -205,9 +207,9 @@ public class UnitDetailsEndpointTests : IClassFixture<CustomWebApplicationFactor
             var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
             db.UnitDefinitions.Add(new UnitDefinitionEntity
             {
-                Id = Guid.NewGuid(),
+                Id = ActorEngineering_Id,
                 TenantId = Cvoya.Spring.Core.Tenancy.OssTenantIds.Default,
-                DisplayName = UnitName,
+                DisplayName = UnitDisplayName,
                 Description = "test",
                 CreatedAt = DateTimeOffset.UtcNow,
                 UpdatedAt = DateTimeOffset.UtcNow,
@@ -239,7 +241,7 @@ public class UnitDetailsEndpointTests : IClassFixture<CustomWebApplicationFactor
         {
             var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
             var row = await db.UnitDefinitions.FirstOrDefaultAsync(
-                u => u.DisplayName == UnitName, ct);
+                u => u.DisplayName == UnitDisplayName, ct);
             if (row is not null)
             {
                 db.UnitDefinitions.Remove(row);

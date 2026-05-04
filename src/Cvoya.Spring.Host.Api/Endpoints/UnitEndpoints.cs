@@ -209,7 +209,12 @@ public static class UnitEndpoints
     {
         var logger = loggerFactory.CreateLogger("Cvoya.Spring.Host.Api.Endpoints.UnitEndpoints");
 
-        var address = Address.For("unit", id);
+        if (!Cvoya.Spring.Core.Identifiers.GuidFormatter.TryParse(id, out var unitGuid))
+        {
+            return Results.Problem(detail: $"Unit '{id}' not found", statusCode: StatusCodes.Status404NotFound);
+        }
+
+        var address = new Address("unit", unitGuid);
         var entry = await directoryService.ResolveAsync(address, cancellationToken);
 
         if (entry is null)
