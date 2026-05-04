@@ -35,11 +35,15 @@ using Xunit;
 /// </summary>
 public class UnitAgentsEndpointTests : IClassFixture<CustomWebApplicationFactory>
 {
-    private const string UnitName = "engineering";
+    private const string UnitDisplayName = "engineering";
 
     // Stable UUID used as the "engineering" unit's ActorId (#1492: endpoints
     // now require Guid-parseable ActorIds for membership lookups).
     private static readonly Guid UnitEngineeringUuid = new("ee1ee111-0000-0000-0000-000000000001");
+
+    // Post-#1629 URL paths carry the unit's Guid hex, not its display name.
+    // Centralised here so test bodies stay readable.
+    private static readonly string UnitName = UnitEngineeringUuid.ToString("N");
     private static readonly Guid UnitMarketingUuid = new("ee1ee111-0000-0000-0000-000000000002");
     private static readonly Guid AgentAdaUuid = new("aadaadaa-0000-0000-0000-000000000001");
     private static readonly Guid AgentBabbageUuid = new("aadaadaa-0000-0000-0000-000000000002");
@@ -213,7 +217,7 @@ public class UnitAgentsEndpointTests : IClassFixture<CustomWebApplicationFactory
         ArrangeAgent("ada", AgentAdaUuid, new AgentMetadata());
 
         var response = await _client.PostAsync(
-            $"/api/v1/tenant/units/{UnitName}/agents/ada", content: null, ct);
+            $"/api/v1/tenant/units/{UnitName}/agents/{AgentAdaUuid:N}", content: null, ct);
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
@@ -250,7 +254,7 @@ public class UnitAgentsEndpointTests : IClassFixture<CustomWebApplicationFactory
                 "cross-tenant")));
 
         var response = await _client.PostAsync(
-            $"/api/v1/tenant/units/{UnitName}/agents/foreign-ada", content: null, ct);
+            $"/api/v1/tenant/units/{UnitName}/agents/{AgentForeignAdaUuid:N}", content: null, ct);
 
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
         (await GetMembershipAsync(UnitName, "foreign-ada")).ShouldBeNull();
@@ -270,9 +274,9 @@ public class UnitAgentsEndpointTests : IClassFixture<CustomWebApplicationFactory
         ArrangeUnit("marketing", UnitMarketingUuid);
         ArrangeAgent("ada", AgentAdaUuid, new AgentMetadata());
 
-        (await _client.PostAsync($"/api/v1/tenant/units/{UnitName}/agents/ada", content: null, ct))
+        (await _client.PostAsync($"/api/v1/tenant/units/{UnitName}/agents/{AgentAdaUuid:N}", content: null, ct))
             .StatusCode.ShouldBe(HttpStatusCode.OK);
-        (await _client.PostAsync("/api/v1/tenant/units/marketing/agents/ada", content: null, ct))
+        (await _client.PostAsync($"/api/v1/tenant/units/{UnitMarketingUuid:N}/agents/{AgentAdaUuid:N}", content: null, ct))
             .StatusCode.ShouldBe(HttpStatusCode.OK);
 
         (await GetMembershipAsync(UnitName, "ada")).ShouldNotBeNull();
@@ -290,7 +294,7 @@ public class UnitAgentsEndpointTests : IClassFixture<CustomWebApplicationFactory
         await UpsertMembershipAsync(UnitName, "ada");
 
         var response = await _client.PostAsync(
-            $"/api/v1/tenant/units/{UnitName}/agents/ada", content: null, ct);
+            $"/api/v1/tenant/units/{UnitName}/agents/{AgentAdaUuid:N}", content: null, ct);
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
         // Re-asserting membership is harmless and makes the endpoint
@@ -317,7 +321,7 @@ public class UnitAgentsEndpointTests : IClassFixture<CustomWebApplicationFactory
         await UpsertMembershipAsync("marketing", "ada");
 
         var response = await _client.DeleteAsync(
-            $"/api/v1/tenant/units/{UnitName}/agents/ada", ct);
+            $"/api/v1/tenant/units/{UnitName}/agents/{AgentAdaUuid:N}", ct);
 
         response.StatusCode.ShouldBe(HttpStatusCode.NoContent);
         (await GetMembershipAsync(UnitName, "ada")).ShouldBeNull();
@@ -342,7 +346,7 @@ public class UnitAgentsEndpointTests : IClassFixture<CustomWebApplicationFactory
         await UpsertMembershipAsync(UnitName, "ada");
 
         var response = await _client.DeleteAsync(
-            $"/api/v1/tenant/units/{UnitName}/agents/ada", ct);
+            $"/api/v1/tenant/units/{UnitName}/agents/{AgentAdaUuid:N}", ct);
 
         response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
         // Row must still exist — the invariant is enforced transactionally.
@@ -363,7 +367,7 @@ public class UnitAgentsEndpointTests : IClassFixture<CustomWebApplicationFactory
         await UpsertMembershipAsync("marketing", "ada");
 
         var response = await _client.DeleteAsync(
-            $"/api/v1/tenant/units/{UnitName}/agents/ada", ct);
+            $"/api/v1/tenant/units/{UnitName}/agents/{AgentAdaUuid:N}", ct);
 
         response.StatusCode.ShouldBe(HttpStatusCode.NoContent);
         (await GetMembershipAsync(UnitName, "ada")).ShouldBeNull();
@@ -419,7 +423,7 @@ public class UnitAgentsEndpointTests : IClassFixture<CustomWebApplicationFactory
                 ExecutionMode: AgentExecutionMode.Auto));
 
         var patch = new UpdateAgentMetadataRequest(Enabled: false);
-        using var request = new HttpRequestMessage(HttpMethod.Patch, "/api/v1/tenant/agents/ada")
+        using var request = new HttpRequestMessage(HttpMethod.Patch, $"/api/v1/tenant/agents/{AgentAdaUuid:N}")
         {
             Content = JsonContent.Create(patch, options: JsonOptions),
         };
@@ -494,8 +498,9 @@ public class UnitAgentsEndpointTests : IClassFixture<CustomWebApplicationFactory
         ctx.SaveChanges();
     }
 
-    private IUnitActor ArrangeUnit(string name = UnitName, Guid actorUuid = default)
+    private IUnitActor ArrangeUnit(string? name = null, Guid actorUuid = default)
     {
+        name ??= UnitDisplayName;
         var uuid = actorUuid == default ? UnitEngineeringUuid : actorUuid;
         var actorId = uuid.ToString("N");
         _slugToUuid[$"unit:{name}"] = uuid;

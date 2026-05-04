@@ -994,7 +994,7 @@ public static class AgentEndpoints
                     var unitEntry = allEntries.FirstOrDefault(
                         e => string.Equals(e.Address.Scheme, "unit", StringComparison.OrdinalIgnoreCase)
                              && e.ActorId == primaryUnitId);
-                    derivedParent = unitEntry?.Address.Path
+                    derivedParent = unitEntry?.DisplayName
                         ?? Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(primaryUnitId);
                 }
                 else

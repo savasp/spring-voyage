@@ -338,20 +338,24 @@ public static class MembershipEndpoints
         // Unit identity: emit unit:id:<uuid> form.
         var unitAddress = Address.ForIdentity(Address.UnitScheme, m.UnitId).ToString();
 
-        // Agent slug for URL routing (agentAddress field stays slug-shaped).
+        // Agent display name surfaces alongside the identity-form Member URI
+        // so wire callers (CLI, portal) can show a human-friendly label
+        // without an extra round-trip. Falls through to the bare hex when no
+        // directory entry is available — that keeps the field non-empty for
+        // pre-#1629 / unresolved cases.
         string agentSlug;
         if (agentActorIdMap is not null && agentActorIdMap.TryGetValue(m.AgentId, out var agentEntry))
         {
-            agentSlug = agentEntry.Address.Path;
+            agentSlug = agentEntry.DisplayName;
         }
         else if (agentEntryHint is not null)
         {
-            agentSlug = agentEntryHint.Address.Path;
+            agentSlug = agentEntryHint.DisplayName;
         }
         else
         {
-            // Fallback: emit the UUID string so the field is never empty.
-            agentSlug = m.AgentId.ToString();
+            // Fallback: emit the UUID hex so the field is never empty.
+            agentSlug = Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(m.AgentId);
         }
 
         // Member field: identity-form agent:id:<uuid>.

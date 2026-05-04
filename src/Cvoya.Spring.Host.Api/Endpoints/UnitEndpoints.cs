@@ -1514,16 +1514,16 @@ public static class UnitEndpoints
         }
         else
         {
-            // Resolve UUID → slug for the ParentUnit field (#1492).
+            // Resolve UUID → display name for the ParentUnit field (#1629).
             // ListAll warms the in-memory directory cache on first call so
             // this is O(1) for subsequent requests within the same process.
             var allEntries = await directoryService.ListAllAsync(cancellationToken);
             var primaryUnitEntry = allEntries.FirstOrDefault(
                 e => string.Equals(e.Address.Scheme, "unit", StringComparison.OrdinalIgnoreCase)
                      && e.ActorId == remaining[0].UnitId);
-            var primaryUnitSlug = primaryUnitEntry?.Address.Path ?? remaining[0].UnitId.ToString("N");
+            var primaryUnitDisplay = primaryUnitEntry?.DisplayName ?? remaining[0].UnitId.ToString("N");
             await agentProxy.SetMetadataAsync(
-                new AgentMetadata(ParentUnit: primaryUnitSlug),
+                new AgentMetadata(ParentUnit: primaryUnitDisplay),
                 cancellationToken);
         }
 
