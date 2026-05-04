@@ -211,7 +211,7 @@ Palette actions (`defaultActions`) live next to the route manifest and use the s
 
 ## 5. Brand mark
 
-A theme-aware sailboat mark rendered as a circular badge. Both assets ship at `public/brand/sailboat-{dark,light}.png` and depict the same cherry-blossom-sailed boat on a starfield-and-water disc — `sailboat-dark.png` sits on a deep purple/starfield disc tuned for dark surfaces, `sailboat-light.png` sits on a pale blossom-tinted disc tuned for light surfaces. Square PNGs, intended to be rendered at the source aspect (1:1) so the disc reads as a self-contained mark rather than an inset illustration.
+A theme-aware sailboat mark rendered as a circular badge. Both assets ship at `public/brand/sailboat-{dark,light}.png` and depict the same cherry-blossom-sailed boat on reflective water — `sailboat-dark.png` sits inside a neon-cyan ring over a starfield/Milky-Way sky tuned for dark surfaces, `sailboat-light.png` sits inside a blush ring over a pale peach sunrise sky tuned for light surfaces. Square PNGs at 1024×1024, intended to be rendered at the source aspect (1:1) so the disc reads as a self-contained mark rather than an inset illustration.
 
 `<BrandMark>` (`src/components/brand-mark.tsx`) reads the active theme from `useTheme()` and switches assets via an exhaustive `switch` over the `Theme` union:
 
