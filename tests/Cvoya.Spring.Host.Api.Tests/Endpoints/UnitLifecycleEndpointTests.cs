@@ -36,10 +36,10 @@ public class UnitLifecycleEndpointTests : IClassFixture<CustomWebApplicationFact
     private static readonly Guid ActorEngineering_Id = new("00002711-bbbb-cccc-dddd-000000000000");
 
     private const string UnitDisplayName = "engineering";
-    // Post-#1629 URL paths carry the unit's Guid hex.
-    private static readonly string UnitName = ActorId_Guid.ToString("N");
     private static readonly Guid ActorId_Guid = ActorEngineering_Id;
     private static readonly string ActorId = ActorId_Guid.ToString("N");
+    // Post-#1629 URL paths carry the unit's Guid hex.
+    private static readonly string UnitName = ActorId;
 
     private readonly CustomWebApplicationFactory _factory;
     private readonly HttpClient _client;
