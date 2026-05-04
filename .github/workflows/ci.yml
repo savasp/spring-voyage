@@ -1112,20 +1112,32 @@ jobs:
             global.json
             NuGet.config
 
-      - name: Check podman availability
-        id: podman-check
+      # ubuntu-latest runners do not ship podman preinstalled, so install
+      # it from the distro apt repo before the smoke driver runs. The
+      # dispatcher's PodmanRuntime always invokes `podman` literally, so
+      # the smoke test cannot run without it. Installing on the runner
+      # (rather than skipping when absent — the original c0a932bc
+      # workaround for #1697) ensures the job actually validates the
+      # PodmanRuntime / dispatcher dispatch path on every PR; a vacuous
+      # pass would let a broken dispatcher merge undetected.
+      - name: Install podman
         shell: bash
         run: |
-          if command -v podman >/dev/null 2>&1; then
-            podman --version
-            echo "available=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "::notice::podman is not on PATH; dispatcher smoke skipped on this runner."
-            echo "available=false" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y podman
+          podman --version
+
+      - name: Verify podman is on PATH
+        shell: bash
+        run: |
+          if ! command -v podman >/dev/null 2>&1; then
+            echo "::error::podman is not on PATH; the dispatcher's PodmanRuntime always invokes 'podman' literally so the smoke test cannot run."
+            exit 1
           fi
+          podman --version
 
       - name: Run dispatcher smoke driver
-        if: steps.podman-check.outputs.available == 'true'
         shell: bash
         run: bash deployment/scripts/dispatcher-smoke.sh
 
