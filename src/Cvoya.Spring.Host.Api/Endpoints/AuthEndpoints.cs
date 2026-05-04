@@ -78,7 +78,7 @@ public static class AuthEndpoints
         // address human:id:<uuid> to identify "self" in participant lists
         // without relying on display-name matching (#1485, #1491).
         var id = await identityResolver.ResolveByUsernameAsync(userIdClaim, displayName, cancellationToken);
-        var address = Address.ForIdentity("human", id).ToIdentityUri();
+        var address = Address.ForIdentity("human", id).ToString();
 
         return Results.Ok(new UserProfileResponse(userIdClaim, displayName, address));
     }
@@ -87,9 +87,11 @@ public static class AuthEndpoints
         CreateTokenRequest request,
         ClaimsPrincipal user,
         SpringDbContext dbContext,
+        IHumanIdentityResolver identityResolver,
         CancellationToken cancellationToken)
     {
-        var userId = user.FindFirstValue(ClaimTypes.NameIdentifier) ?? AuthConstants.DefaultLocalUserId;
+        var username = user.FindFirstValue(ClaimTypes.NameIdentifier) ?? AuthConstants.DefaultLocalUserId;
+        var userId = await identityResolver.ResolveByUsernameAsync(username, displayName: null, cancellationToken);
 
         // Check for duplicate name within the same user
         var existingToken = await dbContext.ApiTokens
@@ -133,9 +135,11 @@ public static class AuthEndpoints
     private static async Task<IResult> ListTokensAsync(
         ClaimsPrincipal user,
         SpringDbContext dbContext,
+        IHumanIdentityResolver identityResolver,
         CancellationToken cancellationToken)
     {
-        var userId = user.FindFirstValue(ClaimTypes.NameIdentifier) ?? AuthConstants.DefaultLocalUserId;
+        var username = user.FindFirstValue(ClaimTypes.NameIdentifier) ?? AuthConstants.DefaultLocalUserId;
+        var userId = await identityResolver.ResolveByUsernameAsync(username, displayName: null, cancellationToken);
 
         var tokens = await dbContext.ApiTokens
             .Where(t => t.UserId == userId && t.RevokedAt == null)
@@ -156,9 +160,11 @@ public static class AuthEndpoints
         string name,
         ClaimsPrincipal user,
         SpringDbContext dbContext,
+        IHumanIdentityResolver identityResolver,
         CancellationToken cancellationToken)
     {
-        var userId = user.FindFirstValue(ClaimTypes.NameIdentifier) ?? AuthConstants.DefaultLocalUserId;
+        var username = user.FindFirstValue(ClaimTypes.NameIdentifier) ?? AuthConstants.DefaultLocalUserId;
+        var userId = await identityResolver.ResolveByUsernameAsync(username, displayName: null, cancellationToken);
 
         var token = await dbContext.ApiTokens
             .FirstOrDefaultAsync(t => t.Name == name && t.UserId == userId && t.RevokedAt == null, cancellationToken);

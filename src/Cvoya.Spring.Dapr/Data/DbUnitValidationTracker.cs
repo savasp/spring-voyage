@@ -31,7 +31,8 @@ public class DbUnitValidationTracker(
         string unitActorId,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(unitActorId))
+        if (string.IsNullOrWhiteSpace(unitActorId)
+            || !Cvoya.Spring.Core.Identifiers.GuidFormatter.TryParse(unitActorId, out var unitActorUuid))
         {
             return null;
         }
@@ -41,7 +42,7 @@ public class DbUnitValidationTracker(
 
         var row = await db.UnitDefinitions
             .AsNoTracking()
-            .Where(u => u.ActorId == unitActorId && u.DeletedAt == null)
+            .Where(u => u.Id == unitActorUuid && u.DeletedAt == null)
             .Select(u => new { u.LastValidationRunId })
             .FirstOrDefaultAsync(cancellationToken);
 
@@ -62,13 +63,19 @@ public class DbUnitValidationTracker(
         {
             throw new ArgumentException("Run id must be supplied.", nameof(runId));
         }
+        if (!Cvoya.Spring.Core.Identifiers.GuidFormatter.TryParse(unitActorId, out var unitActorUuid))
+        {
+            throw new ArgumentException(
+                $"Unit actor id '{unitActorId}' is not a valid Guid.",
+                nameof(unitActorId));
+        }
 
         await using var scope = scopeFactory.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
 
         var entity = await db.UnitDefinitions
             .FirstOrDefaultAsync(
-                u => u.ActorId == unitActorId && u.DeletedAt == null,
+                u => u.Id == unitActorUuid && u.DeletedAt == null,
                 cancellationToken);
 
         if (entity is null)
@@ -99,13 +106,19 @@ public class DbUnitValidationTracker(
         {
             throw new ArgumentException("Unit actor id must be supplied.", nameof(unitActorId));
         }
+        if (!Cvoya.Spring.Core.Identifiers.GuidFormatter.TryParse(unitActorId, out var unitActorUuid))
+        {
+            throw new ArgumentException(
+                $"Unit actor id '{unitActorId}' is not a valid Guid.",
+                nameof(unitActorId));
+        }
 
         await using var scope = scopeFactory.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
 
         var entity = await db.UnitDefinitions
             .FirstOrDefaultAsync(
-                u => u.ActorId == unitActorId && u.DeletedAt == null,
+                u => u.Id == unitActorUuid && u.DeletedAt == null,
                 cancellationToken);
 
         if (entity is null)

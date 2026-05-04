@@ -47,8 +47,8 @@ public class AgentActorEffectiveMetadataTests
     private static readonly Guid UnitAUuid = new("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
     private static readonly Guid UnitBUuid = new("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
 
-    private const string AgentId = "test-agent";   // address slug; actor ID is the UUID above
-    private const string UnitId = "unit-a";         // address slug for UnitAUuid
+    private static readonly string AgentId = AgentActorUuid.ToString("N");
+    private static readonly string UnitId = UnitAUuid.ToString("N");
 
     private readonly IActorStateManager _stateManager = Substitute.For<IActorStateManager>();
     private readonly IActivityEventBus _activityEventBus = Substitute.For<IActivityEventBus>();
@@ -73,22 +73,24 @@ public class AgentActorEffectiveMetadataTests
         _dispatcher.DispatchAsync(Arg.Any<Message>(), Arg.Any<PromptAssemblyContext?>(), Arg.Any<CancellationToken>())
             .Returns((Message?)null);
 
-        _definitionProvider.GetByIdAsync(AgentActorUuid.ToString(), Arg.Any<CancellationToken>())
-            .Returns(new AgentDefinition(AgentActorUuid.ToString(), "Test", "Agent instructions", null));
+        _definitionProvider.GetByIdAsync(AgentId, Arg.Any<CancellationToken>())
+            .Returns(new AgentDefinition(AgentId, "Test", "Agent instructions", null));
 
-        // Wire directory service to resolve unit slugs → directory entries with UUID ActorIds.
+        // Wire directory service to resolve unit addresses → directory entries.
         _directoryService
-            .ResolveAsync(Arg.Is<Address>(a => a.Scheme == "unit" && a.Path == "unit-a"), Arg.Any<CancellationToken>())
-            .Returns(new DirectoryEntry(new Address("unit", "unit-a"), UnitAUuid.ToString(), "unit-a", string.Empty, null, DateTimeOffset.UtcNow));
+            .ResolveAsync(Arg.Is<Address>(a => a.Scheme == "unit" && a.Id == UnitAUuid), Arg.Any<CancellationToken>())
+            .Returns(new DirectoryEntry(new Address("unit", UnitAUuid), UnitAUuid, "unit-a", string.Empty, null, DateTimeOffset.UtcNow));
         _directoryService
-            .ResolveAsync(Arg.Is<Address>(a => a.Scheme == "unit" && a.Path == "unit-b"), Arg.Any<CancellationToken>())
-            .Returns(new DirectoryEntry(new Address("unit", "unit-b"), UnitBUuid.ToString(), "unit-b", string.Empty, null, DateTimeOffset.UtcNow));
+            .ResolveAsync(Arg.Is<Address>(a => a.Scheme == "unit" && a.Id == UnitBUuid), Arg.Any<CancellationToken>())
+            .Returns(new DirectoryEntry(new Address("unit", UnitBUuid), UnitBUuid, "unit-b", string.Empty, null, DateTimeOffset.UtcNow));
         // Unknown units → null by default (NSubstitute returns null for unmatched reference-type calls).
 
-        // The actor ID is the agent's stable UUID (not the slug).
+        // The actor ID is the agent's stable UUID (not the slug); pass it
+        // explicitly so AgentActor.ResolveEffectiveMetadataAsync can parse
+        // Id.GetId() into the agent Guid.
         var host = ActorHost.CreateForTest<AgentActor>(new ActorTestOptions
         {
-            ActorId = new ActorId(AgentActorUuid.ToString()),
+            ActorId = new ActorId(AgentId),
         });
 
         var unitPolicyEnforcer = Substitute.For<IUnitPolicyEnforcer>().WithAllowByDefault();
@@ -137,7 +139,7 @@ public class AgentActorEffectiveMetadataTests
         return new Message(
             Guid.NewGuid(),
             from,
-            new Address("agent", AgentId),
+            new Address("agent", AgentActorUuid),
             MessageType.Domain,
             threadId,
             JsonSerializer.SerializeToElement(new { task = "do-it" }),
@@ -183,7 +185,7 @@ public class AgentActorEffectiveMetadataTests
         _membershipRepository.GetAsync(UnitAUuid, AgentActorUuid, Arg.Any<CancellationToken>())
             .Returns(new UnitMembership(UnitAUuid, AgentActorUuid, Model: "gpt-4", Enabled: true));
 
-        var message = DomainMessageFrom(new Address("unit", UnitId));
+        var message = DomainMessageFrom(new Address("unit", UnitAUuid));
 
         await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
         await _actor.PendingDispatchTask!;
@@ -203,7 +205,7 @@ public class AgentActorEffectiveMetadataTests
         _membershipRepository.GetAsync(UnitAUuid, AgentActorUuid, Arg.Any<CancellationToken>())
             .Returns(new UnitMembership(UnitAUuid, AgentActorUuid, Enabled: false));
 
-        var message = DomainMessageFrom(new Address("unit", UnitId));
+        var message = DomainMessageFrom(new Address("unit", UnitAUuid));
 
         var ack = await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
 
@@ -239,7 +241,7 @@ public class AgentActorEffectiveMetadataTests
         _membershipRepository.GetAsync(UnitAUuid, AgentActorUuid, Arg.Any<CancellationToken>())
             .Returns(new UnitMembership(UnitAUuid, AgentActorUuid, Specialty: "reviewer", Enabled: true));
 
-        var message = DomainMessageFrom(new Address("unit", UnitId));
+        var message = DomainMessageFrom(new Address("unit", UnitAUuid));
 
         await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
         await _actor.PendingDispatchTask!;
@@ -265,7 +267,7 @@ public class AgentActorEffectiveMetadataTests
                 Enabled: true,
                 ExecutionMode: AgentExecutionMode.OnDemand));
 
-        var message = DomainMessageFrom(new Address("unit", UnitId));
+        var message = DomainMessageFrom(new Address("unit", UnitAUuid));
 
         await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
         await _actor.PendingDispatchTask!;
@@ -290,7 +292,7 @@ public class AgentActorEffectiveMetadataTests
         _membershipRepository.GetAsync(UnitAUuid, AgentActorUuid, Arg.Any<CancellationToken>())
             .Returns((UnitMembership?)null);
 
-        var message = DomainMessageFrom(new Address("unit", UnitId));
+        var message = DomainMessageFrom(new Address("unit", UnitAUuid));
 
         await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
         await _actor.PendingDispatchTask!;
@@ -310,7 +312,7 @@ public class AgentActorEffectiveMetadataTests
     {
         SetAgentGlobalMetadata(model: "claude-3-haiku");
 
-        var message = DomainMessageFrom(new Address("webhook", "github/incoming"));
+        var message = DomainMessageFrom(Address.For("webhook", TestSlugIds.HexFor("github/incoming")));
 
         await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
         await _actor.PendingDispatchTask!;
@@ -334,7 +336,7 @@ public class AgentActorEffectiveMetadataTests
     {
         SetAgentGlobalMetadata(model: "claude-3-haiku");
 
-        var message = DomainMessageFrom(new Address("agent", "peer-agent"));
+        var message = DomainMessageFrom(Address.For("agent", TestSlugIds.HexFor("peer-agent")));
 
         await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
         await _actor.PendingDispatchTask!;
@@ -355,7 +357,7 @@ public class AgentActorEffectiveMetadataTests
         _membershipRepository.GetAsync(UnitAUuid, AgentActorUuid, Arg.Any<CancellationToken>())
             .Returns(new UnitMembership(UnitAUuid, AgentActorUuid, Model: "gpt-4", Enabled: true));
 
-        var msg1 = DomainMessageFrom(new Address("unit", UnitId), "conv-1");
+        var msg1 = DomainMessageFrom(new Address("unit", UnitAUuid), "conv-1");
         await _actor.ReceiveAsync(msg1, TestContext.Current.CancellationToken);
         await _actor.PendingDispatchTask!;
 
@@ -364,7 +366,7 @@ public class AgentActorEffectiveMetadataTests
             .Returns(new ConditionalValue<ThreadChannel>(true,
                 new ThreadChannel { ThreadId = "conv-1", Messages = [msg1] }));
 
-        var msg2 = DomainMessageFrom(new Address("unit", UnitId), "conv-1");
+        var msg2 = DomainMessageFrom(new Address("unit", UnitAUuid), "conv-1");
         await _actor.ReceiveAsync(msg2, TestContext.Current.CancellationToken);
 
         await _dispatcher.Received(1).DispatchAsync(
@@ -383,7 +385,7 @@ public class AgentActorEffectiveMetadataTests
             .Returns(new UnitMembership(UnitBUuid, AgentActorUuid, Model: "claude-3-5-sonnet", Enabled: true));
 
         // Turn 1: unit-a opens conversation conv-a; verify gpt-4.
-        var msgA = DomainMessageFrom(new Address("unit", "unit-a"), "conv-a");
+        var msgA = DomainMessageFrom(new Address("unit", UnitAUuid), "conv-a");
         await _actor.ReceiveAsync(msgA, TestContext.Current.CancellationToken);
         await _actor.PendingDispatchTask!;
 
@@ -400,7 +402,7 @@ public class AgentActorEffectiveMetadataTests
         _stateManager.TryGetStateAsync<ThreadChannel>(StateKeys.ActiveConversation, Arg.Any<CancellationToken>())
             .Returns(new ConditionalValue<ThreadChannel>(false, default!));
 
-        var msgB = DomainMessageFrom(new Address("unit", "unit-b"), "conv-b");
+        var msgB = DomainMessageFrom(new Address("unit", UnitBUuid), "conv-b");
         await _actor.ReceiveAsync(msgB, TestContext.Current.CancellationToken);
         await _actor.PendingDispatchTask!;
 
@@ -419,7 +421,7 @@ public class AgentActorEffectiveMetadataTests
         _membershipRepository.GetAsync(UnitAUuid, AgentActorUuid, Arg.Any<CancellationToken>())
             .Returns<Task<UnitMembership?>>(_ => throw new InvalidOperationException("db down"));
 
-        var message = DomainMessageFrom(new Address("unit", UnitId));
+        var message = DomainMessageFrom(new Address("unit", UnitAUuid));
 
         await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
         await _actor.PendingDispatchTask!;

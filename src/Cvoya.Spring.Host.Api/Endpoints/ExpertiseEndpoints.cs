@@ -93,7 +93,7 @@ public static class ExpertiseEndpoints
         [FromServices] IActorProxyFactory actorProxyFactory,
         CancellationToken cancellationToken)
     {
-        var address = new Address("agent", id);
+        var address = Address.For("agent", id);
         var entry = await directoryService.ResolveAsync(address, cancellationToken);
         if (entry is null)
         {
@@ -101,7 +101,7 @@ public static class ExpertiseEndpoints
         }
 
         var proxy = actorProxyFactory.CreateActorProxy<IAgentActor>(
-            new ActorId(entry.ActorId), nameof(AgentActor));
+            new ActorId(Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(entry.ActorId)), nameof(AgentActor));
         var domains = await proxy.GetExpertiseAsync(cancellationToken);
 
         return Results.Ok(new ExpertiseResponse(domains.Select(ToDto).ToList()));
@@ -122,7 +122,7 @@ public static class ExpertiseEndpoints
                 statusCode: StatusCodes.Status400BadRequest);
         }
 
-        var address = new Address("agent", id);
+        var address = Address.For("agent", id);
         var entry = await directoryService.ResolveAsync(address, cancellationToken);
         if (entry is null)
         {
@@ -130,7 +130,7 @@ public static class ExpertiseEndpoints
         }
 
         var proxy = actorProxyFactory.CreateActorProxy<IAgentActor>(
-            new ActorId(entry.ActorId), nameof(AgentActor));
+            new ActorId(Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(entry.ActorId)), nameof(AgentActor));
 
         var domains = request.Domains.Select(FromDto).ToArray();
         await proxy.SetExpertiseAsync(domains, cancellationToken);
@@ -150,7 +150,7 @@ public static class ExpertiseEndpoints
         [FromServices] IActorProxyFactory actorProxyFactory,
         CancellationToken cancellationToken)
     {
-        var address = new Address("unit", id);
+        var address = Address.For("unit", id);
         var entry = await directoryService.ResolveAsync(address, cancellationToken);
         if (entry is null)
         {
@@ -158,7 +158,7 @@ public static class ExpertiseEndpoints
         }
 
         var proxy = actorProxyFactory.CreateActorProxy<IUnitActor>(
-            new ActorId(entry.ActorId), nameof(UnitActor));
+            new ActorId(Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(entry.ActorId)), nameof(UnitActor));
         var domains = await proxy.GetOwnExpertiseAsync(cancellationToken);
 
         return Results.Ok(new ExpertiseResponse(domains.Select(ToDto).ToList()));
@@ -179,7 +179,7 @@ public static class ExpertiseEndpoints
                 statusCode: StatusCodes.Status400BadRequest);
         }
 
-        var address = new Address("unit", id);
+        var address = Address.For("unit", id);
         var entry = await directoryService.ResolveAsync(address, cancellationToken);
         if (entry is null)
         {
@@ -187,7 +187,7 @@ public static class ExpertiseEndpoints
         }
 
         var proxy = actorProxyFactory.CreateActorProxy<IUnitActor>(
-            new ActorId(entry.ActorId), nameof(UnitActor));
+            new ActorId(Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(entry.ActorId)), nameof(UnitActor));
 
         var domains = request.Domains.Select(FromDto).ToArray();
         await proxy.SetOwnExpertiseAsync(domains, cancellationToken);
@@ -204,7 +204,7 @@ public static class ExpertiseEndpoints
         [FromServices] IExpertiseAggregator aggregator,
         CancellationToken cancellationToken)
     {
-        var address = new Address("unit", id);
+        var address = Address.For("unit", id);
         var entry = await directoryService.ResolveAsync(address, cancellationToken);
         if (entry is null)
         {

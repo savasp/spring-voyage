@@ -17,11 +17,16 @@ using Xunit;
 /// <summary>
 /// Unit tests for <see cref="TenantRegistry"/> — the EF-backed
 /// implementation of <see cref="ITenantRegistry"/>. Exercises the
-/// happy paths, the slug-shape validation, the duplicate guard, and
-/// the soft-delete contract.
+/// happy paths, the duplicate guard, and the soft-delete contract.
+///
+/// Post #1629: tenant ids are <see cref="Guid"/>; the slug-shape
+/// validation that used to gate string ids has been removed.
 /// </summary>
 public class TenantRegistryTests
 {
+    private static readonly Guid AcmeId = new("00000001-0000-0000-0000-000000000001");
+    private static readonly Guid DefaultId = new("dddddddd-0000-0000-0000-000000000000");
+
     [Fact]
     public async Task CreateAsync_HappyPath_PersistsRow()
     {
@@ -29,16 +34,16 @@ public class TenantRegistryTests
         using var context = CreateContext();
         var sut = CreateSut(context);
 
-        var record = await sut.CreateAsync("acme", "ACME Corp", ct);
+        var record = await sut.CreateAsync(AcmeId, "ACME Corp", ct);
 
-        record.Id.ShouldBe("acme");
+        record.Id.ShouldBe(AcmeId);
         record.DisplayName.ShouldBe("ACME Corp");
         record.State.ShouldBe(TenantState.Active);
         record.CreatedAt.ShouldBe(record.UpdatedAt);
 
-        var fetched = await sut.GetAsync("acme", ct);
+        var fetched = await sut.GetAsync(AcmeId, ct);
         fetched.ShouldNotBeNull();
-        fetched.Id.ShouldBe("acme");
+        fetched.Id.ShouldBe(AcmeId);
     }
 
     [Fact]
@@ -48,9 +53,10 @@ public class TenantRegistryTests
         using var context = CreateContext();
         var sut = CreateSut(context);
 
-        var record = await sut.CreateAsync("acme", displayName: null, ct);
+        var record = await sut.CreateAsync(AcmeId, displayName: null, ct);
 
-        record.DisplayName.ShouldBe("acme");
+        // Falls back to the Guid wire form when display name is null.
+        record.DisplayName.ShouldNotBeNullOrWhiteSpace();
     }
 
     [Fact]
@@ -60,39 +66,9 @@ public class TenantRegistryTests
         using var context = CreateContext();
         var sut = CreateSut(context);
 
-        var record = await sut.CreateAsync("acme", displayName: "  ", ct);
+        var record = await sut.CreateAsync(AcmeId, displayName: "  ", ct);
 
-        record.DisplayName.ShouldBe("acme");
-    }
-
-    [Theory]
-    [InlineData("Acme")]                  // upper-case
-    [InlineData("acme!")]                 // disallowed punctuation
-    [InlineData("-acme")]                 // leading hyphen
-    [InlineData("a c m e")]               // spaces
-    [InlineData("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")] // 65 chars (one over the max)
-    public async Task CreateAsync_MalformedId_ThrowsArgumentException(string id)
-    {
-        var ct = TestContext.Current.CancellationToken;
-        using var context = CreateContext();
-        var sut = CreateSut(context);
-
-        await Should.ThrowAsync<ArgumentException>(() =>
-            sut.CreateAsync(id, displayName: null, ct));
-    }
-
-    [Fact]
-    public async Task CreateAsync_ShortestValidId_Succeeds()
-    {
-        // Positive control bracketing the 65-char invalid case in
-        // CreateAsync_MalformedId_ThrowsArgumentException — single-letter
-        // ids are the shortest accepted form.
-        var ct = TestContext.Current.CancellationToken;
-        using var context = CreateContext();
-        var sut = CreateSut(context);
-
-        var record = await sut.CreateAsync("a", displayName: null, ct);
-        record.Id.ShouldBe("a");
+        record.DisplayName.ShouldNotBeNullOrWhiteSpace();
     }
 
     [Fact]
@@ -102,10 +78,11 @@ public class TenantRegistryTests
         using var context = CreateContext();
         var sut = CreateSut(context);
 
-        await sut.CreateAsync("dup", null, ct);
+        var dupId = new Guid("00000002-0000-0000-0000-000000000002");
+        await sut.CreateAsync(dupId, null, ct);
 
         await Should.ThrowAsync<InvalidOperationException>(() =>
-            sut.CreateAsync("dup", null, ct));
+            sut.CreateAsync(dupId, null, ct));
     }
 
     [Fact]
@@ -118,12 +95,13 @@ public class TenantRegistryTests
         using var context = CreateContext();
         var sut = CreateSut(context);
 
-        await sut.CreateAsync("recyclable", null, ct);
-        var deleted = await sut.DeleteAsync("recyclable", ct);
+        var recyclableId = new Guid("00000003-0000-0000-0000-000000000003");
+        await sut.CreateAsync(recyclableId, null, ct);
+        var deleted = await sut.DeleteAsync(recyclableId, ct);
         deleted.ShouldBeTrue();
 
         var ex = await Should.ThrowAsync<InvalidOperationException>(() =>
-            sut.CreateAsync("recyclable", null, ct));
+            sut.CreateAsync(recyclableId, null, ct));
         ex.Message.ShouldContain("soft-deleted");
     }
 
@@ -134,12 +112,16 @@ public class TenantRegistryTests
         using var context = CreateContext();
         var sut = CreateSut(context);
 
-        await sut.CreateAsync("zeta", null, ct);
-        await sut.CreateAsync("alpha", null, ct);
-        await sut.CreateAsync("middle", null, ct);
+        var alpha = new Guid("00000010-0000-0000-0000-00000000000a");
+        var middle = new Guid("00000020-0000-0000-0000-00000000000b");
+        var zeta = new Guid("00000030-0000-0000-0000-00000000000c");
+
+        await sut.CreateAsync(zeta, null, ct);
+        await sut.CreateAsync(alpha, null, ct);
+        await sut.CreateAsync(middle, null, ct);
 
         var list = await sut.ListAsync(ct);
-        list.Select(t => t.Id).ShouldBe(new[] { "alpha", "middle", "zeta" });
+        list.Select(t => t.Id).ShouldBe(new[] { alpha, middle, zeta });
     }
 
     [Fact]
@@ -149,12 +131,14 @@ public class TenantRegistryTests
         using var context = CreateContext();
         var sut = CreateSut(context);
 
-        await sut.CreateAsync("kept", null, ct);
-        await sut.CreateAsync("removed", null, ct);
-        await sut.DeleteAsync("removed", ct);
+        var kept = new Guid("00000040-0000-0000-0000-00000000000d");
+        var removed = new Guid("00000050-0000-0000-0000-00000000000e");
+        await sut.CreateAsync(kept, null, ct);
+        await sut.CreateAsync(removed, null, ct);
+        await sut.DeleteAsync(removed, ct);
 
         var list = await sut.ListAsync(ct);
-        list.Select(t => t.Id).ShouldBe(new[] { "kept" });
+        list.Select(t => t.Id).ShouldBe(new[] { kept });
     }
 
     [Fact]
@@ -164,10 +148,11 @@ public class TenantRegistryTests
         using var context = CreateContext();
         var sut = CreateSut(context);
 
-        await sut.CreateAsync("ghost", null, ct);
-        await sut.DeleteAsync("ghost", ct);
+        var ghost = new Guid("00000060-0000-0000-0000-00000000000f");
+        await sut.CreateAsync(ghost, null, ct);
+        await sut.DeleteAsync(ghost, ct);
 
-        var fetched = await sut.GetAsync("ghost", ct);
+        var fetched = await sut.GetAsync(ghost, ct);
         fetched.ShouldBeNull();
     }
 
@@ -178,12 +163,12 @@ public class TenantRegistryTests
         using var context = CreateContext();
         var sut = CreateSut(context);
 
-        var created = await sut.CreateAsync("upd", "Original", ct);
+        var updId = new Guid("00000070-0000-0000-0000-000000000010");
+        var created = await sut.CreateAsync(updId, "Original", ct);
 
-        // EF in-memory persists wall-clock; pause briefly so UpdatedAt
-        // advances.
+        // EF in-memory persists wall-clock; pause briefly so UpdatedAt advances.
         await Task.Delay(5, ct);
-        var updated = await sut.UpdateAsync("upd", "Updated", ct);
+        var updated = await sut.UpdateAsync(updId, "Updated", ct);
 
         updated.ShouldNotBeNull();
         updated.DisplayName.ShouldBe("Updated");
@@ -197,8 +182,9 @@ public class TenantRegistryTests
         using var context = CreateContext();
         var sut = CreateSut(context);
 
-        await sut.CreateAsync("noop", "Original", ct);
-        var updated = await sut.UpdateAsync("noop", displayName: null, ct);
+        var noopId = new Guid("00000080-0000-0000-0000-000000000011");
+        await sut.CreateAsync(noopId, "Original", ct);
+        var updated = await sut.UpdateAsync(noopId, displayName: null, ct);
 
         updated.ShouldNotBeNull();
         updated.DisplayName.ShouldBe("Original");
@@ -211,7 +197,7 @@ public class TenantRegistryTests
         using var context = CreateContext();
         var sut = CreateSut(context);
 
-        var updated = await sut.UpdateAsync("missing", "X", ct);
+        var updated = await sut.UpdateAsync(Guid.NewGuid(), "X", ct);
         updated.ShouldBeNull();
     }
 
@@ -222,11 +208,12 @@ public class TenantRegistryTests
         using var context = CreateContext();
         var sut = CreateSut(context);
 
-        await sut.CreateAsync("kill", null, ct);
-        var deleted = await sut.DeleteAsync("kill", ct);
+        var killId = new Guid("00000090-0000-0000-0000-000000000012");
+        await sut.CreateAsync(killId, null, ct);
+        var deleted = await sut.DeleteAsync(killId, ct);
 
         deleted.ShouldBeTrue();
-        (await sut.GetAsync("kill", ct)).ShouldBeNull();
+        (await sut.GetAsync(killId, ct)).ShouldBeNull();
     }
 
     [Fact]
@@ -236,7 +223,7 @@ public class TenantRegistryTests
         using var context = CreateContext();
         var sut = CreateSut(context);
 
-        var deleted = await sut.DeleteAsync("missing", ct);
+        var deleted = await sut.DeleteAsync(Guid.NewGuid(), ct);
         deleted.ShouldBeFalse();
     }
 
@@ -245,7 +232,7 @@ public class TenantRegistryTests
         var options = new DbContextOptionsBuilder<SpringDbContext>()
             .UseInMemoryDatabase(databaseName: $"TenantRegistryTests-{Guid.NewGuid():N}")
             .Options;
-        return new SpringDbContext(options, new StaticTenantContext("default"));
+        return new SpringDbContext(options, new StaticTenantContext(DefaultId));
     }
 
     private static TenantRegistry CreateSut(SpringDbContext context)

@@ -25,8 +25,8 @@ using Xunit;
 /// </summary>
 public class TenantConnectorInstallServiceTests
 {
-    private const string TenantA = "tenant-a";
-    private const string TenantB = "tenant-b";
+    private static readonly Guid TenantA = new("aaaaaaaa-1111-1111-1111-000000000001");
+    private static readonly Guid TenantB = new("aaaaaaaa-1111-1111-1111-000000000002");
 
     [Fact]
     public async Task InstallAsync_NoConfig_PersistsEmpty()
@@ -136,7 +136,7 @@ public class TenantConnectorInstallServiceTests
 
     private static readonly Guid StubConnectorTypeId = new("00000000-0000-0000-0000-00000000beef");
 
-    private static SpringDbContext CreateDbContext(string dbName, string tenantId)
+    private static SpringDbContext CreateDbContext(string dbName, Guid tenantId)
     {
         var options = new DbContextOptionsBuilder<SpringDbContext>()
             .UseInMemoryDatabase(databaseName: dbName)
@@ -162,7 +162,7 @@ public class TenantConnectorInstallServiceTests
     }
 
     private static TenantConnectorInstallService CreateSut(
-        SpringDbContext context, string tenantId)
+        SpringDbContext context, Guid tenantId)
     {
         return new TenantConnectorInstallService(
             context,

@@ -52,6 +52,12 @@ public class UnitValidationWorkflowScheduler(
         {
             throw new ArgumentException("Unit actor id must be supplied.", nameof(unitActorId));
         }
+        if (!Cvoya.Spring.Core.Identifiers.GuidFormatter.TryParse(unitActorId, out var unitActorUuid))
+        {
+            throw new ArgumentException(
+                $"Unit actor id '{unitActorId}' is not a valid Guid.",
+                nameof(unitActorId));
+        }
 
         // Both the SpringDbContext (per-request) and the
         // ILlmCredentialResolver (scoped) live behind a fresh DI scope —
@@ -69,7 +75,7 @@ public class UnitValidationWorkflowScheduler(
         var entity = await db.UnitDefinitions
             .AsNoTracking()
             .FirstOrDefaultAsync(
-                u => u.ActorId == unitActorId && u.DeletedAt == null,
+                u => u.Id == unitActorUuid && u.DeletedAt == null,
                 cancellationToken);
 
         if (entity is null)
@@ -141,7 +147,7 @@ public class UnitValidationWorkflowScheduler(
         var credentialResolution = await credentialResolver
             .ResolveAsync(
                 providerId: defaults.Provider ?? runtimeId,
-                unitName: entity.UnitId,
+                unitId: entity.Id,
                 cancellationToken);
 
         var credential = credentialResolution.Value ?? string.Empty;
@@ -149,7 +155,7 @@ public class UnitValidationWorkflowScheduler(
 
         var input = new UnitValidationWorkflowInput(
             UnitId: unitActorId,
-            UnitName: entity.UnitId,
+            UnitName: entity.DisplayName,
             Image: defaults.Image,
             RuntimeId: runtimeId,
             Credential: credential,
@@ -161,8 +167,8 @@ public class UnitValidationWorkflowScheduler(
 
         _logger.LogInformation(
             "Scheduled UnitValidationWorkflow {InstanceId} for unit {UnitName} (actor {ActorId}) image={Image} runtime={Runtime} model={Model}.",
-            instanceId, entity.UnitId, unitActorId, defaults.Image, runtimeId, requestedModel);
+            instanceId, entity.DisplayName, unitActorId, defaults.Image, runtimeId, requestedModel);
 
-        return new UnitValidationSchedule(instanceId, entity.UnitId);
+        return new UnitValidationSchedule(instanceId, entity.DisplayName);
     }
 }

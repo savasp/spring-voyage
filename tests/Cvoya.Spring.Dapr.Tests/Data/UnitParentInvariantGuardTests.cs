@@ -21,13 +21,21 @@ using Xunit;
 /// Tests for <see cref="UnitParentInvariantGuard"/> — the last-parent
 /// protection introduced by the review feedback on #744. The guard
 /// consults <see cref="SpringDbContext"/> for the child's
-/// <c>IsTopLevel</c> flag and <see cref="IUnitHierarchyResolver"/> for
-/// the child's current parent set. The two together gate the
+/// "is top-level" derivation and <see cref="IUnitHierarchyResolver"/>
+/// for the child's current parent set. The two together gate the
 /// 409-worthy case.
 /// </summary>
 public class UnitParentInvariantGuardTests : IDisposable
 {
-    private const string Tenant = "t";
+    private static readonly Guid Tenant = new("aaaaaaaa-1111-1111-1111-000000000001");
+    private static readonly Guid AdaId = new("bbbbbbbb-2222-2222-2222-000000000001");
+    private static readonly Guid TeamId = new("bbbbbbbb-2222-2222-2222-000000000002");
+    private static readonly Guid PhantomId = new("bbbbbbbb-2222-2222-2222-000000000003");
+    private static readonly Guid RootUnitId = new("bbbbbbbb-2222-2222-2222-000000000004");
+    private static readonly Guid ChildId = new("bbbbbbbb-2222-2222-2222-000000000005");
+    private static readonly Guid ParentAId = new("bbbbbbbb-2222-2222-2222-000000000006");
+    private static readonly Guid ParentBId = new("bbbbbbbb-2222-2222-2222-000000000007");
+
     private readonly DbContextOptions<SpringDbContext> _options;
     private SpringDbContext? _context;
 
@@ -44,8 +52,8 @@ public class UnitParentInvariantGuardTests : IDisposable
         var (guard, _) = CreateGuard();
 
         await guard.EnsureParentRemainsAsync(
-            new Address("unit", "team"),
-            new Address("agent", "ada"),
+            new Address("unit", TeamId),
+            new Address("agent", AdaId),
             TestContext.Current.CancellationToken);
     }
 
@@ -58,8 +66,8 @@ public class UnitParentInvariantGuardTests : IDisposable
         // removal as a no-op, not a 409. Mirrors the idempotent
         // RemoveMember contract.
         await guard.EnsureParentRemainsAsync(
-            new Address("unit", "team"),
-            new Address("unit", "phantom"),
+            new Address("unit", TeamId),
+            new Address("unit", PhantomId),
             TestContext.Current.CancellationToken);
     }
 
@@ -67,38 +75,35 @@ public class UnitParentInvariantGuardTests : IDisposable
     public async Task EnsureParentRemainsAsync_TopLevelChild_IsNoOp()
     {
         var (guard, resolver) = CreateGuard();
-        SeedUnit("root-unit", isTopLevel: true);
+        SeedUnit(RootUnitId);
 
+        // No incoming parent edges seeded — RootUnitId is implicitly top-level.
         await guard.EnsureParentRemainsAsync(
-            new Address("unit", "team"),
-            new Address("unit", "root-unit"),
+            new Address("unit", TeamId),
+            new Address("unit", RootUnitId),
             TestContext.Current.CancellationToken);
-
-        // Top-level: no need to consult the hierarchy resolver, since
-        // the parent-required check is short-circuited.
-        await resolver.DidNotReceive().GetParentsAsync(
-            Arg.Any<Address>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
     public async Task EnsureParentRemainsAsync_NonTopLevelChildWithMultipleParents_Succeeds()
     {
         var (guard, resolver) = CreateGuard();
-        SeedUnit("child", isTopLevel: false);
+        SeedUnit(ChildId);
+        SeedParentEdges(ChildId, ParentAId, ParentBId);
 
         // Child currently has two parents; removing one leaves one.
         resolver.GetParentsAsync(
-            Arg.Is<Address>(a => a.Path == "child"),
+            Arg.Is<Address>(a => a.Id == ChildId),
             Arg.Any<CancellationToken>())
             .Returns(new List<Address>
             {
-                new("unit", "parent-a"),
-                new("unit", "parent-b"),
+                new("unit", ParentAId),
+                new("unit", ParentBId),
             });
 
         await guard.EnsureParentRemainsAsync(
-            new Address("unit", "parent-a"),
-            new Address("unit", "child"),
+            new Address("unit", ParentAId),
+            new Address("unit", ChildId),
             TestContext.Current.CancellationToken);
     }
 
@@ -106,24 +111,25 @@ public class UnitParentInvariantGuardTests : IDisposable
     public async Task EnsureParentRemainsAsync_NonTopLevelChildWithLastParent_Throws()
     {
         var (guard, resolver) = CreateGuard();
-        SeedUnit("child", isTopLevel: false);
+        SeedUnit(ChildId);
+        SeedParentEdges(ChildId, ParentAId);
 
         resolver.GetParentsAsync(
-            Arg.Is<Address>(a => a.Path == "child"),
+            Arg.Is<Address>(a => a.Id == ChildId),
             Arg.Any<CancellationToken>())
             .Returns(new List<Address>
             {
-                new("unit", "parent-a"),
+                new("unit", ParentAId),
             });
 
         var ex = await Should.ThrowAsync<UnitParentRequiredException>(() =>
             guard.EnsureParentRemainsAsync(
-                new Address("unit", "parent-a"),
-                new Address("unit", "child"),
+                new Address("unit", ParentAId),
+                new Address("unit", ChildId),
                 TestContext.Current.CancellationToken));
 
-        ex.UnitAddress.ShouldBe("child");
-        ex.ParentUnitId.ShouldBe("parent-a");
+        ex.UnitAddress.ShouldBe(ChildId.ToString("N"));
+        ex.ParentUnitId.ShouldBe(ParentAId.ToString("N"));
     }
 
     private (UnitParentInvariantGuard Guard, IUnitHierarchyResolver Resolver) CreateGuard()
@@ -136,27 +142,40 @@ public class UnitParentInvariantGuardTests : IDisposable
         return (new UnitParentInvariantGuard(_context, resolver), resolver);
     }
 
-    private void SeedUnit(string unitId, bool isTopLevel)
+    private void SeedUnit(Guid unitId)
     {
         using var ctx = new SpringDbContext(_options, new StaticTenantContext(Tenant));
         ctx.UnitDefinitions.Add(new UnitDefinitionEntity
         {
-            Id = Guid.NewGuid(),
+            Id = unitId,
             TenantId = Tenant,
-            UnitId = unitId,
-            ActorId = unitId,
-            Name = unitId,
+            DisplayName = unitId.ToString("N"),
             Description = string.Empty,
-            IsTopLevel = isTopLevel,
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow,
         });
         ctx.SaveChanges();
     }
 
+    private void SeedParentEdges(Guid childId, params Guid[] parentIds)
+    {
+        using var ctx = new SpringDbContext(_options, new StaticTenantContext(Tenant));
+        foreach (var parentId in parentIds)
+        {
+            ctx.UnitSubunitMemberships.Add(new UnitSubunitMembershipEntity
+            {
+                TenantId = Tenant,
+                ParentId = parentId,
+                ChildId = childId,
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow,
+            });
+        }
+        ctx.SaveChanges();
+    }
+
     public void Dispose()
     {
         _context?.Dispose();
-        GC.SuppressFinalize(this);
     }
 }

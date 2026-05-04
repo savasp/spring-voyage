@@ -30,9 +30,12 @@ public sealed class ConnectorInstallSeedProvider(
     public int Priority => 30;
 
     /// <inheritdoc />
-    public async Task ApplySeedsAsync(string tenantId, CancellationToken cancellationToken)
+    public async Task ApplySeedsAsync(Guid tenantId, CancellationToken cancellationToken)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        if (tenantId == Guid.Empty)
+        {
+            throw new ArgumentException("Tenant id must be supplied.", nameof(tenantId));
+        }
 
         if (_connectorTypes.Count == 0)
         {

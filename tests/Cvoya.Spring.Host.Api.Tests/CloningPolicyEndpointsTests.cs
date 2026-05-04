@@ -27,6 +27,11 @@ using Xunit;
 /// </summary>
 public class CloningPolicyEndpointsTests : IClassFixture<CustomWebApplicationFactory>
 {
+    private static readonly Guid Agent_AdaGet_Id = new("00000001-feed-1234-5678-000000000000");
+    private static readonly Guid Agent_AdaSet_Id = new("00000002-feed-1234-5678-000000000000");
+    private static readonly Guid Agent_MissingAgent_Id = new("00000003-feed-1234-5678-000000000000");
+    private static readonly Guid Agent_MissingClear_Id = new("00000004-feed-1234-5678-000000000000");
+
     private readonly CustomWebApplicationFactory _factory;
     private readonly HttpClient _client;
     private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web)
@@ -45,10 +50,11 @@ public class CloningPolicyEndpointsTests : IClassFixture<CustomWebApplicationFac
     {
         var ct = TestContext.Current.CancellationToken;
         _factory.DirectoryService
-            .ResolveAsync(new Address("agent", "missing-agent"), Arg.Any<CancellationToken>())
+            .ResolveAsync(new Address("agent", Agent_MissingAgent_Id), Arg.Any<CancellationToken>())
             .Returns((DirectoryEntry?)null);
 
-        var response = await _client.GetAsync("/api/v1/tenant/agents/missing-agent/cloning-policy", ct);
+        var response = await _client.GetAsync(
+            $"/api/v1/tenant/agents/{Agent_MissingAgent_Id:N}/cloning-policy", ct);
 
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
@@ -57,14 +63,15 @@ public class CloningPolicyEndpointsTests : IClassFixture<CustomWebApplicationFac
     public async Task GetAgentCloningPolicy_NoPersistedPolicy_ReturnsEmptyShape()
     {
         var ct = TestContext.Current.CancellationToken;
-        var address = new Address("agent", "ada-get");
+        var address = new Address("agent", Agent_AdaGet_Id);
         _factory.DirectoryService.ResolveAsync(address, Arg.Any<CancellationToken>())
-            .Returns(new DirectoryEntry(address, "ada-get", "Ada", "Ada", null, DateTimeOffset.UtcNow));
+            .Returns(new DirectoryEntry(address, Agent_AdaGet_Id, "Ada", "Ada", null, DateTimeOffset.UtcNow));
         _factory.StateStore
             .GetAsync<AgentCloningPolicy>(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns((AgentCloningPolicy?)null);
 
-        var response = await _client.GetAsync("/api/v1/tenant/agents/ada-get/cloning-policy", ct);
+        var response = await _client.GetAsync(
+            $"/api/v1/tenant/agents/{Agent_AdaGet_Id:N}/cloning-policy", ct);
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
         var body = await response.Content.ReadFromJsonAsync<AgentCloningPolicyResponse>(_jsonOptions, ct);
@@ -79,9 +86,9 @@ public class CloningPolicyEndpointsTests : IClassFixture<CustomWebApplicationFac
     public async Task SetAgentCloningPolicy_RoundTripsWireShape()
     {
         var ct = TestContext.Current.CancellationToken;
-        var address = new Address("agent", "ada-set");
+        var address = new Address("agent", Agent_AdaSet_Id);
         _factory.DirectoryService.ResolveAsync(address, Arg.Any<CancellationToken>())
-            .Returns(new DirectoryEntry(address, "ada-set", "Ada", "Ada", null, DateTimeOffset.UtcNow));
+            .Returns(new DirectoryEntry(address, Agent_AdaSet_Id, "Ada", "Ada", null, DateTimeOffset.UtcNow));
 
         var request = new AgentCloningPolicyResponse(
             AllowedPolicies: new[] { CloningPolicy.EphemeralNoMemory },
@@ -91,7 +98,7 @@ public class CloningPolicyEndpointsTests : IClassFixture<CustomWebApplicationFac
             Budget: 7m);
 
         var putResponse = await _client.PutAsJsonAsync(
-            "/api/v1/tenant/agents/ada-set/cloning-policy", request, _jsonOptions, ct);
+            $"/api/v1/tenant/agents/{Agent_AdaSet_Id:N}/cloning-policy", request, _jsonOptions, ct);
 
         putResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
         var body = await putResponse.Content.ReadFromJsonAsync<AgentCloningPolicyResponse>(_jsonOptions, ct);
@@ -107,11 +114,11 @@ public class CloningPolicyEndpointsTests : IClassFixture<CustomWebApplicationFac
     {
         var ct = TestContext.Current.CancellationToken;
         _factory.DirectoryService
-            .ResolveAsync(new Address("agent", "missing-clear"), Arg.Any<CancellationToken>())
+            .ResolveAsync(new Address("agent", Agent_MissingClear_Id), Arg.Any<CancellationToken>())
             .Returns((DirectoryEntry?)null);
 
         var response = await _client.DeleteAsync(
-            "/api/v1/tenant/agents/missing-clear/cloning-policy", ct);
+            $"/api/v1/tenant/agents/{Agent_MissingClear_Id:N}/cloning-policy", ct);
 
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }

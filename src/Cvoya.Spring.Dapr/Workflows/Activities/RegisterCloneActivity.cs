@@ -24,7 +24,7 @@ public class RegisterCloneActivity(
     /// <inheritdoc />
     public override async Task<bool> RunAsync(WorkflowActivityContext context, CloningInput input)
     {
-        var address = new Address("agent", input.TargetAgentId);
+        var address = Address.For("agent", input.TargetAgentId);
 
         var description = input.AttachmentMode == AttachmentMode.Attached
             ? $"Clone of {input.SourceAgentId} (attached)"
@@ -32,7 +32,7 @@ public class RegisterCloneActivity(
 
         var entry = new DirectoryEntry(
             address,
-            ActorId: input.TargetAgentId,
+            ActorId: address.Id,
             DisplayName: $"Clone:{input.TargetAgentId}",
             Description: description,
             Role: null,

@@ -79,7 +79,7 @@ public static class MembershipEndpoints
         [FromServices] IUnitMembershipRepository repository,
         CancellationToken cancellationToken)
     {
-        var address = new Address("agent", id);
+        var address = Address.For("agent", id);
         var entry = await directoryService.ResolveAsync(address, cancellationToken);
         if (entry is null)
         {
@@ -89,12 +89,7 @@ public static class MembershipEndpoints
         }
 
         // Resolve slug → UUID at the boundary (#1492).
-        if (!Guid.TryParse(entry.ActorId, out var agentUuid))
-        {
-            return Results.Problem(
-                detail: $"Agent '{id}' has no stable UUID identity.",
-                statusCode: StatusCodes.Status404NotFound);
-        }
+        var agentUuid = entry.ActorId;
 
         var memberships = await repository.ListByAgentAsync(agentUuid, cancellationToken);
         var unitActorIdMap = await ResolveUnitActorIdsAsync(memberships, directoryService, cancellationToken);
@@ -108,7 +103,7 @@ public static class MembershipEndpoints
         [FromServices] IUnitMembershipRepository repository,
         CancellationToken cancellationToken)
     {
-        var address = new Address("unit", id);
+        var address = Address.For("unit", id);
         var entry = await directoryService.ResolveAsync(address, cancellationToken);
         if (entry is null)
         {
@@ -118,12 +113,7 @@ public static class MembershipEndpoints
         }
 
         // Resolve slug → UUID at the boundary (#1492).
-        if (!Guid.TryParse(entry.ActorId, out var unitUuid))
-        {
-            return Results.Problem(
-                detail: $"Unit '{id}' has no stable UUID identity.",
-                statusCode: StatusCodes.Status404NotFound);
-        }
+        var unitUuid = entry.ActorId;
 
         var memberships = await repository.ListByUnitAsync(unitUuid, cancellationToken);
         var unitActorIdMap = new Dictionary<Guid, DirectoryEntry> { [unitUuid] = entry };
@@ -148,7 +138,7 @@ public static class MembershipEndpoints
                 statusCode: StatusCodes.Status400BadRequest);
         }
 
-        var unitEntry = await directoryService.ResolveAsync(new Address("unit", unitId), cancellationToken);
+        var unitEntry = await directoryService.ResolveAsync(Address.For("unit", unitId), cancellationToken);
         if (unitEntry is null)
         {
             return Results.Problem(
@@ -156,7 +146,7 @@ public static class MembershipEndpoints
                 statusCode: StatusCodes.Status404NotFound);
         }
 
-        var agentEntry = await directoryService.ResolveAsync(new Address("agent", agentAddress), cancellationToken);
+        var agentEntry = await directoryService.ResolveAsync(Address.For("agent", agentAddress), cancellationToken);
         if (agentEntry is null)
         {
             return Results.Problem(
@@ -164,20 +154,8 @@ public static class MembershipEndpoints
                 statusCode: StatusCodes.Status404NotFound);
         }
 
-        // Resolve slugs → UUIDs at the boundary (#1492).
-        if (!Guid.TryParse(unitEntry.ActorId, out var unitUuid))
-        {
-            return Results.Problem(
-                detail: $"Unit '{unitId}' has no stable UUID identity.",
-                statusCode: StatusCodes.Status400BadRequest);
-        }
-
-        if (!Guid.TryParse(agentEntry.ActorId, out var agentUuid))
-        {
-            return Results.Problem(
-                detail: $"Agent '{agentAddress}' has no stable UUID identity.",
-                statusCode: StatusCodes.Status400BadRequest);
-        }
+        var unitUuid = unitEntry.ActorId;
+        var agentUuid = agentEntry.ActorId;
 
         var membership = new UnitMembership(
             UnitId: unitUuid,
@@ -204,22 +182,24 @@ public static class MembershipEndpoints
         [FromServices] IUnitMembershipRepository repository,
         CancellationToken cancellationToken)
     {
-        // Resolve slugs → UUIDs at the boundary (#1492).
-        var unitEntry = await directoryService.ResolveAsync(new Address("unit", unitId), cancellationToken);
-        if (unitEntry is null || !Guid.TryParse(unitEntry.ActorId, out var unitUuid))
+        var unitEntry = await directoryService.ResolveAsync(Address.For("unit", unitId), cancellationToken);
+        if (unitEntry is null)
         {
             return Results.Problem(
                 detail: $"Unit '{unitId}' not found",
                 statusCode: StatusCodes.Status404NotFound);
         }
 
-        var agentEntry = await directoryService.ResolveAsync(new Address("agent", agentAddress), cancellationToken);
-        if (agentEntry is null || !Guid.TryParse(agentEntry.ActorId, out var agentUuid))
+        var agentEntry = await directoryService.ResolveAsync(Address.For("agent", agentAddress), cancellationToken);
+        if (agentEntry is null)
         {
             return Results.Problem(
                 detail: $"Agent '{agentAddress}' not found",
                 statusCode: StatusCodes.Status404NotFound);
         }
+
+        var unitUuid = unitEntry.ActorId;
+        var agentUuid = agentEntry.ActorId;
 
         var existing = await repository.GetAsync(unitUuid, agentUuid, cancellationToken);
         if (existing is null)
@@ -283,9 +263,9 @@ public static class MembershipEndpoints
                 continue;
             }
 
-            if (Guid.TryParse(entry.ActorId, out var uuid) && distinctUnitIds.Contains(uuid))
+            if (distinctUnitIds.Contains(entry.ActorId))
             {
-                map[uuid] = entry;
+                map[entry.ActorId] = entry;
             }
         }
 
@@ -321,9 +301,9 @@ public static class MembershipEndpoints
                 continue;
             }
 
-            if (Guid.TryParse(entry.ActorId, out var uuid) && distinctAgentIds.Contains(uuid))
+            if (distinctAgentIds.Contains(entry.ActorId))
             {
-                map[uuid] = entry;
+                map[entry.ActorId] = entry;
             }
         }
 
@@ -356,26 +336,30 @@ public static class MembershipEndpoints
         DirectoryEntry? agentEntryHint = null)
     {
         // Unit identity: emit unit:id:<uuid> form.
-        var unitAddress = Address.ForIdentity(Address.UnitScheme, m.UnitId).ToIdentityUri();
+        var unitAddress = Address.ForIdentity(Address.UnitScheme, m.UnitId).ToString();
 
-        // Agent slug for URL routing (agentAddress field stays slug-shaped).
+        // Agent display name surfaces alongside the identity-form Member URI
+        // so wire callers (CLI, portal) can show a human-friendly label
+        // without an extra round-trip. Falls through to the bare hex when no
+        // directory entry is available — that keeps the field non-empty for
+        // pre-#1629 / unresolved cases.
         string agentSlug;
         if (agentActorIdMap is not null && agentActorIdMap.TryGetValue(m.AgentId, out var agentEntry))
         {
-            agentSlug = agentEntry.Address.Path;
+            agentSlug = agentEntry.DisplayName;
         }
         else if (agentEntryHint is not null)
         {
-            agentSlug = agentEntryHint.Address.Path;
+            agentSlug = agentEntryHint.DisplayName;
         }
         else
         {
-            // Fallback: emit the UUID string so the field is never empty.
-            agentSlug = m.AgentId.ToString();
+            // Fallback: emit the UUID hex so the field is never empty.
+            agentSlug = Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(m.AgentId);
         }
 
         // Member field: identity-form agent:id:<uuid>.
-        var member = Address.ForIdentity(Address.AgentScheme, m.AgentId).ToIdentityUri();
+        var member = Address.ForIdentity(Address.AgentScheme, m.AgentId).ToString();
 
         return new UnitMembershipResponse(
             unitAddress,

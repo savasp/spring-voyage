@@ -26,7 +26,9 @@ using Xunit;
 /// </summary>
 public class AgentMailboxCoordinatorTests
 {
-    private const string AgentId = "test-agent";
+    private static readonly Guid AgentGuid = new("aaaaaaaa-1111-1111-1111-000000000001");
+    private static readonly string AgentId = AgentGuid.ToString("N");
+    private static readonly Guid SenderGuid = new("aaaaaaaa-1111-1111-1111-000000000002");
     private const string ThreadId = "thread-001";
 
     private readonly AgentMailboxCoordinator _coordinator;
@@ -220,8 +222,8 @@ public class AgentMailboxCoordinatorTests
     private static Message CreateMessage(string? threadId = null) =>
         new(
             Guid.NewGuid(),
-            new Address("agent", "sender"),
-            new Address("agent", AgentId),
+            new Address("agent", SenderGuid),
+            new Address("agent", AgentGuid),
             MessageType.Domain,
             threadId ?? ThreadId,
             JsonSerializer.SerializeToElement(new { }),

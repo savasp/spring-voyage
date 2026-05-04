@@ -80,9 +80,10 @@ public class UnitMembershipCoordinator(
         // the startup reconciliation service replays drifted edges on
         // the next host boot.
         if (subunitProjector is not null
-            && string.Equals(member.Scheme, "unit", StringComparison.OrdinalIgnoreCase))
+            && string.Equals(member.Scheme, "unit", StringComparison.OrdinalIgnoreCase)
+            && Guid.TryParse(unitActorId, out var unitActorUuid))
         {
-            await subunitProjector.ProjectAddAsync(unitActorId, member.Path, cancellationToken);
+            await subunitProjector.ProjectAddAsync(unitActorUuid, member.Id, cancellationToken);
         }
     }
 
@@ -114,9 +115,10 @@ public class UnitMembershipCoordinator(
         // actor-state list. Failures are swallowed by the projector;
         // the next host start reconciles any drift.
         if (subunitProjector is not null
-            && string.Equals(member.Scheme, "unit", StringComparison.OrdinalIgnoreCase))
+            && string.Equals(member.Scheme, "unit", StringComparison.OrdinalIgnoreCase)
+            && Guid.TryParse(unitActorId, out var unitActorUuid))
         {
-            await subunitProjector.ProjectRemoveAsync(unitActorId, member.Path, cancellationToken);
+            await subunitProjector.ProjectRemoveAsync(unitActorUuid, member.Id, cancellationToken);
         }
     }
 
@@ -194,8 +196,10 @@ public class UnitMembershipCoordinator(
                 continue;
             }
 
+            var entryActorId = Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(entry.ActorId);
+
             // Back-edge check: did we just land on this unit?
-            if (string.Equals(entry.ActorId, unitActorId, StringComparison.Ordinal))
+            if (string.Equals(entryActorId, unitActorId, StringComparison.Ordinal))
             {
                 var cyclePath = pathFromCandidate.Append(unitAddress).ToList();
 
@@ -211,7 +215,7 @@ public class UnitMembershipCoordinator(
             // spellings (e.g. path-form and uuid-form of the same unit) are
             // coalesced and we cannot get stuck on a benign sub-graph cycle
             // that does not involve this unit.
-            if (!visited.Add(entry.ActorId))
+            if (!visited.Add(entryActorId))
             {
                 continue;
             }
@@ -219,7 +223,7 @@ public class UnitMembershipCoordinator(
             Address[] subMembers;
             try
             {
-                subMembers = await getSubUnitMembers(entry.ActorId, cancellationToken);
+                subMembers = await getSubUnitMembers(entryActorId, cancellationToken);
             }
             catch (Exception ex) when (ex is not SpringException)
             {
@@ -227,7 +231,7 @@ public class UnitMembershipCoordinator(
                 // treat as "not a cycle via that path" and continue.
                 logger.LogWarning(ex,
                     "Unit {ActorId} cycle-check: failed to read members of {Unit} (actorId={SubActorId}); treating as dead end.",
-                    unitActorId, current, entry.ActorId);
+                    unitActorId, current, entryActorId);
                 continue;
             }
 

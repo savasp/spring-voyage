@@ -53,7 +53,8 @@ public class ClaudeCodeLauncherTests
             ThreadId: "conv-42",
             Prompt: "## Platform Instructions\nBe helpful.",
             McpEndpoint: "http://host.docker.internal:9999/mcp/",
-            McpToken: "top-secret-token");
+            McpToken: "top-secret-token",
+            TenantId: Cvoya.Spring.Core.Tenancy.OssTenantIds.Default);
 
         var prep = await _launcher.PrepareAsync(context, TestContext.Current.CancellationToken);
 
@@ -161,5 +162,6 @@ public class ClaudeCodeLauncherTests
             ThreadId: "conv-42",
             Prompt: "## Platform Instructions\nBe helpful.",
             McpEndpoint: "http://host.docker.internal:9999/mcp/",
-            McpToken: "top-secret-token");
+            McpToken: "top-secret-token",
+            TenantId: Cvoya.Spring.Core.Tenancy.OssTenantIds.Default);
 }

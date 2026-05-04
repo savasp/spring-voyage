@@ -550,30 +550,30 @@ public class DefaultUnitPolicyEnforcerTests
 
     private sealed class FakePolicyRepository : IUnitPolicyRepository
     {
-        // Policy repo is keyed by unit UUID string, matching what
-        // DefaultUnitPolicyEnforcer passes: membership.UnitId.ToString().
-        private readonly Dictionary<string, UnitPolicy> _rows = new(StringComparer.Ordinal);
+        // Policy repo is keyed by unit Guid, matching what
+        // DefaultUnitPolicyEnforcer passes: membership.UnitId.
+        private readonly Dictionary<Guid, UnitPolicy> _rows = new();
 
         public static FakePolicyRepository With(params (Guid unit, UnitPolicy policy)[] rows)
         {
             var repo = new FakePolicyRepository();
             foreach (var (unit, policy) in rows)
             {
-                repo._rows[unit.ToString()] = policy;
+                repo._rows[unit] = policy;
             }
             return repo;
         }
 
-        public Task<UnitPolicy> GetAsync(string unitId, CancellationToken cancellationToken = default) =>
+        public Task<UnitPolicy> GetAsync(Guid unitId, CancellationToken cancellationToken = default) =>
             Task.FromResult(_rows.TryGetValue(unitId, out var p) ? p : UnitPolicy.Empty);
 
-        public Task SetAsync(string unitId, UnitPolicy policy, CancellationToken cancellationToken = default)
+        public Task SetAsync(Guid unitId, UnitPolicy policy, CancellationToken cancellationToken = default)
         {
             _rows[unitId] = policy;
             return Task.CompletedTask;
         }
 
-        public Task DeleteAsync(string unitId, CancellationToken cancellationToken = default)
+        public Task DeleteAsync(Guid unitId, CancellationToken cancellationToken = default)
         {
             _rows.Remove(unitId);
             return Task.CompletedTask;
@@ -587,13 +587,15 @@ public class DefaultUnitPolicyEnforcerTests
     /// </summary>
     private sealed class FakeCostQueryService : ICostQueryService
     {
-        private readonly Dictionary<string, decimal> _hourly = new(StringComparer.Ordinal);
-        private readonly Dictionary<string, decimal> _daily = new(StringComparer.Ordinal);
+        private readonly Dictionary<Guid, decimal> _hourly = new();
+        private readonly Dictionary<Guid, decimal> _daily = new();
 
-        public void SetHourlyCost(string agentId, decimal cost) => _hourly[agentId] = cost;
-        public void SetDailyCost(string agentId, decimal cost) => _daily[agentId] = cost;
+        public void SetHourlyCost(string agentId, decimal cost) =>
+            _hourly[Guid.Parse(agentId)] = cost;
+        public void SetDailyCost(string agentId, decimal cost) =>
+            _daily[Guid.Parse(agentId)] = cost;
 
-        public Task<CostSummary> GetAgentCostAsync(string agentId, DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default)
+        public Task<CostSummary> GetAgentCostAsync(Guid agentId, DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default)
         {
             var windowHours = (to - from).TotalHours;
             var total = windowHours <= 1.5
@@ -611,14 +613,14 @@ public class DefaultUnitPolicyEnforcerTests
                 To: to));
         }
 
-        public Task<CostSummary> GetUnitCostAsync(string unitId, DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default) =>
+        public Task<CostSummary> GetUnitCostAsync(Guid unitId, DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default) =>
             Task.FromResult(new CostSummary(0m, 0, 0, 0, 0m, 0m, from, to));
 
-        public Task<CostSummary> GetTenantCostAsync(string tenantId, DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default) =>
+        public Task<CostSummary> GetTenantCostAsync(Guid tenantId, DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default) =>
             Task.FromResult(new CostSummary(0m, 0, 0, 0, 0m, 0m, from, to));
 
         public Task<CostTimeseries> GetTenantCostTimeseriesAsync(
-            string tenantId,
+            Guid tenantId,
             DateTimeOffset from,
             DateTimeOffset to,
             TimeSpan bucket,
@@ -627,7 +629,7 @@ public class DefaultUnitPolicyEnforcerTests
             Task.FromResult(new CostTimeseries(from, to, bucketLabel, Array.Empty<CostTimeseriesBucket>()));
 
         public Task<CostTimeseries> GetAgentCostTimeseriesAsync(
-            string agentId,
+            Guid agentId,
             DateTimeOffset from,
             DateTimeOffset to,
             TimeSpan bucket,
@@ -636,7 +638,7 @@ public class DefaultUnitPolicyEnforcerTests
             Task.FromResult(new CostTimeseries(from, to, bucketLabel, Array.Empty<CostTimeseriesBucket>()));
 
         public Task<CostTimeseries> GetUnitCostTimeseriesAsync(
-            string unitId,
+            Guid unitId,
             DateTimeOffset from,
             DateTimeOffset to,
             TimeSpan bucket,
@@ -645,7 +647,7 @@ public class DefaultUnitPolicyEnforcerTests
             Task.FromResult(new CostTimeseries(from, to, bucketLabel, Array.Empty<CostTimeseriesBucket>()));
 
         public Task<IReadOnlyList<CostBreakdownEntry>> GetAgentCostBreakdownAsync(
-            string agentId,
+            Guid agentId,
             DateTimeOffset from,
             DateTimeOffset to,
             CancellationToken cancellationToken = default) =>

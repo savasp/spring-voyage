@@ -52,14 +52,14 @@ public class UnitActorConnectorConfigStore(
 
     private async Task<IUnitActor?> ResolveProxyAsync(string unitId, CancellationToken ct)
     {
-        var address = new Address("unit", unitId);
+        var address = Address.For("unit", unitId);
         var entry = await directoryService.ResolveAsync(address, ct);
         if (entry is null)
         {
             return null;
         }
         return actorProxyFactory.CreateActorProxy<IUnitActor>(
-            new ActorId(entry.ActorId), nameof(UnitActor));
+            new ActorId(Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(entry.ActorId)), nameof(UnitActor));
     }
 }
 
@@ -99,13 +99,13 @@ public class UnitActorConnectorRuntimeStore(
 
     private async Task<IUnitActor?> ResolveProxyAsync(string unitId, CancellationToken ct)
     {
-        var address = new Address("unit", unitId);
+        var address = Address.For("unit", unitId);
         var entry = await directoryService.ResolveAsync(address, ct);
         if (entry is null)
         {
             return null;
         }
         return actorProxyFactory.CreateActorProxy<IUnitActor>(
-            new ActorId(entry.ActorId), nameof(UnitActor));
+            new ActorId(Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(entry.ActorId)), nameof(UnitActor));
     }
 }

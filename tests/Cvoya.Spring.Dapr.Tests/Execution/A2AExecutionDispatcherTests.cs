@@ -54,7 +54,12 @@ public class A2AExecutionDispatcherTests
     private readonly PersistentAgentRegistry _persistentRegistry;
     private readonly EphemeralAgentRegistry _ephemeralRegistry;
     private readonly A2AExecutionDispatcher _dispatcher;
-    private const string AgentId = "my-agent";
+    private static readonly Guid AgentGuid = new("aaaaaaaa-0000-0000-0000-000000000001");
+    private static readonly string AgentId = AgentGuid.ToString("N");
+    private static readonly Guid GhostGuid = new("aaaaaaaa-0000-0000-0000-0000000000ff");
+    private static readonly Guid SenderGuid = new("aaaaaaaa-0000-0000-0000-000000000010");
+    private static readonly Guid TenantGuid = new("dddddddd-0000-0000-0000-000000000001");
+    private static readonly Guid AcmeTenantGuid = new("dddddddd-0000-0000-0000-000000000002");
     private const string Image = "spring-agent-claude:v1";
     private const string ContainerId = "spring-ephemeral-abc";
 
@@ -104,7 +109,7 @@ public class A2AExecutionDispatcherTests
             .Returns(new AgentBootstrapContext(
                 EnvironmentVariables: new Dictionary<string, string>
                 {
-                    ["SPRING_TENANT_ID"] = "default",
+                    ["SPRING_TENANT_ID"] = TenantGuid.ToString("N"),
                     ["SPRING_AGENT_ID"] = AgentId,
                     ["SPRING_MCP_URL"] = "http://host.docker.internal:12345/mcp/",
                     ["SPRING_MCP_TOKEN"] = "test-token",
@@ -119,7 +124,7 @@ public class A2AExecutionDispatcherTests
         _mcpServer.Endpoint.Returns("http://host.docker.internal:12345/mcp/");
         _mcpServer.IssueSession(Arg.Any<string>(), Arg.Any<string>())
             .Returns(ci => new McpSession("test-token", ci.ArgAt<string>(0), ci.ArgAt<string>(1)));
-        _tenantContext.CurrentTenantId.Returns("default");
+        _tenantContext.CurrentTenantId.Returns(TenantGuid);
 
         _agentProvider.GetByIdAsync(AgentId, Arg.Any<CancellationToken>())
             .Returns(new AgentDefinition(
@@ -165,13 +170,13 @@ public class A2AExecutionDispatcherTests
     }
 
     private static SvMessage CreateMessage(
-        string toPath = AgentId,
+        Guid? toGuid = null,
         string? threadId = null)
     {
         return new SvMessage(
             Guid.NewGuid(),
-            new Address("agent", "sender"),
-            new Address("agent", toPath),
+            new Address("agent", SenderGuid),
+            new Address("agent", toGuid ?? AgentGuid),
             MessageType.Domain,
             threadId ?? Guid.NewGuid().ToString(),
             JsonSerializer.SerializeToElement(new { Task = "do-work" }),
@@ -419,8 +424,8 @@ public class A2AExecutionDispatcherTests
     [Fact]
     public async Task DispatchAsync_UnknownAgent_Throws()
     {
-        var message = CreateMessage(toPath: "ghost");
-        _agentProvider.GetByIdAsync("ghost", Arg.Any<CancellationToken>())
+        var message = CreateMessage(toGuid: GhostGuid);
+        _agentProvider.GetByIdAsync(GhostGuid.ToString("N"), Arg.Any<CancellationToken>())
             .Returns((AgentDefinition?)null);
 
         var act = () => _dispatcher.DispatchAsync(message, context: null, TestContext.Current.CancellationToken);
@@ -725,18 +730,18 @@ public class A2AExecutionDispatcherTests
         var message = CreateMessage();
         _promptAssembler.AssembleAsync(message, Arg.Any<PromptAssemblyContext?>(), Arg.Any<CancellationToken>())
             .Returns("p");
-        _tenantContext.CurrentTenantId.Returns("acme-corp");
+        _tenantContext.CurrentTenantId.Returns(AcmeTenantGuid);
         InstallA2AStub();
 
         await _dispatcher.DispatchAsync(message, context: null, TestContext.Current.CancellationToken);
 
         await _launcher.Received(1).PrepareAsync(
             Arg.Is<AgentLaunchContext>(ctx =>
-                ctx.TenantId == "acme-corp" &&
+                ctx.TenantId == AcmeTenantGuid &&
                 ctx.AgentDefinitionYaml != null &&
                 ctx.AgentDefinitionYaml.Contains("agent_id") &&
                 ctx.TenantConfigJson != null &&
-                ctx.TenantConfigJson.Contains("acme-corp")),
+                ctx.TenantConfigJson.Contains(AcmeTenantGuid.ToString("N"))),
             Arg.Any<CancellationToken>());
     }
 

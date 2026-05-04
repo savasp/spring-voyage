@@ -203,7 +203,7 @@ public class DirectorySearchSkillRegistry : ISkillRegistry
             {
                 return null;
             }
-            return new Address(raw[..sep], raw[(sep + 3)..]);
+            return Address.TryParse($"{raw[..sep]}:{raw[(sep + 3)..]}", out var parsed) ? parsed : null;
         }
 
         if (element.ValueKind == JsonValueKind.Object)
@@ -225,7 +225,7 @@ public class DirectorySearchSkillRegistry : ISkillRegistry
             }
             if (!string.IsNullOrWhiteSpace(scheme) && !string.IsNullOrWhiteSpace(path))
             {
-                return new Address(scheme!, path!);
+                return Address.For(scheme!, path!);
             }
         }
 

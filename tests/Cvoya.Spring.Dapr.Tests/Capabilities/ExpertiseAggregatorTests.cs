@@ -51,7 +51,7 @@ public class ExpertiseAggregatorTests
             .Returns(ci =>
             {
                 var addr = ci.ArgAt<Address>(0);
-                return new DirectoryEntry(addr, addr.Path, addr.Path, string.Empty, null, DateTimeOffset.UtcNow);
+                return new DirectoryEntry(addr, addr.Id, addr.Path, string.Empty, null, DateTimeOffset.UtcNow);
             });
 
         // Proxy factory hands out per-path substitute IUnitActor instances
@@ -80,10 +80,14 @@ public class ExpertiseAggregatorTests
 
     private void RegisterUnit(string unitId, params Address[] members)
     {
-        if (!_unitActors.TryGetValue(unitId, out var actor))
+        // Production code creates actor proxies with ActorId = the unit's
+        // Guid hex (post-#1629). Tests pass slug-shaped names; map them to
+        // the same Guid hex used by Address.For so proxy lookups hit.
+        var key = TestSlugIds.HexFor(unitId);
+        if (!_unitActors.TryGetValue(key, out var actor))
         {
             actor = Substitute.For<IUnitActor>();
-            _unitActors[unitId] = actor;
+            _unitActors[key] = actor;
         }
         actor.GetMembersAsync(Arg.Any<CancellationToken>()).Returns(members);
     }
@@ -97,7 +101,7 @@ public class ExpertiseAggregatorTests
     public async Task GetAsync_EmptyUnit_ReturnsEmptyAggregation()
     {
         var aggregator = CreateAggregator();
-        var unit = new Address("unit", "empty");
+        var unit = Address.For("unit", TestSlugIds.HexFor("empty"));
         RegisterUnit("empty");
 
         var result = await aggregator.GetAsync(unit, TestContext.Current.CancellationToken);
@@ -112,9 +116,9 @@ public class ExpertiseAggregatorTests
     public async Task GetAsync_FlatUnitWithAgents_IncludesAgentExpertiseWithOrigin()
     {
         var aggregator = CreateAggregator();
-        var unit = new Address("unit", "eng");
-        var ada = new Address("agent", "ada");
-        var kay = new Address("agent", "kay");
+        var unit = Address.For("unit", TestSlugIds.HexFor("eng"));
+        var ada = Address.For("agent", TestSlugIds.HexFor("ada"));
+        var kay = Address.For("agent", TestSlugIds.HexFor("kay"));
 
         RegisterUnit("eng", ada, kay);
         ArrangeExpertise(ada, new ExpertiseDomain("python", "FastAPI", ExpertiseLevel.Expert));
@@ -137,11 +141,11 @@ public class ExpertiseAggregatorTests
     {
         var aggregator = CreateAggregator();
         // root -> eng -> backend -> ada
-        var root = new Address("unit", "root");
-        var eng = new Address("unit", "eng");
-        var backend = new Address("unit", "backend");
-        var ada = new Address("agent", "ada");
-        var dijkstra = new Address("agent", "dijkstra");
+        var root = Address.For("unit", TestSlugIds.HexFor("root"));
+        var eng = Address.For("unit", TestSlugIds.HexFor("eng"));
+        var backend = Address.For("unit", TestSlugIds.HexFor("backend"));
+        var ada = Address.For("agent", TestSlugIds.HexFor("ada"));
+        var dijkstra = Address.For("agent", TestSlugIds.HexFor("dijkstra"));
 
         RegisterUnit("root", eng);
         RegisterUnit("eng", backend);
@@ -163,7 +167,7 @@ public class ExpertiseAggregatorTests
     public async Task GetAsync_UnitOwnExpertiseIncluded()
     {
         var aggregator = CreateAggregator();
-        var unit = new Address("unit", "eng");
+        var unit = Address.For("unit", TestSlugIds.HexFor("eng"));
         RegisterUnit("eng");
 
         ArrangeExpertise(unit, new ExpertiseDomain("full-stack", "synthesized", ExpertiseLevel.Advanced));
@@ -179,8 +183,8 @@ public class ExpertiseAggregatorTests
     public async Task GetAsync_DuplicateDomainAcrossPaths_StrongerLevelWins()
     {
         var aggregator = CreateAggregator();
-        var unit = new Address("unit", "eng");
-        var ada = new Address("agent", "ada");
+        var unit = Address.For("unit", TestSlugIds.HexFor("eng"));
+        var ada = Address.For("agent", TestSlugIds.HexFor("ada"));
 
         RegisterUnit("eng", ada);
         // Arrange two reads for same (domain, origin) with different levels —
@@ -204,7 +208,7 @@ public class ExpertiseAggregatorTests
         // root is a member of itself — the membership-time cycle check in
         // UnitActor.AddMemberAsync should have rejected this, but if state
         // is corrupted the aggregator must refuse to loop.
-        var root = new Address("unit", "root");
+        var root = Address.For("unit", TestSlugIds.HexFor("root"));
         RegisterUnit("root", root);
 
         await Should.ThrowAsync<ExpertiseAggregationException>(() =>
@@ -215,8 +219,8 @@ public class ExpertiseAggregatorTests
     public async Task GetAsync_TwoCycle_Throws()
     {
         var aggregator = CreateAggregator();
-        var a = new Address("unit", "a");
-        var b = new Address("unit", "b");
+        var a = Address.For("unit", TestSlugIds.HexFor("a"));
+        var b = Address.For("unit", TestSlugIds.HexFor("b"));
 
         // a contains b, b contains a.
         RegisterUnit("a", b);
@@ -233,11 +237,11 @@ public class ExpertiseAggregatorTests
         var aggregator = CreateAggregator();
         // root -> [a, b] -> both contain shared. `shared` is visited twice
         // via different paths but isn't a cycle reaching back to root.
-        var root = new Address("unit", "root");
-        var a = new Address("unit", "a");
-        var b = new Address("unit", "b");
-        var shared = new Address("unit", "shared");
-        var leafAgent = new Address("agent", "leaf");
+        var root = Address.For("unit", TestSlugIds.HexFor("root"));
+        var a = Address.For("unit", TestSlugIds.HexFor("a"));
+        var b = Address.For("unit", TestSlugIds.HexFor("b"));
+        var shared = Address.For("unit", TestSlugIds.HexFor("shared"));
+        var leafAgent = Address.For("agent", TestSlugIds.HexFor("leaf"));
 
         RegisterUnit("root", a, b);
         RegisterUnit("a", shared);
@@ -256,8 +260,8 @@ public class ExpertiseAggregatorTests
     public async Task GetAsync_CachesResult_SecondCallSkipsRecompute()
     {
         var aggregator = CreateAggregator();
-        var unit = new Address("unit", "eng");
-        var ada = new Address("agent", "ada");
+        var unit = Address.For("unit", TestSlugIds.HexFor("eng"));
+        var ada = Address.For("agent", TestSlugIds.HexFor("ada"));
         RegisterUnit("eng", ada);
         ArrangeExpertise(ada, new ExpertiseDomain("python", "", ExpertiseLevel.Advanced));
 
@@ -274,8 +278,8 @@ public class ExpertiseAggregatorTests
     public async Task InvalidateAsync_ForUnit_EvictsItFromCache()
     {
         var aggregator = CreateAggregator();
-        var unit = new Address("unit", "eng");
-        var ada = new Address("agent", "ada");
+        var unit = Address.For("unit", TestSlugIds.HexFor("eng"));
+        var ada = Address.For("agent", TestSlugIds.HexFor("ada"));
         RegisterUnit("eng", ada);
         ArrangeExpertise(ada, new ExpertiseDomain("python", "", ExpertiseLevel.Advanced));
 
@@ -289,25 +293,29 @@ public class ExpertiseAggregatorTests
     [Fact]
     public async Task InvalidateAsync_ForAgent_EvictsEveryUnitThatContainsIt()
     {
-        var adaUuid = new Guid("aadaadaa-0000-0000-0000-000000000001");
-        var engUuid = new Guid("ee1ee111-0000-0000-0000-000000000001");
+        // Under #1629 the aggregator looks up an agent's memberships through
+        // the directory's ActorId; the directory entry's ActorId must equal
+        // the address Guid so the eviction loop walks back to the same unit
+        // cache entry the GetAsync() populated.
+        var adaUuid = TestSlugIds.For("ada");
+        var engUuid = TestSlugIds.For("eng");
 
         var aggregator = CreateAggregator();
-        var unit = new Address("unit", "eng");
-        var ada = new Address("agent", "ada");
+        var unit = Address.For("unit", TestSlugIds.HexFor("eng"));
+        var ada = Address.For("agent", TestSlugIds.HexFor("ada"));
 
         RegisterUnit("eng", ada);
         ArrangeExpertise(ada, new ExpertiseDomain("python", "", ExpertiseLevel.Advanced));
 
         // Directory resolves "ada" to a stable UUID so the aggregator can look up memberships.
         _directory.ResolveAsync(ada, Arg.Any<CancellationToken>())
-            .Returns(new DirectoryEntry(ada, adaUuid.ToString(), "ada", string.Empty, null, DateTimeOffset.UtcNow));
+            .Returns(new DirectoryEntry(ada, adaUuid, "ada", string.Empty, null, DateTimeOffset.UtcNow));
 
         // ListAllAsync must include the "eng" unit with its UUID for the reverse walk.
         _directory.ListAllAsync(Arg.Any<CancellationToken>())
             .Returns(new[]
             {
-                new DirectoryEntry(unit, engUuid.ToString(), "eng", string.Empty, null, DateTimeOffset.UtcNow),
+                new DirectoryEntry(unit, engUuid, "eng", string.Empty, null, DateTimeOffset.UtcNow),
             });
 
         _memberships.ListByAgentAsync(adaUuid, Arg.Any<CancellationToken>())
@@ -327,10 +335,10 @@ public class ExpertiseAggregatorTests
     {
         // root -> mid -> leaf   (agent under leaf)
         var aggregator = CreateAggregator();
-        var root = new Address("unit", "root");
-        var mid = new Address("unit", "mid");
-        var leaf = new Address("unit", "leaf");
-        var ada = new Address("agent", "ada");
+        var root = Address.For("unit", TestSlugIds.HexFor("root"));
+        var mid = Address.For("unit", TestSlugIds.HexFor("mid"));
+        var leaf = Address.For("unit", TestSlugIds.HexFor("leaf"));
+        var ada = Address.For("agent", TestSlugIds.HexFor("ada"));
 
         RegisterUnit("root", mid);
         RegisterUnit("mid", leaf);
@@ -340,9 +348,9 @@ public class ExpertiseAggregatorTests
         // The directory must list every unit for the reverse-parent walk.
         _directory.ListAllAsync(Arg.Any<CancellationToken>()).Returns(new[]
         {
-            new DirectoryEntry(root, "root", "root", string.Empty, null, DateTimeOffset.UtcNow),
-            new DirectoryEntry(mid, "mid", "mid", string.Empty, null, DateTimeOffset.UtcNow),
-            new DirectoryEntry(leaf, "leaf", "leaf", string.Empty, null, DateTimeOffset.UtcNow),
+            new DirectoryEntry(root, root.Id, "root", string.Empty, null, DateTimeOffset.UtcNow),
+            new DirectoryEntry(mid, mid.Id, "mid", string.Empty, null, DateTimeOffset.UtcNow),
+            new DirectoryEntry(leaf, leaf.Id, "leaf", string.Empty, null, DateTimeOffset.UtcNow),
         });
 
         // Warm the cache at root.

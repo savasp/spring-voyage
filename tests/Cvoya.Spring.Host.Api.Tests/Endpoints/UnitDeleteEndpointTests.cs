@@ -28,8 +28,13 @@ using Xunit;
 /// </summary>
 public class UnitDeleteEndpointTests : IClassFixture<CustomWebApplicationFactory>
 {
-    private const string UnitName = "engineering";
-    private const string ActorId = "actor-engineering";
+    private static readonly Guid ActorEngineering_Id = new("00002711-bbbb-cccc-dddd-000000000000");
+
+    private const string UnitDisplayName = "engineering";
+    private static readonly Guid ActorId_Guid = ActorEngineering_Id;
+    private static readonly string ActorId = ActorId_Guid.ToString("N");
+    // Post-#1629 URL paths carry the unit's Guid hex.
+    private static readonly string UnitName = ActorId;
 
     private readonly CustomWebApplicationFactory _factory;
     private readonly HttpClient _client;
@@ -51,7 +56,7 @@ public class UnitDeleteEndpointTests : IClassFixture<CustomWebApplicationFactory
         response.StatusCode.ShouldBe(HttpStatusCode.NoContent);
 
         await _factory.DirectoryService.Received(1).UnregisterAsync(
-            Arg.Is<Address>(a => a.Scheme == "unit" && a.Path == UnitName),
+            Arg.Is<Address>(a => a.Scheme == "unit" && a.Id == ActorId_Guid),
             Arg.Any<CancellationToken>());
     }
 
@@ -66,7 +71,7 @@ public class UnitDeleteEndpointTests : IClassFixture<CustomWebApplicationFactory
         response.StatusCode.ShouldBe(HttpStatusCode.NoContent);
 
         await _factory.DirectoryService.Received(1).UnregisterAsync(
-            Arg.Is<Address>(a => a.Scheme == "unit" && a.Path == UnitName),
+            Arg.Is<Address>(a => a.Scheme == "unit" && a.Id == ActorId_Guid),
             Arg.Any<CancellationToken>());
     }
 
@@ -101,7 +106,7 @@ public class UnitDeleteEndpointTests : IClassFixture<CustomWebApplicationFactory
         await _factory.UnitContainerLifecycle.Received(1).StopUnitAsync(
             ActorId, Arg.Any<CancellationToken>());
         await _factory.DirectoryService.Received(1).UnregisterAsync(
-            Arg.Is<Address>(a => a.Scheme == "unit" && a.Path == UnitName),
+            Arg.Is<Address>(a => a.Scheme == "unit" && a.Id == ActorId_Guid),
             Arg.Any<CancellationToken>());
         await _factory.ActivityEventBus.Received(1).PublishAsync(
             Arg.Is<ActivityEvent>(e =>
@@ -137,7 +142,7 @@ public class UnitDeleteEndpointTests : IClassFixture<CustomWebApplicationFactory
         // Directory entry removal still happens even if the container step failed —
         // that's the whole point of force-delete.
         await _factory.DirectoryService.Received(1).UnregisterAsync(
-            Arg.Is<Address>(a => a.Scheme == "unit" && a.Path == UnitName),
+            Arg.Is<Address>(a => a.Scheme == "unit" && a.Id == ActorId_Guid),
             Arg.Any<CancellationToken>());
 
         // Event surfaces the failure as Warning.
@@ -177,7 +182,7 @@ public class UnitDeleteEndpointTests : IClassFixture<CustomWebApplicationFactory
             .ResolveAsync(Arg.Any<Address>(), Arg.Any<CancellationToken>())
             .Returns((DirectoryEntry?)null);
 
-        var response = await _client.DeleteAsync("/api/v1/tenant/units/does-not-exist", ct);
+        var response = await _client.DeleteAsync($"/api/v1/tenant/units/{Guid.NewGuid():N}", ct);
 
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
@@ -197,22 +202,22 @@ public class UnitDeleteEndpointTests : IClassFixture<CustomWebApplicationFactory
             .Returns(Task.CompletedTask);
 
         var entry = new DirectoryEntry(
-            new Address("unit", UnitName),
-            ActorId,
+            new Address("unit", ActorId_Guid),
+            ActorId_Guid,
             "Engineering",
             "Engineering unit",
             null,
             DateTimeOffset.UtcNow);
 
         _factory.DirectoryService
-            .ResolveAsync(Arg.Is<Address>(a => a.Scheme == "unit" && a.Path == UnitName), Arg.Any<CancellationToken>())
+            .ResolveAsync(Arg.Is<Address>(a => a.Scheme == "unit" && a.Id == ActorId_Guid), Arg.Any<CancellationToken>())
             .Returns(entry);
 
         var proxy = Substitute.For<IUnitActor>();
         proxy.GetStatusAsync(Arg.Any<CancellationToken>()).Returns(status);
 
         _factory.ActorProxyFactory
-            .CreateActorProxy<IUnitActor>(Arg.Is<ActorId>(a => a.GetId() == ActorId), Arg.Any<string>())
+            .CreateActorProxy<IUnitActor>(Arg.Is<global::Dapr.Actors.ActorId>(a => a.GetId() == ActorId), Arg.Any<string>())
             .Returns(proxy);
     }
 }

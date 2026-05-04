@@ -124,9 +124,10 @@ public class MessageRouter(
             return Result<(string, string), RoutingError>.Failure(RoutingError.AddressNotFound(address));
         }
 
+        var actorIdString = Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(entry.ActorId);
         _logger.LogDebug("Resolved path address {Scheme}://{Path} to actor ID {ActorId}",
-            address.Scheme, address.Path, entry.ActorId);
-        return Result<(string, string), RoutingError>.Success((entry.ActorId, address.Scheme));
+            address.Scheme, address.Path, actorIdString);
+        return Result<(string, string), RoutingError>.Success((actorIdString, address.Scheme));
     }
 
     /// <summary>
@@ -230,7 +231,7 @@ public class MessageRouter(
             message.Id, entries.Count, role);
 
         var tasks = entries.Select(entry =>
-            DeliverAsync(message, entry.ActorId, entry.Address.Scheme, cancellationToken));
+            DeliverAsync(message, Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(entry.ActorId), entry.Address.Scheme, cancellationToken));
 
         var results = await Task.WhenAll(tasks);
 

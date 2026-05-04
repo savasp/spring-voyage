@@ -52,7 +52,8 @@ public class DbExpertiseSeedProvider(
         string agentId,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(agentId))
+        if (string.IsNullOrWhiteSpace(agentId)
+            || !Cvoya.Spring.Core.Identifiers.GuidFormatter.TryParse(agentId, out var agentUuid))
         {
             return null;
         }
@@ -65,7 +66,7 @@ public class DbExpertiseSeedProvider(
             var entity = await db.AgentDefinitions
                 .AsNoTracking()
                 .FirstOrDefaultAsync(
-                    a => a.ActorId == agentId && a.DeletedAt == null,
+                    a => a.Id == agentUuid && a.DeletedAt == null,
                     cancellationToken);
 
             return entity is null ? null : ExtractExpertise(entity.Definition);
@@ -95,7 +96,8 @@ public class DbExpertiseSeedProvider(
         string unitId,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(unitId))
+        if (string.IsNullOrWhiteSpace(unitId)
+            || !Cvoya.Spring.Core.Identifiers.GuidFormatter.TryParse(unitId, out var unitUuid))
         {
             return null;
         }
@@ -108,7 +110,7 @@ public class DbExpertiseSeedProvider(
             var entity = await db.UnitDefinitions
                 .AsNoTracking()
                 .FirstOrDefaultAsync(
-                    u => u.ActorId == unitId && u.DeletedAt == null,
+                    u => u.Id == unitUuid && u.DeletedAt == null,
                     cancellationToken);
 
             return entity is null ? null : ExtractExpertise(entity.Definition);

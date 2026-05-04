@@ -31,7 +31,8 @@ using Xunit;
 /// </summary>
 public class UnitActorTests
 {
-    private const string TestUnitActorId = "test-unit";
+    private static readonly Guid TestUnitGuid = new("aaaaaaaa-0000-0000-0000-000000000010");
+    private static readonly string TestUnitActorId = TestUnitGuid.ToString("N");
 
     // Stable UUID constants for deterministic human-permission tests (#1491).
     private static readonly Guid Human1 = new("aaaaaaaa-0000-0000-0000-000000000001");
@@ -79,8 +80,8 @@ public class UnitActorTests
     {
         return new Message(
             Guid.NewGuid(),
-            new Address("agent", "test-sender"),
-            new Address("unit", "test-unit"),
+            Address.For("agent", TestSlugIds.HexFor("test-sender")),
+            Address.For("unit", TestUnitActorId),
             type,
             threadId ?? Guid.NewGuid().ToString(),
             payload ?? JsonSerializer.SerializeToElement(new { }),
@@ -137,14 +138,14 @@ public class UnitActorTests
         await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
 
         capturedContext.ShouldNotBeNull();
-        capturedContext!.UnitAddress.ShouldBe(new Address("unit", "test-unit"));
+        capturedContext!.UnitAddress.ShouldBe(Address.For("unit", TestUnitActorId));
     }
 
     [Fact]
     public async Task ReceiveAsync_DomainMessage_PassesCurrentMembersToStrategy()
     {
-        var member1 = new Address("agent", "agent-1");
-        var member2 = new Address("agent", "agent-2");
+        var member1 = Address.For("agent", TestSlugIds.HexFor("agent-1"));
+        var member2 = Address.For("agent", TestSlugIds.HexFor("agent-2"));
         _stateManager.TryGetStateAsync<List<Address>>(StateKeys.Members, Arg.Any<CancellationToken>())
             .Returns(new ConditionalValue<List<Address>>(true, [member1, member2]));
 
@@ -170,8 +171,8 @@ public class UnitActorTests
     [Fact]
     public async Task ReceiveAsync_StatusQuery_ReturnsUnitStatusWithMemberCount()
     {
-        var member1 = new Address("agent", "agent-1");
-        var member2 = new Address("agent", "agent-2");
+        var member1 = Address.For("agent", TestSlugIds.HexFor("agent-1"));
+        var member2 = Address.For("agent", TestSlugIds.HexFor("agent-2"));
         _stateManager.TryGetStateAsync<List<Address>>(StateKeys.Members, Arg.Any<CancellationToken>())
             .Returns(new ConditionalValue<List<Address>>(true, [member1, member2]));
 
@@ -181,7 +182,7 @@ public class UnitActorTests
 
         result.ShouldNotBeNull();
         result!.Type.ShouldBe(MessageType.StatusQuery);
-        result.From.ShouldBe(new Address("unit", "test-unit"));
+        result.From.ShouldBe(Address.For("unit", TestUnitActorId));
 
         var payload = result.Payload.Deserialize<JsonElement>();
         payload.GetProperty("Status").GetString().ShouldBe("Draft");
@@ -231,7 +232,7 @@ public class UnitActorTests
     [Fact]
     public async Task AddMemberAsync_NewMember_AddsMemberToState()
     {
-        var member = new Address("agent", "new-agent");
+        var member = Address.For("agent", TestSlugIds.HexFor("new-agent"));
 
         await _actor.AddMemberAsync(member, TestContext.Current.CancellationToken);
 
@@ -244,7 +245,7 @@ public class UnitActorTests
     [Fact]
     public async Task AddMemberAsync_DuplicateMember_DoesNotAddAgain()
     {
-        var member = new Address("agent", "existing-agent");
+        var member = Address.For("agent", TestSlugIds.HexFor("existing-agent"));
         _stateManager.TryGetStateAsync<List<Address>>(StateKeys.Members, Arg.Any<CancellationToken>())
             .Returns(new ConditionalValue<List<Address>>(true, [member]));
 
@@ -259,7 +260,7 @@ public class UnitActorTests
     [Fact]
     public async Task RemoveMemberAsync_ExistingMember_RemovesMemberFromState()
     {
-        var member = new Address("agent", "agent-to-remove");
+        var member = Address.For("agent", TestSlugIds.HexFor("agent-to-remove"));
         _stateManager.TryGetStateAsync<List<Address>>(StateKeys.Members, Arg.Any<CancellationToken>())
             .Returns(new ConditionalValue<List<Address>>(true, [member]));
 
@@ -274,7 +275,7 @@ public class UnitActorTests
     [Fact]
     public async Task RemoveMemberAsync_NonExistentMember_DoesNotModifyState()
     {
-        var member = new Address("agent", "non-existent");
+        var member = Address.For("agent", TestSlugIds.HexFor("non-existent"));
 
         await _actor.RemoveMemberAsync(member, TestContext.Current.CancellationToken);
 
@@ -296,8 +297,8 @@ public class UnitActorTests
     [Fact]
     public async Task GetMembersAsync_WithMembers_ReturnsAllMembers()
     {
-        var member1 = new Address("agent", "agent-1");
-        var member2 = new Address("unit", "sub-unit-1");
+        var member1 = Address.For("agent", TestSlugIds.HexFor("agent-1"));
+        var member2 = Address.For("unit", TestSlugIds.HexFor("sub-unit-1"));
         _stateManager.TryGetStateAsync<List<Address>>(StateKeys.Members, Arg.Any<CancellationToken>())
             .Returns(new ConditionalValue<List<Address>>(true, [member1, member2]));
 
@@ -313,7 +314,7 @@ public class UnitActorTests
     [Fact]
     public async Task UnitContext_ExposesCorrectAddressAndMembers()
     {
-        var member1 = new Address("agent", "agent-1");
+        var member1 = Address.For("agent", TestSlugIds.HexFor("agent-1"));
         _stateManager.TryGetStateAsync<List<Address>>(StateKeys.Members, Arg.Any<CancellationToken>())
             .Returns(new ConditionalValue<List<Address>>(true, [member1]));
 
@@ -329,7 +330,7 @@ public class UnitActorTests
         await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
 
         capturedContext.ShouldNotBeNull();
-        capturedContext!.UnitAddress.ShouldBe(new Address("unit", "test-unit"));
+        capturedContext!.UnitAddress.ShouldBe(Address.For("unit", TestUnitActorId));
         capturedContext.Members.ShouldHaveSingleItem().ShouldBe(member1);
     }
 
@@ -511,7 +512,7 @@ public class UnitActorTests
     [Fact]
     public async Task AddMemberAsync_NewMember_EmitsStateChangedEvent()
     {
-        var member = new Address("agent", "new-agent");
+        var member = Address.For("agent", TestSlugIds.HexFor("new-agent"));
 
         await _actor.AddMemberAsync(member, TestContext.Current.CancellationToken);
 
@@ -525,7 +526,7 @@ public class UnitActorTests
     [Fact]
     public async Task RemoveMemberAsync_ExistingMember_EmitsStateChangedEvent()
     {
-        var member = new Address("agent", "agent-to-remove");
+        var member = Address.For("agent", TestSlugIds.HexFor("agent-to-remove"));
         _stateManager.TryGetStateAsync<List<Address>>(StateKeys.Members, Arg.Any<CancellationToken>())
             .Returns(new ConditionalValue<List<Address>>(true, [member]));
 
@@ -952,9 +953,9 @@ public class UnitActorTests
 
     // --- Nested Unit Membership / Cycle Detection Tests (#98) ---
 
-    private static DirectoryEntry MakeUnitEntry(string unitPath, string actorId) =>
+    private static DirectoryEntry MakeUnitEntry(string unitPath, Guid actorId) =>
         new(
-            new Address("unit", unitPath),
+            new Address("unit", actorId),
             actorId,
             unitPath,
             $"Unit {unitPath}",
@@ -965,15 +966,16 @@ public class UnitActorTests
     public async Task AddMemberAsync_UnitMember_NoCycle_PersistsMember()
     {
         // Sub-unit "team-b" has no unit-members of its own, so adding it is safe.
-        var subAddress = new Address("unit", "team-b");
+        var teamBId = Guid.NewGuid();
+        var subAddress = new Address("unit", teamBId);
         _directoryService.ResolveAsync(subAddress, Arg.Any<CancellationToken>())
-            .Returns(MakeUnitEntry("team-b", "team-b-actor"));
+            .Returns(MakeUnitEntry("team-b", teamBId));
 
         var subProxy = Substitute.For<IUnitActor>();
         subProxy.GetMembersAsync(Arg.Any<CancellationToken>())
             .Returns(Array.Empty<Address>());
         _actorProxyFactory.CreateActorProxy<IUnitActor>(
-                Arg.Is<ActorId>(a => a.GetId() == "team-b-actor"),
+                Arg.Is<ActorId>(a => a.GetId() == teamBId.ToString("N")),
                 nameof(UnitActor))
             .Returns(subProxy);
 
@@ -988,14 +990,14 @@ public class UnitActorTests
     [Fact]
     public async Task AddMemberAsync_SelfLoop_ByActorAddress_Throws()
     {
-        // The actor's own Address is unit://{actorId} since Id.GetId() == "test-unit".
-        var selfAddress = new Address("unit", TestUnitActorId);
+        // The actor's own Address is unit://{actorId} since Id.GetId() == TestUnitActorId.
+        var selfAddress = new Address("unit", TestUnitGuid);
 
         var ex = await Should.ThrowAsync<CyclicMembershipException>(() =>
             _actor.AddMemberAsync(selfAddress, TestContext.Current.CancellationToken));
 
         ex.CandidateMember.ShouldBe(selfAddress);
-        ex.ParentUnit.ShouldBe(new Address("unit", TestUnitActorId));
+        ex.ParentUnit.ShouldBe(new Address("unit", TestUnitGuid));
         ex.CyclePath.ShouldNotBeEmpty();
 
         await _stateManager.DidNotReceive().SetStateAsync(
@@ -1007,11 +1009,12 @@ public class UnitActorTests
     [Fact]
     public async Task AddMemberAsync_SelfLoop_ByPathAddress_Throws()
     {
-        // Caller uses the path-form ("my-team") but it resolves to this same
+        // Caller uses a different unit address but it resolves to this same
         // actor id — the directory is the tiebreaker, so we must still reject.
-        var pathAddress = new Address("unit", "my-team");
+        var aliasId = Guid.NewGuid();
+        var pathAddress = new Address("unit", aliasId);
         _directoryService.ResolveAsync(pathAddress, Arg.Any<CancellationToken>())
-            .Returns(MakeUnitEntry("my-team", TestUnitActorId));
+            .Returns(MakeUnitEntry("my-team", TestUnitGuid));
 
         var selfProxy = Substitute.For<IUnitActor>();
         selfProxy.GetMembersAsync(Arg.Any<CancellationToken>())
@@ -1035,23 +1038,24 @@ public class UnitActorTests
     {
         // Scenario: B already contains A. Adding B to A must be rejected
         // because the resulting graph would close A -> B -> A.
-        // This actor is "A" (actor id "test-unit").
-        var bAddress = new Address("unit", "team-b");
+        // This actor is "A" (actor TestUnitActorId).
+        var teamBId = Guid.NewGuid();
+        var teamAId = TestUnitGuid;
+        var bAddress = new Address("unit", teamBId);
         _directoryService.ResolveAsync(bAddress, Arg.Any<CancellationToken>())
-            .Returns(MakeUnitEntry("team-b", "b-actor"));
+            .Returns(MakeUnitEntry("team-b", teamBId));
 
         var bProxy = Substitute.For<IUnitActor>();
         bProxy.GetMembersAsync(Arg.Any<CancellationToken>())
-            .Returns(new[] { new Address("unit", "team-a") });
+            .Returns(new[] { new Address("unit", teamAId) });
         _actorProxyFactory.CreateActorProxy<IUnitActor>(
-                Arg.Is<ActorId>(a => a.GetId() == "b-actor"),
+                Arg.Is<ActorId>(a => a.GetId() == teamBId.ToString("N")),
                 nameof(UnitActor))
             .Returns(bProxy);
 
-        // "team-a" resolves back to this actor ("test-unit").
-        var aAddress = new Address("unit", "team-a");
+        var aAddress = new Address("unit", teamAId);
         _directoryService.ResolveAsync(aAddress, Arg.Any<CancellationToken>())
-            .Returns(MakeUnitEntry("team-a", TestUnitActorId));
+            .Returns(MakeUnitEntry("team-a", TestUnitGuid));
 
         var ex = await Should.ThrowAsync<CyclicMembershipException>(() =>
             _actor.AddMemberAsync(bAddress, TestContext.Current.CancellationToken));
@@ -1070,35 +1074,36 @@ public class UnitActorTests
     public async Task AddMemberAsync_DeepCycle_Throws()
     {
         // Scenario: C -> B -> A. Adding C to A must be rejected.
-        // This actor is "A" (actor id "test-unit").
-        var cAddress = new Address("unit", "team-c");
+        var teamCId = Guid.NewGuid();
+        var teamBId = Guid.NewGuid();
+        var teamAId = TestUnitGuid;
+        var cAddress = new Address("unit", teamCId);
         _directoryService.ResolveAsync(cAddress, Arg.Any<CancellationToken>())
-            .Returns(MakeUnitEntry("team-c", "c-actor"));
+            .Returns(MakeUnitEntry("team-c", teamCId));
 
         var cProxy = Substitute.For<IUnitActor>();
         cProxy.GetMembersAsync(Arg.Any<CancellationToken>())
-            .Returns(new[] { new Address("unit", "team-b") });
+            .Returns(new[] { new Address("unit", teamBId) });
         _actorProxyFactory.CreateActorProxy<IUnitActor>(
-                Arg.Is<ActorId>(a => a.GetId() == "c-actor"),
+                Arg.Is<ActorId>(a => a.GetId() == teamCId.ToString("N")),
                 nameof(UnitActor))
             .Returns(cProxy);
 
-        var bAddress = new Address("unit", "team-b");
+        var bAddress = new Address("unit", teamBId);
         _directoryService.ResolveAsync(bAddress, Arg.Any<CancellationToken>())
-            .Returns(MakeUnitEntry("team-b", "b-actor"));
+            .Returns(MakeUnitEntry("team-b", teamBId));
 
         var bProxy = Substitute.For<IUnitActor>();
         bProxy.GetMembersAsync(Arg.Any<CancellationToken>())
-            .Returns(new[] { new Address("unit", "team-a") });
+            .Returns(new[] { new Address("unit", teamAId) });
         _actorProxyFactory.CreateActorProxy<IUnitActor>(
-                Arg.Is<ActorId>(a => a.GetId() == "b-actor"),
+                Arg.Is<ActorId>(a => a.GetId() == teamBId.ToString("N")),
                 nameof(UnitActor))
             .Returns(bProxy);
 
-        // "team-a" resolves back to "test-unit" (this actor).
-        var aAddress = new Address("unit", "team-a");
+        var aAddress = new Address("unit", teamAId);
         _directoryService.ResolveAsync(aAddress, Arg.Any<CancellationToken>())
-            .Returns(MakeUnitEntry("team-a", TestUnitActorId));
+            .Returns(MakeUnitEntry("team-a", TestUnitGuid));
 
         var ex = await Should.ThrowAsync<CyclicMembershipException>(() =>
             _actor.AddMemberAsync(cAddress, TestContext.Current.CancellationToken));
@@ -1118,7 +1123,7 @@ public class UnitActorTests
         // must not be touched for agent-typed adds — assert that by leaving
         // the substitute with no configured behaviour (returns null) and
         // verifying the agent is persisted anyway.
-        var agentAddress = new Address("agent", "agent-1");
+        var agentAddress = new Address("agent", Guid.NewGuid());
 
         await _actor.AddMemberAsync(agentAddress, TestContext.Current.CancellationToken);
 
@@ -1135,7 +1140,7 @@ public class UnitActorTests
     public async Task AddMemberAsync_SubUnitResolutionFails_TreatsAsDeadEnd()
     {
         // A sub-unit that has been deleted mid-walk must not block the add.
-        var subAddress = new Address("unit", "ghost-team");
+        var subAddress = new Address("unit", Guid.NewGuid());
         _directoryService.ResolveAsync(subAddress, Arg.Any<CancellationToken>())
             .Returns((DirectoryEntry?)null);
 
@@ -1150,15 +1155,16 @@ public class UnitActorTests
     [Fact]
     public async Task AddMemberAsync_GetMembersThrows_TreatsAsDeadEnd()
     {
-        var subAddress = new Address("unit", "flaky-team");
+        var flakyId = Guid.NewGuid();
+        var subAddress = new Address("unit", flakyId);
         _directoryService.ResolveAsync(subAddress, Arg.Any<CancellationToken>())
-            .Returns(MakeUnitEntry("flaky-team", "flaky-actor"));
+            .Returns(MakeUnitEntry("flaky-team", flakyId));
 
         var flakyProxy = Substitute.For<IUnitActor>();
         flakyProxy.GetMembersAsync(Arg.Any<CancellationToken>())
             .Returns<Address[]>(_ => throw new InvalidOperationException("actor unavailable"));
         _actorProxyFactory.CreateActorProxy<IUnitActor>(
-                Arg.Is<ActorId>(a => a.GetId() == "flaky-actor"),
+                Arg.Is<ActorId>(a => a.GetId() == flakyId.ToString("N")),
                 nameof(UnitActor))
             .Returns(flakyProxy);
 
@@ -1177,28 +1183,30 @@ public class UnitActorTests
         // pre-existing bad state). We only care whether the new edge would
         // close a cycle back to *this* unit. A side-cycle that does not
         // involve this unit must not block the add.
-        var subAddress = new Address("unit", "team-x");
+        var teamXId = Guid.NewGuid();
+        var teamYId = Guid.NewGuid();
+        var subAddress = new Address("unit", teamXId);
         _directoryService.ResolveAsync(subAddress, Arg.Any<CancellationToken>())
-            .Returns(MakeUnitEntry("team-x", "x-actor"));
+            .Returns(MakeUnitEntry("team-x", teamXId));
 
         var xProxy = Substitute.For<IUnitActor>();
         xProxy.GetMembersAsync(Arg.Any<CancellationToken>())
-            .Returns(new[] { new Address("unit", "team-y") });
+            .Returns(new[] { new Address("unit", teamYId) });
         _actorProxyFactory.CreateActorProxy<IUnitActor>(
-                Arg.Is<ActorId>(a => a.GetId() == "x-actor"),
+                Arg.Is<ActorId>(a => a.GetId() == teamXId.ToString("N")),
                 nameof(UnitActor))
             .Returns(xProxy);
 
-        // team-y -> team-x (benign 2-cycle in the subgraph, not involving "test-unit").
-        var yAddress = new Address("unit", "team-y");
+        // team-y -> team-x (benign 2-cycle in the subgraph, not involving the test unit).
+        var yAddress = new Address("unit", teamYId);
         _directoryService.ResolveAsync(yAddress, Arg.Any<CancellationToken>())
-            .Returns(MakeUnitEntry("team-y", "y-actor"));
+            .Returns(MakeUnitEntry("team-y", teamYId));
 
         var yProxy = Substitute.For<IUnitActor>();
         yProxy.GetMembersAsync(Arg.Any<CancellationToken>())
-            .Returns(new[] { new Address("unit", "team-x") });
+            .Returns(new[] { new Address("unit", teamXId) });
         _actorProxyFactory.CreateActorProxy<IUnitActor>(
-                Arg.Is<ActorId>(a => a.GetId() == "y-actor"),
+                Arg.Is<ActorId>(a => a.GetId() == teamYId.ToString("N")),
                 nameof(UnitActor))
             .Returns(yProxy);
 
@@ -1213,7 +1221,7 @@ public class UnitActorTests
     [Fact]
     public async Task RemoveMemberAsync_UnitMember_RemovesWithoutCycleCheck()
     {
-        var subAddress = new Address("unit", "team-b");
+        var subAddress = Address.For("unit", TestSlugIds.HexFor("team-b"));
         _stateManager.TryGetStateAsync<List<Address>>(StateKeys.Members, Arg.Any<CancellationToken>())
             .Returns(new ConditionalValue<List<Address>>(true, [subAddress]));
 
@@ -1233,8 +1241,8 @@ public class UnitActorTests
     public async Task ReceiveAsync_DomainMessage_WithMixedAgentAndUnitMembers_PassesBothToStrategy()
     {
         // Mixed members: one agent, one unit. Routing fans out to both.
-        var agent = new Address("agent", "agent-1");
-        var unit = new Address("unit", "team-b");
+        var agent = Address.For("agent", TestSlugIds.HexFor("agent-1"));
+        var unit = Address.For("unit", TestSlugIds.HexFor("team-b"));
         _stateManager.TryGetStateAsync<List<Address>>(StateKeys.Members, Arg.Any<CancellationToken>())
             .Returns(new ConditionalValue<List<Address>>(true, [agent, unit]));
 

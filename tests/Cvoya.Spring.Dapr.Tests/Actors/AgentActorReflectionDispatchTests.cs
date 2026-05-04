@@ -51,7 +51,8 @@ using Xunit;
 /// </summary>
 public class AgentActorReflectionDispatchTests
 {
-    private const string AgentId = "ada";
+    private static readonly Guid AgentId = new("aaaaaaaa-0000-0000-0000-000000000001");
+    private static readonly string AgentIdHex = AgentId.ToString("N");
 
     private readonly IActorStateManager _stateManager = Substitute.For<IActorStateManager>();
     private readonly IActivityEventBus _activityEventBus = Substitute.For<IActivityEventBus>();
@@ -80,7 +81,7 @@ public class AgentActorReflectionDispatchTests
 
         var host = ActorHost.CreateForTest<AgentActor>(new ActorTestOptions
         {
-            ActorId = new ActorId(AgentId),
+            ActorId = new ActorId(AgentIdHex),
         });
 
         _membershipRepository
@@ -165,12 +166,14 @@ public class AgentActorReflectionDispatchTests
         _registry.Find(actionType).Returns(handler);
     }
 
-    private static Message TranslatedMessage(string target = "bob")
+    private static readonly Guid TargetAgentId = new("aaaaaaaa-0000-0000-0000-000000000002");
+
+    private static Message TranslatedMessage(Guid? target = null)
     {
         return new Message(
             Guid.NewGuid(),
             new Address("agent", AgentId),
-            new Address("agent", target),
+            new Address("agent", target ?? TargetAgentId),
             MessageType.Domain,
             "conv-reflection",
             JsonSerializer.SerializeToElement(new { Content = "hi" }),
@@ -211,7 +214,7 @@ public class AgentActorReflectionDispatchTests
 
         await _initiativeEvaluator.Received(1).EvaluateAsync(
             Arg.Is<InitiativeEvaluationContext>(c =>
-                c.AgentId == AgentId &&
+                c.AgentId == AgentIdHex &&
                 c.Action.ActionType == "send-message" &&
                 c.Signals.Count == 1),
             Arg.Any<CancellationToken>());

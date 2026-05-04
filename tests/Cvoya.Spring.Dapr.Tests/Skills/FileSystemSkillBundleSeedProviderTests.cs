@@ -11,6 +11,7 @@ using System.Linq;
 using System.Threading.Tasks;
 
 using Cvoya.Spring.Core.Skills;
+using Cvoya.Spring.Core.Tenancy;
 using Cvoya.Spring.Dapr.Skills;
 
 using Microsoft.Extensions.DependencyInjection;
@@ -74,7 +75,7 @@ public class FileSystemSkillBundleSeedProviderTests : IDisposable
         var logger = new CapturingLogger<FileSystemSkillBundleSeedProvider>();
         var (sut, _) = CreateSut(logger);
 
-        await sut.ApplySeedsAsync("default", TestContext.Current.CancellationToken);
+        await sut.ApplySeedsAsync(OssTenantIds.Default, TestContext.Current.CancellationToken);
 
         var infos = logger.Entries.Where(e => e.Level == LogLevel.Information).ToArray();
         infos.Count(e => e.Message.Contains("software-engineering")).ShouldBe(1);
@@ -90,7 +91,7 @@ public class FileSystemSkillBundleSeedProviderTests : IDisposable
 
         var (sut, bindingService) = CreateSut();
 
-        await sut.ApplySeedsAsync("default", TestContext.Current.CancellationToken);
+        await sut.ApplySeedsAsync(OssTenantIds.Default, TestContext.Current.CancellationToken);
 
         await bindingService.Received(1).BindAsync(
             "software-engineering",
@@ -109,7 +110,7 @@ public class FileSystemSkillBundleSeedProviderTests : IDisposable
         var (sut, bindingService) = CreateSut(logger, rootConfigured: false);
 
         await Should.NotThrowAsync(
-            () => sut.ApplySeedsAsync("default", TestContext.Current.CancellationToken));
+            () => sut.ApplySeedsAsync(OssTenantIds.Default, TestContext.Current.CancellationToken));
 
         logger.Entries.ShouldContain(
             e => e.Level == LogLevel.Warning
@@ -129,7 +130,7 @@ public class FileSystemSkillBundleSeedProviderTests : IDisposable
             customRoot: Path.Combine(_root, "does-not-exist"));
 
         await Should.NotThrowAsync(
-            () => sut.ApplySeedsAsync("default", TestContext.Current.CancellationToken));
+            () => sut.ApplySeedsAsync(OssTenantIds.Default, TestContext.Current.CancellationToken));
 
         logger.Entries.ShouldContain(
             e => e.Level == LogLevel.Warning && e.Message.Contains("does not exist"));
@@ -143,7 +144,7 @@ public class FileSystemSkillBundleSeedProviderTests : IDisposable
         var (sut, _) = CreateSut();
 
         await Should.ThrowAsync<ArgumentException>(
-            () => sut.ApplySeedsAsync(string.Empty, TestContext.Current.CancellationToken));
+            () => sut.ApplySeedsAsync(Guid.Empty, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -157,8 +158,8 @@ public class FileSystemSkillBundleSeedProviderTests : IDisposable
 
         var (sut, bindingService) = CreateSut();
 
-        await sut.ApplySeedsAsync("default", TestContext.Current.CancellationToken);
-        await sut.ApplySeedsAsync("default", TestContext.Current.CancellationToken);
+        await sut.ApplySeedsAsync(OssTenantIds.Default, TestContext.Current.CancellationToken);
+        await sut.ApplySeedsAsync(OssTenantIds.Default, TestContext.Current.CancellationToken);
 
         await bindingService.Received(2).BindAsync(
             "se", enabled: true, Arg.Any<CancellationToken>());
@@ -177,7 +178,7 @@ public class FileSystemSkillBundleSeedProviderTests : IDisposable
         bindingService
             .BindAsync(Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(ci => Task.FromResult(new TenantSkillBundleBinding(
-                TenantId: "default",
+                TenantId: OssTenantIds.Default,
                 BundleId: ci.Arg<string>(),
                 Enabled: ci.Arg<bool>(),
                 BoundAt: DateTimeOffset.UtcNow)));

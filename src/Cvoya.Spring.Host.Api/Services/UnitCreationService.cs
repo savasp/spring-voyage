@@ -251,9 +251,11 @@ public class UnitCreationService : IUnitCreationService
         // keeps YAML-applied and API-applied boundaries wire-identical. An
         // absent or all-empty block is a no-op so the unit's default
         // "transparent" view is preserved.
+        // Post-#1629 the address is keyed by the unit's actor Guid (parsed
+        // back from result.Unit.Id, the hex form returned by CreateCoreAsync).
         if (manifest.Boundary is { IsEmpty: false })
         {
-            await PersistUnitBoundaryAsync(name, manifest.Boundary, cancellationToken);
+            await PersistUnitBoundaryAsync(name, result.Unit.Id, manifest.Boundary, cancellationToken);
         }
 
         // #601 / #603 / #409 B-wide: persist the manifest's `execution:`
@@ -329,7 +331,7 @@ public class UnitCreationService : IUnitCreationService
             var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
 
             var entity = await db.UnitDefinitions
-                .FirstOrDefaultAsync(u => u.UnitId == unitId && u.DeletedAt == null, cancellationToken);
+                .FirstOrDefaultAsync(u => u.DisplayName == unitId && u.DeletedAt == null, cancellationToken);
 
             if (entity is null)
             {
@@ -411,7 +413,7 @@ public class UnitCreationService : IUnitCreationService
             var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
 
             var entity = await db.UnitDefinitions
-                .FirstOrDefaultAsync(u => u.UnitId == unitId && u.DeletedAt == null, cancellationToken);
+                .FirstOrDefaultAsync(u => u.DisplayName == unitId && u.DeletedAt == null, cancellationToken);
 
             if (entity is null)
             {
@@ -474,6 +476,7 @@ public class UnitCreationService : IUnitCreationService
     /// </summary>
     private async Task PersistUnitBoundaryAsync(
         string unitName,
+        string unitIdHex,
         BoundaryManifest boundary,
         CancellationToken cancellationToken)
     {
@@ -496,7 +499,7 @@ public class UnitCreationService : IUnitCreationService
                 return;
             }
 
-            var address = new Address("unit", unitName);
+            var address = Address.For("unit", unitIdHex);
             await _boundaryStore.SetAsync(address, core, cancellationToken);
         }
         catch (OperationCanceledException)
@@ -565,7 +568,7 @@ public class UnitCreationService : IUnitCreationService
         var resolvedParents = new List<(string Id, DirectoryEntry Entry)>(parentInfo.ParentUnitIds.Count);
         foreach (var parentId in parentInfo.ParentUnitIds)
         {
-            var parentAddress = new Address("unit", parentId);
+            var parentAddress = Address.For("unit", parentId);
             var parentEntry = await _directoryService.ResolveAsync(parentAddress, cancellationToken);
             if (parentEntry is null)
             {
@@ -587,6 +590,11 @@ public class UnitCreationService : IUnitCreationService
             resolvedParents.Add((parentId, parentEntry));
         }
 
+        // Mint the new unit's identity up-front so the bundle validator (and
+        // any policy-enforcer it consults) can key off the unit's stable Guid
+        // rather than its display name. Under #1629 the directory is Guid-keyed.
+        var actorGuid = Guid.NewGuid();
+
         // Resolve skill bundles and validate their tool requirements up-front
         // as well. Any failure here surfaces to the caller as a typed
         // exception that the endpoint layer maps to a ProblemDetails 4xx so
@@ -596,7 +604,7 @@ public class UnitCreationService : IUnitCreationService
         if (skillReferences.Count > 0)
         {
             resolvedBundles = await ResolveSkillBundlesAsync(skillReferences, cancellationToken);
-            var report = await _bundleValidator.ValidateAsync(name, resolvedBundles, cancellationToken);
+            var report = await _bundleValidator.ValidateAsync(actorGuid, resolvedBundles, cancellationToken);
             // Non-blocking warnings (e.g. bundles declaring tools no connector
             // surfaces) ride through the creation response's existing warnings
             // list so the wizard / CLI can surface them alongside manifest-
@@ -607,26 +615,31 @@ public class UnitCreationService : IUnitCreationService
             }
         }
 
-        var actorId = Guid.NewGuid().ToString();
-        var address = new Address("unit", name);
+        var actorId = Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(actorGuid);
+        var address = Address.ForIdentity(Address.UnitScheme, actorGuid);
 
         // #325: when the caller supplies a canonical name override through
         // the request body we reject duplicates up front with a typed
-        // exception the endpoint layer maps to 400. Paths that keep using
-        // the manifest-derived name stay on the historical last-writer-wins
-        // behaviour so #325 does not silently turn into a breaking change.
+        // exception the endpoint layer maps to 400. Under #1629 the directory
+        // is keyed by Guid identity, so collision is checked by display name
+        // against persisted unit definitions rather than a directory resolve.
         if (rejectDuplicates)
         {
-            var existing = await _directoryService.ResolveAsync(address, cancellationToken);
-            if (existing is not null)
+            await using var dupScope = _scopeFactory.CreateAsyncScope();
+            var dupDb = dupScope.ServiceProvider.GetRequiredService<SpringDbContext>();
+            var nameTaken = await dupDb.UnitDefinitions
+                .AnyAsync(
+                    u => u.DisplayName == displayName && u.DeletedAt == null,
+                    cancellationToken);
+            if (nameTaken)
             {
-                throw new DuplicateUnitNameException(name);
+                throw new DuplicateUnitNameException(displayName);
             }
         }
 
         var entry = new DirectoryEntry(
             address,
-            actorId,
+            actorGuid,
             displayName,
             description,
             null,
@@ -717,7 +730,7 @@ public class UnitCreationService : IUnitCreationService
                 try
                 {
                     var parentProxy = _actorProxyFactory.CreateActorProxy<IUnitActor>(
-                        new ActorId(parentEntry.ActorId), nameof(UnitActor));
+                        new ActorId(Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(parentEntry.ActorId)), nameof(UnitActor));
                     await parentProxy.AddMemberAsync(address, cancellationToken);
                 }
                 catch (Exception ex)
@@ -730,6 +743,9 @@ public class UnitCreationService : IUnitCreationService
             }
 
             var membersAdded = 0;
+            // Cache the directory listing once per call so the resolve-by-name
+            // path below stays O(1) per member.
+            IReadOnlyList<DirectoryEntry>? memberDirectoryEntries = null;
             foreach (var member in members)
             {
                 var resolved = ResolveMemberAddress(member);
@@ -739,7 +755,25 @@ public class UnitCreationService : IUnitCreationService
                     continue;
                 }
 
-                var memberAddress = new Address(resolved.Value.Scheme, resolved.Value.Path);
+                // Manifests carry the member's display name, not its Guid.
+                // Resolve through the directory; mint a fresh Guid for
+                // auto-register paths (the agent-scheme branch below registers
+                // the new entry with this Guid as the actor identity).
+                Guid memberGuid;
+                if (Cvoya.Spring.Core.Identifiers.GuidFormatter.TryParse(resolved.Value.Path, out var parsedGuid))
+                {
+                    memberGuid = parsedGuid;
+                }
+                else
+                {
+                    memberDirectoryEntries ??= await _directoryService.ListAllAsync(cancellationToken);
+                    var match = memberDirectoryEntries.FirstOrDefault(
+                        e => string.Equals(e.Address.Scheme, resolved.Value.Scheme, StringComparison.OrdinalIgnoreCase)
+                             && string.Equals(e.DisplayName, resolved.Value.Path, StringComparison.Ordinal));
+                    memberGuid = match?.ActorId ?? Guid.NewGuid();
+                }
+
+                var memberAddress = Address.ForIdentity(resolved.Value.Scheme, memberGuid);
 
                 // #745: for pre-existing members (not auto-registered below)
                 // enforce the same-tenant invariant before the actor-state
@@ -802,17 +836,22 @@ public class UnitCreationService : IUnitCreationService
                     // skip the row when the agent has no directory entry yet
                     // (the symptom: package-installed units showing the unit
                     // members in the actor list but `[]` from /memberships).
+                    //
+                    // Post-#1629 every Address is keyed by Guid identity. The
+                    // memberAddress minted above already carries the agent's
+                    // stable Guid (matched to an existing display-name row when
+                    // possible, freshly minted otherwise) so we register
+                    // against that — never against Address.For(slug), which
+                    // would throw on the non-Guid manifest path.
                     try
                     {
-                        var agentAddress = new Address("agent", resolved.Value.Path);
-                        var existing = await _directoryService.ResolveAsync(agentAddress, cancellationToken);
+                        var existing = await _directoryService.ResolveAsync(memberAddress, cancellationToken);
                         if (existing is null)
                         {
-                            var agentActorId = Guid.NewGuid().ToString();
                             var agentEntry = new DirectoryEntry(
-                                agentAddress,
-                                agentActorId,
-                                resolved.Value.Path,  // displayName = member name
+                                memberAddress,
+                                memberAddress.Id,
+                                resolved.Value.Path,  // displayName = member name (slug-form preserved)
                                 string.Empty,          // description
                                 null,                  // role
                                 DateTimeOffset.UtcNow);
@@ -837,34 +876,18 @@ public class UnitCreationService : IUnitCreationService
                     // agent-scheme members get a row. Template creation passes no
                     // per-membership overrides so Model/Specialty/ExecutionMode
                     // default to null and Enabled defaults to true.
-                    // After #1492, membership rows use UUID keys, so resolve both
-                    // the unit and agent slugs to their stable UUIDs first.
+                    // Post-#1629 the membership row keys off the Guid identities
+                    // we already resolved above (memberAddress + the unit's
+                    // freshly minted actorGuid), so no further slug→Guid lookup
+                    // is needed.
                     try
                     {
-                        // Resolve unit UUID from the newly-registered entry.
-                        var unitDir = await _directoryService.ResolveAsync(address, cancellationToken);
-                        var agentDir = await _directoryService.ResolveAsync(
-                            new Address("agent", resolved.Value.Path), cancellationToken);
-
-                        if (unitDir is not null && agentDir is not null
-                            && Guid.TryParse(unitDir.ActorId, out var unitMemberUuid)
-                            && Guid.TryParse(agentDir.ActorId, out var agentMemberUuid))
-                        {
-                            await _membershipRepository.UpsertAsync(
-                                new UnitMembership(
-                                    UnitId: unitMemberUuid,
-                                    AgentId: agentMemberUuid,
-                                    Enabled: true),
-                                cancellationToken);
-                        }
-                        else
-                        {
-                            _logger.LogWarning(
-                                "Unit '{UnitName}' member {Member}: could not resolve UUIDs for membership row; skipping DB write.",
-                                name, $"{resolved.Value.Scheme}:{resolved.Value.Path}");
-                            warnings.Add(
-                                $"member {resolved.Value.Scheme}:{resolved.Value.Path} added to actor state but membership UUID resolution failed");
-                        }
+                        await _membershipRepository.UpsertAsync(
+                            new UnitMembership(
+                                UnitId: actorGuid,
+                                AgentId: memberAddress.Id,
+                                Enabled: true),
+                            cancellationToken);
                     }
                     catch (Exception ex)
                     {
@@ -940,7 +963,7 @@ public class UnitCreationService : IUnitCreationService
             // update + revalidate) to kick off validation.
             var initialStatus = UnitStatus.Draft;
             var fullyConfigured = await IsFullyConfiguredForValidationAsync(
-                name, model, provider, cancellationToken);
+                actorGuid, model, provider, cancellationToken);
             if (fullyConfigured)
             {
                 try
@@ -990,7 +1013,7 @@ public class UnitCreationService : IUnitCreationService
             }
 
             var response = new UnitResponse(
-                entry.ActorId,
+                Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(entry.ActorId),
                 entry.Address.Path,
                 entry.DisplayName,
                 entry.Description,
@@ -1020,7 +1043,7 @@ public class UnitCreationService : IUnitCreationService
     /// configuration and then calls <c>/revalidate</c>.
     /// </summary>
     private async Task<bool> IsFullyConfiguredForValidationAsync(
-        string unitName,
+        Guid unitId,
         string? model,
         string? provider,
         CancellationToken cancellationToken)
@@ -1042,7 +1065,7 @@ public class UnitCreationService : IUnitCreationService
         {
             var resolution = await _credentialResolver.ResolveAsync(
                 providerId: provider,
-                unitName: unitName,
+                unitId: unitId,
                 cancellationToken);
 
             // A non-null value means we have a credential to hand to the
@@ -1058,8 +1081,8 @@ public class UnitCreationService : IUnitCreationService
         catch (Exception ex)
         {
             _logger.LogWarning(ex,
-                "Unit '{UnitName}' credential resolution threw during creation; leaving unit in Draft.",
-                unitName);
+                "Unit {UnitId} credential resolution threw during creation; leaving unit in Draft.",
+                unitId);
             return false;
         }
     }
@@ -1244,31 +1267,31 @@ public class UnitCreationService : IUnitCreationService
 
     private async Task SetTopLevelFlagAsync(string unitId, CancellationToken cancellationToken)
     {
+        // The IsTopLevel column was removed in #1629; "top-level" is now
+        // expressed implicitly: a unit with zero unit_subunit_memberships
+        // rows on the child side IS top-level. Nothing to write here, but
+        // keep the method as a no-op so callers don't have to branch.
+        await Task.CompletedTask;
         try
         {
+            // Defensive: still verify the unit exists so log diagnostics
+            // emit a clear message when callers pass an unknown id.
             await using var scope = _scopeFactory.CreateAsyncScope();
             var db = scope.ServiceProvider.GetService<SpringDbContext>();
             if (db is null)
             {
-                _logger.LogWarning(
-                    "Unit '{UnitId}': SpringDbContext is not registered in the current scope; IsTopLevel flag will remain at its default (false).",
-                    unitId);
                 return;
             }
 
             var entity = await db.UnitDefinitions
-                .FirstOrDefaultAsync(u => u.UnitId == unitId && u.DeletedAt == null, cancellationToken);
+                .FirstOrDefaultAsync(u => u.DisplayName == unitId && u.DeletedAt == null, cancellationToken);
 
             if (entity is null)
             {
                 _logger.LogWarning(
-                    "Unit '{UnitId}': could not locate UnitDefinition row to persist IsTopLevel flag; flag will remain at its default (false).",
+                    "Unit '{UnitId}': could not locate UnitDefinition row while setting top-level marker; ignored.",
                     unitId);
-                return;
             }
-
-            entity.IsTopLevel = true;
-            await db.SaveChangesAsync(cancellationToken);
         }
         catch (OperationCanceledException)
         {

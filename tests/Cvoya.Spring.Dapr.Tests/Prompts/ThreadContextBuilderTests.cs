@@ -17,14 +17,19 @@ using Xunit;
 /// </summary>
 public class ThreadContextBuilderTests
 {
+    private static readonly Guid AliceId = new("aaaaaaaa-1111-1111-1111-000000000001");
+    private static readonly Guid BobId = new("aaaaaaaa-1111-1111-1111-000000000002");
+    private static readonly Guid HumanId = new("aaaaaaaa-1111-1111-1111-000000000003");
+    private static readonly Guid ReceiverId = new("aaaaaaaa-1111-1111-1111-000000000004");
+
     private readonly ThreadContextBuilder _builder = new();
 
-    private static Message CreateMessage(string senderPath, string text)
+    private static Message CreateMessage(Guid senderId, string text)
     {
         return new Message(
             Guid.NewGuid(),
-            new Address("agent", senderPath),
-            new Address("agent", "receiver"),
+            new Address("agent", senderId),
+            new Address("agent", ReceiverId),
             MessageType.Domain,
             "conv-1",
             JsonSerializer.SerializeToElement(new { text }),
@@ -39,14 +44,14 @@ public class ThreadContextBuilderTests
     {
         var messages = new List<Message>
         {
-            CreateMessage("team/alice", "Hello there"),
-            CreateMessage("team/bob", "Hi Alice")
+            CreateMessage(AliceId, "Hello there"),
+            CreateMessage(BobId, "Hi Alice"),
         };
 
         var result = _builder.Build(messages, null);
 
         result.ShouldContain("Prior Messages");
-        result.ShouldContain("agent://team/alice");
+        result.ShouldContain(AliceId.ToString("N"));
         result.ShouldContain("Hello there");
         result.ShouldContain("Hi Alice");
     }
@@ -87,8 +92,8 @@ public class ThreadContextBuilderTests
     {
         var message = new Message(
             Guid.NewGuid(),
-            new Address("agent", "human"),
-            new Address("agent", "receiver"),
+            new Address("agent", HumanId),
+            new Address("agent", ReceiverId),
             MessageType.Domain,
             "conv-1",
             JsonSerializer.SerializeToElement("Say hello in one sentence."),
@@ -108,8 +113,8 @@ public class ThreadContextBuilderTests
     {
         var message = new Message(
             Guid.NewGuid(),
-            new Address("agent", "human"),
-            new Address("agent", "receiver"),
+            new Address("agent", HumanId),
+            new Address("agent", ReceiverId),
             MessageType.Domain,
             "conv-1",
             JsonSerializer.SerializeToElement(new { Task = "do-work" }),

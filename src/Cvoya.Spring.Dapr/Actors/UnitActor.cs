@@ -158,7 +158,7 @@ public class UnitActor : Actor, IUnitActor
     /// <summary>
     /// Gets the address of this unit actor.
     /// </summary>
-    public Address Address => new("unit", Id.GetId());
+    public Address Address => Address.For("unit", Id.GetId());
 
     /// <summary>
     /// Seeds the unit's own expertise from its <c>UnitDefinition</c> YAML on

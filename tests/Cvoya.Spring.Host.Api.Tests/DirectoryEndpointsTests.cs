@@ -19,6 +19,16 @@ using Xunit;
 
 public class DirectoryEndpointsTests : IClassFixture<CustomWebApplicationFactory>
 {
+    private static readonly Guid Actor1_Id = new("00002711-bbbb-cccc-dddd-000000000000");
+    private static readonly Guid Actor2_Id = new("00002712-bbbb-cccc-dddd-000000000000");
+
+    private static readonly Guid Agent_Agent1_Id = new("00000001-feed-1234-5678-000000000000");
+    private static readonly Guid Unit_Eng_Id = new("00000002-feed-1234-5678-000000000000");
+    private static readonly Guid Unit_Mid_Id = new("00000003-feed-1234-5678-000000000000");
+    private static readonly Guid Unit_Origin_Id = new("00000004-feed-1234-5678-000000000000");
+    private static readonly Guid Unit_Root_Id = new("00000005-feed-1234-5678-000000000000");
+    private static readonly Guid Unit_Unit1_Id = new("00000006-feed-1234-5678-000000000000");
+
     private readonly CustomWebApplicationFactory _factory;
     private readonly HttpClient _client;
 
@@ -34,8 +44,8 @@ public class DirectoryEndpointsTests : IClassFixture<CustomWebApplicationFactory
         var ct = TestContext.Current.CancellationToken;
         var entries = new List<DirectoryEntry>
         {
-            new(new Address("agent", "agent-1"), "actor-1", "Agent One", "First agent", "backend", DateTimeOffset.UtcNow),
-            new(new Address("unit", "unit-1"), "actor-2", "Unit One", "First unit", null, DateTimeOffset.UtcNow)
+            new(new Address("agent", Agent_Agent1_Id), Actor1_Id, "Agent One", "First agent", "backend", DateTimeOffset.UtcNow),
+            new(new Address("unit", Unit_Unit1_Id), Actor2_Id, "Unit One", "First unit", null, DateTimeOffset.UtcNow)
         };
         _factory.DirectoryService.ListAllAsync(Arg.Any<CancellationToken>()).Returns(entries);
 
@@ -55,7 +65,7 @@ public class DirectoryEndpointsTests : IClassFixture<CustomWebApplicationFactory
         var ct = TestContext.Current.CancellationToken;
         var entries = new List<DirectoryEntry>
         {
-            new(new Address("agent", "agent-1"), "actor-1", "Agent One", "First agent", "backend", DateTimeOffset.UtcNow)
+            new(new Address("agent", Agent_Agent1_Id), Actor1_Id, "Agent One", "First agent", "backend", DateTimeOffset.UtcNow)
         };
         _factory.DirectoryService.ResolveByRoleAsync("backend", Arg.Any<CancellationToken>()).Returns(entries);
 
@@ -80,7 +90,7 @@ public class DirectoryEndpointsTests : IClassFixture<CustomWebApplicationFactory
                     new ExpertiseSearchHit(
                         Slug: "python",
                         Domain: new ExpertiseDomain("python", "Python expertise", ExpertiseLevel.Advanced, "{\"type\":\"object\"}"),
-                        Owner: new Address("unit", "eng"),
+                        Owner: new Address("unit", Unit_Eng_Id),
                         OwnerDisplayName: "Engineering",
                         AggregatingUnit: null,
                         TypedContract: true,
@@ -121,16 +131,16 @@ public class DirectoryEndpointsTests : IClassFixture<CustomWebApplicationFactory
                     new ExpertiseSearchHit(
                         Slug: "translation",
                         Domain: new ExpertiseDomain("translation", "Translation expertise", ExpertiseLevel.Advanced, null),
-                        Owner: new Address("unit", "origin"),
+                        Owner: new Address("unit", Unit_Origin_Id),
                         OwnerDisplayName: "Origin",
-                        AggregatingUnit: new Address("unit", "root"),
+                        AggregatingUnit: new Address("unit", Unit_Root_Id),
                         TypedContract: false,
                         Score: 20,
                         MatchReason: "aggregated coverage",
                         AncestorChain: new[]
                         {
-                            new Address("unit", "mid"),
-                            new Address("unit", "root"),
+                            new Address("unit", Unit_Mid_Id),
+                            new Address("unit", Unit_Root_Id),
                         },
                         ProjectionPaths: new[]
                         {
@@ -153,8 +163,9 @@ public class DirectoryEndpointsTests : IClassFixture<CustomWebApplicationFactory
         var hit = result.Hits.ShouldHaveSingleItem();
         hit.AncestorChain.Count.ShouldBe(2);
         hit.AncestorChain[0].Scheme.ShouldBe("unit");
-        hit.AncestorChain[0].Path.ShouldBe("mid");
-        hit.AncestorChain[1].Path.ShouldBe("root");
+        // Post-#1629 Address.Path is the Guid hex of the actor identity.
+        hit.AncestorChain[0].Path.ShouldBe(Unit_Mid_Id.ToString("N"));
+        hit.AncestorChain[1].Path.ShouldBe(Unit_Root_Id.ToString("N"));
         hit.ProjectionPaths.Count.ShouldBe(2);
         hit.ProjectionPaths.ShouldAllBe(p => p == "projection/translation");
     }
@@ -173,7 +184,7 @@ public class DirectoryEndpointsTests : IClassFixture<CustomWebApplicationFactory
                     new ExpertiseSearchHit(
                         Slug: "python",
                         Domain: new ExpertiseDomain("python", "Python expertise", ExpertiseLevel.Advanced, null),
-                        Owner: new Address("unit", "eng"),
+                        Owner: new Address("unit", Unit_Eng_Id),
                         OwnerDisplayName: "Engineering",
                         AggregatingUnit: null,
                         TypedContract: false,

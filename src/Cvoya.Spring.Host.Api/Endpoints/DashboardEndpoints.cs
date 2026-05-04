@@ -79,7 +79,7 @@ public static class DashboardEndpoints
             try
             {
                 var proxy = actorProxyFactory.CreateActorProxy<IUnitActor>(
-                    new ActorId(e.ActorId), nameof(UnitActor));
+                    new ActorId(Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(e.ActorId)), nameof(UnitActor));
                 status = await proxy.GetStatusAsync(cancellationToken);
             }
             catch (Exception ex)
@@ -153,7 +153,7 @@ public static class DashboardEndpoints
             try
             {
                 var proxy = actorProxyFactory.CreateActorProxy<IUnitActor>(
-                    new ActorId(e.ActorId), nameof(UnitActor));
+                    new ActorId(Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(e.ActorId)), nameof(UnitActor));
                 status = await proxy.GetStatusAsync(cancellationToken);
             }
             catch (Exception ex)

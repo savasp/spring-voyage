@@ -65,12 +65,12 @@ public class AgentActorDispatchTests
             new ToolDefinition("github_comment", "comment", JsonSerializer.SerializeToElement(new { }))
         ]);
 
-        _definitionProvider.GetByIdAsync("test-agent", Arg.Any<CancellationToken>())
-            .Returns(new AgentDefinition("test-agent", "Test", "Agent instructions", null));
+        _definitionProvider.GetByIdAsync(TestSlugIds.HexFor("test-agent"), Arg.Any<CancellationToken>())
+            .Returns(new AgentDefinition(TestSlugIds.HexFor("test-agent"), "Test", "Agent instructions", null));
 
         var host = ActorHost.CreateForTest<AgentActor>(new ActorTestOptions
         {
-            ActorId = new ActorId("test-agent")
+            ActorId = new ActorId(TestSlugIds.HexFor("test-agent"))
         });
 
         _membershipRepository
@@ -107,8 +107,8 @@ public class AgentActorDispatchTests
     {
         return new Message(
             Guid.NewGuid(),
-            new Address("unit", "my-unit"),
-            new Address("agent", "test-agent"),
+            Address.For("unit", TestSlugIds.HexFor("my-unit")),
+            Address.For("agent", TestSlugIds.HexFor("test-agent")),
             MessageType.Domain,
             threadId,
             JsonSerializer.SerializeToElement(new { task = "do-it" }),
@@ -142,7 +142,7 @@ public class AgentActorDispatchTests
         var message = CreateDomainMessage();
         var response = new Message(
             Guid.NewGuid(),
-            new Address("agent", "test-agent"),
+            Address.For("agent", TestSlugIds.HexFor("test-agent")),
             message.From,
             MessageType.Domain,
             message.ThreadId,

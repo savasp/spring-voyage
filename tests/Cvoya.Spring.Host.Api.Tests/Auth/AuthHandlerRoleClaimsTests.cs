@@ -170,7 +170,7 @@ public class AuthHandlerRoleClaimsTests : IDisposable
         dbContext.ApiTokens.Add(new ApiTokenEntity
         {
             Id = Guid.NewGuid(),
-            UserId = "test-user",
+            UserId = new Guid("aaaaaaaa-1111-1111-1111-000000000099"),
             TokenHash = tokenHash,
             Name = name,
             CreatedAt = DateTimeOffset.UtcNow,

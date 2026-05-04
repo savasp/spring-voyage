@@ -18,9 +18,9 @@ public class SecretsOptions
 
     /// <summary>
     /// The tenant id returned by the OSS <see cref="ConfiguredTenantContext"/>.
-    /// Defaults to <c>"default"</c>.
+    /// Defaults to <see cref="Cvoya.Spring.Core.Tenancy.OssTenantIds.Default"/>.
     /// </summary>
-    public string DefaultTenantId { get; set; } = ConfiguredTenantContext.DefaultTenantId;
+    public Guid DefaultTenantId { get; set; } = ConfiguredTenantContext.DefaultTenantId;
 
     /// <summary>
     /// Whether the API accepts <c>{ name, value }</c> (pass-through) writes

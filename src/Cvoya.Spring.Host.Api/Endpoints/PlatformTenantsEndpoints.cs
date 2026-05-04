@@ -103,7 +103,11 @@ public static class PlatformTenantsEndpoints
         [FromServices] ITenantRegistry registry,
         CancellationToken cancellationToken)
     {
-        var record = await registry.GetAsync(id, cancellationToken);
+        if (!Cvoya.Spring.Core.Identifiers.GuidFormatter.TryParse(id, out var idGuid))
+        {
+            return TenantNotFound(id);
+        }
+        var record = await registry.GetAsync(idGuid, cancellationToken);
         return record is null
             ? TenantNotFound(id)
             : Results.Ok(Project(record));
@@ -121,11 +125,18 @@ public static class PlatformTenantsEndpoints
                 detail: "Request body must include a non-empty 'id'.",
                 statusCode: StatusCodes.Status400BadRequest);
         }
+        if (!Cvoya.Spring.Core.Identifiers.GuidFormatter.TryParse(request.Id, out var requestIdGuid))
+        {
+            return Results.Problem(
+                title: "Invalid tenant request",
+                detail: $"Tenant id '{request.Id}' is not a valid Guid.",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
 
         TenantRecord record;
         try
         {
-            record = await registry.CreateAsync(request.Id, request.DisplayName, cancellationToken);
+            record = await registry.CreateAsync(requestIdGuid, request.DisplayName, cancellationToken);
         }
         catch (ArgumentException ex)
         {
@@ -142,7 +153,7 @@ public static class PlatformTenantsEndpoints
                 statusCode: StatusCodes.Status409Conflict);
         }
 
-        return Results.Created($"/api/v1/platform/tenants/{record.Id}", Project(record));
+        return Results.Created($"/api/v1/platform/tenants/{Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(record.Id)}", Project(record));
     }
 
     private static async Task<IResult> UpdateAsync(
@@ -159,7 +170,11 @@ public static class PlatformTenantsEndpoints
                 statusCode: StatusCodes.Status400BadRequest);
         }
 
-        var record = await registry.UpdateAsync(id, request.DisplayName, cancellationToken);
+        if (!Cvoya.Spring.Core.Identifiers.GuidFormatter.TryParse(id, out var idGuid))
+        {
+            return TenantNotFound(id);
+        }
+        var record = await registry.UpdateAsync(idGuid, request.DisplayName, cancellationToken);
         return record is null
             ? TenantNotFound(id)
             : Results.Ok(Project(record));
@@ -170,12 +185,16 @@ public static class PlatformTenantsEndpoints
         [FromServices] ITenantRegistry registry,
         CancellationToken cancellationToken)
     {
-        var deleted = await registry.DeleteAsync(id, cancellationToken);
+        if (!Cvoya.Spring.Core.Identifiers.GuidFormatter.TryParse(id, out var idGuid))
+        {
+            return TenantNotFound(id);
+        }
+        var deleted = await registry.DeleteAsync(idGuid, cancellationToken);
         return deleted ? Results.NoContent() : TenantNotFound(id);
     }
 
     private static TenantResponse Project(TenantRecord record) =>
-        new(record.Id, record.DisplayName, record.State, record.CreatedAt, record.UpdatedAt);
+        new(Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(record.Id), record.DisplayName, record.State, record.CreatedAt, record.UpdatedAt);
 
     private static IResult TenantNotFound(string id) =>
         Results.Problem(

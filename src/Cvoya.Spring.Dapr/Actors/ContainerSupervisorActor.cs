@@ -292,7 +292,7 @@ public class ContainerSupervisorActor(
             MaxRestarts: DefaultMaxRestarts,
             LastStartedAt: null,
             LastCrashAt: null,
-            TenantId: "default",
+            TenantId: Cvoya.Spring.Core.Tenancy.OssTenantIds.Default,
             UnitId: null,
             ConcurrentThreads: true);
     }

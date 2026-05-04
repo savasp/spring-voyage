@@ -56,15 +56,19 @@ public sealed class PackageExportService : IPackageExportService
         ArgumentNullException.ThrowIfNull(unitName);
 
         // Verify the unit (or agent) exists in the current tenant's directory.
-        // The directory service is already tenant-scoped.
-        var entry = await _directoryService.ResolveAsync(
-            new Address("unit", unitName), cancellationToken);
+        // Manifests carry display names (not Guids), so look up by display
+        // name through ListAllAsync rather than Address.For (Guid-only post-#1629).
+        var allEntries = await _directoryService.ListAllAsync(cancellationToken);
+        var entry = allEntries.FirstOrDefault(
+            e => string.Equals(e.Address.Scheme, "unit", StringComparison.OrdinalIgnoreCase)
+                 && string.Equals(e.DisplayName, unitName, StringComparison.Ordinal));
 
         if (entry is null)
         {
             // Try agent scheme — a package may install an agent rather than a unit.
-            entry = await _directoryService.ResolveAsync(
-                new Address("agent", unitName), cancellationToken);
+            entry = allEntries.FirstOrDefault(
+                e => string.Equals(e.Address.Scheme, "agent", StringComparison.OrdinalIgnoreCase)
+                     && string.Equals(e.DisplayName, unitName, StringComparison.Ordinal));
         }
 
         if (entry is null)
@@ -79,7 +83,7 @@ public sealed class PackageExportService : IPackageExportService
         // The EF query filter on UnitDefinitionEntity scopes to CurrentTenantId.
         var unitRow = await db.UnitDefinitions
             .IgnoreQueryFilters()
-            .Where(u => u.UnitId == unitName && u.DeletedAt == null)
+            .Where(u => u.DisplayName == unitName && u.DeletedAt == null)
             .FirstOrDefaultAsync(cancellationToken);
 
         Guid? installId = unitRow?.InstallId;

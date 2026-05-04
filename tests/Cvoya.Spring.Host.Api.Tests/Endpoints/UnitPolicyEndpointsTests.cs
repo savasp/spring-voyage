@@ -55,6 +55,7 @@ public class UnitPolicyEndpointsTests : IClassFixture<CustomWebApplicationFactor
     public async Task GetPolicy_UnknownUnit_Returns404()
     {
         var ct = TestContext.Current.CancellationToken;
+        var ghostId = Guid.NewGuid();
         _factory.DirectoryService
             .ResolveAsync(Arg.Any<Address>(), Arg.Any<CancellationToken>())
             .Returns((DirectoryEntry?)null);
@@ -64,10 +65,10 @@ public class UnitPolicyEndpointsTests : IClassFixture<CustomWebApplicationFactor
         // behaviour under test) rather than the gate's 403.
         _factory.PermissionService
             .ResolveEffectivePermissionAsync(
-                AuthConstants.DefaultLocalUserId, "ghost", Arg.Any<CancellationToken>())
+                AuthConstants.DefaultLocalUserId, ghostId.ToString("N"), Arg.Any<CancellationToken>())
             .Returns(PermissionLevel.Owner);
 
-        var response = await _client.GetAsync($"/api/v1/tenant/units/ghost/policy", ct);
+        var response = await _client.GetAsync($"/api/v1/tenant/units/{ghostId:N}/policy", ct);
 
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
@@ -76,10 +77,10 @@ public class UnitPolicyEndpointsTests : IClassFixture<CustomWebApplicationFactor
     public async Task GetPolicy_NoPolicyPersisted_ReturnsEmpty()
     {
         var ct = TestContext.Current.CancellationToken;
-        var unitName = NewUnitName();
-        ArrangeResolved(unitName);
+        var unitId = NewUnitId();
+        ArrangeResolved(unitId);
 
-        var response = await _client.GetAsync($"/api/v1/tenant/units/{unitName}/policy", ct);
+        var response = await _client.GetAsync($"/api/v1/tenant/units/{unitId:N}/policy", ct);
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
         var body = await response.Content.ReadFromJsonAsync<UnitPolicyResponse>(
@@ -92,8 +93,8 @@ public class UnitPolicyEndpointsTests : IClassFixture<CustomWebApplicationFactor
     public async Task PutPolicy_PersistsAndGetReturnsIt()
     {
         var ct = TestContext.Current.CancellationToken;
-        var unitName = NewUnitName();
-        ArrangeResolved(unitName);
+        var unitId = NewUnitId();
+        ArrangeResolved(unitId);
 
         var putBody = new UnitPolicyResponse(
             new SkillPolicy(
@@ -101,11 +102,11 @@ public class UnitPolicyEndpointsTests : IClassFixture<CustomWebApplicationFactor
                 Blocked: new[] { "delete_repo" }));
 
         var putResponse = await _client.PutAsJsonAsync(
-            $"/api/v1/tenant/units/{unitName}/policy", putBody, ct);
+            $"/api/v1/tenant/units/{unitId:N}/policy", putBody, ct);
         putResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var getResponse = await _client.GetAsync(
-            $"/api/v1/tenant/units/{unitName}/policy", ct);
+            $"/api/v1/tenant/units/{unitId:N}/policy", ct);
         getResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var stored = await getResponse.Content.ReadFromJsonAsync<UnitPolicyResponse>(
@@ -120,21 +121,21 @@ public class UnitPolicyEndpointsTests : IClassFixture<CustomWebApplicationFactor
     public async Task PutPolicy_Overwrite_ReplacesExisting()
     {
         var ct = TestContext.Current.CancellationToken;
-        var unitName = NewUnitName();
-        ArrangeResolved(unitName);
+        var unitId = NewUnitId();
+        ArrangeResolved(unitId);
 
         await _client.PutAsJsonAsync(
-            $"/api/v1/tenant/units/{unitName}/policy",
+            $"/api/v1/tenant/units/{unitId:N}/policy",
             new UnitPolicyResponse(new SkillPolicy(Blocked: new[] { "old" })),
             ct);
 
         await _client.PutAsJsonAsync(
-            $"/api/v1/tenant/units/{unitName}/policy",
+            $"/api/v1/tenant/units/{unitId:N}/policy",
             new UnitPolicyResponse(new SkillPolicy(Blocked: new[] { "new" })),
             ct);
 
         var stored = await _client
-            .GetFromJsonAsync<UnitPolicyResponse>($"/api/v1/tenant/units/{unitName}/policy", ct);
+            .GetFromJsonAsync<UnitPolicyResponse>($"/api/v1/tenant/units/{unitId:N}/policy", ct);
         stored!.Skill!.Blocked.ShouldBe(new[] { "new" });
     }
 
@@ -142,22 +143,22 @@ public class UnitPolicyEndpointsTests : IClassFixture<CustomWebApplicationFactor
     public async Task PutPolicy_EmptyPolicy_ClearsRow()
     {
         var ct = TestContext.Current.CancellationToken;
-        var unitName = NewUnitName();
-        ArrangeResolved(unitName);
+        var unitId = NewUnitId();
+        ArrangeResolved(unitId);
 
         await _client.PutAsJsonAsync(
-            $"/api/v1/tenant/units/{unitName}/policy",
+            $"/api/v1/tenant/units/{unitId:N}/policy",
             new UnitPolicyResponse(new SkillPolicy(Blocked: new[] { "x" })),
             ct);
 
         var clearResponse = await _client.PutAsJsonAsync(
-            $"/api/v1/tenant/units/{unitName}/policy",
+            $"/api/v1/tenant/units/{unitId:N}/policy",
             new UnitPolicyResponse(null),
             ct);
         clearResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var stored = await _client
-            .GetFromJsonAsync<UnitPolicyResponse>($"/api/v1/tenant/units/{unitName}/policy", ct);
+            .GetFromJsonAsync<UnitPolicyResponse>($"/api/v1/tenant/units/{unitId:N}/policy", ct);
         stored!.Skill.ShouldBeNull();
     }
 
@@ -165,8 +166,8 @@ public class UnitPolicyEndpointsTests : IClassFixture<CustomWebApplicationFactor
     public async Task PutPolicy_AllDimensions_RoundTrips()
     {
         var ct = TestContext.Current.CancellationToken;
-        var unitName = NewUnitName();
-        ArrangeResolved(unitName);
+        var unitId = NewUnitId();
+        ArrangeResolved(unitId);
 
         var putBody = new UnitPolicyResponse(
             Skill: new SkillPolicy(Allowed: new[] { "search" }),
@@ -176,11 +177,11 @@ public class UnitPolicyEndpointsTests : IClassFixture<CustomWebApplicationFactor
             Initiative: new InitiativePolicy(BlockedActions: new[] { "delete-repo" }));
 
         var putResponse = await _client.PutAsJsonAsync(
-            $"/api/v1/tenant/units/{unitName}/policy", putBody, WireJson, ct);
+            $"/api/v1/tenant/units/{unitId:N}/policy", putBody, WireJson, ct);
         putResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var stored = await _client
-            .GetFromJsonAsync<UnitPolicyResponse>($"/api/v1/tenant/units/{unitName}/policy", WireJson, ct);
+            .GetFromJsonAsync<UnitPolicyResponse>($"/api/v1/tenant/units/{unitId:N}/policy", WireJson, ct);
         stored.ShouldNotBeNull();
         stored!.Skill!.Allowed.ShouldBe(new[] { "search" });
         stored.Model!.Blocked.ShouldBe(new[] { "gpt-4" });
@@ -195,16 +196,16 @@ public class UnitPolicyEndpointsTests : IClassFixture<CustomWebApplicationFactor
     public async Task PutPolicy_ModelOnly_SkillRemainsNull()
     {
         var ct = TestContext.Current.CancellationToken;
-        var unitName = NewUnitName();
-        ArrangeResolved(unitName);
+        var unitId = NewUnitId();
+        ArrangeResolved(unitId);
 
         var putBody = new UnitPolicyResponse(
             Model: new ModelPolicy(Blocked: new[] { "gpt-4" }));
 
-        await _client.PutAsJsonAsync($"/api/v1/tenant/units/{unitName}/policy", putBody, ct);
+        await _client.PutAsJsonAsync($"/api/v1/tenant/units/{unitId:N}/policy", putBody, ct);
 
         var stored = await _client
-            .GetFromJsonAsync<UnitPolicyResponse>($"/api/v1/tenant/units/{unitName}/policy", ct);
+            .GetFromJsonAsync<UnitPolicyResponse>($"/api/v1/tenant/units/{unitId:N}/policy", ct);
         stored!.Skill.ShouldBeNull();
         stored.Model!.Blocked.ShouldBe(new[] { "gpt-4" });
         stored.Cost.ShouldBeNull();
@@ -216,11 +217,11 @@ public class UnitPolicyEndpointsTests : IClassFixture<CustomWebApplicationFactor
     public async Task PutPolicy_ClearOneDimension_OthersPersist()
     {
         var ct = TestContext.Current.CancellationToken;
-        var unitName = NewUnitName();
-        ArrangeResolved(unitName);
+        var unitId = NewUnitId();
+        ArrangeResolved(unitId);
 
         await _client.PutAsJsonAsync(
-            $"/api/v1/tenant/units/{unitName}/policy",
+            $"/api/v1/tenant/units/{unitId:N}/policy",
             new UnitPolicyResponse(
                 Skill: new SkillPolicy(Blocked: new[] { "dangerous" }),
                 Model: new ModelPolicy(Blocked: new[] { "gpt-4" })),
@@ -228,13 +229,13 @@ public class UnitPolicyEndpointsTests : IClassFixture<CustomWebApplicationFactor
 
         // Clear model but keep skill.
         await _client.PutAsJsonAsync(
-            $"/api/v1/tenant/units/{unitName}/policy",
+            $"/api/v1/tenant/units/{unitId:N}/policy",
             new UnitPolicyResponse(
                 Skill: new SkillPolicy(Blocked: new[] { "dangerous" })),
             ct);
 
         var stored = await _client
-            .GetFromJsonAsync<UnitPolicyResponse>($"/api/v1/tenant/units/{unitName}/policy", ct);
+            .GetFromJsonAsync<UnitPolicyResponse>($"/api/v1/tenant/units/{unitId:N}/policy", ct);
         stored!.Skill!.Blocked.ShouldBe(new[] { "dangerous" });
         stored.Model.ShouldBeNull();
     }
@@ -243,6 +244,7 @@ public class UnitPolicyEndpointsTests : IClassFixture<CustomWebApplicationFactor
     public async Task PutPolicy_UnknownUnit_Returns404()
     {
         var ct = TestContext.Current.CancellationToken;
+        var ghostId = Guid.NewGuid();
         _factory.DirectoryService
             .ResolveAsync(Arg.Any<Address>(), Arg.Any<CancellationToken>())
             .Returns((DirectoryEntry?)null);
@@ -252,11 +254,11 @@ public class UnitPolicyEndpointsTests : IClassFixture<CustomWebApplicationFactor
         // behaviour under test) rather than the gate's 403.
         _factory.PermissionService
             .ResolveEffectivePermissionAsync(
-                AuthConstants.DefaultLocalUserId, "ghost", Arg.Any<CancellationToken>())
+                AuthConstants.DefaultLocalUserId, ghostId.ToString("N"), Arg.Any<CancellationToken>())
             .Returns(PermissionLevel.Owner);
 
         var response = await _client.PutAsJsonAsync(
-            $"/api/v1/tenant/units/ghost/policy",
+            $"/api/v1/tenant/units/{ghostId:N}/policy",
             new UnitPolicyResponse(new SkillPolicy(Blocked: new[] { "x" })),
             ct);
 
@@ -272,16 +274,19 @@ public class UnitPolicyEndpointsTests : IClassFixture<CustomWebApplicationFactor
     public async Task PutPolicy_AfterRecreateWithSameName_NewUnitSeesNoPolicy()
     {
         var ct = TestContext.Current.CancellationToken;
-        var unitName = NewUnitName();
+        // After #1492 the URL id is the unit's stable Guid identity. Recreating
+        // a unit produces a fresh Guid, so the simulation here re-resolves the
+        // same URL id to a different ActorId (equivalently, the URL id changes
+        // — both flavours exercise the same policy-key isolation rule).
+        var unitIdV1 = Guid.NewGuid();
 
-        // Simulate first unit instance: actorId = "actor-v1-{unitName}".
-        var actorIdV1 = $"actor-v1-{unitName}";
+        var actorIdV1 = unitIdV1;
         _factory.DirectoryService
             .ResolveAsync(
-                Arg.Is<Address>(a => a.Scheme == "unit" && a.Path == unitName),
+                Arg.Is<Address>(a => a.Scheme == "unit" && a.Id == unitIdV1),
                 Arg.Any<CancellationToken>())
             .Returns(_ => new DirectoryEntry(
-                new Address("unit", unitName),
+                new Address("unit", unitIdV1),
                 actorIdV1,
                 "Engineering",
                 "Engineering unit v1",
@@ -289,47 +294,50 @@ public class UnitPolicyEndpointsTests : IClassFixture<CustomWebApplicationFactor
                 DateTimeOffset.UtcNow));
         _factory.PermissionService
             .ResolveEffectivePermissionAsync(
-                AuthConstants.DefaultLocalUserId, unitName, Arg.Any<CancellationToken>())
+                AuthConstants.DefaultLocalUserId, unitIdV1.ToString("N"), Arg.Any<CancellationToken>())
             .Returns(PermissionLevel.Owner);
 
         // Write a policy on the first unit instance.
         var putResponse = await _client.PutAsJsonAsync(
-            $"/api/v1/tenant/units/{unitName}/policy",
+            $"/api/v1/tenant/units/{unitIdV1:N}/policy",
             new UnitPolicyResponse(new SkillPolicy(Blocked: new[] { "dangerous-op" })),
             ct);
         putResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         // Verify the first instance's policy is readable.
         var firstRead = await _client
-            .GetFromJsonAsync<UnitPolicyResponse>($"/api/v1/tenant/units/{unitName}/policy", ct);
+            .GetFromJsonAsync<UnitPolicyResponse>($"/api/v1/tenant/units/{unitIdV1:N}/policy", ct);
         firstRead!.Skill!.Blocked.ShouldBe(new[] { "dangerous-op" });
 
-        // Simulate delete+recreate: the directory now resolves the same slug
-        // to a NEW ActorId (as happens when a unit is deleted and recreated
-        // with the same name). The old ActorId (actorIdV1) is gone.
-        var actorIdV2 = $"actor-v2-{unitName}";
+        // Simulate delete+recreate: the new unit takes a fresh Guid identity.
+        var unitIdV2 = Guid.NewGuid();
+        var actorIdV2 = unitIdV2;
         _factory.DirectoryService
             .ResolveAsync(
-                Arg.Is<Address>(a => a.Scheme == "unit" && a.Path == unitName),
+                Arg.Is<Address>(a => a.Scheme == "unit" && a.Id == unitIdV2),
                 Arg.Any<CancellationToken>())
             .Returns(_ => new DirectoryEntry(
-                new Address("unit", unitName),
+                new Address("unit", unitIdV2),
                 actorIdV2,
                 "Engineering",
                 "Engineering unit v2",
                 null,
                 DateTimeOffset.UtcNow));
+        _factory.PermissionService
+            .ResolveEffectivePermissionAsync(
+                AuthConstants.DefaultLocalUserId, unitIdV2.ToString("N"), Arg.Any<CancellationToken>())
+            .Returns(PermissionLevel.Owner);
 
         // The new unit instance must see no policy (empty) — the old policy
-        // row is keyed by actorIdV1 and must not be returned for actorIdV2.
+        // row is keyed by the v1 ActorId and must not surface for v2.
         var newInstanceRead = await _client
-            .GetFromJsonAsync<UnitPolicyResponse>($"/api/v1/tenant/units/{unitName}/policy", ct);
+            .GetFromJsonAsync<UnitPolicyResponse>($"/api/v1/tenant/units/{unitIdV2:N}/policy", ct);
         newInstanceRead.ShouldNotBeNull();
         newInstanceRead!.Skill.ShouldBeNull(
-            "New unit instance must not inherit the policy of the deleted unit with the same slug");
+            "New unit instance must not inherit the policy of the deleted unit with the same identity");
     }
 
-    private static string NewUnitName() => $"engineering-{Guid.NewGuid():N}";
+    private static Guid NewUnitId() => Guid.NewGuid();
 
     /// <summary>
     /// JSON options matching the host's wire format: enums serialize as their
@@ -343,15 +351,15 @@ public class UnitPolicyEndpointsTests : IClassFixture<CustomWebApplicationFactor
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     };
 
-    private void ArrangeResolved(string unitName)
+    private void ArrangeResolved(Guid unitId)
     {
         _factory.DirectoryService
             .ResolveAsync(
-                Arg.Is<Address>(a => a.Scheme == "unit" && a.Path == unitName),
+                Arg.Is<Address>(a => a.Scheme == "unit" && a.Id == unitId),
                 Arg.Any<CancellationToken>())
             .Returns(_ => new DirectoryEntry(
-                new Address("unit", unitName),
-                $"actor-{unitName}",
+                new Address("unit", unitId),
+                unitId,
                 "Engineering",
                 "Engineering unit",
                 null,
@@ -362,7 +370,7 @@ public class UnitPolicyEndpointsTests : IClassFixture<CustomWebApplicationFactor
         // arrange Owner on the LocalDev caller so both verbs are allowed.
         _factory.PermissionService
             .ResolveEffectivePermissionAsync(
-                AuthConstants.DefaultLocalUserId, unitName, Arg.Any<CancellationToken>())
+                AuthConstants.DefaultLocalUserId, unitId.ToString("N"), Arg.Any<CancellationToken>())
             .Returns(PermissionLevel.Owner);
     }
 }

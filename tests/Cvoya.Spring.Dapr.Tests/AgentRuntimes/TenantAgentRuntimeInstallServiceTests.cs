@@ -24,8 +24,8 @@ using Xunit;
 /// </summary>
 public class TenantAgentRuntimeInstallServiceTests
 {
-    private const string TenantA = "tenant-a";
-    private const string TenantB = "tenant-b";
+    private static readonly Guid TenantA = new("aaaaaaaa-1111-1111-1111-000000000001");
+    private static readonly Guid TenantB = new("aaaaaaaa-1111-1111-1111-000000000002");
 
     [Fact]
     public async Task InstallAsync_NoConfig_MaterialisesFromRuntimeDefaults()
@@ -171,13 +171,13 @@ public class TenantAgentRuntimeInstallServiceTests
         tenantBList.Select(r => r.RuntimeId).ShouldBe(new[] { "openai" });
     }
 
-    private static (SpringDbContext Context, IAgentRuntimeRegistry Registry) CreateContextAndRegistry(string tenantId)
+    private static (SpringDbContext Context, IAgentRuntimeRegistry Registry) CreateContextAndRegistry(Guid tenantId)
     {
         var context = CreateDbContext(Guid.NewGuid().ToString(), tenantId);
         return (context, CreateRegistry());
     }
 
-    private static SpringDbContext CreateDbContext(string dbName, string tenantId)
+    private static SpringDbContext CreateDbContext(string dbName, Guid tenantId)
     {
         var options = new DbContextOptionsBuilder<SpringDbContext>()
             .UseInMemoryDatabase(databaseName: dbName)
@@ -226,7 +226,7 @@ public class TenantAgentRuntimeInstallServiceTests
     }
 
     private static TenantAgentRuntimeInstallService CreateSut(
-        SpringDbContext context, string tenantId, IAgentRuntimeRegistry registry)
+        SpringDbContext context, Guid tenantId, IAgentRuntimeRegistry registry)
     {
         var tenantContext = new StaticTenantContext(tenantId);
         return new TenantAgentRuntimeInstallService(

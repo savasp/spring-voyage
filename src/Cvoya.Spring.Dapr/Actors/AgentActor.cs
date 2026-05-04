@@ -67,7 +67,7 @@ public class AgentActor(
     /// <summary>
     /// Gets the address of this agent actor.
     /// </summary>
-    public Address Address => new("agent", Id.GetId());
+    public Address Address => Address.For("agent", Id.GetId());
 
     /// <summary>
     /// Runs the actor-activation logic by delegating to
@@ -267,12 +267,13 @@ public class AgentActor(
                     return null;
                 }
 
-                // Resolve the sender unit slug → UUID and this agent's UUID.
-                var unitEntry = await directoryService.ResolveAsync(new Address("unit", unitSlug), ct);
-                if (unitEntry is null || !Guid.TryParse(unitEntry.ActorId, out var unitUuid))
+                // Resolve the sender unit's directory entry to its Guid id.
+                var unitEntry = await directoryService.ResolveAsync(Address.For("unit", unitSlug), ct);
+                if (unitEntry is null)
                 {
                     return null;
                 }
+                var unitUuid = unitEntry.ActorId;
 
                 if (!Guid.TryParse(Id.GetId(), out var agentUuid))
                 {
@@ -447,18 +448,18 @@ public class AgentActor(
                 return global;
             }
 
-            // Resolve slugs → UUIDs: the membership table is now UUID-keyed (#1492).
-            // message.From.Path is the sender unit's slug; Id.GetId() is this agent's actor UUID.
+            // Membership table is UUID-keyed; both sides resolve through the
+            // directory service (the actor activation key string parses to
+            // the agent's stable Guid id, post-#1629).
             var unitEntry = await directoryService.ResolveAsync(message.From, cancellationToken);
             if (unitEntry is null
-                || !Guid.TryParse(unitEntry.ActorId, out var unitUuid)
                 || !Guid.TryParse(Id.GetId(), out var agentUuid))
             {
                 return global;
             }
 
             membership = await membershipRepository.GetAsync(
-                unitId: unitUuid,
+                unitId: unitEntry.ActorId,
                 agentId: agentUuid,
                 cancellationToken);
         }

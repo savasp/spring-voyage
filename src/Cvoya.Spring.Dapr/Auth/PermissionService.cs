@@ -159,7 +159,7 @@ public class PermissionService(
         //   * a cycle is detected (defensive — membership should reject cycles
         //     on insertion, but a state-store anomaly must never loop us).
         var visited = new HashSet<string>(StringComparer.Ordinal) { unitId };
-        var current = new Address("unit", unitId);
+        var current = Address.For("unit", unitId);
         var depth = 0;
 
         while (true)
@@ -349,8 +349,10 @@ public class PermissionService(
         try
         {
             var entry = await directoryService.ResolveAsync(
-                new Address("unit", unitId), cancellationToken);
-            return entry?.ActorId;
+                Address.For("unit", unitId), cancellationToken);
+            return entry is null
+                ? null
+                : Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(entry.ActorId);
         }
         catch (Exception ex)
         {

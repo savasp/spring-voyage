@@ -27,7 +27,7 @@ public class DestroyCloneActivity(
     public override async Task<bool> RunAsync(WorkflowActivityContext context, CloningInput input)
     {
         // Unregister from directory.
-        var address = new Address("agent", input.TargetAgentId);
+        var address = Address.For("agent", input.TargetAgentId);
         await directoryService.UnregisterAsync(address);
 
         // Clean up clone state.

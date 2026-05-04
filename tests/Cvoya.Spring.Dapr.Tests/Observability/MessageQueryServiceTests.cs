@@ -69,8 +69,8 @@ public class MessageQueryServiceTests : IDisposable
         var threadId = "conv-1";
         var message = new Message(
             messageId,
-            new Address("human", "savasp"),
-            new Address("agent", "ada"),
+            Address.For("human", TestSlugIds.HexFor("savasp")),
+            Address.For("agent", TestSlugIds.HexFor("ada")),
             MessageType.Domain,
             threadId,
             JsonSerializer.SerializeToElement("hello, ada"),
@@ -84,8 +84,8 @@ public class MessageQueryServiceTests : IDisposable
         result.ShouldNotBeNull();
         result!.MessageId.ShouldBe(messageId);
         result.ThreadId.ShouldBe(threadId);
-        result.From.ShouldBe("human://savasp");
-        result.To.ShouldBe("agent://ada");
+        result.From.ShouldBe($"human://{TestSlugIds.HexFor("savasp")}");
+        result.To.ShouldBe($"agent://{TestSlugIds.HexFor("ada")}");
         result.MessageType.ShouldBe("Domain");
         result.Body.ShouldBe("hello, ada");
     }
@@ -100,8 +100,8 @@ public class MessageQueryServiceTests : IDisposable
         var payload = JsonSerializer.SerializeToElement(new { kind = "amend", text = "hi" });
         var message = new Message(
             messageId,
-            new Address("agent", "grace"),
-            new Address("agent", "ada"),
+            Address.For("agent", TestSlugIds.HexFor("grace")),
+            Address.For("agent", TestSlugIds.HexFor("ada")),
             MessageType.Domain,
             "conv-2",
             payload,
@@ -124,8 +124,8 @@ public class MessageQueryServiceTests : IDisposable
         var seededId = Guid.NewGuid();
         var message = new Message(
             seededId,
-            new Address("human", "savasp"),
-            new Address("agent", "ada"),
+            Address.For("human", TestSlugIds.HexFor("savasp")),
+            Address.For("agent", TestSlugIds.HexFor("ada")),
             MessageType.Domain,
             "conv-3",
             JsonSerializer.SerializeToElement("hi"),
@@ -144,7 +144,7 @@ public class MessageQueryServiceTests : IDisposable
         _db.ActivityEvents.Add(new ActivityEventRecord
         {
             Id = Guid.NewGuid(),
-            Source = $"{message.To.Scheme}:{message.To.Path}",
+            SourceId = message.To.Id,
             EventType = nameof(ActivityEventType.MessageReceived),
             Severity = "Info",
             Summary = $"Received {message.Type} message {message.Id} from {message.From}",

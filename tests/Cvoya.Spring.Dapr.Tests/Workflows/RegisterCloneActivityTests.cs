@@ -19,10 +19,17 @@ using Shouldly;
 using Xunit;
 
 /// <summary>
-/// Unit tests for <see cref="RegisterCloneActivity"/>.
+/// Unit tests for <see cref="RegisterCloneActivity"/>. Post #1629: clone ids
+/// are Guids — the test passes the no-dash hex form on input and asserts the
+/// emitted <see cref="DirectoryEntry.ActorId"/> matches that Guid.
 /// </summary>
 public class RegisterCloneActivityTests
 {
+    private static readonly Guid ParentGuid = new("aaaaaaaa-1111-1111-1111-000000000001");
+    private static readonly Guid CloneGuid = new("aaaaaaaa-1111-1111-1111-000000000002");
+    private static readonly string ParentIdHex = ParentGuid.ToString("N");
+    private static readonly string CloneIdHex = CloneGuid.ToString("N");
+
     private readonly IDirectoryService _directoryService;
     private readonly RegisterCloneActivity _activity;
     private readonly WorkflowActivityContext _context;
@@ -40,7 +47,7 @@ public class RegisterCloneActivityTests
     public async Task RunAsync_RegistersCloneInDirectory()
     {
         var input = new CloningInput(
-            "parent-agent", "clone-1",
+            ParentIdHex, CloneIdHex,
             CloningPolicy.EphemeralNoMemory, AttachmentMode.Detached);
 
         var result = await _activity.RunAsync(_context, input);
@@ -49,8 +56,8 @@ public class RegisterCloneActivityTests
         await _directoryService.Received(1).RegisterAsync(
             Arg.Is<DirectoryEntry>(e =>
                 e.Address.Scheme == "agent" &&
-                e.Address.Path == "clone-1" &&
-                e.ActorId == "clone-1" &&
+                e.Address.Id == CloneGuid &&
+                e.ActorId == CloneGuid &&
                 e.Description.Contains("detached")),
             Arg.Any<CancellationToken>());
     }
@@ -59,7 +66,7 @@ public class RegisterCloneActivityTests
     public async Task RunAsync_AttachedMode_IncludesAttachedInDescription()
     {
         var input = new CloningInput(
-            "parent-agent", "clone-1",
+            ParentIdHex, CloneIdHex,
             CloningPolicy.EphemeralWithMemory, AttachmentMode.Attached);
 
         await _activity.RunAsync(_context, input);

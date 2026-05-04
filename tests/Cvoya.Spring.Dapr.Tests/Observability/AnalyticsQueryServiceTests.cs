@@ -88,7 +88,7 @@ public class AnalyticsQueryServiceTests : IDisposable
 
         result.Entries.Count.ShouldBe(1);
         var entry = result.Entries[0];
-        entry.Source.ShouldBe("agent:ada");
+        entry.Source.ShouldBe(SourceHex("agent:ada"));
         entry.BusySeconds.ShouldBe(90);            // 0→60 + 90→120
         entry.WaitingForHumanSeconds.ShouldBe(30); // 60→90
         entry.IdleSeconds.ShouldBe(30);            // 120→150 (clamped to windowEnd)
@@ -111,7 +111,7 @@ public class AnalyticsQueryServiceTests : IDisposable
         _db.ActivityEvents.Add(new ActivityEventRecord
         {
             Id = Guid.NewGuid(),
-            Source = "agent:ada",
+            SourceId = SourceGuid("agent:ada"),
             EventType = nameof(ActivityEventType.StateChanged),
             Severity = "Info",
             Summary = "Agent metadata updated: Model",
@@ -194,11 +194,11 @@ public class AnalyticsQueryServiceTests : IDisposable
             TestContext.Current.CancellationToken);
 
         result.Entries.Count.ShouldBe(2);
-        var ada = result.Entries.Single(e => e.Source == "agent:ada");
+        var ada = result.Entries.Single(e => e.Source == SourceHex("agent:ada"));
         ada.BusySeconds.ShouldBe(30);
         ada.IdleSeconds.ShouldBe(90); // 30 → windowEnd(120)
 
-        var grace = result.Entries.Single(e => e.Source == "agent:grace");
+        var grace = result.Entries.Single(e => e.Source == SourceHex("agent:grace"));
         grace.BusySeconds.ShouldBe(90);
         grace.IdleSeconds.ShouldBe(30); // 90 → windowEnd(120)
     }
@@ -223,13 +223,13 @@ public class AnalyticsQueryServiceTests : IDisposable
         var svc = new AnalyticsQueryService(_db);
 
         var result = await svc.GetWaitTimesAsync(
-            sourceFilter: "ada",
+            sourceFilter: SourceHex("agent:ada"),
             from: baseTime.AddSeconds(-1),
             to: windowEnd,
             TestContext.Current.CancellationToken);
 
         result.Entries.Count.ShouldBe(1);
-        result.Entries[0].Source.ShouldBe("agent:ada");
+        result.Entries[0].Source.ShouldBe(SourceHex("agent:ada"));
     }
 
     private async Task SeedLifecycleAsync(
@@ -246,10 +246,13 @@ public class AnalyticsQueryServiceTests : IDisposable
     private static ActivityEventRecord BuildLifecycle(
         string source, DateTimeOffset timestamp, string from, string to)
     {
+        // Per-test-case Guid identity derived deterministically from the
+        // legacy slug-shaped source string so Equals-by-source semantics
+        // continue to hold inside a single test method.
         return new ActivityEventRecord
         {
             Id = Guid.NewGuid(),
-            Source = source,
+            SourceId = SourceGuid(source),
             EventType = nameof(ActivityEventType.StateChanged),
             Severity = "Info",
             Summary = $"State changed from {from} to {to}",
@@ -257,4 +260,14 @@ public class AnalyticsQueryServiceTests : IDisposable
             Details = JsonSerializer.SerializeToElement(new { from, to }),
         };
     }
+
+    private static Guid SourceGuid(string source) => TestSlugIds.For(source);
+
+    /// <summary>
+    /// Returns the canonical hex form of <see cref="SourceGuid"/> — the
+    /// shape <see cref="AnalyticsQueryService.GetWaitTimesAsync"/> emits as
+    /// the source key on every <see cref="WaitTimeEntry"/> after #1629.
+    /// </summary>
+    private static string SourceHex(string source) =>
+        Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(SourceGuid(source));
 }

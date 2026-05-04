@@ -25,8 +25,14 @@ using Xunit;
 /// </summary>
 public class UnitMembershipTenantGuardTests : IDisposable
 {
-    private const string TenantA = "tenant-a";
-    private const string TenantB = "tenant-b";
+    private static readonly Guid TenantA = new("aaaaaaaa-1111-1111-1111-000000000001");
+    private static readonly Guid TenantB = new("aaaaaaaa-1111-1111-1111-000000000002");
+
+    private static readonly Guid EngineeringId = new("bbbbbbbb-2222-2222-2222-000000000001");
+    private static readonly Guid AdaId = new("bbbbbbbb-2222-2222-2222-000000000002");
+    private static readonly Guid MarketingId = new("bbbbbbbb-2222-2222-2222-000000000003");
+    private static readonly Guid HopperId = new("bbbbbbbb-2222-2222-2222-000000000004");
+    private static readonly Guid GhostId = new("bbbbbbbb-2222-2222-2222-000000000005");
 
     private readonly DbContextOptions<SpringDbContext> _options;
     private SpringDbContext? _context;
@@ -43,13 +49,13 @@ public class UnitMembershipTenantGuardTests : IDisposable
         // operating as. The query filter is what gates visibility.
         SeedAsTenant(TenantA, ctx =>
         {
-            ctx.UnitDefinitions.Add(NewUnit("engineering", TenantA));
-            ctx.AgentDefinitions.Add(NewAgent("ada", TenantA));
+            ctx.UnitDefinitions.Add(NewUnit(EngineeringId, "engineering", TenantA));
+            ctx.AgentDefinitions.Add(NewAgent(AdaId, "ada", TenantA));
         });
         SeedAsTenant(TenantB, ctx =>
         {
-            ctx.UnitDefinitions.Add(NewUnit("marketing", TenantB));
-            ctx.AgentDefinitions.Add(NewAgent("hopper", TenantB));
+            ctx.UnitDefinitions.Add(NewUnit(MarketingId, "marketing", TenantB));
+            ctx.AgentDefinitions.Add(NewAgent(HopperId, "hopper", TenantB));
         });
     }
 
@@ -59,8 +65,8 @@ public class UnitMembershipTenantGuardTests : IDisposable
         var guard = CreateGuard(TenantA);
 
         await guard.EnsureSameTenantAsync(
-            new Address("unit", "engineering"),
-            new Address("agent", "ada"),
+            new Address("unit", EngineeringId),
+            new Address("agent", AdaId),
             TestContext.Current.CancellationToken);
     }
 
@@ -71,12 +77,12 @@ public class UnitMembershipTenantGuardTests : IDisposable
 
         var ex = await Should.ThrowAsync<CrossTenantMembershipException>(() =>
             guard.EnsureSameTenantAsync(
-                new Address("unit", "engineering"),
-                new Address("agent", "hopper"),
+                new Address("unit", EngineeringId),
+                new Address("agent", HopperId),
                 TestContext.Current.CancellationToken));
 
-        ex.ParentUnit.Path.ShouldBe("engineering");
-        ex.CandidateMember.Path.ShouldBe("hopper");
+        ex.ParentUnit.Id.ShouldBe(EngineeringId);
+        ex.CandidateMember.Id.ShouldBe(HopperId);
     }
 
     [Fact]
@@ -86,8 +92,8 @@ public class UnitMembershipTenantGuardTests : IDisposable
 
         await Should.ThrowAsync<CrossTenantMembershipException>(() =>
             guard.EnsureSameTenantAsync(
-                new Address("unit", "engineering"),
-                new Address("unit", "marketing"),
+                new Address("unit", EngineeringId),
+                new Address("unit", MarketingId),
                 TestContext.Current.CancellationToken));
     }
 
@@ -98,8 +104,8 @@ public class UnitMembershipTenantGuardTests : IDisposable
 
         await Should.ThrowAsync<CrossTenantMembershipException>(() =>
             guard.EnsureSameTenantAsync(
-                new Address("unit", "engineering"),
-                new Address("agent", "ghost"),
+                new Address("unit", EngineeringId),
+                new Address("agent", GhostId),
                 TestContext.Current.CancellationToken));
     }
 
@@ -109,8 +115,8 @@ public class UnitMembershipTenantGuardTests : IDisposable
         var guard = CreateGuard(TenantA);
 
         var result = await guard.ShareTenantAsync(
-            new Address("unit", "engineering"),
-            new Address("agent", "ada"),
+            new Address("unit", EngineeringId),
+            new Address("agent", AdaId),
             TestContext.Current.CancellationToken);
 
         result.ShouldBeTrue();
@@ -122,8 +128,8 @@ public class UnitMembershipTenantGuardTests : IDisposable
         var guard = CreateGuard(TenantA);
 
         var result = await guard.ShareTenantAsync(
-            new Address("unit", "engineering"),
-            new Address("agent", "hopper"),
+            new Address("unit", EngineeringId),
+            new Address("agent", HopperId),
             TestContext.Current.CancellationToken);
 
         result.ShouldBeFalse();
@@ -137,44 +143,40 @@ public class UnitMembershipTenantGuardTests : IDisposable
         var guard = CreateGuard(TenantA);
 
         var result = await guard.ShareTenantAsync(
-            new Address("agent", "ada"),
-            new Address("agent", "ada"),
+            new Address("agent", AdaId),
+            new Address("agent", AdaId),
             TestContext.Current.CancellationToken);
 
         result.ShouldBeFalse();
     }
 
-    private UnitMembershipTenantGuard CreateGuard(string currentTenant)
+    private UnitMembershipTenantGuard CreateGuard(Guid currentTenant)
     {
         _context?.Dispose();
         _context = new SpringDbContext(_options, new StaticTenantContext(currentTenant));
         return new UnitMembershipTenantGuard(_context);
     }
 
-    private void SeedAsTenant(string tenantId, Action<SpringDbContext> seed)
+    private void SeedAsTenant(Guid tenantId, Action<SpringDbContext> seed)
     {
         using var ctx = new SpringDbContext(_options, new StaticTenantContext(tenantId));
         seed(ctx);
         ctx.SaveChanges();
     }
 
-    private static UnitDefinitionEntity NewUnit(string id, string tenantId) => new()
+    private static UnitDefinitionEntity NewUnit(Guid id, string displayName, Guid tenantId) => new()
     {
-        Id = Guid.NewGuid(),
+        Id = id,
         TenantId = tenantId,
-        UnitId = id,
-        ActorId = id,
-        Name = id,
+        DisplayName = displayName,
         Description = string.Empty,
     };
 
-    private static AgentDefinitionEntity NewAgent(string id, string tenantId) => new()
+    private static AgentDefinitionEntity NewAgent(Guid id, string displayName, Guid tenantId) => new()
     {
-        Id = Guid.NewGuid(),
+        Id = id,
         TenantId = tenantId,
-        AgentId = id,
-        ActorId = id,
-        Name = id,
+        DisplayName = displayName,
     };
 
     public void Dispose()

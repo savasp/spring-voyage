@@ -28,6 +28,10 @@ using Xunit;
 /// </summary>
 public class UnitContractTests : IClassFixture<CustomWebApplicationFactory>
 {
+    private static readonly Guid ActorListUnit_Id = new("00002711-bbbb-cccc-dddd-000000000000");
+
+    private static readonly Guid Unit_ContractListUnit_Id = new("00000001-feed-1234-5678-000000000000");
+
     private readonly CustomWebApplicationFactory _factory;
     private readonly HttpClient _client;
 
@@ -45,8 +49,8 @@ public class UnitContractTests : IClassFixture<CustomWebApplicationFactory>
         _factory.DirectoryService.ListAllAsync(Arg.Any<CancellationToken>())
             .Returns(new List<DirectoryEntry>
             {
-                new(new Address("unit", "contract-list-unit"),
-                    "actor-list-unit",
+                new(new Address("unit", Unit_ContractListUnit_Id),
+                    ActorListUnit_Id,
                     "Contract List Unit",
                     "A unit for contract tests",
                     null,
@@ -139,14 +143,15 @@ public class UnitContractTests : IClassFixture<CustomWebApplicationFactory>
     {
         var ct = TestContext.Current.CancellationToken;
         ResetDirectory();
+        var ghostId = Guid.NewGuid();
         _factory.DirectoryService
             .ResolveAsync(
-                Arg.Is<Address>(a => a.Scheme == "unit" && a.Path == "contract-ghost-readiness"),
+                Arg.Is<Address>(a => a.Scheme == "unit" && a.Id == ghostId),
                 Arg.Any<CancellationToken>())
             .Returns((DirectoryEntry?)null);
 
         var response = await _client.GetAsync(
-            "/api/v1/tenant/units/contract-ghost-readiness/readiness", ct);
+            $"/api/v1/tenant/units/{ghostId:N}/readiness", ct);
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
 
         var body = await response.Content.ReadAsStringAsync(ct);

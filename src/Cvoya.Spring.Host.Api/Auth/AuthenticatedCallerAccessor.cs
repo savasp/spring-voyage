@@ -69,6 +69,6 @@ public sealed class AuthenticatedCallerAccessor(
         // Unauthenticated / fallback: navigation form so existing
         // platform-internal call sites (background work, tests that
         // pre-date the resolver) keep working.
-        return new Address("human", FallbackHumanUsername);
+        return Address.For("human", FallbackHumanUsername);
     }
 }

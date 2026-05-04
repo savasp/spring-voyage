@@ -31,6 +31,8 @@ using Xunit;
 /// </summary>
 public class MembershipEndpointTests : IClassFixture<CustomWebApplicationFactory>
 {
+    private static readonly Guid ActorEng_Id = new("00002711-bbbb-cccc-dddd-000000000000");
+
     // Stable UUIDs for the well-known test entities.
     // After #1492 all membership rows use UUID keys, and the endpoints
     // require Guid-parseable ActorIds in directory entries.
@@ -66,7 +68,7 @@ public class MembershipEndpointTests : IClassFixture<CustomWebApplicationFactory
             .ResolveAsync(Arg.Any<Address>(), Arg.Any<CancellationToken>())
             .Returns((DirectoryEntry?)null);
 
-        var response = await _client.GetAsync("/api/v1/tenant/agents/ghost/memberships", ct);
+        var response = await _client.GetAsync($"/api/v1/tenant/agents/{Guid.NewGuid():N}/memberships", ct);
 
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
@@ -81,15 +83,15 @@ public class MembershipEndpointTests : IClassFixture<CustomWebApplicationFactory
         await UpsertAsync(UnitEngineeringUuid, AgentAdaUuid);
         await UpsertAsync(UnitMarketingUuid, AgentAdaUuid, model: "gpt-4o");
 
-        var response = await _client.GetAsync("/api/v1/tenant/agents/ada/memberships", ct);
+        var response = await _client.GetAsync($"/api/v1/tenant/agents/{AgentAdaUuid:N}/memberships", ct);
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var list = await response.Content.ReadFromJsonAsync<List<UnitMembershipResponse>>(JsonOptions, ct);
         list.ShouldNotBeNull();
         list!.Count.ShouldBe(2);
         // UnitId is now the identity-form URI (#1492).
-        list.ShouldContain(m => m.UnitId == $"unit:id:{UnitEngineeringUuid}");
-        list.ShouldContain(m => m.UnitId == $"unit:id:{UnitMarketingUuid}" && m.Model == "gpt-4o");
+        list.ShouldContain(m => m.UnitId == $"unit:{UnitEngineeringUuid:N}");
+        list.ShouldContain(m => m.UnitId == $"unit:{UnitMarketingUuid:N}" && m.Model == "gpt-4o");
     }
 
     [Fact]
@@ -101,7 +103,7 @@ public class MembershipEndpointTests : IClassFixture<CustomWebApplicationFactory
             .ResolveAsync(Arg.Any<Address>(), Arg.Any<CancellationToken>())
             .Returns((DirectoryEntry?)null);
 
-        var response = await _client.GetAsync("/api/v1/tenant/units/ghost/memberships", ct);
+        var response = await _client.GetAsync($"/api/v1/tenant/units/{Guid.NewGuid():N}/memberships", ct);
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 
@@ -117,7 +119,7 @@ public class MembershipEndpointTests : IClassFixture<CustomWebApplicationFactory
         await UpsertAsync(UnitEngineeringUuid, AgentAdaUuid, specialty: "reviewer");
         await UpsertAsync(UnitEngineeringUuid, AgentHopperUuid, enabled: false);
 
-        var response = await _client.GetAsync("/api/v1/tenant/units/engineering/memberships", ct);
+        var response = await _client.GetAsync($"/api/v1/tenant/units/{UnitEngineeringUuid:N}/memberships", ct);
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var list = await response.Content.ReadFromJsonAsync<List<UnitMembershipResponse>>(JsonOptions, ct);
@@ -143,14 +145,14 @@ public class MembershipEndpointTests : IClassFixture<CustomWebApplicationFactory
         await UpsertAsync(UnitEngineeringUuid, AgentAdaUuid);
         await UpsertAsync(UnitEngineeringUuid, AgentHopperUuid);
 
-        var response = await _client.GetAsync("/api/v1/tenant/units/engineering/memberships", ct);
+        var response = await _client.GetAsync($"/api/v1/tenant/units/{UnitEngineeringUuid:N}/memberships", ct);
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var list = await response.Content.ReadFromJsonAsync<List<UnitMembershipResponse>>(JsonOptions, ct);
         list.ShouldNotBeNull();
         // Member must be the identity form, not the navigation form.
-        list!.ShouldContain(m => m.AgentAddress == "ada" && m.Member == $"agent:id:{AgentAdaUuid}");
-        list.ShouldContain(m => m.AgentAddress == "hopper" && m.Member == $"agent:id:{AgentHopperUuid}");
+        list!.ShouldContain(m => m.AgentAddress == "ada" && m.Member == $"agent:{AgentAdaUuid:N}");
+        list.ShouldContain(m => m.AgentAddress == "hopper" && m.Member == $"agent:{AgentHopperUuid:N}");
     }
 
     // #1060 / #1490: the same projection applies to the /agents/{id}/memberships
@@ -165,12 +167,12 @@ public class MembershipEndpointTests : IClassFixture<CustomWebApplicationFactory
         await UpsertAsync(UnitEngineeringUuid, AgentAdaUuid);
         await UpsertAsync(UnitMarketingUuid, AgentAdaUuid);
 
-        var response = await _client.GetAsync("/api/v1/tenant/agents/ada/memberships", ct);
+        var response = await _client.GetAsync($"/api/v1/tenant/agents/{AgentAdaUuid:N}/memberships", ct);
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var list = await response.Content.ReadFromJsonAsync<List<UnitMembershipResponse>>(JsonOptions, ct);
         list.ShouldNotBeNull();
-        list!.ShouldAllBe(m => m.Member == $"agent:id:{AgentAdaUuid}");
+        list!.ShouldAllBe(m => m.Member == $"agent:{AgentAdaUuid:N}");
     }
 
     // #1490: Regression guard — after #1492, endpoints that encounter a
@@ -181,9 +183,9 @@ public class MembershipEndpointTests : IClassFixture<CustomWebApplicationFactory
     {
         var ct = TestContext.Current.CancellationToken;
         ClearMemberships();
-        ArrangeDirectoryHit("unit", "engineering", "actor-eng"); // non-UUID actor id
+        ArrangeDirectoryHit("unit", "engineering", ActorEng_Id); // non-UUID actor id
 
-        var response = await _client.GetAsync("/api/v1/tenant/units/engineering/memberships", ct);
+        var response = await _client.GetAsync($"/api/v1/tenant/units/{UnitEngineeringUuid:N}/memberships", ct);
 
         // #1492: the endpoint requires a UUID-parseable ActorId to key
         // membership lookups — non-UUID ids are rejected with 404.
@@ -205,7 +207,7 @@ public class MembershipEndpointTests : IClassFixture<CustomWebApplicationFactory
             ExecutionMode: AgentExecutionMode.OnDemand);
 
         var response = await _client.PutAsJsonAsync(
-            "/api/v1/tenant/units/engineering/memberships/ada", body, JsonOptions, ct);
+            $"/api/v1/tenant/units/{UnitEngineeringUuid:N}/memberships/{AgentAdaUuid:N}", body, JsonOptions, ct);
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
         var persisted = await GetAsync(UnitEngineeringUuid, AgentAdaUuid);
@@ -226,7 +228,7 @@ public class MembershipEndpointTests : IClassFixture<CustomWebApplicationFactory
             .Returns((DirectoryEntry?)null);
 
         var response = await _client.PutAsJsonAsync(
-            "/api/v1/tenant/units/ghost/memberships/ada", new UpsertMembershipRequest(), JsonOptions, ct);
+            $"/api/v1/tenant/units/{Guid.NewGuid():N}/memberships/{AgentAdaUuid:N}", new UpsertMembershipRequest(), JsonOptions, ct);
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 
@@ -246,7 +248,7 @@ public class MembershipEndpointTests : IClassFixture<CustomWebApplicationFactory
         await UpsertAsync(UnitMarketingUuid, AgentAdaUuid);
 
         var response = await _client.DeleteAsync(
-            "/api/v1/tenant/units/engineering/memberships/ada", ct);
+            $"/api/v1/tenant/units/{UnitEngineeringUuid:N}/memberships/{AgentAdaUuid:N}", ct);
         response.StatusCode.ShouldBe(HttpStatusCode.NoContent);
         (await GetAsync(UnitEngineeringUuid, AgentAdaUuid)).ShouldBeNull();
         (await GetAsync(UnitMarketingUuid, AgentAdaUuid)).ShouldNotBeNull();
@@ -259,7 +261,7 @@ public class MembershipEndpointTests : IClassFixture<CustomWebApplicationFactory
         ClearMemberships();
 
         var response = await _client.DeleteAsync(
-            "/api/v1/tenant/units/engineering/memberships/ghost", ct);
+            $"/api/v1/tenant/units/{UnitEngineeringUuid:N}/memberships/{Guid.NewGuid():N}", ct);
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 
@@ -277,7 +279,7 @@ public class MembershipEndpointTests : IClassFixture<CustomWebApplicationFactory
         await UpsertAsync(UnitEngineeringUuid, AgentAdaUuid);
 
         var response = await _client.DeleteAsync(
-            "/api/v1/tenant/units/engineering/memberships/ada", ct);
+            $"/api/v1/tenant/units/{UnitEngineeringUuid:N}/memberships/{AgentAdaUuid:N}", ct);
         response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
 
         // The membership must still exist — the rejection was not a soft fail.
@@ -307,7 +309,7 @@ public class MembershipEndpointTests : IClassFixture<CustomWebApplicationFactory
         await Task.Delay(20, ct);
         await UpsertAsync(UnitMarketingUuid, AgentAdaUuid);
 
-        var response = await _client.GetAsync("/api/v1/tenant/agents/ada", ct);
+        var response = await _client.GetAsync($"/api/v1/tenant/agents/{AgentAdaUuid:N}", ct);
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var detail = await response.Content.ReadFromJsonAsync<AgentDetailResponse>(JsonOptions, ct);
@@ -339,7 +341,7 @@ public class MembershipEndpointTests : IClassFixture<CustomWebApplicationFactory
 
         await UpsertAsync(UnitEngineeringUuid, AgentAdaUuid);
 
-        var response = await _client.GetAsync("/api/v1/tenant/agents/ada", ct);
+        var response = await _client.GetAsync($"/api/v1/tenant/agents/{AgentAdaUuid:N}", ct);
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var raw = await response.Content.ReadAsStringAsync(ct);
@@ -364,14 +366,14 @@ public class MembershipEndpointTests : IClassFixture<CustomWebApplicationFactory
         await Task.Delay(10, ct);
         await UpsertAsync(UnitMarketingUuid, AgentAdaUuid);
 
-        var response = await _client.GetAsync("/api/v1/tenant/agents/ada/memberships", ct);
+        var response = await _client.GetAsync($"/api/v1/tenant/agents/{AgentAdaUuid:N}/memberships", ct);
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var list = await response.Content.ReadFromJsonAsync<List<UnitMembershipResponse>>(JsonOptions, ct);
         list.ShouldNotBeNull();
         // UnitId is now the identity-form URI (#1492).
-        list!.Single(m => m.UnitId == $"unit:id:{UnitEngineeringUuid}").IsPrimary.ShouldBeTrue();
-        list.Single(m => m.UnitId == $"unit:id:{UnitMarketingUuid}").IsPrimary.ShouldBeFalse();
+        list!.Single(m => m.UnitId == $"unit:{UnitEngineeringUuid:N}").IsPrimary.ShouldBeTrue();
+        list.Single(m => m.UnitId == $"unit:{UnitMarketingUuid:N}").IsPrimary.ShouldBeFalse();
     }
 
     private void ClearMemberships()
@@ -398,25 +400,22 @@ public class MembershipEndpointTests : IClassFixture<CustomWebApplicationFactory
     /// <c>ListAllAsync</c> returns a consistent set for slug-resolution in
     /// <c>ToResponse</c>.
     /// </summary>
-    private void ArrangeDirectoryHit(string scheme, string path, Guid actorUuid)
-        => ArrangeDirectoryHit(scheme, path, actorUuid.ToString());
-
-    private void ArrangeDirectoryHit(string scheme, string path, string actorId)
+    private void ArrangeDirectoryHit(string scheme, string displayName, Guid actorUuid)
     {
         var entry = new DirectoryEntry(
-            new Address(scheme, path),
-            actorId,
-            path,
-            $"{scheme} {path}",
+            new Address(scheme, actorUuid),
+            actorUuid,
+            displayName,
+            $"{scheme} {displayName}",
             null,
             DateTimeOffset.UtcNow);
         _factory.DirectoryService
-            .ResolveAsync(Arg.Is<Address>(a => a.Scheme == scheme && a.Path == path),
+            .ResolveAsync(Arg.Is<Address>(a => a.Scheme == scheme && a.Id == actorUuid),
                 Arg.Any<CancellationToken>())
             .Returns(entry);
 
         // Keep the list in sync so ListAllAsync returns all arranged entries.
-        _arrangedEntries.RemoveAll(e => e.Address.Scheme == scheme && e.Address.Path == path);
+        _arrangedEntries.RemoveAll(e => e.Address.Scheme == scheme && e.Address.Id == actorUuid);
         _arrangedEntries.Add(entry);
     }
 

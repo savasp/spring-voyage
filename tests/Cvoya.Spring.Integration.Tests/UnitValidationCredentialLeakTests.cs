@@ -63,7 +63,9 @@ using Xunit;
 public sealed class UnitValidationCredentialLeakTests : IDisposable
 {
     private readonly string _canary = $"SPRING_PROBE_CANARY_{Guid.NewGuid():N}";
-    private readonly string _unitActorId = $"canary-unit-{Guid.NewGuid():N}";
+    // Post #1629: actor ids must be Guid-shaped (no human-readable prefix).
+    // Each test gets a fresh Guid so persistence-layer rows never collide.
+    private readonly string _unitActorId = Guid.NewGuid().ToString("N");
     private readonly List<ActivityEvent> _emittedEvents = new();
     private readonly ServiceProvider _services;
     private readonly CannedForbiddenContainerRuntime _containerRuntime;
@@ -112,11 +114,11 @@ public sealed class UnitValidationCredentialLeakTests : IDisposable
         var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
         db.UnitDefinitions.Add(new UnitDefinitionEntity
         {
-            Id = Guid.NewGuid(),
-            TenantId = "default",
-            UnitId = _unitActorId,
-            ActorId = _unitActorId,
-            Name = _unitActorId,
+            // Post #1629: the entity's Id must equal the actor's identity
+            // Guid (DbUnitValidationTracker looks up by Id, not DisplayName).
+            Id = Guid.Parse(_unitActorId),
+            TenantId = Cvoya.Spring.Core.Tenancy.OssTenantIds.Default,
+            DisplayName = _unitActorId,
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow,
             LastValidationRunId = "canary-run-id",
@@ -141,7 +143,7 @@ public sealed class UnitValidationCredentialLeakTests : IDisposable
         await emitProgress.RunAsync(
             context: null!,
             new EmitValidationProgressActivityInput(
-                UnitName: unitName,
+                UnitId: Guid.Parse(unitName),
                 Step: UnitValidationStep.ValidatingCredential,
                 Status: "Running",
                 Code: null));
@@ -162,7 +164,7 @@ public sealed class UnitValidationCredentialLeakTests : IDisposable
         await emitProgress.RunAsync(
             context: null!,
             new EmitValidationProgressActivityInput(
-                UnitName: unitName,
+                UnitId: Guid.Parse(unitName),
                 Step: UnitValidationStep.ValidatingCredential,
                 Status: "Failed",
                 Code: probeOutput.Failure?.Code));
@@ -187,7 +189,7 @@ public sealed class UnitValidationCredentialLeakTests : IDisposable
             var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
             var row = await db.UnitDefinitions
                 .AsNoTracking()
-                .FirstAsync(u => u.ActorId == _unitActorId, ct);
+                .FirstAsync(u => u.DisplayName == _unitActorId, ct);
 
             row.LastValidationErrorJson.ShouldNotBeNull();
             row.LastValidationErrorJson!.ShouldNotContain(_canary);

@@ -36,6 +36,8 @@ using Xunit;
 /// </summary>
 public class ThreadEndpointsTests : IClassFixture<ThreadEndpointsTests.Factory>
 {
+    private static readonly Guid Agent_Ada_Id = new("00000001-feed-1234-5678-000000000000");
+
     private readonly Factory _factory;
     private readonly HttpClient _client;
 
@@ -115,18 +117,17 @@ public class ThreadEndpointsTests : IClassFixture<ThreadEndpointsTests.Factory>
         // bubble, and explorer header.
         var ct = TestContext.Current.CancellationToken;
         var now = DateTimeOffset.UtcNow;
-        var agentActorId = Guid.NewGuid().ToString("D");
+        var agentGuid = Guid.NewGuid();
+        var agentActorId = agentGuid.ToString("D");
 
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
             db.AgentDefinitions.Add(new AgentDefinitionEntity
             {
-                Id = Guid.NewGuid(),
-                AgentId = "ada",
-                ActorId = agentActorId,
-                Name = "Ada Lovelace",
-                TenantId = "default",
+                Id = agentGuid,
+                DisplayName = "Ada Lovelace",
+                TenantId = Cvoya.Spring.Core.Tenancy.OssTenantIds.Default,
                 CreatedAt = now,
                 UpdatedAt = now,
             });
@@ -157,18 +158,17 @@ public class ThreadEndpointsTests : IClassFixture<ThreadEndpointsTests.Factory>
         // Same path as the agent test above for unit:id:<uuid> participants.
         var ct = TestContext.Current.CancellationToken;
         var now = DateTimeOffset.UtcNow;
-        var unitActorId = Guid.NewGuid().ToString("D");
+        var unitGuid = Guid.NewGuid();
+        var unitActorId = unitGuid.ToString("D");
 
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
             db.UnitDefinitions.Add(new UnitDefinitionEntity
             {
-                Id = Guid.NewGuid(),
-                UnitId = "engineering",
-                ActorId = unitActorId,
-                Name = "Engineering",
-                TenantId = "default",
+                Id = unitGuid,
+                DisplayName = "Engineering",
+                TenantId = Cvoya.Spring.Core.Tenancy.OssTenantIds.Default,
                 CreatedAt = now,
                 UpdatedAt = now,
             });
@@ -233,8 +233,9 @@ public class ThreadEndpointsTests : IClassFixture<ThreadEndpointsTests.Factory>
             .RouteAsync(Arg.Any<Message>(), Arg.Any<CancellationToken>())
             .Returns(Result<Message?, RoutingError>.Success(null));
 
+        var adaHex = Agent_Ada_Id.ToString("N");
         var body = new ThreadMessageRequest(
-            new AddressDto("agent", "ada"),
+            new AddressDto("agent", adaHex),
             "Looks good — ship it.");
 
         var response = await _client.PostAsJsonAsync("/api/v1/tenant/threads/c-1/messages", body, ct);
@@ -250,7 +251,7 @@ public class ThreadEndpointsTests : IClassFixture<ThreadEndpointsTests.Factory>
                 m.ThreadId == "c-1" &&
                 m.Type == MessageType.Domain &&
                 m.To.Scheme == "agent" &&
-                m.To.Path == "ada"),
+                m.To.Id == Agent_Ada_Id),
             Arg.Any<CancellationToken>());
     }
 
@@ -264,9 +265,9 @@ public class ThreadEndpointsTests : IClassFixture<ThreadEndpointsTests.Factory>
         _factory.MessageRouter
             .RouteAsync(Arg.Any<Message>(), Arg.Any<CancellationToken>())
             .Returns(Result<Message?, RoutingError>.Failure(
-                RoutingError.PermissionDenied(new Address("agent", "ada"))));
+                RoutingError.PermissionDenied(new Address("agent", Agent_Ada_Id))));
 
-        var body = new ThreadMessageRequest(new AddressDto("agent", "ada"), "hi");
+        var body = new ThreadMessageRequest(new AddressDto("agent", Agent_Ada_Id.ToString("N")), "hi");
 
         var response = await _client.PostAsJsonAsync("/api/v1/tenant/threads/c-1/messages", body, ct);
 
@@ -285,11 +286,11 @@ public class ThreadEndpointsTests : IClassFixture<ThreadEndpointsTests.Factory>
             .RouteAsync(Arg.Any<Message>(), Arg.Any<CancellationToken>())
             .Returns(Result<Message?, RoutingError>.Failure(
                 RoutingError.CallerValidation(
-                    new Address("agent", "ada"),
+                    new Address("agent", Agent_Ada_Id),
                     CallerValidationCodes.UnknownMessageType,
                     "Unknown message type: Amendment")));
 
-        var body = new ThreadMessageRequest(new AddressDto("agent", "ada"), "hi");
+        var body = new ThreadMessageRequest(new AddressDto("agent", Agent_Ada_Id.ToString("N")), "hi");
 
         var response = await _client.PostAsJsonAsync("/api/v1/tenant/threads/c-1/messages", body, ct);
 
@@ -309,9 +310,9 @@ public class ThreadEndpointsTests : IClassFixture<ThreadEndpointsTests.Factory>
         _factory.MessageRouter
             .RouteAsync(Arg.Any<Message>(), Arg.Any<CancellationToken>())
             .Returns(Result<Message?, RoutingError>.Failure(
-                RoutingError.DeliveryFailed(new Address("agent", "ada"), "Actor unavailable")));
+                RoutingError.DeliveryFailed(new Address("agent", Agent_Ada_Id), "Actor unavailable")));
 
-        var body = new ThreadMessageRequest(new AddressDto("agent", "ada"), "hi");
+        var body = new ThreadMessageRequest(new AddressDto("agent", Agent_Ada_Id.ToString("N")), "hi");
 
         var response = await _client.PostAsJsonAsync("/api/v1/tenant/threads/c-1/messages", body, ct);
 
@@ -329,9 +330,10 @@ public class ThreadEndpointsTests : IClassFixture<ThreadEndpointsTests.Factory>
         var ct = TestContext.Current.CancellationToken;
         var now = DateTimeOffset.UtcNow;
 
+        var adaParticipant = $"agent://{Agent_Ada_Id:N}";
         var beforeSummary = new ThreadSummary(
-            "c-close", new[] { "agent://ada", "human://savasp" },
-            "active", now, now, 1, "agent://ada", "Started");
+            "c-close", new[] { adaParticipant, "human://savasp" },
+            "active", now, now, 1, adaParticipant, "Started");
         var beforeDetail = new ThreadDetail(beforeSummary, new List<ThreadEvent>());
 
         var afterSummary = beforeSummary with { Status = "closed" };
@@ -339,7 +341,7 @@ public class ThreadEndpointsTests : IClassFixture<ThreadEndpointsTests.Factory>
             afterSummary,
             new List<ThreadEvent>
             {
-                new(Guid.NewGuid(), now, "agent://ada", "ThreadClosed", "Info", "Thread closed (operator request)"),
+                new(Guid.NewGuid(), now, adaParticipant, "ThreadClosed", "Info", "Thread closed (operator request)"),
             });
 
         // First GetAsync returns the live conversation; second (post-close) returns
@@ -349,22 +351,23 @@ public class ThreadEndpointsTests : IClassFixture<ThreadEndpointsTests.Factory>
             .Returns(beforeDetail, afterDetail);
 
         var entry = new DirectoryEntry(
-            new Address("agent", "ada"),
-            ActorId: "ada",
+            new Address("agent", Agent_Ada_Id),
+            ActorId: Agent_Ada_Id,
             DisplayName: "Ada",
             Description: "Test agent",
             Role: null,
             RegisteredAt: now);
         _factory.DirectoryService.ClearSubstitute();
         _factory.DirectoryService.ResolveAsync(
-                Arg.Is<Address>(a => a.Scheme == "agent" && a.Path == "ada"),
+                Arg.Is<Address>(a => a.Scheme == "agent" && a.Id == Agent_Ada_Id),
                 Arg.Any<CancellationToken>())
             .Returns(entry);
 
+        var adaActorIdStr = Agent_Ada_Id.ToString("N");
         var agentProxy = Substitute.For<IAgentActor>();
         _factory.ActorProxyFactory.ClearSubstitute();
         _factory.ActorProxyFactory
-            .CreateActorProxy<IAgentActor>(Arg.Is<ActorId>(id => id.GetId() == "ada"), nameof(AgentActor))
+            .CreateActorProxy<IAgentActor>(Arg.Is<ActorId>(id => id.GetId() == adaActorIdStr), nameof(AgentActor))
             .Returns(agentProxy);
 
         var body = new CloseThreadRequest("operator request");

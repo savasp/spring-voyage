@@ -45,7 +45,7 @@ public class BoundaryEndpointsTests : IClassFixture<BoundaryEndpointsTests.Bound
             .ResolveAsync(Arg.Any<Address>(), Arg.Any<CancellationToken>())
             .Returns((DirectoryEntry?)null);
 
-        var response = await _client.GetAsync("/api/v1/tenant/units/ghost/boundary", ct);
+        var response = await _client.GetAsync($"/api/v1/tenant/units/{Guid.NewGuid():N}/boundary", ct);
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 
@@ -139,21 +139,22 @@ public class BoundaryEndpointsTests : IClassFixture<BoundaryEndpointsTests.Bound
             .ResolveAsync(Arg.Any<Address>(), Arg.Any<CancellationToken>())
             .Returns((DirectoryEntry?)null);
 
-        var response = await _client.DeleteAsync("/api/v1/tenant/units/ghost/boundary", ct);
+        var response = await _client.DeleteAsync($"/api/v1/tenant/units/{Guid.NewGuid():N}/boundary", ct);
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 
-    private static string NewUnitName() => $"eng-{Guid.NewGuid():N}";
+    private static string NewUnitName() => Guid.NewGuid().ToString("N");
 
     private void ArrangeResolved(string unitName)
     {
+        var unitGuid = Guid.Parse(unitName);
         _factory.DirectoryService
             .ResolveAsync(
-                Arg.Is<Address>(a => a.Scheme == "unit" && a.Path == unitName),
+                Arg.Is<Address>(a => a.Scheme == "unit" && a.Id == unitGuid),
                 Arg.Any<CancellationToken>())
             .Returns(_ => new DirectoryEntry(
-                new Address("unit", unitName),
-                $"actor-{unitName}",
+                new Address("unit", unitGuid),
+                unitGuid,
                 "Engineering",
                 "Engineering unit",
                 null,

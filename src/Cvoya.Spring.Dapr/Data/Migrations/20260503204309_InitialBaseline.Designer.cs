@@ -13,8 +13,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Cvoya.Spring.Dapr.Data.Migrations
 {
     [DbContext(typeof(SpringDbContext))]
-    [Migration("20260420081452_AddTenantInstallTables")]
-    partial class AddTenantInstallTables
+    [Migration("20260503204309_InitialBaseline")]
+    partial class InitialBaseline
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -22,7 +22,7 @@ namespace Cvoya.Spring.Dapr.Data.Migrations
 #pragma warning disable 612, 618
             modelBuilder
                 .HasDefaultSchema("spring")
-                .HasAnnotation("ProductVersion", "10.0.6")
+                .HasAnnotation("ProductVersion", "10.0.7")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -34,10 +34,8 @@ namespace Cvoya.Spring.Dapr.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<string>("AgentId")
-                        .IsRequired()
-                        .HasMaxLength(128)
-                        .HasColumnType("character varying(128)")
+                    b.Property<Guid>("AgentId")
+                        .HasColumnType("uuid")
                         .HasColumnName("agent_id");
 
                     b.Property<string>("CorrelationId")
@@ -76,19 +74,16 @@ namespace Cvoya.Spring.Dapr.Data.Migrations
                         .HasDefaultValue("Work")
                         .HasColumnName("source");
 
-                    b.Property<string>("TenantId")
-                        .IsRequired()
-                        .HasMaxLength(128)
-                        .HasColumnType("character varying(128)")
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset>("Timestamp")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("timestamp");
 
-                    b.Property<string>("UnitId")
-                        .HasMaxLength(128)
-                        .HasColumnType("character varying(128)")
+                    b.Property<Guid?>("UnitId")
+                        .HasColumnType("uuid")
                         .HasColumnName("unit_id");
 
                     b.HasKey("Id");
@@ -137,11 +132,9 @@ namespace Cvoya.Spring.Dapr.Data.Migrations
                         .HasColumnType("character varying(32)")
                         .HasColumnName("severity");
 
-                    b.Property<string>("Source")
-                        .IsRequired()
-                        .HasMaxLength(256)
-                        .HasColumnType("character varying(256)")
-                        .HasColumnName("source");
+                    b.Property<Guid>("SourceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("source_id");
 
                     b.Property<string>("Summary")
                         .IsRequired()
@@ -149,10 +142,8 @@ namespace Cvoya.Spring.Dapr.Data.Migrations
                         .HasColumnType("character varying(1024)")
                         .HasColumnName("summary");
 
-                    b.Property<string>("TenantId")
-                        .IsRequired()
-                        .HasMaxLength(128)
-                        .HasColumnType("character varying(128)")
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset>("Timestamp")
@@ -177,24 +168,12 @@ namespace Cvoya.Spring.Dapr.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<string>("ActorId")
-                        .HasMaxLength(256)
-                        .HasColumnType("character varying(256)")
-                        .HasColumnName("actor_id");
-
-                    b.Property<string>("AgentId")
-                        .IsRequired()
-                        .HasMaxLength(128)
-                        .HasColumnType("character varying(128)")
-                        .HasColumnName("agent_id");
-
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
-                    b.Property<string>("CreatedBy")
-                        .HasMaxLength(256)
-                        .HasColumnType("character varying(256)")
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
                         .HasColumnName("created_by");
 
                     b.Property<JsonElement?>("Definition")
@@ -210,21 +189,19 @@ namespace Cvoya.Spring.Dapr.Data.Migrations
                         .HasColumnType("character varying(1024)")
                         .HasColumnName("description");
 
-                    b.Property<string>("Name")
+                    b.Property<string>("DisplayName")
                         .IsRequired()
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)")
-                        .HasColumnName("name");
+                        .HasColumnName("display_name");
 
                     b.Property<string>("Role")
                         .HasMaxLength(512)
                         .HasColumnType("character varying(512)")
                         .HasColumnName("role");
 
-                    b.Property<string>("TenantId")
-                        .IsRequired()
-                        .HasMaxLength(128)
-                        .HasColumnType("character varying(128)")
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
@@ -234,10 +211,6 @@ namespace Cvoya.Spring.Dapr.Data.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("TenantId");
-
-                    b.HasIndex("TenantId", "AgentId")
-                        .IsUnique()
-                        .HasFilter("deleted_at IS NULL");
 
                     b.ToTable("agent_definitions", "spring");
                 });
@@ -272,10 +245,8 @@ namespace Cvoya.Spring.Dapr.Data.Migrations
                         .HasColumnType("character varying(1024)")
                         .HasColumnName("scopes");
 
-                    b.Property<string>("TenantId")
-                        .IsRequired()
-                        .HasMaxLength(128)
-                        .HasColumnType("character varying(128)")
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
                         .HasColumnName("tenant_id");
 
                     b.Property<string>("TokenHash")
@@ -284,9 +255,8 @@ namespace Cvoya.Spring.Dapr.Data.Migrations
                         .HasColumnType("character varying(512)")
                         .HasColumnName("token_hash");
 
-                    b.Property<string>("UserId")
-                        .HasMaxLength(256)
-                        .HasColumnType("character varying(256)")
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uuid")
                         .HasColumnName("user_id");
 
                     b.HasKey("Id");
@@ -310,12 +280,6 @@ namespace Cvoya.Spring.Dapr.Data.Migrations
                         .HasColumnType("jsonb")
                         .HasColumnName("config");
 
-                    b.Property<string>("ConnectorId")
-                        .IsRequired()
-                        .HasMaxLength(128)
-                        .HasColumnType("character varying(128)")
-                        .HasColumnName("connector_id");
-
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -324,10 +288,26 @@ namespace Cvoya.Spring.Dapr.Data.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("deleted_at");
 
-                    b.Property<string>("TenantId")
+                    b.Property<string>("DisplayName")
                         .IsRequired()
-                        .HasMaxLength(128)
-                        .HasColumnType("character varying(128)")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("display_name");
+
+                    b.Property<Guid?>("InstallId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("install_id");
+
+                    b.Property<string>("InstallState")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasDefaultValue("Active")
+                        .HasColumnName("install_state");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
                         .HasColumnName("tenant_id");
 
                     b.Property<string>("Type")
@@ -344,11 +324,153 @@ namespace Cvoya.Spring.Dapr.Data.Migrations
 
                     b.HasIndex("TenantId");
 
-                    b.HasIndex("TenantId", "ConnectorId")
-                        .IsUnique()
-                        .HasFilter("deleted_at IS NULL");
-
                     b.ToTable("connector_definitions", "spring");
+                });
+
+            modelBuilder.Entity("Cvoya.Spring.Dapr.Data.Entities.CredentialHealthEntity", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("SubjectId")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("subject_id");
+
+                    b.Property<string>("SecretName")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("secret_name");
+
+                    b.Property<DateTimeOffset>("LastChecked")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_checked");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)")
+                        .HasColumnName("last_error");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer")
+                        .HasColumnName("status");
+
+                    b.HasKey("TenantId", "Kind", "SubjectId", "SecretName");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("TenantId", "Kind");
+
+                    b.ToTable("credential_health", "spring");
+                });
+
+            modelBuilder.Entity("Cvoya.Spring.Dapr.Data.Entities.HumanEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("display_name");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("email");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("Username")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("username");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("TenantId", "Username")
+                        .IsUnique();
+
+                    b.ToTable("humans", "spring");
+                });
+
+            modelBuilder.Entity("Cvoya.Spring.Dapr.Data.Entities.PackageInstallEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("completed_at");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasColumnType("text")
+                        .HasColumnName("error_message");
+
+                    b.Property<string>("InputsJson")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("inputs_json");
+
+                    b.Property<Guid>("InstallId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("install_id");
+
+                    b.Property<string>("OriginalManifestYaml")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("original_manifest_yaml");
+
+                    b.Property<string>("PackageName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("package_name");
+
+                    b.Property<string>("PackageRoot")
+                        .HasColumnType("text")
+                        .HasColumnName("package_root");
+
+                    b.Property<DateTimeOffset>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("TenantId", "InstallId");
+
+                    b.ToTable("package_installs", "spring");
                 });
 
             modelBuilder.Entity("Cvoya.Spring.Dapr.Data.Entities.SecretRegistryEntry", b =>
@@ -372,10 +494,8 @@ namespace Cvoya.Spring.Dapr.Data.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("origin");
 
-                    b.Property<string>("OwnerId")
-                        .IsRequired()
-                        .HasMaxLength(256)
-                        .HasColumnType("character varying(256)")
+                    b.Property<Guid?>("OwnerId")
+                        .HasColumnType("uuid")
                         .HasColumnName("owner_id");
 
                     b.Property<int>("Scope")
@@ -388,10 +508,8 @@ namespace Cvoya.Spring.Dapr.Data.Migrations
                         .HasColumnType("character varying(512)")
                         .HasColumnName("store_key");
 
-                    b.Property<string>("TenantId")
-                        .IsRequired()
-                        .HasMaxLength(256)
-                        .HasColumnType("character varying(256)")
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
                         .HasColumnName("tenant_id");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
@@ -416,9 +534,8 @@ namespace Cvoya.Spring.Dapr.Data.Migrations
 
             modelBuilder.Entity("Cvoya.Spring.Dapr.Data.Entities.TenantAgentRuntimeInstallEntity", b =>
                 {
-                    b.Property<string>("TenantId")
-                        .HasMaxLength(128)
-                        .HasColumnType("character varying(128)")
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
                         .HasColumnName("tenant_id");
 
                     b.Property<string>("RuntimeId")
@@ -451,9 +568,8 @@ namespace Cvoya.Spring.Dapr.Data.Migrations
 
             modelBuilder.Entity("Cvoya.Spring.Dapr.Data.Entities.TenantConnectorInstallEntity", b =>
                 {
-                    b.Property<string>("TenantId")
-                        .HasMaxLength(128)
-                        .HasColumnType("character varying(128)")
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
                         .HasColumnName("tenant_id");
 
                     b.Property<string>("ConnectorId")
@@ -484,17 +600,84 @@ namespace Cvoya.Spring.Dapr.Data.Migrations
                     b.ToTable("tenant_connector_installs", "spring");
                 });
 
-            modelBuilder.Entity("Cvoya.Spring.Dapr.Data.Entities.UnitDefinitionEntity", b =>
+            modelBuilder.Entity("Cvoya.Spring.Dapr.Data.Entities.TenantRecordEntity", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<string>("ActorId")
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)")
-                        .HasColumnName("actor_id");
+                        .HasColumnName("display_name");
+
+                    b.Property<int>("State")
+                        .HasColumnType("integer")
+                        .HasColumnName("state");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("tenants", "spring");
+                });
+
+            modelBuilder.Entity("Cvoya.Spring.Dapr.Data.Entities.TenantSkillBundleBindingEntity", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("BundleId")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("bundle_id");
+
+                    b.Property<DateTimeOffset>("BoundAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("bound_at");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("enabled");
+
+                    b.Property<Guid?>("InstallId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("install_id");
+
+                    b.Property<string>("InstallState")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasDefaultValue("Active")
+                        .HasColumnName("install_state");
+
+                    b.HasKey("TenantId", "BundleId");
+
+                    b.HasIndex("TenantId");
+
+                    b.ToTable("tenant_skill_bundle_bindings", "spring");
+                });
+
+            modelBuilder.Entity("Cvoya.Spring.Dapr.Data.Entities.UnitDefinitionEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -513,27 +696,35 @@ namespace Cvoya.Spring.Dapr.Data.Migrations
                         .HasColumnType("character varying(1024)")
                         .HasColumnName("description");
 
-                    b.Property<JsonElement?>("Members")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("members");
-
-                    b.Property<string>("Name")
+                    b.Property<string>("DisplayName")
                         .IsRequired()
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)")
-                        .HasColumnName("name");
+                        .HasColumnName("display_name");
 
-                    b.Property<string>("TenantId")
+                    b.Property<Guid?>("InstallId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("install_id");
+
+                    b.Property<string>("InstallState")
                         .IsRequired()
-                        .HasMaxLength(128)
-                        .HasColumnType("character varying(128)")
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasDefaultValue("Active")
+                        .HasColumnName("install_state");
+
+                    b.Property<string>("LastValidationErrorJson")
+                        .HasColumnType("text")
+                        .HasColumnName("last_validation_error_json");
+
+                    b.Property<string>("LastValidationRunId")
+                        .HasColumnType("text")
+                        .HasColumnName("last_validation_run_id");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
                         .HasColumnName("tenant_id");
-
-                    b.Property<string>("UnitId")
-                        .IsRequired()
-                        .HasMaxLength(128)
-                        .HasColumnType("character varying(128)")
-                        .HasColumnName("unit_id");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -543,29 +734,22 @@ namespace Cvoya.Spring.Dapr.Data.Migrations
 
                     b.HasIndex("TenantId");
 
-                    b.HasIndex("TenantId", "UnitId")
-                        .IsUnique()
-                        .HasFilter("deleted_at IS NULL");
-
                     b.ToTable("unit_definitions", "spring");
                 });
 
             modelBuilder.Entity("Cvoya.Spring.Dapr.Data.Entities.UnitMembershipEntity", b =>
                 {
-                    b.Property<string>("TenantId")
-                        .HasMaxLength(128)
-                        .HasColumnType("character varying(128)")
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
                         .HasColumnName("tenant_id");
 
-                    b.Property<string>("UnitId")
-                        .HasMaxLength(256)
-                        .HasColumnType("character varying(256)")
+                    b.Property<Guid>("UnitId")
+                        .HasColumnType("uuid")
                         .HasColumnName("unit_id");
 
-                    b.Property<string>("AgentAddress")
-                        .HasMaxLength(256)
-                        .HasColumnType("character varying(256)")
-                        .HasColumnName("agent_address");
+                    b.Property<Guid>("AgentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("agent_id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -581,6 +765,12 @@ namespace Cvoya.Spring.Dapr.Data.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("execution_mode");
 
+                    b.Property<bool>("IsPrimary")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("is_primary");
+
                     b.Property<string>("Model")
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)")
@@ -595,24 +785,22 @@ namespace Cvoya.Spring.Dapr.Data.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
 
-                    b.HasKey("TenantId", "UnitId", "AgentAddress");
+                    b.HasKey("TenantId", "UnitId", "AgentId");
 
-                    b.HasIndex("TenantId", "AgentAddress")
-                        .HasDatabaseName("ix_unit_memberships_tenant_agent_address");
+                    b.HasIndex("TenantId", "AgentId")
+                        .HasDatabaseName("ix_unit_memberships_tenant_agent_id");
 
                     b.ToTable("unit_memberships", "spring");
                 });
 
             modelBuilder.Entity("Cvoya.Spring.Dapr.Data.Entities.UnitPolicyEntity", b =>
                 {
-                    b.Property<string>("TenantId")
-                        .HasMaxLength(128)
-                        .HasColumnType("character varying(128)")
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
                         .HasColumnName("tenant_id");
 
-                    b.Property<string>("UnitId")
-                        .HasMaxLength(256)
-                        .HasColumnType("character varying(256)")
+                    b.Property<Guid>("UnitId")
+                        .HasColumnType("uuid")
                         .HasColumnName("unit_id");
 
                     b.Property<JsonElement?>("Cost")
@@ -650,6 +838,36 @@ namespace Cvoya.Spring.Dapr.Data.Migrations
                     b.HasKey("TenantId", "UnitId");
 
                     b.ToTable("unit_policies", "spring");
+                });
+
+            modelBuilder.Entity("Cvoya.Spring.Dapr.Data.Entities.UnitSubunitMembershipEntity", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<Guid>("ParentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("parent_id");
+
+                    b.Property<Guid>("ChildId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("child_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("TenantId", "ParentId", "ChildId");
+
+                    b.HasIndex("TenantId", "ChildId")
+                        .HasDatabaseName("ix_unit_subunit_memberships_tenant_child");
+
+                    b.ToTable("unit_subunit_memberships", "spring");
                 });
 #pragma warning restore 612, 618
         }

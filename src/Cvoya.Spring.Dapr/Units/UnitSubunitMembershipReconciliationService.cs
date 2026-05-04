@@ -165,7 +165,7 @@ public class UnitSubunitMembershipReconciliationService(
         // covers the read filter.
         var existingEdges = await ReadExistingEdgesAsync(cancellationToken);
 
-        var liveEdges = new HashSet<(string Parent, string Child)>();
+        var liveEdges = new HashSet<(Guid Parent, Guid Child)>();
         var visited = 0;
         var added = 0;
         var failed = 0;
@@ -177,7 +177,7 @@ public class UnitSubunitMembershipReconciliationService(
             try
             {
                 var proxy = actorProxyFactory.CreateActorProxy<IUnitActor>(
-                    new ActorId(unit.ActorId), nameof(UnitActor));
+                    new ActorId(Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(unit.ActorId)), nameof(UnitActor));
                 var members = await proxy.GetMembersAsync(cancellationToken);
 
                 foreach (var member in members)
@@ -187,16 +187,17 @@ public class UnitSubunitMembershipReconciliationService(
                         continue;
                     }
 
-                    liveEdges.Add((unit.Address.Path, member.Path));
+                    var edgeKey = (unit.Address.Id, member.Id);
+                    liveEdges.Add(edgeKey);
 
-                    if (existingEdges.Contains((unit.Address.Path, member.Path)))
+                    if (existingEdges.Contains(edgeKey))
                     {
                         // Already projected — skip the upsert to avoid
                         // a needless UpdatedAt bump.
                         continue;
                     }
 
-                    await projector.ProjectAddAsync(unit.Address.Path, member.Path, cancellationToken);
+                    await projector.ProjectAddAsync(unit.Address.Id, member.Id, cancellationToken);
                     added++;
                 }
 
@@ -221,9 +222,8 @@ public class UnitSubunitMembershipReconciliationService(
         // (failed read) — without a successful actor read we cannot
         // tell stale edges from edges we just couldn't observe.
         var visitedParents = unitEntries
-            .Where(u => true)
-            .Select(u => u.Address.Path)
-            .ToHashSet(StringComparer.Ordinal);
+            .Select(u => u.Address.Id)
+            .ToHashSet();
 
         var removed = 0;
         foreach (var edge in existingEdges)
@@ -256,7 +256,7 @@ public class UnitSubunitMembershipReconciliationService(
             visited, failed, added, removed, liveEdges.Count);
     }
 
-    private async Task<HashSet<(string Parent, string Child)>> ReadExistingEdgesAsync(
+    private async Task<HashSet<(Guid Parent, Guid Child)>> ReadExistingEdgesAsync(
         CancellationToken cancellationToken)
     {
         await using var scope = scopeFactory.CreateAsyncScope();

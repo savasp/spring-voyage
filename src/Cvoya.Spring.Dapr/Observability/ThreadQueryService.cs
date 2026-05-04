@@ -8,6 +8,7 @@ using System.Text.Json;
 using Cvoya.Spring.Core;
 using Cvoya.Spring.Core.Capabilities;
 using Cvoya.Spring.Core.Directory;
+using Cvoya.Spring.Core.Identifiers;
 using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Core.Observability;
 using Cvoya.Spring.Dapr.Actors;
@@ -45,11 +46,16 @@ public class ThreadQueryService(
         ThreadQueryFilters filters,
         CancellationToken cancellationToken)
     {
-        var rows = await dbContext.ActivityEvents
+        var raw = await dbContext.ActivityEvents
             .Where(e => e.CorrelationId != null)
-            .Select(e => new ThreadEventRow(
-                e.CorrelationId!, e.Id, e.Source, e.EventType, e.Severity, e.Summary, e.Timestamp))
+            .Select(e => new { e.CorrelationId, e.Id, e.SourceId, e.EventType, e.Severity, e.Summary, e.Timestamp })
             .ToListAsync(cancellationToken);
+
+        var schemeMap = await BuildSourceSchemeMapAsync(cancellationToken);
+        var rows = raw
+            .Select(e => new ThreadEventRow(
+                e.CorrelationId!, e.Id, RenderSource(e.SourceId, schemeMap), e.EventType, e.Severity, e.Summary, e.Timestamp))
+            .ToList();
 
         var summaries = BuildSummaries(rows);
         summaries = await ApplyFiltersAsync(summaries, filters, cancellationToken);
@@ -71,12 +77,17 @@ public class ThreadQueryService(
             return null;
         }
 
-        var rows = await dbContext.ActivityEvents
+        var raw = await dbContext.ActivityEvents
             .Where(e => e.CorrelationId == threadId)
             .OrderBy(e => e.Timestamp)
-            .Select(e => new ThreadEventRow(
-                e.CorrelationId!, e.Id, e.Source, e.EventType, e.Severity, e.Summary, e.Timestamp, e.Details))
+            .Select(e => new { e.CorrelationId, e.Id, e.SourceId, e.EventType, e.Severity, e.Summary, e.Timestamp, e.Details })
             .ToListAsync(cancellationToken);
+
+        var schemeMap = await BuildSourceSchemeMapAsync(cancellationToken);
+        var rows = raw
+            .Select(e => new ThreadEventRow(
+                e.CorrelationId!, e.Id, RenderSource(e.SourceId, schemeMap), e.EventType, e.Severity, e.Summary, e.Timestamp, e.Details))
+            .ToList();
 
         if (rows.Count == 0)
         {
@@ -182,11 +193,16 @@ public class ThreadQueryService(
         var humanSourceCanonical = ToPersistenceSource(humanAddress);
         var humanSourceDisplay = NormaliseSource(humanSourceCanonical);
 
-        var rows = await dbContext.ActivityEvents
+        var raw = await dbContext.ActivityEvents
             .Where(e => e.CorrelationId != null)
-            .Select(e => new ThreadEventRow(
-                e.CorrelationId!, e.Id, e.Source, e.EventType, e.Severity, e.Summary, e.Timestamp))
+            .Select(e => new { e.CorrelationId, e.Id, e.SourceId, e.EventType, e.Severity, e.Summary, e.Timestamp })
             .ToListAsync(cancellationToken);
+
+        var schemeMap = await BuildSourceSchemeMapAsync(cancellationToken);
+        var rows = raw
+            .Select(e => new ThreadEventRow(
+                e.CorrelationId!, e.Id, RenderSource(e.SourceId, schemeMap), e.EventType, e.Severity, e.Summary, e.Timestamp))
+            .ToList();
 
         var inbox = new List<InboxItem>();
 
@@ -391,27 +407,77 @@ public class ThreadQueryService(
             return new[] { literal };
         }
 
+        if (!isUuidValue)
+        {
+            // The post-#1629 directory service is keyed by Guid only; a
+            // slug needle that isn't already a Guid cannot resolve. Return
+            // the literal so direct-UUID filters and dev scenarios still
+            // work, and slug filters fall through with no match.
+            return new[] { literal };
+        }
+
         try
         {
             var entry = await directoryService.ResolveAsync(
-                new Address(scheme, value), cancellationToken);
+                Address.For(scheme, value), cancellationToken);
             if (entry is null)
             {
-                // Unknown entity — fall back to the literal so the filter
-                // still works for direct-UUID lookups or dev scenarios.
                 return new[] { literal };
             }
 
-            // NormaliseSource emits agent/unit sources as "scheme:id:<uuid>"
-            // when the stored path is a valid UUID. Return the same form so
-            // participant filter comparisons hit (#1490).
-            return new[] { $"{scheme}:id:{entry.ActorId}" };
+            // Identity form keyed off the entry's stable Guid id.
+            return new[] { $"{scheme}:id:{GuidFormatter.Format(entry.ActorId)}" };
         }
         catch
         {
-            // Directory failures should not break read-only thread listing.
             return new[] { literal };
         }
+    }
+
+    /// <summary>
+    /// Renders the persistence-layer SourceId Guid into the string form
+    /// used by activity-derived projections in this service. Scheme is
+    /// resolved through the directory map keyed by actor id (#1629); rows
+    /// whose source id no longer maps to a directory entry render as
+    /// <c>unknown:&lt;hex&gt;</c> so callers retain a stable, comparable
+    /// projection even after the originating entity has been deleted.
+    /// </summary>
+    private static string RenderSource(
+        Guid sourceId,
+        IReadOnlyDictionary<Guid, string> schemeMap)
+    {
+        var hex = GuidFormatter.Format(sourceId);
+        return schemeMap.TryGetValue(sourceId, out var scheme)
+            ? $"{scheme}:{hex}"
+            : $"unknown:{hex}";
+    }
+
+    /// <summary>
+    /// Builds a one-shot <c>actorId → scheme</c> projection by listing the
+    /// directory once. Used inside <see cref="ListAsync"/>,
+    /// <see cref="GetAsync"/>, and <see cref="ListInboxAsync"/> so the
+    /// per-row <see cref="RenderSource"/> calls stay synchronous and
+    /// allocation-light. When no directory service is wired, returns an
+    /// empty map and every <see cref="RenderSource"/> call falls back to
+    /// the <c>unknown:</c> scheme.
+    /// </summary>
+    private async Task<IReadOnlyDictionary<Guid, string>> BuildSourceSchemeMapAsync(
+        CancellationToken cancellationToken)
+    {
+        if (directoryService is null)
+        {
+            return new Dictionary<Guid, string>();
+        }
+
+        var entries = await directoryService.ListAllAsync(cancellationToken);
+        var map = new Dictionary<Guid, string>(entries.Count);
+        foreach (var entry in entries)
+        {
+            // First registered scheme wins — duplicates across schemes for
+            // the same actor id should not happen under #1629's identity model.
+            map.TryAdd(entry.ActorId, entry.Address.Scheme);
+        }
+        return map;
     }
 
     /// <summary>
@@ -476,7 +542,7 @@ public class ThreadQueryService(
              || string.Equals(scheme, "human", StringComparison.OrdinalIgnoreCase))
             && Guid.TryParse(path, out var actorId))
         {
-            return $"{scheme}:id:{actorId}";
+            return $"{scheme}:id:{GuidFormatter.Format(actorId)}";
         }
 
         return $"{scheme}://{path}";

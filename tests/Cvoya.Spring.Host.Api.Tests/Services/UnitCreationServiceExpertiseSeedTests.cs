@@ -67,9 +67,7 @@ public class UnitCreationServiceExpertiseSeedTests
             db.UnitDefinitions.Add(new UnitDefinitionEntity
             {
                 Id = Guid.NewGuid(),
-                UnitId = "research-cell",
-                ActorId = Guid.NewGuid().ToString(),
-                Name = "research-cell",
+                DisplayName = "research-cell",
                 Description = "test",
             });
             await db.SaveChangesAsync(TestContext.Current.CancellationToken);
@@ -116,7 +114,7 @@ public class UnitCreationServiceExpertiseSeedTests
         using var verifyScope = scopeFactory.CreateScope();
         var verifyDb = verifyScope.ServiceProvider.GetRequiredService<SpringDbContext>();
         var persisted = await verifyDb.UnitDefinitions.FirstAsync(
-            u => u.UnitId == "research-cell",
+            u => u.DisplayName == "research-cell",
             TestContext.Current.CancellationToken);
         persisted.Definition.ShouldNotBeNull();
 

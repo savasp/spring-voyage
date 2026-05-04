@@ -30,7 +30,7 @@ public class GitHubWebhookFlowTests
         var (unitActor, unitStateManager, strategy) = ActorTestHost.CreateUnitActor(actorId: "webhook-unit");
 
         // Register an agent member on the unit.
-        var agentAddress = new Address("agent", "webhook-agent");
+        var agentAddress = Address.For("agent", TestSlugIds.HexFor("webhook-agent"));
         unitStateManager.TryGetStateAsync<List<Address>>(StateKeys.Members, Arg.Any<CancellationToken>())
             .Returns(new ConditionalValue<List<Address>>(true, [agentAddress]));
 
@@ -52,7 +52,10 @@ public class GitHubWebhookFlowTests
         // Verify the strategy received the webhook message with its payload intact.
         capturedMessage.ShouldNotBeNull();
         capturedMessage!.From.Scheme.ShouldBe("connector");
-        capturedMessage.From.Path.ShouldBe("github-connector");
+        // MessageFactory.CreateWebhookMessage stamps the synthetic
+        // DefaultConnectorId Guid; assert the hex form rather than the
+        // legacy slug name.
+        capturedMessage.From.Path.ShouldBe("cccccccc111111111111000000000001");
 
         var payload = capturedMessage.Payload.Deserialize<JsonElement>();
         payload.GetProperty("EventType").GetString().ShouldBe("issues");
@@ -71,7 +74,7 @@ public class GitHubWebhookFlowTests
         var (unitActor, unitStateManager, strategy) = ActorTestHost.CreateUnitActor(actorId: "flow-unit");
         var (agentActor, agentStateManager) = ActorTestHost.CreateAgentActor("flow-agent");
 
-        var agentAddress = new Address("agent", "flow-agent");
+        var agentAddress = Address.For("agent", TestSlugIds.HexFor("flow-agent"));
         unitStateManager.TryGetStateAsync<List<Address>>(StateKeys.Members, Arg.Any<CancellationToken>())
             .Returns(new ConditionalValue<List<Address>>(true, [agentAddress]));
 
@@ -86,7 +89,7 @@ public class GitHubWebhookFlowTests
                 // Create a forwarded message addressed to the agent.
                 forwardedMessage = new Message(
                     Guid.NewGuid(),
-                    new Address("unit", "flow-unit"),
+                    Address.For("unit", TestSlugIds.HexFor("flow-unit")),
                     agentAddress,
                     MessageType.Domain,
                     originalMessage.ThreadId,
@@ -128,8 +131,8 @@ public class GitHubWebhookFlowTests
 
         var message = new Message(
             Guid.NewGuid(),
-            new Address("unit", "test-unit"),
-            new Address("agent", "payload-agent"),
+            Address.For("unit", TestSlugIds.HexFor("test-unit")),
+            Address.For("agent", TestSlugIds.HexFor("payload-agent")),
             MessageType.Domain,
             "webhook-conv-1",
             webhookPayload,

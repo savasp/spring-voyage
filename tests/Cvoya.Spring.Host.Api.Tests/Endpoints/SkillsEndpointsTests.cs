@@ -29,6 +29,8 @@ using Xunit;
 /// </summary>
 public class SkillsEndpointsTests : IClassFixture<CustomWebApplicationFactory>
 {
+    private static readonly Guid ActorAda_Id = new("00002711-bbbb-cccc-dddd-000000000000");
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         Converters = { new JsonStringEnumConverter() },
@@ -73,7 +75,7 @@ public class SkillsEndpointsTests : IClassFixture<CustomWebApplicationFactory>
             .ResolveAsync(Arg.Any<Address>(), Arg.Any<CancellationToken>())
             .Returns((DirectoryEntry?)null);
 
-        var response = await _client.GetAsync("/api/v1/tenant/agents/ghost/skills", ct);
+        var response = await _client.GetAsync($"/api/v1/tenant/agents/{Guid.NewGuid():N}/skills", ct);
 
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
@@ -82,10 +84,10 @@ public class SkillsEndpointsTests : IClassFixture<CustomWebApplicationFactory>
     public async Task GetAgentSkills_ReturnsConfiguredList()
     {
         var ct = TestContext.Current.CancellationToken;
-        var proxy = ArrangeAgent("ada", "actor-ada",
+        var proxy = ArrangeAgent("ada", ActorAda_Id,
             skills: ["github_read_file", "github_write_file"]);
 
-        var response = await _client.GetAsync("/api/v1/tenant/agents/ada/skills", ct);
+        var response = await _client.GetAsync($"/api/v1/tenant/agents/{ActorAda_Id:N}/skills", ct);
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
         var body = await response.Content.ReadFromJsonAsync<AgentSkillsResponse>(JsonOptions, ct);
@@ -99,14 +101,14 @@ public class SkillsEndpointsTests : IClassFixture<CustomWebApplicationFactory>
     public async Task SetAgentSkills_ReplacesListAndReturnsUpdated()
     {
         var ct = TestContext.Current.CancellationToken;
-        var proxy = ArrangeAgent("ada", "actor-ada",
+        var proxy = ArrangeAgent("ada", ActorAda_Id,
             skills: ["github_read_file", "github_write_file"]);
 
         var body = new SetAgentSkillsRequest(
             new[] { "github_list_files", "github_create_branch" });
 
         var response = await _client.PutAsync(
-            "/api/v1/tenant/agents/ada/skills",
+            $"/api/v1/tenant/agents/{ActorAda_Id:N}/skills",
             JsonContent.Create(body, options: JsonOptions),
             ct);
 
@@ -124,12 +126,12 @@ public class SkillsEndpointsTests : IClassFixture<CustomWebApplicationFactory>
     public async Task SetAgentSkills_EmptyList_ClearsSkills()
     {
         var ct = TestContext.Current.CancellationToken;
-        var proxy = ArrangeAgent("ada", "actor-ada", skills: ["github_read_file"]);
+        var proxy = ArrangeAgent("ada", ActorAda_Id, skills: ["github_read_file"]);
 
         var body = new SetAgentSkillsRequest(Array.Empty<string>());
 
         var response = await _client.PutAsync(
-            "/api/v1/tenant/agents/ada/skills",
+            $"/api/v1/tenant/agents/{ActorAda_Id:N}/skills",
             JsonContent.Create(body, options: JsonOptions),
             ct);
 
@@ -150,35 +152,36 @@ public class SkillsEndpointsTests : IClassFixture<CustomWebApplicationFactory>
 
         var body = new SetAgentSkillsRequest(new[] { "github_read_file" });
         var response = await _client.PutAsync(
-            "/api/v1/tenant/agents/ghost/skills",
+            $"/api/v1/tenant/agents/{Guid.NewGuid():N}/skills",
             JsonContent.Create(body, options: JsonOptions),
             ct);
 
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 
-    private IAgentActor ArrangeAgent(string agentId, string actorId, string[] skills)
+    private IAgentActor ArrangeAgent(string displayName, Guid actorId, string[] skills)
     {
         _factory.DirectoryService.ClearReceivedCalls();
         _factory.ActorProxyFactory.ClearReceivedCalls();
 
         var entry = new DirectoryEntry(
-            new Address("agent", agentId),
+            new Address("agent", actorId),
             actorId,
-            agentId,
-            $"Agent {agentId}",
+            displayName,
+            $"Agent {displayName}",
             null,
             DateTimeOffset.UtcNow);
 
         _factory.DirectoryService
-            .ResolveAsync(Arg.Is<Address>(a => a.Scheme == "agent" && a.Path == agentId),
+            .ResolveAsync(Arg.Is<Address>(a => a.Scheme == "agent" && a.Id == actorId),
                 Arg.Any<CancellationToken>())
             .Returns(entry);
 
         var proxy = Substitute.For<IAgentActor>();
         proxy.GetSkillsAsync(Arg.Any<CancellationToken>()).Returns(skills);
+        var actorIdStr = actorId.ToString("N");
         _factory.ActorProxyFactory
-            .CreateActorProxy<IAgentActor>(Arg.Is<ActorId>(a => a.GetId() == actorId),
+            .CreateActorProxy<IAgentActor>(Arg.Is<ActorId>(a => a.GetId() == actorIdStr),
                 Arg.Any<string>())
             .Returns(proxy);
         return proxy;

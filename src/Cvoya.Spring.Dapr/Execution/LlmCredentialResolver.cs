@@ -65,7 +65,7 @@ public sealed class LlmCredentialResolver : ILlmCredentialResolver
     /// <inheritdoc />
     public async Task<LlmCredentialResolution> ResolveAsync(
         string providerId,
-        string? unitName,
+        Guid? unitId,
         CancellationToken cancellationToken = default)
     {
         var secretName = ResolveSecretName(providerId);
@@ -84,12 +84,12 @@ public sealed class LlmCredentialResolver : ILlmCredentialResolver
         {
             // Tier 1: unit-scoped secret (subject to the Unit → Tenant inheritance
             // fall-through implemented by ComposedSecretResolver). We ask at unit
-            // scope when a unit name is supplied so the resolver transparently
+            // scope when a unit id is supplied so the resolver transparently
             // inherits from the tenant when the unit has no override; when no
             // unit is supplied we go straight to tenant scope.
-            if (!string.IsNullOrWhiteSpace(unitName))
+            if (unitId.HasValue && unitId.Value != Guid.Empty)
             {
-                var unitRef = new SecretRef(SecretScope.Unit, unitName!, secretName);
+                var unitRef = new SecretRef(SecretScope.Unit, unitId.Value, secretName);
                 var resolution = await _secretResolver.ResolveWithPathAsync(unitRef, cancellationToken);
                 if (resolution.Value is { Length: > 0 } unitValue)
                 {

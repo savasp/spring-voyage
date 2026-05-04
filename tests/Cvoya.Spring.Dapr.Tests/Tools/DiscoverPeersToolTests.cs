@@ -35,22 +35,24 @@ public class DiscoverPeersToolTests
     [Fact]
     public async Task ExecuteAsync_WithMatchingEntries_ReturnsEntries()
     {
+        var adaId = new Guid("aaaaaaaa-1111-1111-1111-000000000001");
+        var bobId = new Guid("aaaaaaaa-1111-1111-1111-000000000002");
         var entries = new List<DirectoryEntry>
         {
             new(
-                new Address("agent", "team/ada"),
-                "actor-1",
+                new Address("agent", adaId),
+                adaId,
                 "Ada",
                 "Backend engineer",
                 "backend-engineer",
                 DateTimeOffset.UtcNow),
             new(
-                new Address("agent", "team/bob"),
-                "actor-2",
+                new Address("agent", bobId),
+                bobId,
                 "Bob",
                 "Backend engineer",
                 "backend-engineer",
-                DateTimeOffset.UtcNow)
+                DateTimeOffset.UtcNow),
         };
 
         _directoryService.ResolveByRoleAsync("backend-engineer", Arg.Any<CancellationToken>())

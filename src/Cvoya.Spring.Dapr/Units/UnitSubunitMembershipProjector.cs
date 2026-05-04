@@ -23,7 +23,7 @@ public class UnitSubunitMembershipProjector(
     ILogger<UnitSubunitMembershipProjector> logger) : IUnitSubunitMembershipProjector
 {
     /// <inheritdoc />
-    public async Task ProjectAddAsync(string parentUnitId, string childUnitId, CancellationToken cancellationToken = default)
+    public async Task ProjectAddAsync(Guid parentUnitId, Guid childUnitId, CancellationToken cancellationToken = default)
     {
         try
         {
@@ -44,7 +44,7 @@ public class UnitSubunitMembershipProjector(
     }
 
     /// <inheritdoc />
-    public async Task ProjectRemoveAsync(string parentUnitId, string childUnitId, CancellationToken cancellationToken = default)
+    public async Task ProjectRemoveAsync(Guid parentUnitId, Guid childUnitId, CancellationToken cancellationToken = default)
     {
         try
         {

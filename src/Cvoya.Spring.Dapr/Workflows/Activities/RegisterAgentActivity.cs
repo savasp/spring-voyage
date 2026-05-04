@@ -23,10 +23,10 @@ public class RegisterAgentActivity(
     /// <inheritdoc />
     public override async Task<bool> RunAsync(WorkflowActivityContext context, AgentLifecycleInput input)
     {
-        var address = new Address("agent", input.AgentId);
+        var address = Address.For("agent", input.AgentId);
         var entry = new DirectoryEntry(
             address,
-            ActorId: input.AgentId,
+            ActorId: address.Id,
             DisplayName: input.AgentName ?? input.AgentId,
             Description: $"Agent {input.AgentName ?? input.AgentId}",
             Role: input.Role,

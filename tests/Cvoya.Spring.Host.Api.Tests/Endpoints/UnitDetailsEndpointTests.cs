@@ -38,8 +38,16 @@ using Xunit;
 /// </summary>
 public class UnitDetailsEndpointTests : IClassFixture<CustomWebApplicationFactory>
 {
-    private const string UnitName = "engineering";
-    private const string ActorId = "actor-engineering";
+    private static readonly Guid Agent_Alpha_Id = new("00000001-1234-5678-9abc-000000000000");
+    private static readonly Guid Agent_Beta_Id = new("00000002-1234-5678-9abc-000000000000");
+    private static readonly Guid Unit_Child_Id = new("00000003-1234-5678-9abc-000000000000");
+    private static readonly Guid ActorEngineering_Id = new("00000004-1234-5678-9abc-000000000000");
+
+    private const string UnitDisplayName = "engineering";
+    private static readonly Guid ActorId_Guid = ActorEngineering_Id;
+    private static readonly string ActorId = ActorId_Guid.ToString("N");
+    // Post-#1629 URL paths carry the unit's Guid hex.
+    private static readonly string UnitName = ActorId;
 
     private readonly CustomWebApplicationFactory _factory;
     private readonly HttpClient _client;
@@ -62,9 +70,9 @@ public class UnitDetailsEndpointTests : IClassFixture<CustomWebApplicationFactor
         proxy.GetMembersAsync(Arg.Any<CancellationToken>())
             .Returns(new[]
             {
-                new Address("agent", "alpha"),
-                new Address("agent", "beta"),
-                new Address("unit", "child"),
+                new Address("agent", Agent_Alpha_Id),
+                new Address("agent", Agent_Beta_Id),
+                new Address("unit", Unit_Child_Id),
             });
 
         ArrangeResolved(proxy);
@@ -199,11 +207,9 @@ public class UnitDetailsEndpointTests : IClassFixture<CustomWebApplicationFactor
             var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
             db.UnitDefinitions.Add(new UnitDefinitionEntity
             {
-                Id = Guid.NewGuid(),
-                TenantId = "default",
-                UnitId = UnitName,
-                ActorId = ActorId,
-                Name = UnitName,
+                Id = ActorEngineering_Id,
+                TenantId = Cvoya.Spring.Core.Tenancy.OssTenantIds.Default,
+                DisplayName = UnitDisplayName,
                 Description = "test",
                 CreatedAt = DateTimeOffset.UtcNow,
                 UpdatedAt = DateTimeOffset.UtcNow,
@@ -235,7 +241,7 @@ public class UnitDetailsEndpointTests : IClassFixture<CustomWebApplicationFactor
         {
             var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
             var row = await db.UnitDefinitions.FirstOrDefaultAsync(
-                u => u.UnitId == UnitName, ct);
+                u => u.DisplayName == UnitDisplayName, ct);
             if (row is not null)
             {
                 db.UnitDefinitions.Remove(row);
@@ -275,19 +281,19 @@ public class UnitDetailsEndpointTests : IClassFixture<CustomWebApplicationFactor
         _factory.AgentProxyResolver.ClearReceivedCalls();
 
         var entry = new DirectoryEntry(
-            new Address("unit", UnitName),
-            ActorId,
+            new Address("unit", ActorId_Guid),
+            ActorId_Guid,
             "Engineering",
             "Engineering unit",
             null,
             DateTimeOffset.UtcNow);
 
         _factory.DirectoryService
-            .ResolveAsync(Arg.Is<Address>(a => a.Scheme == "unit" && a.Path == UnitName), Arg.Any<CancellationToken>())
+            .ResolveAsync(Arg.Is<Address>(a => a.Scheme == "unit" && a.Id == ActorId_Guid), Arg.Any<CancellationToken>())
             .Returns(entry);
 
         _factory.ActorProxyFactory
-            .CreateActorProxy<IUnitActor>(Arg.Is<ActorId>(a => a.GetId() == ActorId), Arg.Any<string>())
+            .CreateActorProxy<IUnitActor>(Arg.Is<global::Dapr.Actors.ActorId>(a => a.GetId() == ActorId), Arg.Any<string>())
             .Returns(proxy);
     }
 }

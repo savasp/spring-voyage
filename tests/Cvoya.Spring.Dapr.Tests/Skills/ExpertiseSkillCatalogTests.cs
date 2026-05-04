@@ -41,13 +41,17 @@ public class ExpertiseSkillCatalogTests
     {
         _loggerFactory.CreateLogger(Arg.Any<string>()).Returns(Substitute.For<ILogger>());
 
-        // Default: one unit, empty expertise. Per-test overrides replace this.
+        // Default: one unit ("eng"), empty expertise. Per-test overrides
+        // replace this. The unit's identity is anchored to TestSlugIds.For("eng")
+        // so test-fixture addresses (Address.For("unit", TestSlugIds.HexFor("eng")))
+        // line up with the directory entry the catalog walks.
+        var engId = TestSlugIds.For("eng");
         _directory.ListAllAsync(Arg.Any<CancellationToken>())
             .Returns(new[]
             {
                 new DirectoryEntry(
-                    new Address("unit", "eng"),
-                    "eng", "Engineering", string.Empty, null, DateTimeOffset.UtcNow),
+                    new Address("unit", engId),
+                    engId, "Engineering", string.Empty, null, DateTimeOffset.UtcNow),
             });
 
         _aggregator
@@ -69,7 +73,7 @@ public class ExpertiseSkillCatalogTests
     public async Task EnumerateAsync_NoTypedContract_SkipsConsultativeEntries()
     {
         var catalog = CreateCatalog();
-        var unit = new Address("unit", "eng");
+        var unit = Address.For("unit", TestSlugIds.HexFor("eng"));
         var entries = new[]
         {
             // Typed contract — should surface.
@@ -97,8 +101,8 @@ public class ExpertiseSkillCatalogTests
     public async Task EnumerateAsync_ExternalCaller_HidesAgentLevelExpertiseThatIsNotUnitProjected()
     {
         var catalog = CreateCatalog();
-        var unit = new Address("unit", "eng");
-        var agent = new Address("agent", "ada");
+        var unit = Address.For("unit", TestSlugIds.HexFor("eng"));
+        var agent = Address.For("agent", TestSlugIds.HexFor("ada"));
 
         // Outside caller: only unit-projected entries should be visible.
         _aggregator
@@ -123,8 +127,8 @@ public class ExpertiseSkillCatalogTests
     public async Task EnumerateAsync_InsideCaller_SeesAgentLevelExpertise()
     {
         var catalog = CreateCatalog();
-        var unit = new Address("unit", "eng");
-        var agent = new Address("agent", "ada");
+        var unit = Address.For("unit", TestSlugIds.HexFor("eng"));
+        var agent = Address.For("agent", TestSlugIds.HexFor("ada"));
 
         _aggregator
             .GetAsync(unit, Arg.Is<BoundaryViewContext>(c => c.Internal), Arg.Any<CancellationToken>())
@@ -144,8 +148,8 @@ public class ExpertiseSkillCatalogTests
     public async Task EnumerateAsync_AgentNameNeverAppearsInSkillName()
     {
         var catalog = CreateCatalog();
-        var unit = new Address("unit", "eng");
-        var agent = new Address("agent", "ada-the-senior-engineer");
+        var unit = Address.For("unit", TestSlugIds.HexFor("eng"));
+        var agent = Address.For("agent", TestSlugIds.HexFor("ada-the-senior-engineer"));
         _aggregator
             .GetAsync(unit, Arg.Any<BoundaryViewContext>(), Arg.Any<CancellationToken>())
             .Returns(new AggregatedExpertise(unit, new[]
@@ -165,7 +169,7 @@ public class ExpertiseSkillCatalogTests
     public async Task EnumerateAsync_LiveResolution_NewExpertisePropagatesWithoutRestart()
     {
         var catalog = CreateCatalog();
-        var unit = new Address("unit", "eng");
+        var unit = Address.For("unit", TestSlugIds.HexFor("eng"));
 
         // First call: no expertise at all.
         _aggregator
@@ -195,8 +199,8 @@ public class ExpertiseSkillCatalogTests
     public async Task ResolveAsync_HiddenFromCaller_ReturnsNull()
     {
         var catalog = CreateCatalog();
-        var unit = new Address("unit", "eng");
-        var agent = new Address("agent", "ada");
+        var unit = Address.For("unit", TestSlugIds.HexFor("eng"));
+        var agent = Address.For("agent", TestSlugIds.HexFor("ada"));
 
         // Boundary is caller-aware: external caller sees nothing; internal sees the agent entry.
         _aggregator

@@ -33,6 +33,11 @@ using Xunit;
 /// </summary>
 public class ThreadContractTests : IClassFixture<ThreadContractTests.Factory>
 {
+    private static readonly Guid ActorContractBot_Id = new("00002711-bbbb-cccc-dddd-000000000000");
+
+    private static readonly Guid Agent_ContractBot_Id = new("00000001-feed-1234-5678-000000000000");
+    private static readonly Guid Human_LocalDevUser_Id = new("00000002-feed-1234-5678-000000000000");
+
     private readonly Factory _factory;
     private readonly HttpClient _client;
 
@@ -121,8 +126,8 @@ public class ThreadContractTests : IClassFixture<ThreadContractTests.Factory>
         // produce.
         var reply = new Message(
             Guid.NewGuid(),
-            new Address("agent", "contract-bot"),
-            new Address("human", "local-dev-user"),
+            new Address("agent", Agent_ContractBot_Id),
+            new Address("human", Human_LocalDevUser_Id),
             MessageType.Domain,
             "contract-conv-post",
             System.Text.Json.JsonSerializer.SerializeToElement(new { ack = "received" }),
@@ -132,7 +137,7 @@ public class ThreadContractTests : IClassFixture<ThreadContractTests.Factory>
             .Returns(Result<Message?, RoutingError>.Success(reply));
 
         var body = new ThreadMessageRequest(
-            new AddressDto("agent", "contract-bot"),
+            new AddressDto("agent", Agent_ContractBot_Id.ToString("N")),
             "Hello from contract test");
 
         var response = await _client.PostAsJsonAsync(
@@ -161,8 +166,8 @@ public class ThreadContractTests : IClassFixture<ThreadContractTests.Factory>
 
         var reply = new Message(
             Guid.NewGuid(),
-            new Address("agent", "contract-bot"),
-            new Address("human", "local-dev-user"),
+            new Address("agent", Agent_ContractBot_Id),
+            new Address("human", Human_LocalDevUser_Id),
             MessageType.Domain,
             $"contract-conv-kind-{kind}",
             System.Text.Json.JsonSerializer.SerializeToElement(new { ack = "received" }),
@@ -172,7 +177,7 @@ public class ThreadContractTests : IClassFixture<ThreadContractTests.Factory>
             .Returns(Result<Message?, RoutingError>.Success(reply));
 
         var body = new ThreadMessageRequest(
-            new AddressDto("agent", "contract-bot"),
+            new AddressDto("agent", Agent_ContractBot_Id.ToString("N")),
             $"Test message for kind={kind}",
             kind);
 
@@ -197,8 +202,8 @@ public class ThreadContractTests : IClassFixture<ThreadContractTests.Factory>
 
         var reply = new Message(
             Guid.NewGuid(),
-            new Address("agent", "contract-bot"),
-            new Address("human", "local-dev-user"),
+            new Address("agent", Agent_ContractBot_Id),
+            new Address("human", Human_LocalDevUser_Id),
             MessageType.Domain,
             "contract-conv-kind-default",
             System.Text.Json.JsonSerializer.SerializeToElement(new { ack = "received" }),
@@ -209,7 +214,7 @@ public class ThreadContractTests : IClassFixture<ThreadContractTests.Factory>
 
         // Omit kind — server must default to "information".
         var body = new ThreadMessageRequest(
-            new AddressDto("agent", "contract-bot"),
+            new AddressDto("agent", Agent_ContractBot_Id.ToString("N")),
             "Test message with no kind");
 
         var response = await _client.PostAsJsonAsync(
@@ -249,16 +254,17 @@ public class ThreadContractTests : IClassFixture<ThreadContractTests.Factory>
     {
         var ct = TestContext.Current.CancellationToken;
         var now = DateTimeOffset.UtcNow;
+        var contractBot = $"agent://{Agent_ContractBot_Id:N}";
         var summary = new ThreadSummary(
             "contract-close-ok",
-            new[] { "agent://contract-bot" },
-            "active", now, now, 1, "agent://contract-bot", "Started");
+            new[] { contractBot },
+            "active", now, now, 1, contractBot, "Started");
         var beforeDetail = new ThreadDetail(summary, new List<ThreadEvent>());
         var afterDetail = new ThreadDetail(
             summary with { Status = "closed" },
             new List<ThreadEvent>
             {
-                new(Guid.NewGuid(), now, "agent://contract-bot",
+                new(Guid.NewGuid(), now, contractBot,
                     "ThreadClosed", "Info", "Closed"),
             });
 
@@ -268,8 +274,8 @@ public class ThreadContractTests : IClassFixture<ThreadContractTests.Factory>
             .Returns(beforeDetail, afterDetail);
 
         var entry = new DirectoryEntry(
-            new Address("agent", "contract-bot"),
-            ActorId: "actor-contract-bot",
+            new Address("agent", Agent_ContractBot_Id),
+            ActorId: ActorContractBot_Id,
             DisplayName: "Bot",
             Description: "",
             Role: null,
@@ -277,7 +283,7 @@ public class ThreadContractTests : IClassFixture<ThreadContractTests.Factory>
         _factory.DirectoryService.ClearSubstitute();
         _factory.DirectoryService
             .ResolveAsync(
-                Arg.Is<Address>(a => a.Scheme == "agent" && a.Path == "contract-bot"),
+                Arg.Is<Address>(a => a.Scheme == "agent" && a.Id == Agent_ContractBot_Id),
                 Arg.Any<CancellationToken>())
             .Returns(entry);
 
@@ -285,7 +291,7 @@ public class ThreadContractTests : IClassFixture<ThreadContractTests.Factory>
         _factory.ActorProxyFactory.ClearSubstitute();
         _factory.ActorProxyFactory
             .CreateActorProxy<IAgentActor>(
-                Arg.Is<ActorId>(id => id.GetId() == "actor-contract-bot"),
+                Arg.Is<ActorId>(id => id.GetId() == ActorContractBot_Id.ToString("N")),
                 nameof(AgentActor))
             .Returns(agentProxy);
 

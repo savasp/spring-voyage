@@ -51,9 +51,9 @@ public class DefaultTenantBootstrapServiceTests
         await sut.StartAsync(TestContext.Current.CancellationToken);
 
         p1.Calls.Count.ShouldBe(1);
-        p1.Calls[0].ShouldBe("default");
+        p1.Calls[0].ShouldBe(OssTenantIds.Default);
         p2.Calls.Count.ShouldBe(1);
-        p2.Calls[0].ShouldBe("default");
+        p2.Calls[0].ShouldBe(OssTenantIds.Default);
     }
 
     [Fact]
@@ -204,10 +204,10 @@ public class DefaultTenantBootstrapServiceTests
 
     private sealed class RecordingSeedProvider : ITenantSeedProvider
     {
-        private readonly Action<string>? _onApply;
-        private readonly ConcurrentQueue<string> _calls = new();
+        private readonly Action<Guid>? _onApply;
+        private readonly ConcurrentQueue<Guid> _calls = new();
 
-        public RecordingSeedProvider(string id, int priority, Action<string>? onApply = null)
+        public RecordingSeedProvider(string id, int priority, Action<Guid>? onApply = null)
         {
             Id = id;
             Priority = priority;
@@ -216,9 +216,9 @@ public class DefaultTenantBootstrapServiceTests
 
         public string Id { get; }
         public int Priority { get; }
-        public IReadOnlyList<string> Calls => _calls.ToArray();
+        public IReadOnlyList<Guid> Calls => _calls.ToArray();
 
-        public Task ApplySeedsAsync(string tenantId, CancellationToken cancellationToken)
+        public Task ApplySeedsAsync(Guid tenantId, CancellationToken cancellationToken)
         {
             _calls.Enqueue(tenantId);
             _onApply?.Invoke(tenantId);
@@ -231,7 +231,7 @@ public class DefaultTenantBootstrapServiceTests
         public string Id { get; } = id;
         public int Priority { get; } = priority;
 
-        public Task ApplySeedsAsync(string tenantId, CancellationToken cancellationToken)
+        public Task ApplySeedsAsync(Guid tenantId, CancellationToken cancellationToken)
             => throw new InvalidOperationException("seed boom");
     }
 }

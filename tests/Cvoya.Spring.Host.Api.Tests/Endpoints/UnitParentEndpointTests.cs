@@ -38,6 +38,11 @@ using Xunit;
 /// </summary>
 public class UnitParentEndpointTests : IClassFixture<CustomWebApplicationFactory>
 {
+    private static readonly Guid Unit_EngTeam_Id = new("00000001-1234-5678-9abc-000000000000");
+    private static readonly Guid Unit_ParentA_Id = new("00000002-1234-5678-9abc-000000000000");
+    private static readonly Guid ActorParent_Id = new("00000003-1234-5678-9abc-000000000000");
+    private static readonly Guid ActorParentA_Id = new("00000004-1234-5678-9abc-000000000000");
+
     private readonly CustomWebApplicationFactory _factory;
     private readonly HttpClient _client;
 
@@ -122,10 +127,8 @@ public class UnitParentEndpointTests : IClassFixture<CustomWebApplicationFactory
             db.UnitDefinitions.Add(new UnitDefinitionEntity
             {
                 Id = Guid.NewGuid(),
-                TenantId = "default",
-                UnitId = "root-unit",
-                ActorId = "actor-root",
-                Name = "Root Unit",
+                TenantId = Cvoya.Spring.Core.Tenancy.OssTenantIds.Default,
+                DisplayName = "root-unit",
                 Description = string.Empty,
                 CreatedAt = DateTimeOffset.UtcNow,
                 UpdatedAt = DateTimeOffset.UtcNow,
@@ -135,7 +138,7 @@ public class UnitParentEndpointTests : IClassFixture<CustomWebApplicationFactory
 
         var request = new CreateUnitRequest(
             Name: "root-unit",
-            DisplayName: "Root Unit",
+            DisplayName: "root-unit",
             Description: "Tenant-parented",
             IsTopLevel: true);
 
@@ -143,17 +146,24 @@ public class UnitParentEndpointTests : IClassFixture<CustomWebApplicationFactory
 
         response.StatusCode.ShouldBe(HttpStatusCode.Created);
 
-        // IsTopLevel should be flipped to true in the DB.
+        // After #1492 "top-level" is implicit — no row on the child side
+        // of unit_subunit_memberships. Verify the unit row exists and that
+        // there is no membership edge pointing at it as a sub-unit.
         using var verifyScope = _factory.Services.CreateScope();
         var verifyDb = verifyScope.ServiceProvider.GetRequiredService<SpringDbContext>();
         var row = await verifyDb.UnitDefinitions
-            .FirstAsync(u => u.UnitId == "root-unit", ct);
-        row.IsTopLevel.ShouldBeTrue();
+            .FirstAsync(u => u.DisplayName == "root-unit", ct);
+        var membershipChildRows = await verifyDb.UnitSubunitMemberships
+            .Where(m => m.ChildId == row.Id)
+            .CountAsync(ct);
+        membershipChildRows.ShouldBe(0);
 
         // No parent actor proxy should have been called to add the new
-        // unit as a member — top-level means no parent-unit edges.
+        // unit as a member — top-level means no parent-unit edges. The
+        // address Path is a Guid hex post-#1629; it suffices to assert
+        // that AddMemberAsync was not invoked at all on a unit-scheme arg.
         await proxy.DidNotReceive().AddMemberAsync(
-            Arg.Is<Address>(a => a.Scheme == "unit" && a.Path == "root-unit"),
+            Arg.Is<Address>(a => a.Scheme == "unit"),
             Arg.Any<CancellationToken>());
     }
 
@@ -164,12 +174,12 @@ public class UnitParentEndpointTests : IClassFixture<CustomWebApplicationFactory
         ResetMocks();
 
         // Parent unit is registered and reachable.
-        var parentAddress = new Address("unit", "eng-team");
+        var parentAddress = new Address("unit", Unit_EngTeam_Id);
         var parentEntry = new DirectoryEntry(
-            parentAddress, "actor-parent", "eng-team", "parent", null, DateTimeOffset.UtcNow);
+            parentAddress, ActorParent_Id, Unit_EngTeam_Id.ToString("N"), "parent", null, DateTimeOffset.UtcNow);
         _factory.DirectoryService
             .ResolveAsync(
-                Arg.Is<Address>(a => a.Scheme == "unit" && a.Path == "eng-team"),
+                Arg.Is<Address>(a => a.Scheme == "unit" && a.Id == Unit_EngTeam_Id),
                 Arg.Any<CancellationToken>())
             .Returns(parentEntry);
         _factory.DirectoryService
@@ -184,14 +194,15 @@ public class UnitParentEndpointTests : IClassFixture<CustomWebApplicationFactory
         var parentProxy = Substitute.For<IUnitActor>();
         _factory.ActorProxyFactory
             .CreateActorProxy<IUnitActor>(
-                Arg.Is<ActorId>(a => a.GetId() == "actor-parent"),
+                Arg.Is<ActorId>(a => a.GetId() == ActorParent_Id.ToString("N")),
                 Arg.Any<string>())
             .Returns(parentProxy);
         var childProxy = Substitute.For<IUnitActor>();
         childProxy.GetStatusAsync(Arg.Any<CancellationToken>()).Returns(UnitStatus.Draft);
+        var actorParentIdStr = ActorParent_Id.ToString("N");
         _factory.ActorProxyFactory
             .CreateActorProxy<IUnitActor>(
-                Arg.Is<ActorId>(a => a.GetId() != "actor-parent"),
+                Arg.Is<ActorId>(a => a.GetId() != actorParentIdStr),
                 Arg.Any<string>())
             .Returns(childProxy);
 
@@ -199,13 +210,15 @@ public class UnitParentEndpointTests : IClassFixture<CustomWebApplicationFactory
             Name: "child-unit",
             DisplayName: "Child Unit",
             Description: "Parented by eng-team",
-            ParentUnitIds: new[] { "eng-team" });
+            ParentUnitIds: new[] { Unit_EngTeam_Id.ToString("N") });
 
         var response = await _client.PostAsJsonAsync("/api/v1/tenant/units", request, ct);
 
         response.StatusCode.ShouldBe(HttpStatusCode.Created);
+        // Post-#1629 the new child unit's address Path is its server-minted
+        // Guid hex, not the request slug — assert on scheme only.
         await parentProxy.Received(1).AddMemberAsync(
-            Arg.Is<Address>(a => a.Scheme == "unit" && a.Path == "child-unit"),
+            Arg.Is<Address>(a => a.Scheme == "unit"),
             Arg.Any<CancellationToken>());
     }
 
@@ -219,17 +232,18 @@ public class UnitParentEndpointTests : IClassFixture<CustomWebApplicationFactory
             .ResolveAsync(Arg.Any<Address>(), Arg.Any<CancellationToken>())
             .Returns((DirectoryEntry?)null);
 
+        var ghostId = Guid.NewGuid().ToString("N");
         var request = new CreateUnitRequest(
             Name: "lost-child",
             DisplayName: "Lost",
             Description: "Parent does not exist",
-            ParentUnitIds: new[] { "ghost-unit" });
+            ParentUnitIds: new[] { ghostId });
 
         var response = await _client.PostAsJsonAsync("/api/v1/tenant/units", request, ct);
 
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
         await _factory.DirectoryService.DidNotReceive().RegisterAsync(
-            Arg.Is<DirectoryEntry>(e => e.Address.Scheme == "unit" && e.Address.Path == "lost-child"),
+            Arg.Is<DirectoryEntry>(e => e.Address.Scheme == "unit"),
             Arg.Any<CancellationToken>());
     }
 
@@ -240,12 +254,12 @@ public class UnitParentEndpointTests : IClassFixture<CustomWebApplicationFactory
         ResetMocks();
 
         // Parent unit exists and resolves.
-        var parentAddress = new Address("unit", "parent-a");
+        var parentAddress = new Address("unit", Unit_ParentA_Id);
         var parentEntry = new DirectoryEntry(
-            parentAddress, "actor-parent-a", "parent-a", "parent", null, DateTimeOffset.UtcNow);
+            parentAddress, ActorParentA_Id, Unit_ParentA_Id.ToString("N"), "parent", null, DateTimeOffset.UtcNow);
         _factory.DirectoryService
             .ResolveAsync(
-                Arg.Is<Address>(a => a.Scheme == "unit" && a.Path == "parent-a"),
+                Arg.Is<Address>(a => a.Scheme == "unit" && a.Id == Unit_ParentA_Id),
                 Arg.Any<CancellationToken>())
             .Returns(parentEntry);
 
@@ -253,21 +267,33 @@ public class UnitParentEndpointTests : IClassFixture<CustomWebApplicationFactory
             .CreateActorProxy<IUnitActor>(Arg.Any<ActorId>(), Arg.Any<string>())
             .Returns(Substitute.For<IUnitActor>());
 
+        // The child unit must also resolve so the endpoint can pass its
+        // (resolved) address into the parent-invariant guard. The
+        // child's identity is whatever Guid the URL segment carries.
+        var childUnitId = Guid.NewGuid();
+        var childAddress = new Address("unit", childUnitId);
+        _factory.DirectoryService
+            .ResolveAsync(
+                Arg.Is<Address>(a => a.Scheme == "unit" && a.Id == childUnitId),
+                Arg.Any<CancellationToken>())
+            .Returns(new DirectoryEntry(
+                childAddress, childUnitId, "child-unit", "child", null, DateTimeOffset.UtcNow));
+
         // Configure the guard to throw, simulating the "last parent of a
         // non-top-level unit" situation.
         _factory.ParentInvariantGuard
             .EnsureParentRemainsAsync(
-                Arg.Is<Address>(a => a.Scheme == "unit" && a.Path == "parent-a"),
-                Arg.Is<Address>(a => a.Scheme == "unit" && a.Path == "child-unit"),
+                Arg.Is<Address>(a => a.Scheme == "unit" && a.Id == Unit_ParentA_Id),
+                Arg.Is<Address>(a => a.Scheme == "unit" && a.Id == childUnitId),
                 Arg.Any<CancellationToken>())
             .Returns(_ => throw new UnitParentRequiredException(
                 "child-unit",
-                "parent-a",
+                Unit_ParentA_Id.ToString("N"),
                 "Cannot remove unit 'child-unit' from unit 'parent-a': this is the unit's last parent. "
                 + "Attach it to another parent unit first, promote it to top-level, or delete the unit itself."));
 
         var response = await _client.DeleteAsync(
-            "/api/v1/tenant/units/parent-a/members/child-unit", ct);
+            $"/api/v1/tenant/units/{Unit_ParentA_Id:N}/members/{childUnitId:N}", ct);
 
         response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
     }

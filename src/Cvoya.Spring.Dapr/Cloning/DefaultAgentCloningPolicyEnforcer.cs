@@ -78,7 +78,9 @@ public class DefaultAgentCloningPolicyEnforcer(
             agentPolicy = await repository.GetAsync(
                 CloningPolicyScope.Agent, sourceAgentId, cancellationToken);
             tenantPolicy = await repository.GetAsync(
-                CloningPolicyScope.Tenant, tenantContext.CurrentTenantId, cancellationToken);
+                CloningPolicyScope.Tenant,
+                Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(tenantContext.CurrentTenantId),
+                cancellationToken);
         }
         catch (Exception ex)
         {
@@ -244,13 +246,12 @@ public class DefaultAgentCloningPolicyEnforcer(
 
         foreach (var membership in memberships)
         {
-            var unitUuidStr = membership.UnitId.ToString();
-
-            // Resolve the unit UUID to its slug-based Address for the boundary store,
-            // which uses the directory-service-resolved address (slug scheme).
+            // Resolve the unit Guid id to its directory entry. Both the
+            // entry's ActorId and the membership's UnitId are stable Guids
+            // post-#1629; comparing by Guid avoids string round-trips.
             var unitEntry = allEntries.FirstOrDefault(
                 e => string.Equals(e.Address.Scheme, "unit", StringComparison.OrdinalIgnoreCase)
-                  && string.Equals(e.ActorId, unitUuidStr, StringComparison.OrdinalIgnoreCase));
+                  && e.ActorId == membership.UnitId);
 
             if (unitEntry is null)
             {
@@ -266,7 +267,7 @@ public class DefaultAgentCloningPolicyEnforcer(
             {
                 _logger.LogDebug(ex,
                     "Failed to read boundary for unit {UnitId} during cloning check; skipping",
-                    unitUuidStr);
+                    membership.UnitId);
                 continue;
             }
 

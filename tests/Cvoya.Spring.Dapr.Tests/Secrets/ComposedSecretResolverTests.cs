@@ -25,17 +25,18 @@ using Xunit;
 /// </summary>
 public class ComposedSecretResolverTests
 {
-    private const string TenantId = "acme";
+    private static readonly Guid TenantId = new("acacacac-0000-0000-0000-000000000001");
+    private static readonly Guid UnitU1 = new("a1a1a1a1-0000-0000-0000-000000000001");
 
     private static ComposedSecretResolver CreateSut(
         ISecretRegistry registry,
         ISecretStore store,
         ISecretAccessPolicy? accessPolicy = null,
         bool inheritTenantFromUnit = true,
-        string tenantId = TenantId)
+        Guid? tenantId = null)
     {
         var tenantContext = Substitute.For<ITenantContext>();
-        tenantContext.CurrentTenantId.Returns(tenantId);
+        tenantContext.CurrentTenantId.Returns(tenantId ?? TenantId);
 
         var policy = accessPolicy ?? new AllowAllSecretAccessPolicy();
 
@@ -54,10 +55,10 @@ public class ComposedSecretResolverTests
         var registry = Substitute.For<ISecretRegistry>();
         var store = Substitute.For<ISecretStore>();
         var policy = Substitute.For<ISecretAccessPolicy>();
-        policy.IsAuthorizedAsync(Arg.Any<SecretAccessAction>(), Arg.Any<SecretScope>(), Arg.Any<string>(), ct)
+        policy.IsAuthorizedAsync(Arg.Any<SecretAccessAction>(), Arg.Any<SecretScope>(), Arg.Any<Guid?>(), ct)
             .Returns(true);
 
-        var unitRef = new SecretRef(SecretScope.Unit, "u1", "foo");
+        var unitRef = new SecretRef(SecretScope.Unit, UnitU1, "foo");
         registry.LookupWithVersionAsync(unitRef, ct)
             .Returns((new SecretPointer("sk-unit", SecretOrigin.PlatformOwned), (int?)3));
         store.ReadAsync("sk-unit", ct).Returns("unit-value");
@@ -72,7 +73,7 @@ public class ComposedSecretResolverTests
         await registry.DidNotReceive().LookupWithVersionAsync(
             Arg.Is<SecretRef>(r => r.Scope == SecretScope.Tenant), Arg.Any<CancellationToken>());
         await policy.DidNotReceive().IsAuthorizedAsync(
-            Arg.Any<SecretAccessAction>(), SecretScope.Tenant, Arg.Any<string>(), Arg.Any<CancellationToken>());
+            Arg.Any<SecretAccessAction>(), SecretScope.Tenant, Arg.Any<Guid?>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -82,7 +83,7 @@ public class ComposedSecretResolverTests
         var registry = Substitute.For<ISecretRegistry>();
         var store = Substitute.For<ISecretStore>();
 
-        var unitRef = new SecretRef(SecretScope.Unit, "u1", "foo");
+        var unitRef = new SecretRef(SecretScope.Unit, UnitU1, "foo");
         registry.LookupWithVersionAsync(unitRef, ct)
             .Returns((new SecretPointer("sk-unit", SecretOrigin.PlatformOwned), (int?)7));
         store.ReadAsync("sk-unit", ct).Returns("unit-value");
@@ -107,10 +108,10 @@ public class ComposedSecretResolverTests
         var registry = Substitute.For<ISecretRegistry>();
         var store = Substitute.For<ISecretStore>();
         var policy = Substitute.For<ISecretAccessPolicy>();
-        policy.IsAuthorizedAsync(Arg.Any<SecretAccessAction>(), Arg.Any<SecretScope>(), Arg.Any<string>(), ct)
+        policy.IsAuthorizedAsync(Arg.Any<SecretAccessAction>(), Arg.Any<SecretScope>(), Arg.Any<Guid?>(), ct)
             .Returns(true);
 
-        var unitRef = new SecretRef(SecretScope.Unit, "u1", "shared-token");
+        var unitRef = new SecretRef(SecretScope.Unit, UnitU1, "shared-token");
         var tenantRef = new SecretRef(SecretScope.Tenant, TenantId, "shared-token");
         registry.LookupWithVersionAsync(unitRef, ct)
             .Returns(((SecretPointer Pointer, int? Version)?)null);
@@ -129,7 +130,7 @@ public class ComposedSecretResolverTests
 
         // Access policy must have been called at BOTH scopes with Read.
         await policy.Received(1).IsAuthorizedAsync(
-            SecretAccessAction.Read, SecretScope.Unit, "u1", ct);
+            SecretAccessAction.Read, SecretScope.Unit, UnitU1, ct);
         await policy.Received(1).IsAuthorizedAsync(
             SecretAccessAction.Read, SecretScope.Tenant, TenantId, ct);
     }
@@ -141,7 +142,7 @@ public class ComposedSecretResolverTests
         var registry = Substitute.For<ISecretRegistry>();
         var store = Substitute.For<ISecretStore>();
 
-        var unitRef = new SecretRef(SecretScope.Unit, "u1", "missing");
+        var unitRef = new SecretRef(SecretScope.Unit, UnitU1, "missing");
         registry.LookupWithVersionAsync(
             Arg.Any<SecretRef>(), Arg.Any<CancellationToken>())
             .Returns(((SecretPointer Pointer, int? Version)?)null);
@@ -168,12 +169,12 @@ public class ComposedSecretResolverTests
 
         // Unit read allowed, tenant read denied — the fall-through must
         // NOT leak the tenant plaintext.
-        policy.IsAuthorizedAsync(SecretAccessAction.Read, SecretScope.Unit, "u1", ct)
+        policy.IsAuthorizedAsync(SecretAccessAction.Read, SecretScope.Unit, UnitU1, ct)
             .Returns(true);
         policy.IsAuthorizedAsync(SecretAccessAction.Read, SecretScope.Tenant, TenantId, ct)
             .Returns(false);
 
-        var unitRef = new SecretRef(SecretScope.Unit, "u1", "shared-token");
+        var unitRef = new SecretRef(SecretScope.Unit, UnitU1, "shared-token");
         var tenantRef = new SecretRef(SecretScope.Tenant, TenantId, "shared-token");
         registry.LookupWithVersionAsync(unitRef, ct)
             .Returns(((SecretPointer Pointer, int? Version)?)null);
@@ -202,10 +203,10 @@ public class ComposedSecretResolverTests
         var store = Substitute.For<ISecretStore>();
         var policy = Substitute.For<ISecretAccessPolicy>();
 
-        policy.IsAuthorizedAsync(SecretAccessAction.Read, SecretScope.Unit, "u1", ct)
+        policy.IsAuthorizedAsync(SecretAccessAction.Read, SecretScope.Unit, UnitU1, ct)
             .Returns(false);
 
-        var unitRef = new SecretRef(SecretScope.Unit, "u1", "foo");
+        var unitRef = new SecretRef(SecretScope.Unit, UnitU1, "foo");
 
         var sut = CreateSut(registry, store, policy);
 
@@ -217,7 +218,7 @@ public class ComposedSecretResolverTests
         await registry.DidNotReceive().LookupWithVersionAsync(
             Arg.Any<SecretRef>(), Arg.Any<CancellationToken>());
         await policy.DidNotReceive().IsAuthorizedAsync(
-            Arg.Any<SecretAccessAction>(), SecretScope.Tenant, Arg.Any<string>(), Arg.Any<CancellationToken>());
+            Arg.Any<SecretAccessAction>(), SecretScope.Tenant, Arg.Any<Guid?>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -227,10 +228,10 @@ public class ComposedSecretResolverTests
         var registry = Substitute.For<ISecretRegistry>();
         var store = Substitute.For<ISecretStore>();
         var policy = Substitute.For<ISecretAccessPolicy>();
-        policy.IsAuthorizedAsync(Arg.Any<SecretAccessAction>(), Arg.Any<SecretScope>(), Arg.Any<string>(), ct)
+        policy.IsAuthorizedAsync(Arg.Any<SecretAccessAction>(), Arg.Any<SecretScope>(), Arg.Any<Guid?>(), ct)
             .Returns(true);
 
-        var unitRef = new SecretRef(SecretScope.Unit, "u1", "shared-token");
+        var unitRef = new SecretRef(SecretScope.Unit, UnitU1, "shared-token");
         var tenantRef = new SecretRef(SecretScope.Tenant, TenantId, "shared-token");
         registry.LookupWithVersionAsync(unitRef, ct)
             .Returns(((SecretPointer Pointer, int? Version)?)null);
@@ -248,7 +249,7 @@ public class ComposedSecretResolverTests
         // Tenant scope must not be consulted under strict-isolation config.
         await registry.DidNotReceive().LookupWithVersionAsync(tenantRef, ct);
         await policy.DidNotReceive().IsAuthorizedAsync(
-            Arg.Any<SecretAccessAction>(), SecretScope.Tenant, Arg.Any<string>(), Arg.Any<CancellationToken>());
+            Arg.Any<SecretAccessAction>(), SecretScope.Tenant, Arg.Any<Guid?>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -281,7 +282,8 @@ public class ComposedSecretResolverTests
 
         // Platform-scope requests never inherit from tenant — platform
         // keys are infra-only.
-        var platformRef = new SecretRef(SecretScope.Platform, "platform", "infra-key");
+        // Platform scope owner is null per the post-#1629 SecretRef shape.
+        var platformRef = new SecretRef(SecretScope.Platform, null, "infra-key");
         registry.LookupWithVersionAsync(platformRef, ct)
             .Returns(((SecretPointer Pointer, int? Version)?)null);
 
@@ -301,7 +303,7 @@ public class ComposedSecretResolverTests
         var registry = Substitute.For<ISecretRegistry>();
         var store = Substitute.For<ISecretStore>();
 
-        var unitRef = new SecretRef(SecretScope.Unit, "u1", "foo");
+        var unitRef = new SecretRef(SecretScope.Unit, UnitU1, "foo");
         registry.LookupWithVersionAsync(unitRef, ct)
             .Returns((new SecretPointer("sk-unit", SecretOrigin.PlatformOwned), (int?)1));
         store.ReadAsync("sk-unit", ct).Returns("unit-value");
@@ -328,7 +330,7 @@ public class ComposedSecretResolverTests
         var registry = Substitute.For<ISecretRegistry>();
         var store = Substitute.For<ISecretStore>();
 
-        var unitRef = new SecretRef(SecretScope.Unit, "u1", "foo");
+        var unitRef = new SecretRef(SecretScope.Unit, UnitU1, "foo");
         registry.LookupWithVersionAsync(unitRef, 2, ct)
             .Returns((new SecretPointer("sk-unit-v2", SecretOrigin.PlatformOwned), (int?)2));
         store.ReadAsync("sk-unit-v2", ct).Returns("value-v2");
@@ -349,10 +351,10 @@ public class ComposedSecretResolverTests
         var registry = Substitute.For<ISecretRegistry>();
         var store = Substitute.For<ISecretStore>();
         var policy = Substitute.For<ISecretAccessPolicy>();
-        policy.IsAuthorizedAsync(Arg.Any<SecretAccessAction>(), Arg.Any<SecretScope>(), Arg.Any<string>(), ct)
+        policy.IsAuthorizedAsync(Arg.Any<SecretAccessAction>(), Arg.Any<SecretScope>(), Arg.Any<Guid?>(), ct)
             .Returns(true);
 
-        var unitRef = new SecretRef(SecretScope.Unit, "u1", "shared");
+        var unitRef = new SecretRef(SecretScope.Unit, UnitU1, "shared");
         var tenantRef = new SecretRef(SecretScope.Tenant, TenantId, "shared");
         registry.LookupWithVersionAsync(unitRef, 2, ct)
             .Returns(((SecretPointer Pointer, int? Version)?)null);
@@ -380,10 +382,10 @@ public class ComposedSecretResolverTests
         var registry = Substitute.For<ISecretRegistry>();
         var store = Substitute.For<ISecretStore>();
         var policy = Substitute.For<ISecretAccessPolicy>();
-        policy.IsAuthorizedAsync(Arg.Any<SecretAccessAction>(), Arg.Any<SecretScope>(), Arg.Any<string>(), ct)
+        policy.IsAuthorizedAsync(Arg.Any<SecretAccessAction>(), Arg.Any<SecretScope>(), Arg.Any<Guid?>(), ct)
             .Returns(true);
 
-        var unitRef = new SecretRef(SecretScope.Unit, "u1", "shared");
+        var unitRef = new SecretRef(SecretScope.Unit, UnitU1, "shared");
         var tenantRef = new SecretRef(SecretScope.Tenant, TenantId, "shared");
         registry.LookupWithVersionAsync(unitRef, 3, ct)
             .Returns(((SecretPointer Pointer, int? Version)?)null);
@@ -413,7 +415,7 @@ public class ComposedSecretResolverTests
         var registry = Substitute.For<ISecretRegistry>();
         var store = Substitute.For<ISecretStore>();
 
-        var unitRef = new SecretRef(SecretScope.Unit, "u1", "foo");
+        var unitRef = new SecretRef(SecretScope.Unit, UnitU1, "foo");
         registry.LookupWithVersionAsync(unitRef, ct)
             .Returns((new SecretPointer("sk-latest", SecretOrigin.PlatformOwned), (int?)4));
         store.ReadAsync("sk-latest", ct).Returns("latest-value");
@@ -441,10 +443,10 @@ public class ComposedSecretResolverTests
         var registry = Substitute.For<ISecretRegistry>();
         var store = Substitute.For<ISecretStore>();
         var policy = Substitute.For<ISecretAccessPolicy>();
-        policy.IsAuthorizedAsync(Arg.Any<SecretAccessAction>(), Arg.Any<SecretScope>(), Arg.Any<string>(), ct)
+        policy.IsAuthorizedAsync(Arg.Any<SecretAccessAction>(), Arg.Any<SecretScope>(), Arg.Any<Guid?>(), ct)
             .Returns(true);
 
-        var unitRef = new SecretRef(SecretScope.Unit, "u1", "shared");
+        var unitRef = new SecretRef(SecretScope.Unit, UnitU1, "shared");
         var tenantRef = new SecretRef(SecretScope.Tenant, TenantId, "shared");
 
         // Latest (null) lookup — the composed resolver uses the legacy
@@ -474,9 +476,9 @@ public class ComposedSecretResolverTests
         var registry = Substitute.For<ISecretRegistry>();
         var store = Substitute.For<ISecretStore>();
         var policy = Substitute.For<ISecretAccessPolicy>();
-        policy.IsAuthorizedAsync(SecretAccessAction.Read, SecretScope.Unit, "u1", ct).Returns(false);
+        policy.IsAuthorizedAsync(SecretAccessAction.Read, SecretScope.Unit, UnitU1, ct).Returns(false);
 
-        var unitRef = new SecretRef(SecretScope.Unit, "u1", "foo");
+        var unitRef = new SecretRef(SecretScope.Unit, UnitU1, "foo");
         var sut = CreateSut(registry, store, policy);
 
         var resolution = await sut.ResolveWithPathAsync(unitRef, 2, ct);
@@ -495,14 +497,14 @@ public class ComposedSecretResolverTests
 
         var expected = new List<SecretRef>
         {
-            new(SecretScope.Unit, "u1", "a"),
-            new(SecretScope.Unit, "u1", "b"),
+            new(SecretScope.Unit, UnitU1, "a"),
+            new(SecretScope.Unit, UnitU1, "b"),
         };
-        registry.ListAsync(SecretScope.Unit, "u1", ct).Returns(expected);
+        registry.ListAsync(SecretScope.Unit, UnitU1, ct).Returns(expected);
 
         var sut = CreateSut(registry, store);
 
-        var result = await sut.ListAsync(SecretScope.Unit, "u1", ct);
+        var result = await sut.ListAsync(SecretScope.Unit, UnitU1, ct);
 
         result.ShouldBe(expected);
     }

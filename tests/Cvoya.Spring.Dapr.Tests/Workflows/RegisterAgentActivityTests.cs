@@ -19,10 +19,15 @@ using Shouldly;
 using Xunit;
 
 /// <summary>
-/// Unit tests for <see cref="RegisterAgentActivity"/>.
+/// Unit tests for <see cref="RegisterAgentActivity"/>. Post #1629: agent ids
+/// are Guids — the test passes the no-dash hex form on input and asserts the
+/// emitted <see cref="DirectoryEntry.ActorId"/> matches that Guid.
 /// </summary>
 public class RegisterAgentActivityTests
 {
+    private static readonly Guid AgentGuid = new("aaaaaaaa-1111-1111-1111-000000000001");
+    private static readonly string AgentIdHex = AgentGuid.ToString("N");
+
     private readonly IDirectoryService _directoryService;
     private readonly RegisterAgentActivity _activity;
 
@@ -38,7 +43,7 @@ public class RegisterAgentActivityTests
     public async Task RunAsync_CallsDirectoryServiceWithCorrectEntry()
     {
         var input = new AgentLifecycleInput(
-            LifecycleOperation.Create, "agent-1", AgentName: "Ada", Role: "backend-engineer");
+            LifecycleOperation.Create, AgentIdHex, AgentName: "Ada", Role: "backend-engineer");
         var context = Substitute.For<WorkflowActivityContext>();
 
         var result = await _activity.RunAsync(context, input);
@@ -47,8 +52,8 @@ public class RegisterAgentActivityTests
         await _directoryService.Received(1).RegisterAsync(
             Arg.Is<DirectoryEntry>(e =>
                 e.Address.Scheme == "agent" &&
-                e.Address.Path == "agent-1" &&
-                e.ActorId == "agent-1" &&
+                e.Address.Id == AgentGuid &&
+                e.ActorId == AgentGuid &&
                 e.DisplayName == "Ada" &&
                 e.Role == "backend-engineer"),
             Arg.Any<CancellationToken>());
@@ -58,14 +63,14 @@ public class RegisterAgentActivityTests
     public async Task RunAsync_UsesAgentIdAsDisplayName_WhenAgentNameIsNull()
     {
         var input = new AgentLifecycleInput(
-            LifecycleOperation.Create, "agent-1");
+            LifecycleOperation.Create, AgentIdHex);
         var context = Substitute.For<WorkflowActivityContext>();
 
         await _activity.RunAsync(context, input);
 
         await _directoryService.Received(1).RegisterAsync(
             Arg.Is<DirectoryEntry>(e =>
-                e.DisplayName == "agent-1"),
+                e.DisplayName == AgentIdHex),
             Arg.Any<CancellationToken>());
     }
 }

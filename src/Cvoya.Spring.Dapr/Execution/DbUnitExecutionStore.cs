@@ -49,7 +49,8 @@ public class DbUnitExecutionStore(
         string unitId,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(unitId))
+        if (string.IsNullOrWhiteSpace(unitId)
+            || !Cvoya.Spring.Core.Identifiers.GuidFormatter.TryParse(unitId, out var unitUuid))
         {
             return null;
         }
@@ -60,7 +61,7 @@ public class DbUnitExecutionStore(
         var entity = await db.UnitDefinitions
             .AsNoTracking()
             .FirstOrDefaultAsync(
-                u => u.UnitId == unitId && u.DeletedAt == null,
+                u => u.Id == unitUuid && u.DeletedAt == null,
                 cancellationToken);
 
         return entity is null ? null : Extract(entity.Definition);
@@ -76,13 +77,18 @@ public class DbUnitExecutionStore(
         {
             throw new ArgumentException("Unit id must be supplied.", nameof(unitId));
         }
+        if (!Cvoya.Spring.Core.Identifiers.GuidFormatter.TryParse(unitId, out var unitUuid))
+        {
+            throw new ArgumentException(
+                $"Unit id '{unitId}' is not a valid Guid.", nameof(unitId));
+        }
 
         await using var scope = scopeFactory.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
 
         var entity = await db.UnitDefinitions
             .FirstOrDefaultAsync(
-                u => u.UnitId == unitId && u.DeletedAt == null,
+                u => u.Id == unitUuid && u.DeletedAt == null,
                 cancellationToken);
 
         if (entity is null)
@@ -115,13 +121,18 @@ public class DbUnitExecutionStore(
         {
             throw new ArgumentException("Unit id must be supplied.", nameof(unitId));
         }
+        if (!Cvoya.Spring.Core.Identifiers.GuidFormatter.TryParse(unitId, out var unitUuid))
+        {
+            throw new ArgumentException(
+                $"Unit id '{unitId}' is not a valid Guid.", nameof(unitId));
+        }
 
         await using var scope = scopeFactory.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
 
         var entity = await db.UnitDefinitions
             .FirstOrDefaultAsync(
-                u => u.UnitId == unitId && u.DeletedAt == null,
+                u => u.Id == unitUuid && u.DeletedAt == null,
                 cancellationToken);
 
         if (entity is null)

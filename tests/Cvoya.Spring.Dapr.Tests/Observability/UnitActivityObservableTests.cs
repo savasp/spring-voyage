@@ -46,27 +46,27 @@ public class UnitActivityObservableTests : IDisposable
         unit.GetMembersAsync(Arg.Any<CancellationToken>())
             .Returns(new[]
             {
-                new Address("agent", "agent-a"),
-                new Address("agent", "agent-b"),
+                Address.For("agent", TestSlugIds.HexFor("agent-a")),
+                Address.For("agent", TestSlugIds.HexFor("agent-b")),
             });
-        _proxyFactory.CreateActorProxy<IUnitActor>(new ActorId("unit-1"), nameof(UnitActor))
+        _proxyFactory.CreateActorProxy<IUnitActor>(new ActorId(TestSlugIds.HexFor("unit-1")), nameof(UnitActor))
             .Returns(unit);
 
         var sut = CreateSut();
-        var stream = await sut.GetStreamAsync("unit-1", TestContext.Current.CancellationToken);
+        var stream = await sut.GetStreamAsync(TestSlugIds.HexFor("unit-1"), TestContext.Current.CancellationToken);
 
         var observed = new List<ActivityEvent>();
         using var subscription = stream.Subscribe(observed.Add);
 
-        _bus.Publish(Evt(new Address("agent", "agent-a"), ActivityEventType.MessageReceived));
-        _bus.Publish(Evt(new Address("agent", "agent-c"), ActivityEventType.MessageReceived));
-        _bus.Publish(Evt(new Address("unit", "unit-1"), ActivityEventType.DecisionMade));
-        _bus.Publish(Evt(new Address("agent", "agent-b"), ActivityEventType.TokenDelta));
+        _bus.Publish(Evt(Address.For("agent", TestSlugIds.HexFor("agent-a")), ActivityEventType.MessageReceived));
+        _bus.Publish(Evt(Address.For("agent", TestSlugIds.HexFor("agent-c")), ActivityEventType.MessageReceived));
+        _bus.Publish(Evt(Address.For("unit", TestSlugIds.HexFor("unit-1")), ActivityEventType.DecisionMade));
+        _bus.Publish(Evt(Address.For("agent", TestSlugIds.HexFor("agent-b")), ActivityEventType.TokenDelta));
 
         observed.Count.ShouldBe(3);
-        observed[0].Source.Path.ShouldBe("agent-a");
-        observed[1].Source.Path.ShouldBe("unit-1");
-        observed[2].Source.Path.ShouldBe("agent-b");
+        observed[0].Source.Path.ShouldBe(TestSlugIds.HexFor("agent-a"));
+        observed[1].Source.Path.ShouldBe(TestSlugIds.HexFor("unit-1"));
+        observed[2].Source.Path.ShouldBe(TestSlugIds.HexFor("agent-b"));
     }
 
     [Fact]
@@ -75,38 +75,39 @@ public class UnitActivityObservableTests : IDisposable
         // Parent unit-1 contains sub-unit unit-2 contains agent-z.
         var parent = Substitute.For<IUnitActor>();
         parent.GetMembersAsync(Arg.Any<CancellationToken>())
-            .Returns(new[] { new Address("unit", "unit-2") });
-        _proxyFactory.CreateActorProxy<IUnitActor>(new ActorId("unit-1"), nameof(UnitActor))
+            .Returns(new[] { Address.For("unit", TestSlugIds.HexFor("unit-2")) });
+        _proxyFactory.CreateActorProxy<IUnitActor>(new ActorId(TestSlugIds.HexFor("unit-1")), nameof(UnitActor))
             .Returns(parent);
 
         var sub = Substitute.For<IUnitActor>();
         sub.GetMembersAsync(Arg.Any<CancellationToken>())
-            .Returns(new[] { new Address("agent", "agent-z") });
-        _proxyFactory.CreateActorProxy<IUnitActor>(new ActorId("unit-2"), nameof(UnitActor))
+            .Returns(new[] { Address.For("agent", TestSlugIds.HexFor("agent-z")) });
+        _proxyFactory.CreateActorProxy<IUnitActor>(new ActorId(TestSlugIds.HexFor("unit-2")), nameof(UnitActor))
             .Returns(sub);
 
-        _directory.ResolveAsync(new Address("unit", "unit-2"), Arg.Any<CancellationToken>())
+        var unit2Id = TestSlugIds.For("unit-2");
+        _directory.ResolveAsync(Arg.Any<Address>(), Arg.Any<CancellationToken>())
             .Returns(new DirectoryEntry(
-                Address: new Address("unit", "unit-2"),
-                ActorId: "unit-2",
+                Address: new Address("unit", unit2Id),
+                ActorId: unit2Id,
                 DisplayName: "unit-2",
                 Description: string.Empty,
                 Role: null,
                 RegisteredAt: DateTimeOffset.UtcNow));
 
         var sut = CreateSut();
-        var stream = await sut.GetStreamAsync("unit-1", TestContext.Current.CancellationToken);
+        var stream = await sut.GetStreamAsync(TestSlugIds.HexFor("unit-1"), TestContext.Current.CancellationToken);
 
         var observed = new List<ActivityEvent>();
         using var subscription = stream.Subscribe(observed.Add);
 
-        _bus.Publish(Evt(new Address("agent", "agent-z"), ActivityEventType.ToolCall));
-        _bus.Publish(Evt(new Address("unit", "unit-2"), ActivityEventType.StateChanged));
-        _bus.Publish(Evt(new Address("agent", "agent-not-mine"), ActivityEventType.MessageReceived));
+        _bus.Publish(Evt(Address.For("agent", TestSlugIds.HexFor("agent-z")), ActivityEventType.ToolCall));
+        _bus.Publish(Evt(Address.For("unit", TestSlugIds.HexFor("unit-2")), ActivityEventType.StateChanged));
+        _bus.Publish(Evt(Address.For("agent", TestSlugIds.HexFor("agent-not-mine")), ActivityEventType.MessageReceived));
 
         observed.Count.ShouldBe(2);
-        observed.ShouldContain(e => e.Source.Path == "agent-z");
-        observed.ShouldContain(e => e.Source.Path == "unit-2");
+        observed.ShouldContain(e => e.Source.Path == TestSlugIds.HexFor("agent-z"));
+        observed.ShouldContain(e => e.Source.Path == TestSlugIds.HexFor("unit-2"));
     }
 
     [Fact]
@@ -115,16 +116,16 @@ public class UnitActivityObservableTests : IDisposable
         var unit = Substitute.For<IUnitActor>();
         unit.GetMembersAsync(Arg.Any<CancellationToken>())
             .Returns(System.Array.Empty<Address>());
-        _proxyFactory.CreateActorProxy<IUnitActor>(new ActorId("unit-none"), nameof(UnitActor))
+        _proxyFactory.CreateActorProxy<IUnitActor>(new ActorId(TestSlugIds.HexFor("unit-none")), nameof(UnitActor))
             .Returns(unit);
 
         var sut = CreateSut();
-        var stream = await sut.GetStreamAsync("unit-none", TestContext.Current.CancellationToken);
+        var stream = await sut.GetStreamAsync(TestSlugIds.HexFor("unit-none"), TestContext.Current.CancellationToken);
 
         var observed = new List<ActivityEvent>();
         using var subscription = stream.Subscribe(observed.Add);
 
-        _bus.Publish(Evt(new Address("agent", "agent-x"), ActivityEventType.MessageReceived));
+        _bus.Publish(Evt(Address.For("agent", TestSlugIds.HexFor("agent-x")), ActivityEventType.MessageReceived));
 
         // Unit itself is always included in the member set, so an event
         // published from it would land here. No such event above → empty.

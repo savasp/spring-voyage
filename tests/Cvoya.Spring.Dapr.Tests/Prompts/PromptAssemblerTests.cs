@@ -45,8 +45,8 @@ public class PromptAssemblerTests
     {
         return new Message(
             Guid.NewGuid(),
-            new Address("agent", "sender"),
-            new Address("agent", "receiver"),
+            Address.For("agent", TestSlugIds.HexFor("sender")),
+            Address.For("agent", TestSlugIds.HexFor("receiver")),
             MessageType.Domain,
             "conv-1",
             JsonSerializer.SerializeToElement(new { text }),
@@ -61,7 +61,7 @@ public class PromptAssemblerTests
     {
         var message = CreateMessage();
         var context = new PromptAssemblyContext(
-            Members: [new Address("agent", "team/alice")],
+            Members: [Address.For("agent", TestSlugIds.HexFor("team/alice"))],
             Policies: JsonSerializer.SerializeToElement(new { maxRetries = 3 }),
             Skills: [new Skill("review", "Code review", [])],
             PriorMessages: [CreateMessage("prior msg")],

@@ -63,7 +63,7 @@ public static class CloneEndpoints
         DaprWorkflowClient workflowClient,
         CancellationToken cancellationToken)
     {
-        var parentAddress = new Address("agent", agentId);
+        var parentAddress = Address.For("agent", agentId);
         var parentEntry = await directoryService.ResolveAsync(parentAddress, cancellationToken);
 
         if (parentEntry is null)
@@ -131,7 +131,7 @@ public static class CloneEndpoints
         IStateStore stateStore,
         CancellationToken cancellationToken)
     {
-        var parentAddress = new Address("agent", agentId);
+        var parentAddress = Address.For("agent", agentId);
         var parentEntry = await directoryService.ResolveAsync(parentAddress, cancellationToken);
 
         if (parentEntry is null)
@@ -153,7 +153,7 @@ public static class CloneEndpoints
             var identityKey = $"{cloneId}:{StateKeys.CloneIdentity}";
             var identity = await stateStore.GetAsync<CloneIdentity>(identityKey, cancellationToken);
 
-            var cloneAddress = new Address("agent", cloneId);
+            var cloneAddress = Address.For("agent", cloneId);
             var cloneEntry = await directoryService.ResolveAsync(cloneAddress, cancellationToken);
 
             clones.Add(new CloneResponse(
@@ -175,7 +175,7 @@ public static class CloneEndpoints
         IStateStore stateStore,
         CancellationToken cancellationToken)
     {
-        var cloneAddress = new Address("agent", cloneId);
+        var cloneAddress = Address.For("agent", cloneId);
         var cloneEntry = await directoryService.ResolveAsync(cloneAddress, cancellationToken);
 
         if (cloneEntry is null)
@@ -205,7 +205,7 @@ public static class CloneEndpoints
         DaprWorkflowClient workflowClient,
         CancellationToken cancellationToken)
     {
-        var cloneAddress = new Address("agent", cloneId);
+        var cloneAddress = Address.For("agent", cloneId);
         var cloneEntry = await directoryService.ResolveAsync(cloneAddress, cancellationToken);
 
         if (cloneEntry is null)

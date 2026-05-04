@@ -42,7 +42,7 @@ public class StreamEventSubscriber(
         var activityEvent = new ActivityEvent(
             Guid.NewGuid(),
             envelope.Timestamp,
-            new Address("agent", envelope.AgentId),
+            Address.For("agent", envelope.AgentId),
             activityEventType,
             severity,
             description,

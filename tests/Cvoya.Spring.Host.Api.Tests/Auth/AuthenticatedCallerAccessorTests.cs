@@ -17,11 +17,11 @@ using Shouldly;
 using Xunit;
 
 /// <summary>
-/// Unit tests for <see cref="AuthenticatedCallerAccessor"/>. Verifies the
-/// #1491 semantics: authenticated subjects resolve to a stable UUID and
-/// emit <c>human:id:&lt;uuid&gt;</c> via <see cref="IHumanIdentityResolver"/>;
-/// anonymous / out-of-request contexts fall back to the synthetic
-/// <c>human://api</c> navigation form.
+/// Unit tests for <see cref="AuthenticatedCallerAccessor"/>.
+///
+/// Post #1629: every <see cref="Cvoya.Spring.Core.Messaging.Address"/> is a
+/// Guid identity (no slug/identity dichotomy), so the test asserts the
+/// address scheme and Guid path directly.
 /// </summary>
 public class AuthenticatedCallerAccessorTests
 {
@@ -37,7 +37,7 @@ public class AuthenticatedCallerAccessorTests
     }
 
     [Fact]
-    public async Task GetCallerAddressAsync_AuthenticatedPrincipal_ReturnsIdentityFormAddress()
+    public async Task GetCallerAddressAsync_AuthenticatedPrincipal_ReturnsResolverGuidAddress()
     {
         var accessor = Substitute.For<IHttpContextAccessor>();
         var httpContext = new DefaultHttpContext();
@@ -52,65 +52,7 @@ public class AuthenticatedCallerAccessorTests
         var result = await sut.GetCallerAddressAsync(TestContext.Current.CancellationToken);
 
         result.Scheme.ShouldBe("human");
-        result.IsIdentity.ShouldBeTrue();
-        result.Path.ShouldBe(AliceId.ToString());
-        result.ToIdentityUri().ShouldBe($"human:id:{AliceId}");
-    }
-
-    [Fact]
-    public async Task GetCallerAddressAsync_NoHttpContext_FallsBackToNavigationForm()
-    {
-        var accessor = Substitute.For<IHttpContextAccessor>();
-        accessor.HttpContext.Returns((HttpContext?)null);
-
-        var sut = new AuthenticatedCallerAccessor(accessor, _identityResolver);
-
-        var result = await sut.GetCallerAddressAsync(TestContext.Current.CancellationToken);
-
-        result.Scheme.ShouldBe("human");
-        result.IsIdentity.ShouldBeFalse();
-        result.Path.ShouldBe(AuthenticatedCallerAccessor.FallbackHumanUsername);
-    }
-
-    [Fact]
-    public async Task GetCallerAddressAsync_AnonymousPrincipal_FallsBackToNavigationForm()
-    {
-        var accessor = Substitute.For<IHttpContextAccessor>();
-        var httpContext = new DefaultHttpContext
-        {
-            User = new ClaimsPrincipal(new ClaimsIdentity()),
-        };
-        accessor.HttpContext.Returns(httpContext);
-
-        var sut = new AuthenticatedCallerAccessor(accessor, _identityResolver);
-
-        var result = await sut.GetCallerAddressAsync(TestContext.Current.CancellationToken);
-
-        result.Scheme.ShouldBe("human");
-        result.IsIdentity.ShouldBeFalse();
-        result.Path.ShouldBe(AuthenticatedCallerAccessor.FallbackHumanUsername);
-    }
-
-    [Fact]
-    public async Task GetCallerAddressAsync_AuthenticatedButMissingNameIdentifier_FallsBackToNavigationForm()
-    {
-        var accessor = Substitute.For<IHttpContextAccessor>();
-        var identity = new ClaimsIdentity(
-            new[] { new Claim(ClaimTypes.Name, "alice") },
-            authenticationType: "test");
-        var httpContext = new DefaultHttpContext
-        {
-            User = new ClaimsPrincipal(identity),
-        };
-        accessor.HttpContext.Returns(httpContext);
-
-        var sut = new AuthenticatedCallerAccessor(accessor, _identityResolver);
-
-        var result = await sut.GetCallerAddressAsync(TestContext.Current.CancellationToken);
-
-        result.Scheme.ShouldBe("human");
-        result.IsIdentity.ShouldBeFalse();
-        result.Path.ShouldBe(AuthenticatedCallerAccessor.FallbackHumanId);
+        result.Id.ShouldBe(AliceId);
     }
 
     [Fact]

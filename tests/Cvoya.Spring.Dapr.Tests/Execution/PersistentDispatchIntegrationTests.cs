@@ -41,7 +41,9 @@ public class PersistentDispatchIntegrationTests
     private readonly IHttpClientFactory _httpClientFactory = Substitute.For<IHttpClientFactory>();
     private readonly PersistentAgentRegistry _persistentRegistry;
     private readonly A2AExecutionDispatcher _dispatcher;
-    private const string AgentId = "persistent-agent";
+    private static readonly Guid AgentGuid = new("aaaaaaaa-1111-1111-1111-000000000001");
+    private static readonly string AgentId = AgentGuid.ToString("N");
+    private static readonly Guid SenderGuid = new("aaaaaaaa-1111-1111-1111-000000000002");
     private const string Image = "spring-agent-claude:v1";
 
     public PersistentDispatchIntegrationTests()
@@ -60,7 +62,7 @@ public class PersistentDispatchIntegrationTests
             .Returns(new AgentBootstrapContext(
                 EnvironmentVariables: new Dictionary<string, string>
                 {
-                    ["SPRING_TENANT_ID"] = "default",
+                    ["SPRING_TENANT_ID"] = Cvoya.Spring.Core.Tenancy.OssTenantIds.DefaultNoDash,
                     ["SPRING_AGENT_ID"] = AgentId,
                 },
                 ContextFiles: new Dictionary<string, string>()));
@@ -68,7 +70,7 @@ public class PersistentDispatchIntegrationTests
         _mcpServer.Endpoint.Returns("http://host.docker.internal:12345/mcp/");
         _mcpServer.IssueSession(Arg.Any<string>(), Arg.Any<string>())
             .Returns(ci => new McpSession("test-token", ci.ArgAt<string>(0), ci.ArgAt<string>(1)));
-        _tenantContext.CurrentTenantId.Returns("default");
+        _tenantContext.CurrentTenantId.Returns(Cvoya.Spring.Core.Tenancy.OssTenantIds.Default);
 
         _agentProvider.GetByIdAsync(AgentId, Arg.Any<CancellationToken>())
             .Returns(new AgentDefinition(
@@ -130,8 +132,8 @@ public class PersistentDispatchIntegrationTests
     {
         return new SvMessage(
             Guid.NewGuid(),
-            new Address("agent", "sender"),
-            new Address("agent", AgentId),
+            new Address("agent", SenderGuid),
+            new Address("agent", AgentGuid),
             MessageType.Domain,
             threadId ?? Guid.NewGuid().ToString(),
             JsonSerializer.SerializeToElement(new { Task = "do-work" }),

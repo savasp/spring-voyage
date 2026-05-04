@@ -28,26 +28,25 @@ using Xunit;
 /// </summary>
 public class AmendmentFlowTests
 {
-    private const string AgentId = "nudge-agent";
-    private const string UnitId = "engineering";
-
     // Stable UUIDs for tests that need membership lookup via Guid-keyed interface.
     private static readonly Guid UnitEngineeringUuid = new("ee1ee111-0000-0000-0000-000000000001");
     private static readonly Guid AgentNudgeUuid = new("aadaadaa-0000-0000-0000-000000000099");
 
+    private static readonly string AgentId = AgentNudgeUuid.ToString("N");
+    private static readonly string UnitId = UnitEngineeringUuid.ToString("N");
+
     /// <summary>
-    /// Returns a directory service stub that resolves "engineering" → UnitEngineeringUuid.
-    /// Required because amendment sender authorisation resolves slug → UUID (#1492).
+    /// Returns a directory service stub that resolves the engineering unit address.
     /// </summary>
     private static IDirectoryService BuildDirectoryServiceForEngineering()
     {
         var ds = Substitute.For<IDirectoryService>();
         ds.ResolveAsync(
-                Arg.Is<Address>(a => a.Scheme == "unit" && a.Path == UnitId),
+                Arg.Is<Address>(a => a.Scheme == "unit" && a.Id == UnitEngineeringUuid),
                 Arg.Any<CancellationToken>())
             .Returns(new DirectoryEntry(
-                new Address("unit", UnitId),
-                UnitEngineeringUuid.ToString(),
+                new Address("unit", UnitEngineeringUuid),
+                UnitEngineeringUuid,
                 UnitId, string.Empty, null, DateTimeOffset.UtcNow));
         return ds;
     }
@@ -87,8 +86,8 @@ public class AmendmentFlowTests
 
         var amendment = new Message(
             Guid.NewGuid(),
-            new Address("unit", UnitId),
-            new Address("agent", AgentId),
+            new Address("unit", UnitEngineeringUuid),
+            new Address("agent", AgentNudgeUuid),
             MessageType.Amendment,
             "conv-live",
             amendmentPayload,
@@ -125,8 +124,8 @@ public class AmendmentFlowTests
 
         var amendment = new Message(
             Guid.NewGuid(),
-            new Address("unit", UnitId),
-            new Address("agent", AgentId),
+            new Address("unit", UnitEngineeringUuid),
+            new Address("agent", AgentNudgeUuid),
             MessageType.Amendment,
             "conv-live",
             payload,
@@ -160,8 +159,8 @@ public class AmendmentFlowTests
 
         var amendment = new Message(
             Guid.NewGuid(),
-            new Address("unit", "other-unit"),
-            new Address("agent", AgentId),
+            Address.For("unit", TestSlugIds.HexFor("other-unit")),
+            new Address("agent", AgentNudgeUuid),
             MessageType.Amendment,
             "conv-live",
             payload,

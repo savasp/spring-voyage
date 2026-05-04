@@ -148,9 +148,9 @@ public class DefaultPackageArtefactActivator : IPackageArtefactActivator
         var displayName = string.IsNullOrWhiteSpace(fields.DisplayName) ? slug : fields.DisplayName!;
         var description = fields.Description ?? string.Empty;
 
-        var address = new Address("agent", slug);
+        var address = Address.For("agent", slug);
         var existing = await _directoryService.ResolveAsync(address, ct);
-        var actorId = existing?.ActorId ?? Guid.NewGuid().ToString();
+        var actorId = existing?.ActorId ?? Guid.NewGuid();
 
         var entry = new DirectoryEntry(
             address,
@@ -173,7 +173,7 @@ public class DefaultPackageArtefactActivator : IPackageArtefactActivator
                 await using var scope = _scopeFactory.CreateAsyncScope();
                 var db = scope.ServiceProvider.GetRequiredService<SpringDbContext>();
                 var entity = await db.AgentDefinitions
-                    .FirstOrDefaultAsync(a => a.AgentId == slug, ct);
+                    .FirstOrDefaultAsync(a => a.Id == actorId, ct);
                 if (entity is not null)
                 {
                     entity.Definition = defJson;

@@ -57,7 +57,7 @@ public sealed class UnitActivityObservable(
         ArgumentException.ThrowIfNullOrWhiteSpace(unitId);
 
         var visited = new HashSet<Address>(new AddressComparer());
-        visited.Add(new Address("unit", unitId));
+        visited.Add(Address.For("unit", unitId));
 
         await CollectMembersAsync(unitId, visited, depth: 0, cancellationToken);
 
@@ -126,7 +126,9 @@ public sealed class UnitActivityObservable(
         try
         {
             var entry = await directoryService.ResolveAsync(member, ct);
-            return entry?.ActorId;
+            return entry is null
+                ? null
+                : Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(entry.ActorId);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

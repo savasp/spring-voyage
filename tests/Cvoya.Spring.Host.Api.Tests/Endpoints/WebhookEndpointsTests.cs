@@ -26,7 +26,12 @@ using Xunit;
 public class WebhookEndpointsTests : IClassFixture<WebhookEndpointsTests.Factory>
 {
     private const string WebhookSecret = "test-webhook-secret";
-    private const string TargetUnitPath = "engineering-team";
+    // After #1492 the connector resolves DefaultTargetUnitPath through
+    // Address.For("unit", id), which requires a Guid-shaped id. Use a stable
+    // hex Guid here so the connector's path stays single-identity and the
+    // test's assertions can pin both the wire shape and the resolved actor.
+    private static readonly Guid TargetUnitId = new("ee1ee111-0000-0000-0000-feedfeedfeed");
+    private static readonly string TargetUnitPath = TargetUnitId.ToString("N");
 
     private readonly Factory _factory;
     private readonly HttpClient _client;
@@ -114,10 +119,10 @@ public class WebhookEndpointsTests : IClassFixture<WebhookEndpointsTests.Factory
         // so the translated message is addressed to unit://engineering-team. The
         // directory resolves that to a unit actor, the actor proxy accepts the
         // message, and MessageRouter returns a successful result.
-        var expectedAddress = new Address("unit", TargetUnitPath);
+        var expectedAddress = new Address("unit", TargetUnitId);
         var directoryEntry = new DirectoryEntry(
             expectedAddress,
-            "unit-actor-1",
+            TargetUnitId,
             "Engineering",
             "Team",
             Role: null,
@@ -180,8 +185,7 @@ public class WebhookEndpointsTests : IClassFixture<WebhookEndpointsTests.Factory
                 Arg.Is<Message>(m =>
                     m.To.Scheme == "unit"
                     && m.To.Path == TargetUnitPath
-                    && m.From.Scheme == "connector"
-                    && m.From.Path == "github"),
+                    && m.From.Scheme == "connector"),
                 Arg.Any<CancellationToken>());
     }
 

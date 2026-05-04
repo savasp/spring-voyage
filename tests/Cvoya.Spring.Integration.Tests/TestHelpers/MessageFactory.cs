@@ -9,9 +9,30 @@ using Cvoya.Spring.Core.Messaging;
 
 /// <summary>
 /// Factory for creating test messages with sensible defaults.
+/// Post #1629: every address path is a Guid; the no-id overloads now take
+/// either a Guid or a no-dash hex string that <see cref="Address.For"/>
+/// can parse.
 /// </summary>
 public static class MessageFactory
 {
+    private static readonly Guid DefaultSenderId = new("aaaaaaaa-1111-1111-1111-000000000001");
+    private static readonly Guid DefaultReceiverId = new("aaaaaaaa-1111-1111-1111-000000000002");
+    private static readonly Guid DefaultUnitId = new("bbbbbbbb-1111-1111-1111-000000000001");
+    private static readonly Guid DefaultConnectorId = new("cccccccc-1111-1111-1111-000000000001");
+
+    private static Address ParseOrDefault(string scheme, string? id, Guid fallback) =>
+        id is null ? new Address(scheme, fallback) : Address.For(scheme, ToHex(id));
+
+    /// <summary>
+    /// Treat the caller's id as either a literal Guid (canonical or dashed)
+    /// or as a stable test slug, mapped through <see cref="TestSlugIds"/>
+    /// so the test's referential identity is preserved across calls.
+    /// </summary>
+    private static string ToHex(string id)
+    {
+        return Guid.TryParse(id, out _) ? id : TestSlugIds.HexFor(id);
+    }
+
     /// <summary>
     /// Creates a domain message with optional overrides.
     /// </summary>
@@ -25,8 +46,8 @@ public static class MessageFactory
     {
         return new Message(
             Guid.NewGuid(),
-            new Address(fromType, fromId ?? "test-sender"),
-            new Address(toType, toId ?? "test-receiver"),
+            ParseOrDefault(fromType, fromId, DefaultSenderId),
+            ParseOrDefault(toType, toId, DefaultReceiverId),
             MessageType.Domain,
             threadId ?? Guid.NewGuid().ToString(),
             payload ?? JsonSerializer.SerializeToElement(new { Content = "test-payload" }),
@@ -40,8 +61,8 @@ public static class MessageFactory
     {
         return new Message(
             Guid.NewGuid(),
-            new Address("agent", fromId),
-            new Address(toType, toId),
+            Address.For("agent", ToHex(fromId)),
+            Address.For(toType, ToHex(toId)),
             MessageType.StatusQuery,
             Guid.NewGuid().ToString(),
             JsonSerializer.SerializeToElement(new { }),
@@ -55,8 +76,8 @@ public static class MessageFactory
     {
         return new Message(
             Guid.NewGuid(),
-            new Address("agent", fromId),
-            new Address(toType, toId),
+            Address.For("agent", ToHex(fromId)),
+            Address.For(toType, ToHex(toId)),
             MessageType.Cancel,
             threadId,
             JsonSerializer.SerializeToElement(new { }),
@@ -86,8 +107,8 @@ public static class MessageFactory
 
         return new Message(
             Guid.NewGuid(),
-            new Address("connector", "github-connector"),
-            new Address(toType, toId ?? "test-unit"),
+            new Address("connector", DefaultConnectorId),
+            ParseOrDefault(toType, toId, DefaultUnitId),
             MessageType.Domain,
             threadId ?? Guid.NewGuid().ToString(),
             webhookPayload,

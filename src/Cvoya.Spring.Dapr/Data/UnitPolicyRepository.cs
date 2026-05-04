@@ -20,9 +20,12 @@ using Microsoft.EntityFrameworkCore;
 public class UnitPolicyRepository(SpringDbContext context) : IUnitPolicyRepository
 {
     /// <inheritdoc />
-    public async Task<UnitPolicy> GetAsync(string unitId, CancellationToken cancellationToken = default)
+    public async Task<UnitPolicy> GetAsync(Guid unitId, CancellationToken cancellationToken = default)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(unitId);
+        if (unitId == Guid.Empty)
+        {
+            throw new ArgumentException("unitId must not be Guid.Empty.", nameof(unitId));
+        }
 
         var entity = await context.UnitPolicies
             .AsNoTracking()
@@ -43,13 +46,14 @@ public class UnitPolicyRepository(SpringDbContext context) : IUnitPolicyReposito
     }
 
     /// <inheritdoc />
-    public async Task SetAsync(string unitId, UnitPolicy policy, CancellationToken cancellationToken = default)
+    public async Task SetAsync(Guid unitId, UnitPolicy policy, CancellationToken cancellationToken = default)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(unitId);
+        if (unitId == Guid.Empty)
+        {
+            throw new ArgumentException("unitId must not be Guid.Empty.", nameof(unitId));
+        }
         ArgumentNullException.ThrowIfNull(policy);
 
-        // An all-null policy carries no constraint — delete the row rather
-        // than keep an inert marker around.
         if (policy.IsEmpty)
         {
             await DeleteAsync(unitId, cancellationToken);
@@ -93,9 +97,12 @@ public class UnitPolicyRepository(SpringDbContext context) : IUnitPolicyReposito
     }
 
     /// <inheritdoc />
-    public async Task DeleteAsync(string unitId, CancellationToken cancellationToken = default)
+    public async Task DeleteAsync(Guid unitId, CancellationToken cancellationToken = default)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(unitId);
+        if (unitId == Guid.Empty)
+        {
+            throw new ArgumentException("unitId must not be Guid.Empty.", nameof(unitId));
+        }
 
         var existing = await context.UnitPolicies
             .FirstOrDefaultAsync(p => p.UnitId == unitId, cancellationToken);

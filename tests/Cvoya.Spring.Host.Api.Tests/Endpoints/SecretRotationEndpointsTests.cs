@@ -179,15 +179,14 @@ public class SecretRotationEndpointsTests : IClassFixture<CustomWebApplicationFa
     {
         _ = _label;
         var ct = TestContext.Current.CancellationToken;
-        var (basePath, _ownerId) = ResolveRoute(scope);
-        _ = _ownerId;
+        var (basePath, ownerId) = ResolveRoute(scope);
 
         // Unit scope needs a valid unit for the POST, but the rotation
         // PUT goes straight to the registry without a unit lookup —
         // a missing entry is enough.
-        if (scope == SecretScope.Unit)
+        if (scope == SecretScope.Unit && ownerId is { } unitGuid)
         {
-            StubUnit(basePath.Split('/').Last().Replace("secrets", "").Trim('/'));
+            StubUnit(unitGuid);
         }
 
         var response = await _client.PutAsJsonAsync(
@@ -242,7 +241,7 @@ public class SecretRotationEndpointsTests : IClassFixture<CustomWebApplicationFa
 
         _factory.SecretAccessPolicy.ClearReceivedCalls();
         _factory.SecretAccessPolicy
-            .IsAuthorizedAsync(SecretAccessAction.Rotate, scope, Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .IsAuthorizedAsync(SecretAccessAction.Rotate, scope, Arg.Any<Guid?>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(false));
 
         try
@@ -263,7 +262,7 @@ public class SecretRotationEndpointsTests : IClassFixture<CustomWebApplicationFa
                 .IsAuthorizedAsync(
                     Arg.Any<SecretAccessAction>(),
                     Arg.Any<SecretScope>(),
-                    Arg.Any<string>(),
+                    Arg.Any<Guid?>(),
                     Arg.Any<CancellationToken>())
                 .Returns(Task.FromResult(true));
         }
@@ -328,7 +327,7 @@ public class SecretRotationEndpointsTests : IClassFixture<CustomWebApplicationFa
     private record SeedContext(
         string Name,
         string BasePath,
-        string OwnerId,
+        Guid? OwnerId,
         string? OriginalStoreKey,
         DateTimeOffset OriginalUpdatedAt);
 
@@ -337,9 +336,9 @@ public class SecretRotationEndpointsTests : IClassFixture<CustomWebApplicationFa
         var name = $"secret-{Guid.NewGuid():N}";
         var (basePath, ownerId) = ResolveRoute(scope);
 
-        if (scope == SecretScope.Unit)
+        if (scope == SecretScope.Unit && ownerId is { } unitGuid)
         {
-            StubUnit(ownerId);
+            StubUnit(unitGuid);
         }
 
         // Seed an existing entry via POST so both the registry row and
@@ -358,13 +357,13 @@ public class SecretRotationEndpointsTests : IClassFixture<CustomWebApplicationFa
         return new SeedContext(name, basePath, ownerId, row.StoreKey, row.UpdatedAt);
     }
 
-    private (string BasePath, string OwnerId) ResolveRoute(SecretScope scope)
+    private (string BasePath, Guid? OwnerId) ResolveRoute(SecretScope scope)
     {
         switch (scope)
         {
             case SecretScope.Unit:
-                var unitId = $"unit-{Guid.NewGuid():N}";
-                return ($"/api/v1/tenant/units/{unitId}/secrets", unitId);
+                var unitId = Guid.NewGuid();
+                return ($"/api/v1/tenant/units/{unitId:N}/secrets", unitId);
             case SecretScope.Tenant:
                 using (var svcScope = _factory.Services.CreateScope())
                 {
@@ -378,11 +377,11 @@ public class SecretRotationEndpointsTests : IClassFixture<CustomWebApplicationFa
         }
     }
 
-    private void StubUnit(string id)
+    private void StubUnit(Guid id)
     {
         var address = new Address("unit", id);
         var entry = new DirectoryEntry(
-            address, id, id, "test", null, DateTimeOffset.UtcNow);
+            address, id, id.ToString("N"), "test", null, DateTimeOffset.UtcNow);
         _factory.DirectoryService.ResolveAsync(address, Arg.Any<CancellationToken>())
             .Returns(entry);
     }

@@ -149,7 +149,7 @@ public class DefaultUnitPolicyEnforcer(
         foreach (var membership in agentMemberships)
         {
             var unitIdStr = membership.UnitId.ToString();
-            var policy = await policies.GetAsync(unitIdStr, cancellationToken);
+            var policy = await policies.GetAsync(membership.UnitId, cancellationToken);
             if (policy.Cost?.MaxCostPerInvocation is { } perCall &&
                 projectedCost > perCall)
             {
@@ -175,7 +175,7 @@ public class DefaultUnitPolicyEnforcer(
         foreach (var membership in agentMemberships)
         {
             var unitIdStr = membership.UnitId.ToString();
-            var policy = await policies.GetAsync(unitIdStr, cancellationToken);
+            var policy = await policies.GetAsync(membership.UnitId, cancellationToken);
             if (policy.Cost is null)
             {
                 continue;
@@ -184,7 +184,7 @@ public class DefaultUnitPolicyEnforcer(
             if (policy.Cost.MaxCostPerHour is { } perHour)
             {
                 hourlySum ??= (await costQueries.GetAgentCostAsync(
-                    agentId, now.AddHours(-1), now, cancellationToken)).TotalCost;
+                    agentUuid, now.AddHours(-1), now, cancellationToken)).TotalCost;
 
                 if (hourlySum.Value + projectedCost > perHour)
                 {
@@ -198,7 +198,7 @@ public class DefaultUnitPolicyEnforcer(
             if (policy.Cost.MaxCostPerDay is { } perDay)
             {
                 dailySum ??= (await costQueries.GetAgentCostAsync(
-                    agentId, now.AddDays(-1), now, cancellationToken)).TotalCost;
+                    agentUuid, now.AddDays(-1), now, cancellationToken)).TotalCost;
 
                 if (dailySum.Value + projectedCost > perDay)
                 {
@@ -257,8 +257,7 @@ public class DefaultUnitPolicyEnforcer(
         // First pass: any unit that forces a mode wins — coercion is strongest.
         foreach (var membership in agentMemberships)
         {
-            var unitIdStr = membership.UnitId.ToString();
-            var policy = await policies.GetAsync(unitIdStr, cancellationToken);
+            var policy = await policies.GetAsync(membership.UnitId, cancellationToken);
             if (policy.ExecutionMode?.Forced is { } forced)
             {
                 return new ExecutionModeResolution(PolicyDecision.Allowed, forced);
@@ -270,7 +269,7 @@ public class DefaultUnitPolicyEnforcer(
         foreach (var membership in agentMemberships)
         {
             var unitIdStr = membership.UnitId.ToString();
-            var policy = await policies.GetAsync(unitIdStr, cancellationToken);
+            var policy = await policies.GetAsync(membership.UnitId, cancellationToken);
             if (policy.ExecutionMode?.Allowed is { Count: > 0 } allowed &&
                 !allowed.Contains(mode))
             {
@@ -327,10 +326,9 @@ public class DefaultUnitPolicyEnforcer(
 
         foreach (var membership in agentMemberships)
         {
-            // Policy repo uses the unit's stable UUID string as key
-            // (matches how UnitPolicyEndpoints stores policies post #1492).
+            // Policy repo uses the unit's stable UUID as key.
             var unitIdStr = membership.UnitId.ToString();
-            var policy = await policies.GetAsync(unitIdStr, cancellationToken);
+            var policy = await policies.GetAsync(membership.UnitId, cancellationToken);
             var decision = evaluator(policy, unitIdStr);
             if (!decision.IsAllowed)
             {

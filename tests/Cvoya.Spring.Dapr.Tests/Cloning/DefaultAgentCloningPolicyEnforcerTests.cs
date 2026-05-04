@@ -46,7 +46,7 @@ public class DefaultAgentCloningPolicyEnforcerTests
     public DefaultAgentCloningPolicyEnforcerTests()
     {
         _repository = new StateStoreAgentCloningPolicyRepository(_stateStore);
-        _tenantContext.CurrentTenantId.Returns("test-tenant");
+        _tenantContext.CurrentTenantId.Returns(new Guid("aaaaaaaa-1111-1111-1111-000000000001"));
 
         _membershipRepository
             .ListByAgentAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
@@ -118,7 +118,7 @@ public class DefaultAgentCloningPolicyEnforcerTests
             new AgentCloningPolicy(MaxClones: 10),
             TestContext.Current.CancellationToken);
         await _repository.SetAsync(
-            CloningPolicyScope.Tenant, "test-tenant",
+            CloningPolicyScope.Tenant, _tenantContext.CurrentTenantId.ToString("N"),
             new AgentCloningPolicy(MaxClones: 3),
             TestContext.Current.CancellationToken);
 
@@ -184,7 +184,7 @@ public class DefaultAgentCloningPolicyEnforcerTests
     [Fact]
     public async Task EvaluateAsync_OpaqueBoundary_DeniesDetachedAttachment()
     {
-        var unitAddr = new Address("unit", "research-cell");
+        var unitAddr = Address.For("unit", TestSlugIds.HexFor("research-cell"));
 
         _membershipRepository
             .ListByAgentAsync(AgentAdaUuid, Arg.Any<CancellationToken>())
@@ -197,7 +197,7 @@ public class DefaultAgentCloningPolicyEnforcerTests
         _directoryService.ListAllAsync(Arg.Any<CancellationToken>())
             .Returns(new[]
             {
-                new DirectoryEntry(unitAddr, UnitResearchCellUuid.ToString(), "research-cell", string.Empty, null, DateTimeOffset.UtcNow),
+                new DirectoryEntry(unitAddr, UnitResearchCellUuid, "research-cell", string.Empty, null, DateTimeOffset.UtcNow),
             });
 
         _boundaryStore
@@ -218,7 +218,7 @@ public class DefaultAgentCloningPolicyEnforcerTests
     {
         // Attached clones roll up inside the parent's boundary, so the
         // opacity rule does not surface them to the outside.
-        var unitAddr = new Address("unit", "research-cell");
+        var unitAddr = Address.For("unit", TestSlugIds.HexFor("research-cell"));
 
         _membershipRepository
             .ListByAgentAsync(AgentAdaUuid, Arg.Any<CancellationToken>())
@@ -230,7 +230,7 @@ public class DefaultAgentCloningPolicyEnforcerTests
         _directoryService.ListAllAsync(Arg.Any<CancellationToken>())
             .Returns(new[]
             {
-                new DirectoryEntry(unitAddr, UnitResearchCellUuid.ToString(), "research-cell", string.Empty, null, DateTimeOffset.UtcNow),
+                new DirectoryEntry(unitAddr, UnitResearchCellUuid, "research-cell", string.Empty, null, DateTimeOffset.UtcNow),
             });
 
         _boundaryStore

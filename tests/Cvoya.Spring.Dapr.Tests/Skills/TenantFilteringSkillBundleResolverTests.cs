@@ -6,6 +6,7 @@ namespace Cvoya.Spring.Dapr.Tests.Skills;
 using System.IO;
 
 using Cvoya.Spring.Core.Skills;
+using Cvoya.Spring.Core.Tenancy;
 using Cvoya.Spring.Dapr.Skills;
 
 using Microsoft.Extensions.Logging.Abstractions;
@@ -71,7 +72,7 @@ public class TenantFilteringSkillBundleResolverTests : IDisposable
         var binding = Substitute.For<ITenantSkillBundleBindingService>();
         binding.GetAsync("research", Arg.Any<CancellationToken>())
             .Returns(new TenantSkillBundleBinding(
-                "default", "research", Enabled: false, DateTimeOffset.UtcNow));
+                OssTenantIds.Default, "research", Enabled: false, DateTimeOffset.UtcNow));
         var sut = BuildSut(binding);
 
         await Should.ThrowAsync<SkillBundlePackageNotFoundException>(
@@ -87,7 +88,7 @@ public class TenantFilteringSkillBundleResolverTests : IDisposable
         var binding = Substitute.For<ITenantSkillBundleBindingService>();
         binding.GetAsync("software-engineering", Arg.Any<CancellationToken>())
             .Returns(new TenantSkillBundleBinding(
-                "default", "software-engineering", Enabled: true, DateTimeOffset.UtcNow));
+                OssTenantIds.Default, "software-engineering", Enabled: true, DateTimeOffset.UtcNow));
         var sut = BuildSut(binding);
 
         var bundle = await sut.ResolveAsync(
@@ -112,7 +113,7 @@ public class TenantFilteringSkillBundleResolverTests : IDisposable
         var binding = Substitute.For<ITenantSkillBundleBindingService>();
         binding.GetAsync("software-engineering", Arg.Any<CancellationToken>())
             .Returns(new TenantSkillBundleBinding(
-                "default", "software-engineering", Enabled: true, DateTimeOffset.UtcNow));
+                OssTenantIds.Default, "software-engineering", Enabled: true, DateTimeOffset.UtcNow));
         var sut = BuildSut(binding);
 
         var bundle = await sut.ResolveAsync(

@@ -109,7 +109,10 @@ public class ScopedSecretEndpointsTests : IClassFixture<CustomWebApplicationFact
         row.ShouldNotBeNull();
         row!.Origin.ShouldBe(SecretOrigin.PlatformOwned);
         row.StoreKey.ShouldNotBeNullOrWhiteSpace();
-        row.StoreKey.ShouldNotContain(ownerId);
+        if (ownerId is { } ownerGuid)
+        {
+            row.StoreKey.ShouldNotContain(ownerGuid.ToString("N"));
+        }
         row.StoreKey.ShouldNotContain(name);
     }
 
@@ -282,13 +285,13 @@ public class ScopedSecretEndpointsTests : IClassFixture<CustomWebApplicationFact
         var ct = TestContext.Current.CancellationToken;
         _factory.SecretAccessPolicy.ClearSubstitute();
         _factory.SecretAccessPolicy
-            .IsAuthorizedAsync(action, scope, Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .IsAuthorizedAsync(action, scope, Arg.Any<Guid?>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(false));
         _factory.SecretAccessPolicy
             .IsAuthorizedAsync(
                 Arg.Is<SecretAccessAction>(a => a != action),
                 Arg.Any<SecretScope>(),
-                Arg.Any<string>(),
+                Arg.Any<Guid?>(),
                 Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(true));
 
@@ -315,7 +318,7 @@ public class ScopedSecretEndpointsTests : IClassFixture<CustomWebApplicationFact
                 .IsAuthorizedAsync(
                     Arg.Any<SecretAccessAction>(),
                     Arg.Any<SecretScope>(),
-                    Arg.Any<string>(),
+                    Arg.Any<Guid?>(),
                     Arg.Any<CancellationToken>())
                 .Returns(Task.FromResult(true));
         }
@@ -395,7 +398,7 @@ public class ScopedSecretEndpointsTests : IClassFixture<CustomWebApplicationFact
             db.SecretRegistryEntries.Add(new SecretRegistryEntry
             {
                 Id = Guid.NewGuid(),
-                TenantId = "other-tenant",
+                TenantId = Guid.NewGuid(),
                 Scope = scope,
                 OwnerId = ownerId,
                 Name = name,
@@ -415,7 +418,7 @@ public class ScopedSecretEndpointsTests : IClassFixture<CustomWebApplicationFact
 
     private static string NewName() => $"secret-{Guid.NewGuid():N}";
 
-    private static string ExpectedOwnerId(SecretScope scope, IServiceProvider sp) => scope switch
+    private static Guid? ExpectedOwnerId(SecretScope scope, IServiceProvider sp) => scope switch
     {
         SecretScope.Tenant => sp.GetRequiredService<ITenantContext>().CurrentTenantId,
         SecretScope.Platform => SecretEndpoints.PlatformOwnerId,

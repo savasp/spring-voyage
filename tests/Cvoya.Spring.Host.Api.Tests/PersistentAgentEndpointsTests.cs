@@ -29,6 +29,10 @@ using Xunit;
 /// </summary>
 public class PersistentAgentEndpointsTests : IClassFixture<CustomWebApplicationFactory>
 {
+    private static readonly Guid Agent_A_Id = new("00000001-1234-5678-9abc-000000000000");
+    private static readonly Guid Agent_Idle_Id = new("00000002-1234-5678-9abc-000000000000");
+    private static readonly Guid Actor1_Id = new("00000003-1234-5678-9abc-000000000000");
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         Converters = { new JsonStringEnumConverter() },
@@ -47,12 +51,13 @@ public class PersistentAgentEndpointsTests : IClassFixture<CustomWebApplicationF
     public async Task Deploy_WhenAgentNotInDirectory_Returns404()
     {
         var ct = TestContext.Current.CancellationToken;
+        var ghostId = Guid.NewGuid();
         _factory.DirectoryService
-            .ResolveAsync(Arg.Is<Address>(a => a.Path == "ghost"), Arg.Any<CancellationToken>())
+            .ResolveAsync(Arg.Is<Address>(a => a.Id == ghostId), Arg.Any<CancellationToken>())
             .Returns((DirectoryEntry?)null);
 
         var response = await _client.PostAsJsonAsync(
-            "/api/v1/tenant/agents/ghost/deploy", new DeployPersistentAgentRequest(), ct);
+            $"/api/v1/tenant/agents/{ghostId:N}/deploy", new DeployPersistentAgentRequest(), ct);
 
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
@@ -62,16 +67,16 @@ public class PersistentAgentEndpointsTests : IClassFixture<CustomWebApplicationF
     {
         var ct = TestContext.Current.CancellationToken;
         _factory.DirectoryService
-            .ResolveAsync(Arg.Is<Address>(a => a.Path == "idle"), Arg.Any<CancellationToken>())
+            .ResolveAsync(Arg.Is<Address>(a => a.Id == Agent_Idle_Id), Arg.Any<CancellationToken>())
             .Returns(new DirectoryEntry(
-                new Address("agent", "idle"),
-                "actor-1",
+                new Address("agent", Agent_Idle_Id),
+                Actor1_Id,
                 "Idle",
                 "",
                 null,
                 DateTimeOffset.UtcNow));
 
-        var response = await _client.PostAsync("/api/v1/tenant/agents/idle/undeploy", content: null, ct);
+        var response = await _client.PostAsync($"/api/v1/tenant/agents/{Agent_Idle_Id:N}/undeploy", content: null, ct);
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
         var body = await response.Content
@@ -87,17 +92,17 @@ public class PersistentAgentEndpointsTests : IClassFixture<CustomWebApplicationF
     {
         var ct = TestContext.Current.CancellationToken;
         _factory.DirectoryService
-            .ResolveAsync(Arg.Is<Address>(a => a.Path == "a"), Arg.Any<CancellationToken>())
+            .ResolveAsync(Arg.Is<Address>(a => a.Id == Agent_A_Id), Arg.Any<CancellationToken>())
             .Returns(new DirectoryEntry(
-                new Address("agent", "a"),
-                "actor-1",
+                new Address("agent", Agent_A_Id),
+                Actor1_Id,
                 "A",
                 "",
                 null,
                 DateTimeOffset.UtcNow));
 
         var response = await _client.PostAsJsonAsync(
-            "/api/v1/tenant/agents/a/scale",
+            $"/api/v1/tenant/agents/{Agent_A_Id:N}/scale",
             new ScalePersistentAgentRequest(2),
             ct);
 
@@ -109,22 +114,22 @@ public class PersistentAgentEndpointsTests : IClassFixture<CustomWebApplicationF
     {
         var ct = TestContext.Current.CancellationToken;
         _factory.DirectoryService
-            .ResolveAsync(Arg.Is<Address>(a => a.Path == "a"), Arg.Any<CancellationToken>())
+            .ResolveAsync(Arg.Is<Address>(a => a.Id == Agent_A_Id), Arg.Any<CancellationToken>())
             .Returns(new DirectoryEntry(
-                new Address("agent", "a"),
-                "actor-1",
+                new Address("agent", Agent_A_Id),
+                Actor1_Id,
                 "A",
                 "",
                 null,
                 DateTimeOffset.UtcNow));
 
-        var response = await _client.GetAsync("/api/v1/tenant/agents/a/deployment", ct);
+        var response = await _client.GetAsync($"/api/v1/tenant/agents/{Agent_A_Id:N}/deployment", ct);
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
         var body = await response.Content
             .ReadFromJsonAsync<PersistentAgentDeploymentResponse>(JsonOptions, ct);
         body.ShouldNotBeNull();
-        body.AgentId.ShouldBe("a");
+        body.AgentId.ShouldBe(Agent_A_Id.ToString("N"));
         body.Running.ShouldBeFalse();
         body.Replicas.ShouldBe(0);
     }
@@ -134,16 +139,16 @@ public class PersistentAgentEndpointsTests : IClassFixture<CustomWebApplicationF
     {
         var ct = TestContext.Current.CancellationToken;
         _factory.DirectoryService
-            .ResolveAsync(Arg.Is<Address>(a => a.Path == "a"), Arg.Any<CancellationToken>())
+            .ResolveAsync(Arg.Is<Address>(a => a.Id == Agent_A_Id), Arg.Any<CancellationToken>())
             .Returns(new DirectoryEntry(
-                new Address("agent", "a"),
-                "actor-1",
+                new Address("agent", Agent_A_Id),
+                Actor1_Id,
                 "A",
                 "",
                 null,
                 DateTimeOffset.UtcNow));
 
-        var response = await _client.GetAsync("/api/v1/tenant/agents/a/logs", ct);
+        var response = await _client.GetAsync($"/api/v1/tenant/agents/{Agent_A_Id:N}/logs", ct);
 
         // The lifecycle service throws SpringException when there's no entry
         // and the endpoint translates that into a 404 so the CLI surfaces a

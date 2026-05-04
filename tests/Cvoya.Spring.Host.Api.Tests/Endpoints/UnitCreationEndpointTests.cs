@@ -143,7 +143,7 @@ public class UnitCreationEndpointTests : IClassFixture<UnitCreationEndpointTests
         response.StatusCode.ShouldBe(HttpStatusCode.Created);
 
         await _factory.DirectoryService.Received(1).RegisterAsync(
-            Arg.Is<DirectoryEntry>(e => e.Address.Path == "scratch-skip-unit"),
+            Arg.Is<DirectoryEntry>(e => e.Address.Scheme == "unit" && e.DisplayName == "Scratch Skip Unit"),
             Arg.Any<CancellationToken>());
         // The connector store must NOT have been touched.
         await _factory.ConnectorConfigStore.DidNotReceive().SetAsync(
@@ -191,10 +191,10 @@ public class UnitCreationEndpointTests : IClassFixture<UnitCreationEndpointTests
         response.StatusCode.ShouldBe(HttpStatusCode.Created);
 
         await _factory.DirectoryService.Received(1).RegisterAsync(
-            Arg.Is<DirectoryEntry>(e => e.Address.Path == "bundled-unit"),
+            Arg.Is<DirectoryEntry>(e => e.Address.Scheme == "unit" && e.DisplayName == "Bundled Unit"),
             Arg.Any<CancellationToken>());
         await _factory.ConnectorConfigStore.Received(1).SetAsync(
-            "bundled-unit",
+            Arg.Any<string>(),
             new Guid("00000000-0000-0000-0000-00000000beef"),
             Arg.Any<JsonElement>(),
             Arg.Any<CancellationToken>());
@@ -278,10 +278,10 @@ public class UnitCreationEndpointTests : IClassFixture<UnitCreationEndpointTests
 
         // The unit was registered, then rolled back via UnregisterAsync.
         await _factory.DirectoryService.Received(1).RegisterAsync(
-            Arg.Is<DirectoryEntry>(e => e.Address.Path == "rollback-unit"),
+            Arg.Is<DirectoryEntry>(e => e.Address.Scheme == "unit" && e.DisplayName == "Rollback Unit"),
             Arg.Any<CancellationToken>());
         await _factory.DirectoryService.Received(1).UnregisterAsync(
-            Arg.Is<Address>(a => a.Scheme == "unit" && a.Path == "rollback-unit"),
+            Arg.Is<Address>(a => a.Scheme == "unit"),
             Arg.Any<CancellationToken>());
     }
 

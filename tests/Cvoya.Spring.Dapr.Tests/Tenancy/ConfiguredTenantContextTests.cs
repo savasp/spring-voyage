@@ -3,6 +3,7 @@
 
 namespace Cvoya.Spring.Dapr.Tests.Tenancy;
 
+using Cvoya.Spring.Core.Tenancy;
 using Cvoya.Spring.Dapr.Tenancy;
 
 using Microsoft.Extensions.Options;
@@ -17,25 +18,24 @@ public class ConfiguredTenantContextTests
     public void Defaults_To_Default_WhenNotConfigured()
     {
         var sut = new ConfiguredTenantContext(Options.Create(new SecretsOptions()));
-        sut.CurrentTenantId.ShouldBe("default");
-    }
-
-    [Theory]
-    [InlineData("t1")]
-    [InlineData("acme-corp")]
-    public void ReturnsConfigured_TenantId(string tenant)
-    {
-        var sut = new ConfiguredTenantContext(
-            Options.Create(new SecretsOptions { DefaultTenantId = tenant }));
-
-        sut.CurrentTenantId.ShouldBe(tenant);
+        sut.CurrentTenantId.ShouldBe(OssTenantIds.Default);
     }
 
     [Fact]
-    public void FallsBack_WhenWhitespace()
+    public void ReturnsConfigured_TenantId()
+    {
+        var explicitTenant = new Guid("aaaaaaaa-1111-1111-1111-000000000001");
+        var sut = new ConfiguredTenantContext(
+            Options.Create(new SecretsOptions { DefaultTenantId = explicitTenant }));
+
+        sut.CurrentTenantId.ShouldBe(explicitTenant);
+    }
+
+    [Fact]
+    public void FallsBack_WhenEmpty()
     {
         var sut = new ConfiguredTenantContext(
-            Options.Create(new SecretsOptions { DefaultTenantId = "   " }));
-        sut.CurrentTenantId.ShouldBe("default");
+            Options.Create(new SecretsOptions { DefaultTenantId = Guid.Empty }));
+        sut.CurrentTenantId.ShouldBe(OssTenantIds.Default);
     }
 }

@@ -209,7 +209,12 @@ public static class UnitEndpoints
     {
         var logger = loggerFactory.CreateLogger("Cvoya.Spring.Host.Api.Endpoints.UnitEndpoints");
 
-        var address = new Address("unit", id);
+        if (!Cvoya.Spring.Core.Identifiers.GuidFormatter.TryParse(id, out var unitGuid))
+        {
+            return Results.Problem(detail: $"Unit '{id}' not found", statusCode: StatusCodes.Status404NotFound);
+        }
+
+        var address = new Address("unit", unitGuid);
         var entry = await directoryService.ResolveAsync(address, cancellationToken);
 
         if (entry is null)
@@ -247,7 +252,7 @@ public static class UnitEndpoints
     /// </summary>
     private static async Task<JsonElement?> TryGetUnitStatusPayloadAsync(
         IActorProxyFactory actorProxyFactory,
-        string actorId,
+        Guid actorId,
         ILogger logger,
         string unitId,
         CancellationToken cancellationToken)
@@ -255,7 +260,7 @@ public static class UnitEndpoints
         try
         {
             var proxy = actorProxyFactory.CreateActorProxy<IUnitActor>(
-                new ActorId(actorId), nameof(UnitActor));
+                new ActorId(Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(actorId)), nameof(UnitActor));
 
             var status = await proxy.GetStatusAsync(cancellationToken);
             var members = await proxy.GetMembersAsync(cancellationToken);
@@ -284,7 +289,7 @@ public static class UnitEndpoints
 
     private static async Task<UnitStatus> TryGetUnitStatusAsync(
         IActorProxyFactory actorProxyFactory,
-        string actorId,
+        Guid actorId,
         ILogger logger,
         string unitId,
         CancellationToken cancellationToken)
@@ -292,7 +297,7 @@ public static class UnitEndpoints
         try
         {
             var proxy = actorProxyFactory.CreateActorProxy<IUnitActor>(
-                new ActorId(actorId), nameof(UnitActor));
+                new ActorId(Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(actorId)), nameof(UnitActor));
             return await proxy.GetStatusAsync(cancellationToken);
         }
         catch (Exception ex)
@@ -309,7 +314,7 @@ public static class UnitEndpoints
 
     private static async Task<UnitMetadata> TryGetUnitMetadataAsync(
         IActorProxyFactory actorProxyFactory,
-        string actorId,
+        Guid actorId,
         ILogger logger,
         string unitId,
         CancellationToken cancellationToken)
@@ -317,7 +322,7 @@ public static class UnitEndpoints
         try
         {
             var proxy = actorProxyFactory.CreateActorProxy<IUnitActor>(
-                new ActorId(actorId), nameof(UnitActor));
+                new ActorId(Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(actorId)), nameof(UnitActor));
             return await proxy.GetMetadataAsync(cancellationToken);
         }
         catch (Exception ex)
@@ -404,7 +409,7 @@ public static class UnitEndpoints
     {
         var logger = loggerFactory.CreateLogger("Cvoya.Spring.Host.Api.Endpoints.UnitEndpoints");
 
-        var address = new Address("unit", id);
+        var address = Address.For("unit", id);
         var entry = await directoryService.ResolveAsync(address, cancellationToken);
 
         if (entry is null)
@@ -426,7 +431,7 @@ public static class UnitEndpoints
         }
 
         var proxy = actorProxyFactory.CreateActorProxy<IUnitActor>(
-            new ActorId(entry.ActorId), nameof(UnitActor));
+            new ActorId(Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(entry.ActorId)), nameof(UnitActor));
 
         var metadata = new UnitMetadata(
             DisplayName: request.DisplayName,
@@ -457,7 +462,7 @@ public static class UnitEndpoints
         CancellationToken cancellationToken)
     {
         var logger = loggerFactory.CreateLogger("Cvoya.Spring.Host.Api.Endpoints.UnitEndpoints");
-        var address = new Address("unit", id);
+        var address = Address.For("unit", id);
         var entry = await directoryService.ResolveAsync(address, cancellationToken);
 
         if (entry is null)
@@ -511,7 +516,7 @@ public static class UnitEndpoints
     private static async Task<IResult> ForceDeleteUnitAsync(
         string id,
         Address address,
-        string actorId,
+        Guid actorId,
         UnitStatus previousStatus,
         IDirectoryService directoryService,
         IActorProxyFactory actorProxyFactory,
@@ -527,7 +532,7 @@ public static class UnitEndpoints
 
         var failures = new List<string>();
         var proxy = actorProxyFactory.CreateActorProxy<IUnitActor>(
-            new ActorId(actorId), nameof(UnitActor));
+            new ActorId(Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(actorId)), nameof(UnitActor));
 
         try
         {
@@ -546,7 +551,7 @@ public static class UnitEndpoints
 
         try
         {
-            await containerLifecycle.StopUnitAsync(actorId, cancellationToken);
+            await containerLifecycle.StopUnitAsync(Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(actorId), cancellationToken);
         }
         catch (Exception ex)
         {
@@ -629,7 +634,7 @@ public static class UnitEndpoints
         [FromServices] IActorProxyFactory actorProxyFactory,
         CancellationToken cancellationToken)
     {
-        var address = new Address("unit", id);
+        var address = Address.For("unit", id);
         var entry = await directoryService.ResolveAsync(address, cancellationToken);
 
         if (entry is null)
@@ -638,7 +643,7 @@ public static class UnitEndpoints
         }
 
         var proxy = actorProxyFactory.CreateActorProxy<IUnitActor>(
-            new ActorId(entry.ActorId), nameof(UnitActor));
+            new ActorId(Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(entry.ActorId)), nameof(UnitActor));
 
         var readiness = await proxy.CheckReadinessAsync(cancellationToken);
         return Results.Ok(new UnitReadinessResponse(readiness.IsReady, readiness.MissingRequirements));
@@ -653,7 +658,7 @@ public static class UnitEndpoints
         CancellationToken cancellationToken)
     {
         var logger = loggerFactory.CreateLogger("Cvoya.Spring.Host.Api.Endpoints.UnitEndpoints");
-        var address = new Address("unit", id);
+        var address = Address.For("unit", id);
         var entry = await directoryService.ResolveAsync(address, cancellationToken);
 
         if (entry is null)
@@ -662,7 +667,7 @@ public static class UnitEndpoints
         }
 
         var proxy = actorProxyFactory.CreateActorProxy<IUnitActor>(
-            new ActorId(entry.ActorId), nameof(UnitActor));
+            new ActorId(Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(entry.ActorId)), nameof(UnitActor));
 
         var startingTransition = await proxy.TransitionAsync(UnitStatus.Starting, cancellationToken);
         if (!startingTransition.Success)
@@ -710,7 +715,7 @@ public static class UnitEndpoints
         CancellationToken cancellationToken)
     {
         var logger = loggerFactory.CreateLogger("Cvoya.Spring.Host.Api.Endpoints.UnitEndpoints");
-        var address = new Address("unit", id);
+        var address = Address.For("unit", id);
         var entry = await directoryService.ResolveAsync(address, cancellationToken);
 
         if (entry is null)
@@ -719,7 +724,7 @@ public static class UnitEndpoints
         }
 
         var proxy = actorProxyFactory.CreateActorProxy<IUnitActor>(
-            new ActorId(entry.ActorId), nameof(UnitActor));
+            new ActorId(Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(entry.ActorId)), nameof(UnitActor));
 
         var stoppingTransition = await proxy.TransitionAsync(UnitStatus.Stopping, cancellationToken);
         if (!stoppingTransition.Success)
@@ -784,7 +789,7 @@ public static class UnitEndpoints
     {
         var logger = loggerFactory.CreateLogger("Cvoya.Spring.Host.Api.Endpoints.UnitEndpoints");
 
-        var address = new Address("unit", id);
+        var address = Address.For("unit", id);
         var entry = await directoryService.ResolveAsync(address, cancellationToken);
         if (entry is null)
         {
@@ -806,7 +811,7 @@ public static class UnitEndpoints
         }
 
         var proxy = actorProxyFactory.CreateActorProxy<IUnitActor>(
-            new ActorId(entry.ActorId), nameof(UnitActor));
+            new ActorId(Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(entry.ActorId)), nameof(UnitActor));
 
         var transition = await proxy.TransitionAsync(UnitStatus.Validating, cancellationToken);
         if (!transition.Success)
@@ -841,7 +846,7 @@ public static class UnitEndpoints
         [FromServices] IActorProxyFactory actorProxyFactory,
         CancellationToken cancellationToken)
     {
-        var unitAddress = new Address("unit", id);
+        var unitAddress = Address.For("unit", id);
         var entry = await directoryService.ResolveAsync(unitAddress, cancellationToken);
 
         if (entry is null)
@@ -850,7 +855,7 @@ public static class UnitEndpoints
         }
 
         var proxy = actorProxyFactory.CreateActorProxy<IUnitActor>(
-            new ActorId(entry.ActorId), nameof(UnitActor));
+            new ActorId(Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(entry.ActorId)), nameof(UnitActor));
         var members = await proxy.GetMembersAsync(cancellationToken);
 
         var result = members
@@ -869,7 +874,7 @@ public static class UnitEndpoints
         IUnitMembershipTenantGuard tenantGuard,
         CancellationToken cancellationToken)
     {
-        var unitAddress = new Address("unit", id);
+        var unitAddress = Address.For("unit", id);
         var entry = await directoryService.ResolveAsync(unitAddress, cancellationToken);
 
         if (entry is null)
@@ -877,7 +882,7 @@ public static class UnitEndpoints
             return Results.Problem(detail: $"Unit '{id}' not found", statusCode: StatusCodes.Status404NotFound);
         }
 
-        var memberAddress = new Address(request.MemberAddress.Scheme, request.MemberAddress.Path);
+        var memberAddress = Address.For(request.MemberAddress.Scheme, request.MemberAddress.Path);
 
         // #745: enforce same-tenant before any actor-state write. Cross-
         // tenant members would let a message dispatched to unit A reach an
@@ -895,7 +900,7 @@ public static class UnitEndpoints
         }
 
         var unitProxy = actorProxyFactory.CreateActorProxy<IUnitActor>(
-            new ActorId(entry.ActorId), nameof(UnitActor));
+            new ActorId(Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(entry.ActorId)), nameof(UnitActor));
 
         try
         {
@@ -939,7 +944,7 @@ public static class UnitEndpoints
         IUnitParentInvariantGuard parentGuard,
         CancellationToken cancellationToken)
     {
-        var unitAddress = new Address("unit", id);
+        var unitAddress = Address.For("unit", id);
         var entry = await directoryService.ResolveAsync(unitAddress, cancellationToken);
 
         if (entry is null)
@@ -955,7 +960,7 @@ public static class UnitEndpoints
         // continue to work regardless of member scheme. Remove is idempotent
         // — no cycle check is required.
         var unitProxy = actorProxyFactory.CreateActorProxy<IUnitActor>(
-            new ActorId(entry.ActorId), nameof(UnitActor));
+            new ActorId(Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(entry.ActorId)), nameof(UnitActor));
 
         // Review feedback on #744: the unit variant of memberId must carry
         // the same "no un-parenting" invariant the agent-removal path
@@ -968,7 +973,7 @@ public static class UnitEndpoints
         {
             await parentGuard.EnsureParentRemainsAsync(
                 unitAddress,
-                new Address("unit", memberId),
+                Address.For("unit", memberId),
                 cancellationToken);
         }
         catch (UnitParentRequiredException ex)
@@ -984,8 +989,8 @@ public static class UnitEndpoints
                 });
         }
 
-        await unitProxy.RemoveMemberAsync(new Address("agent", memberId), cancellationToken);
-        await unitProxy.RemoveMemberAsync(new Address("unit", memberId), cancellationToken);
+        await unitProxy.RemoveMemberAsync(Address.For("agent", memberId), cancellationToken);
+        await unitProxy.RemoveMemberAsync(Address.For("unit", memberId), cancellationToken);
 
         await expertiseAggregator.InvalidateAsync(unitAddress, cancellationToken);
 
@@ -1033,7 +1038,7 @@ public static class UnitEndpoints
             request.Notifications ?? true);
 
         var unitProxy = actorProxyFactory.CreateActorProxy<IUnitActor>(
-            new ActorId(auth.Entry!.ActorId), nameof(UnitActor));
+            new ActorId(Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(auth.Entry!.ActorId)), nameof(UnitActor));
 
         await unitProxy.SetHumanPermissionAsync(humanGuid, permissionEntry, cancellationToken);
 
@@ -1068,7 +1073,7 @@ public static class UnitEndpoints
         }
 
         var unitProxy = actorProxyFactory.CreateActorProxy<IUnitActor>(
-            new ActorId(auth.Entry!.ActorId), nameof(UnitActor));
+            new ActorId(Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(auth.Entry!.ActorId)), nameof(UnitActor));
 
         var permissions = await unitProxy.GetHumanPermissionsAsync(cancellationToken);
 
@@ -1112,7 +1117,7 @@ public static class UnitEndpoints
             humanId, null, cancellationToken);
 
         var unitProxy = actorProxyFactory.CreateActorProxy<IUnitActor>(
-            new ActorId(auth.Entry!.ActorId), nameof(UnitActor));
+            new ActorId(Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(auth.Entry!.ActorId)), nameof(UnitActor));
 
         await unitProxy.RemoveHumanPermissionAsync(humanGuid, cancellationToken);
 
@@ -1209,7 +1214,7 @@ public static class UnitEndpoints
         UnitMetadata? metadata = null,
         UnitValidationTracking? validationTracking = null) =>
         new(
-            entry.ActorId,
+            Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(entry.ActorId),
             entry.Address.Path,
             entry.DisplayName,
             entry.Description,
@@ -1243,7 +1248,7 @@ public static class UnitEndpoints
     /// </summary>
     private static async Task<UnitValidationTracking?> TryGetValidationTrackingAsync(
         IServiceScopeFactory scopeFactory,
-        string actorId,
+        Guid actorId,
         ILogger logger,
         string unitId,
         CancellationToken cancellationToken)
@@ -1255,7 +1260,7 @@ public static class UnitEndpoints
 
             var row = await db.UnitDefinitions
                 .AsNoTracking()
-                .Where(u => u.ActorId == actorId && u.DeletedAt == null)
+                .Where(u => u.Id == actorId && u.DeletedAt == null)
                 .Select(u => new
                 {
                     u.LastValidationErrorJson,
@@ -1304,7 +1309,7 @@ public static class UnitEndpoints
         CancellationToken cancellationToken)
     {
         var logger = loggerFactory.CreateLogger("Cvoya.Spring.Host.Api.Endpoints.UnitEndpoints");
-        var unitAddress = new Address("unit", id);
+        var unitAddress = Address.For("unit", id);
         var unitEntry = await directoryService.ResolveAsync(unitAddress, cancellationToken);
 
         if (unitEntry is null)
@@ -1313,7 +1318,7 @@ public static class UnitEndpoints
         }
 
         var unitProxy = actorProxyFactory.CreateActorProxy<IUnitActor>(
-            new ActorId(unitEntry.ActorId), nameof(UnitActor));
+            new ActorId(Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(unitEntry.ActorId)), nameof(UnitActor));
         var members = await unitProxy.GetMembersAsync(cancellationToken);
 
         // Filter to agent members; sub-unit members are out of scope here
@@ -1346,11 +1351,9 @@ public static class UnitEndpoints
                 continue;
             }
             var proxy = actorProxyFactory.CreateActorProxy<IAgentActor>(
-                new ActorId(entry.ActorId), nameof(AgentActor));
-            // #1492: GetDerivedAgentMetadataAsync takes a UUID now.
-            var memberUuid = Guid.TryParse(entry.ActorId, out var mu) ? mu : Guid.Empty;
+                new ActorId(Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(entry.ActorId)), nameof(AgentActor));
             var metadata = await AgentEndpoints.GetDerivedAgentMetadataAsync(
-                proxy, membershipRepository, memberUuid, directoryService, cancellationToken);
+                proxy, membershipRepository, entry.ActorId, directoryService, cancellationToken);
             responses.Add(AgentEndpoints.ToAgentResponse(entry, metadata));
         }
 
@@ -1375,14 +1378,14 @@ public static class UnitEndpoints
             return Results.Problem(detail: "agentId is required.", statusCode: StatusCodes.Status400BadRequest);
         }
 
-        var unitAddress = new Address("unit", id);
+        var unitAddress = Address.For("unit", id);
         var unitEntry = await directoryService.ResolveAsync(unitAddress, cancellationToken);
         if (unitEntry is null)
         {
             return Results.Problem(detail: $"Unit '{id}' not found", statusCode: StatusCodes.Status404NotFound);
         }
 
-        var agentAddress = new Address("agent", agentId);
+        var agentAddress = Address.For("agent", agentId);
         var agentEntry = await directoryService.ResolveAsync(agentAddress, cancellationToken);
         if (agentEntry is null)
         {
@@ -1407,19 +1410,9 @@ public static class UnitEndpoints
         }
 
         // #1492: resolve slugs → UUIDs at the boundary. Both entries resolved above.
-        if (!Guid.TryParse(unitEntry.ActorId, out var unitAssignUuid))
-        {
-            return Results.Problem(
-                detail: $"Unit '{id}' has no stable UUID identity.",
-                statusCode: StatusCodes.Status404NotFound);
-        }
+        var unitAssignUuid = unitEntry.ActorId;
 
-        if (!Guid.TryParse(agentEntry.ActorId, out var agentAssignUuid))
-        {
-            return Results.Problem(
-                detail: $"Agent '{agentId}' has no stable UUID identity.",
-                statusCode: StatusCodes.Status404NotFound);
-        }
+        var agentAssignUuid = agentEntry.ActorId;
 
         // C2b-1: M:N membership model (see #160). An agent may be a member
         // of multiple units. No 1:N conflict check — the old guard is gone
@@ -1433,14 +1426,14 @@ public static class UnitEndpoints
         await membershipRepository.UpsertAsync(membership, cancellationToken);
 
         var unitProxy = actorProxyFactory.CreateActorProxy<IUnitActor>(
-            new ActorId(unitEntry.ActorId), nameof(UnitActor));
+            new ActorId(Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(unitEntry.ActorId)), nameof(UnitActor));
         await unitProxy.AddMemberAsync(agentAddress, cancellationToken);
 
         // Also sync the legacy cached pointer on the agent actor so any
         // reader still relying on it sees a consistent value. The
         // authoritative source is the membership table.
         var agentProxy = actorProxyFactory.CreateActorProxy<IAgentActor>(
-            new ActorId(agentEntry.ActorId), nameof(AgentActor));
+            new ActorId(Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(agentEntry.ActorId)), nameof(AgentActor));
         await agentProxy.SetMetadataAsync(
             new AgentMetadata(ParentUnit: id),
             cancellationToken);
@@ -1469,14 +1462,14 @@ public static class UnitEndpoints
     {
         var logger = loggerFactory.CreateLogger("Cvoya.Spring.Host.Api.Endpoints.UnitEndpoints");
 
-        var unitAddress = new Address("unit", id);
+        var unitAddress = Address.For("unit", id);
         var unitEntry = await directoryService.ResolveAsync(unitAddress, cancellationToken);
         if (unitEntry is null)
         {
             return Results.Problem(detail: $"Unit '{id}' not found", statusCode: StatusCodes.Status404NotFound);
         }
 
-        var agentAddress = new Address("agent", agentId);
+        var agentAddress = Address.For("agent", agentId);
         var agentEntry = await directoryService.ResolveAsync(agentAddress, cancellationToken);
         if (agentEntry is null)
         {
@@ -1484,19 +1477,9 @@ public static class UnitEndpoints
         }
 
         // #1492: resolve slugs → UUIDs at the boundary.
-        if (!Guid.TryParse(unitEntry.ActorId, out var unitUnassignUuid))
-        {
-            return Results.Problem(
-                detail: $"Unit '{id}' has no stable UUID identity.",
-                statusCode: StatusCodes.Status404NotFound);
-        }
+        var unitUnassignUuid = unitEntry.ActorId;
 
-        if (!Guid.TryParse(agentEntry.ActorId, out var agentUnassignUuid))
-        {
-            return Results.Problem(
-                detail: $"Agent '{agentId}' has no stable UUID identity.",
-                statusCode: StatusCodes.Status404NotFound);
-        }
+        var agentUnassignUuid = agentEntry.ActorId;
 
         // Delete the membership row. Other units the agent still belongs to
         // are unaffected — this is the point of M:N. Per #744 the repo
@@ -1521,7 +1504,7 @@ public static class UnitEndpoints
         }
 
         var unitProxy = actorProxyFactory.CreateActorProxy<IUnitActor>(
-            new ActorId(unitEntry.ActorId), nameof(UnitActor));
+            new ActorId(Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(unitEntry.ActorId)), nameof(UnitActor));
         await unitProxy.RemoveMemberAsync(agentAddress, cancellationToken);
 
         // Refresh the cached pointer on the agent actor. If any memberships
@@ -1529,23 +1512,23 @@ public static class UnitEndpoints
         // "primary" unit; if this was the last membership, clear the pointer.
         var remaining = await membershipRepository.ListByAgentAsync(agentUnassignUuid, cancellationToken);
         var agentProxy = actorProxyFactory.CreateActorProxy<IAgentActor>(
-            new ActorId(agentEntry.ActorId), nameof(AgentActor));
+            new ActorId(Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(agentEntry.ActorId)), nameof(AgentActor));
         if (remaining.Count == 0)
         {
             await agentProxy.ClearParentUnitAsync(cancellationToken);
         }
         else
         {
-            // Resolve UUID → slug for the ParentUnit field (#1492).
+            // Resolve UUID → display name for the ParentUnit field (#1629).
             // ListAll warms the in-memory directory cache on first call so
             // this is O(1) for subsequent requests within the same process.
             var allEntries = await directoryService.ListAllAsync(cancellationToken);
             var primaryUnitEntry = allEntries.FirstOrDefault(
                 e => string.Equals(e.Address.Scheme, "unit", StringComparison.OrdinalIgnoreCase)
-                     && e.ActorId == remaining[0].UnitId.ToString());
-            var primaryUnitSlug = primaryUnitEntry?.Address.Path ?? remaining[0].UnitId.ToString();
+                     && e.ActorId == remaining[0].UnitId);
+            var primaryUnitDisplay = primaryUnitEntry?.DisplayName ?? remaining[0].UnitId.ToString("N");
             await agentProxy.SetMetadataAsync(
-                new AgentMetadata(ParentUnit: primaryUnitSlug),
+                new AgentMetadata(ParentUnit: primaryUnitDisplay),
                 cancellationToken);
         }
 

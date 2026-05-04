@@ -29,8 +29,13 @@ using Xunit;
 /// </summary>
 public class UnitMetadataEndpointTests : IClassFixture<CustomWebApplicationFactory>
 {
-    private const string UnitName = "engineering";
-    private const string ActorId = "actor-engineering";
+    private static readonly Guid ActorEngineering_Id = new("00000001-1234-5678-9abc-000000000000");
+
+    private const string UnitDisplayName = "engineering";
+    private static readonly Guid ActorId_Guid = ActorEngineering_Id;
+    private static readonly string ActorId = ActorId_Guid.ToString("N");
+    // Post-#1629 URL paths carry the unit's Guid hex.
+    private static readonly string UnitName = ActorId;
 
     private readonly CustomWebApplicationFactory _factory;
     private readonly HttpClient _client;
@@ -62,8 +67,8 @@ public class UnitMetadataEndpointTests : IClassFixture<CustomWebApplicationFacto
         _factory.DirectoryService
             .ResolveAsync(Arg.Is<Address>(a => a.Scheme == "unit" && a.Path == UnitName), Arg.Any<CancellationToken>())
             .Returns(ci => new DirectoryEntry(
-                new Address("unit", UnitName),
-                ActorId,
+                new Address("unit", ActorId_Guid),
+                ActorId_Guid,
                 "Engineering",
                 "Engineering unit",
                 null,
@@ -168,8 +173,8 @@ public class UnitMetadataEndpointTests : IClassFixture<CustomWebApplicationFacto
                 Arg.Any<string?>(),
                 Arg.Any<CancellationToken>())
             .Returns(ci => new DirectoryEntry(
-                new Address("unit", UnitName),
-                ActorId,
+                new Address("unit", ActorId_Guid),
+                ActorId_Guid,
                 ci.ArgAt<string?>(1) ?? "Engineering",
                 ci.ArgAt<string?>(2) ?? "Engineering unit",
                 null,
@@ -238,7 +243,7 @@ public class UnitMetadataEndpointTests : IClassFixture<CustomWebApplicationFacto
             .Returns((DirectoryEntry?)null);
 
         var response = await _client.PatchAsJsonAsync(
-            "/api/v1/tenant/units/does-not-exist",
+            $"/api/v1/tenant/units/{Guid.NewGuid():N}",
             new UpdateUnitRequest(Model: "gpt-4o"),
             ct);
 
@@ -250,19 +255,19 @@ public class UnitMetadataEndpointTests : IClassFixture<CustomWebApplicationFacto
         ResetFactoryMocks();
 
         var entry = new DirectoryEntry(
-            new Address("unit", UnitName),
-            ActorId,
+            new Address("unit", ActorId_Guid),
+            ActorId_Guid,
             "Engineering",
             "Engineering unit",
             null,
             DateTimeOffset.UtcNow);
 
         _factory.DirectoryService
-            .ResolveAsync(Arg.Is<Address>(a => a.Scheme == "unit" && a.Path == UnitName), Arg.Any<CancellationToken>())
+            .ResolveAsync(Arg.Is<Address>(a => a.Scheme == "unit" && a.Id == ActorId_Guid), Arg.Any<CancellationToken>())
             .Returns(entry);
 
         _factory.ActorProxyFactory
-            .CreateActorProxy<IUnitActor>(Arg.Is<ActorId>(a => a.GetId() == ActorId), Arg.Any<string>())
+            .CreateActorProxy<IUnitActor>(Arg.Is<global::Dapr.Actors.ActorId>(a => a.GetId() == ActorId), Arg.Any<string>())
             .Returns(proxy);
     }
 

@@ -83,7 +83,7 @@ public static class CloningPolicyEndpoints
         [FromServices] IAgentCloningPolicyRepository repository,
         CancellationToken cancellationToken)
     {
-        var entry = await directoryService.ResolveAsync(new Address("agent", id), cancellationToken);
+        var entry = await directoryService.ResolveAsync(Address.For("agent", id), cancellationToken);
         if (entry is null)
         {
             return Results.Problem(
@@ -102,7 +102,7 @@ public static class CloningPolicyEndpoints
         [FromServices] IAgentCloningPolicyRepository repository,
         CancellationToken cancellationToken)
     {
-        var entry = await directoryService.ResolveAsync(new Address("agent", id), cancellationToken);
+        var entry = await directoryService.ResolveAsync(Address.For("agent", id), cancellationToken);
         if (entry is null)
         {
             return Results.Problem(
@@ -121,7 +121,7 @@ public static class CloningPolicyEndpoints
         [FromServices] IAgentCloningPolicyRepository repository,
         CancellationToken cancellationToken)
     {
-        var entry = await directoryService.ResolveAsync(new Address("agent", id), cancellationToken);
+        var entry = await directoryService.ResolveAsync(Address.For("agent", id), cancellationToken);
         if (entry is null)
         {
             return Results.Problem(
@@ -139,7 +139,7 @@ public static class CloningPolicyEndpoints
         CancellationToken cancellationToken)
     {
         var policy = await repository.GetAsync(
-            CloningPolicyScope.Tenant, tenantContext.CurrentTenantId, cancellationToken);
+            CloningPolicyScope.Tenant, Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(tenantContext.CurrentTenantId), cancellationToken);
         return Results.Ok(AgentCloningPolicyResponse.From(policy));
     }
 
@@ -151,7 +151,7 @@ public static class CloningPolicyEndpoints
     {
         var policy = request.ToCore();
         await repository.SetAsync(
-            CloningPolicyScope.Tenant, tenantContext.CurrentTenantId, policy, cancellationToken);
+            CloningPolicyScope.Tenant, Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(tenantContext.CurrentTenantId), policy, cancellationToken);
         return Results.Ok(AgentCloningPolicyResponse.From(policy));
     }
 
@@ -161,7 +161,7 @@ public static class CloningPolicyEndpoints
         CancellationToken cancellationToken)
     {
         await repository.DeleteAsync(
-            CloningPolicyScope.Tenant, tenantContext.CurrentTenantId, cancellationToken);
+            CloningPolicyScope.Tenant, Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(tenantContext.CurrentTenantId), cancellationToken);
         return Results.NoContent();
     }
 }

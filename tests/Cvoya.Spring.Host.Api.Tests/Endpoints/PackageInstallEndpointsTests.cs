@@ -61,6 +61,8 @@ using Xunit;
 /// </summary>
 public class PackageInstallEndpointsTests : IClassFixture<PackageInstallEndpointsTests.InstallFactory>
 {
+    private static readonly Guid Unit_Main_Id = new("00000001-feed-1234-5678-000000000000");
+
     // Server serialises enums as strings; tests must match.
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -235,8 +237,8 @@ public class PackageInstallEndpointsTests : IClassFixture<PackageInstallEndpoint
                 Arg.Is<Address>(a => a.Path == "main"),
                 Arg.Any<CancellationToken>())
             .Returns(new DirectoryEntry(
-                new Address("unit", "main"),
-                "existing-actor",
+                new Address("unit", Unit_Main_Id),
+                Unit_Main_Id,
                 "main",
                 string.Empty,
                 null,
@@ -570,13 +572,19 @@ public class PackageInstallEndpointsTests : IClassFixture<PackageInstallEndpoint
         }
 
         /// <summary>
-        /// Creates a package with one unit "main" and no cross-package refs.
+        /// Creates a package with one unit named after the package (so
+        /// post-#1629 collision pre-flight, which keys off DisplayName,
+        /// doesn't trip across packages that share the same in-package
+        /// unit slug).
         /// </summary>
         private void CreateSingleUnitPackage(string pkgName)
         {
             var pkgDir = Path.Combine(PackagesRoot, pkgName);
             var unitsDir = Path.Combine(pkgDir, "units");
             Directory.CreateDirectory(unitsDir);
+            // Per-package unique unit slug so the DisplayName-keyed collision
+            // pre-flight doesn't conflate unrelated installs in the shared DB.
+            var unitSlug = $"{pkgName}-main";
 
             File.WriteAllText(
                 Path.Combine(pkgDir, "package.yaml"),
@@ -585,14 +593,14 @@ public class PackageInstallEndpointsTests : IClassFixture<PackageInstallEndpoint
                 kind: UnitPackage
                 metadata:
                   name: {pkgName}
-                unit: main
+                unit: {unitSlug}
                 """);
 
             File.WriteAllText(
-                Path.Combine(unitsDir, "main.yaml"),
+                Path.Combine(unitsDir, $"{unitSlug}.yaml"),
                 $"""
                 unit:
-                  name: main
+                  name: {unitSlug}
                   description: Test unit for {pkgName}.
                 """);
         }
@@ -613,6 +621,10 @@ public class PackageInstallEndpointsTests : IClassFixture<PackageInstallEndpoint
             var pkgDir = Path.Combine(PackagesRoot, PkgTopoA);
             var unitsDir = Path.Combine(pkgDir, "units");
             Directory.CreateDirectory(unitsDir);
+            // Cross-package sub-unit: PkgTopoB's local unit slug (set by
+            // CreateSingleUnitPackage) is "{pkgName}-main", so we reference it
+            // here verbatim rather than the original "main".
+            var topoBUnit = $"{PkgTopoB}-main";
 
             File.WriteAllText(
                 Path.Combine(pkgDir, "package.yaml"),
@@ -623,7 +635,7 @@ public class PackageInstallEndpointsTests : IClassFixture<PackageInstallEndpoint
                   name: {PkgTopoA}
                 unit: local-a
                 subUnits:
-                  - {PkgTopoB}/main
+                  - {PkgTopoB}/{topoBUnit}
                 """);
 
             File.WriteAllText(
@@ -631,7 +643,7 @@ public class PackageInstallEndpointsTests : IClassFixture<PackageInstallEndpoint
                 $"""
                 unit:
                   name: local-a
-                  description: Local unit for {PkgTopoA} (depends on {PkgTopoB}/main).
+                  description: Local unit for {PkgTopoA} (depends on {PkgTopoB}/{topoBUnit}).
                 """);
         }
 

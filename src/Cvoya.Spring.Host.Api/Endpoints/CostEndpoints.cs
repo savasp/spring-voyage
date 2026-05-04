@@ -51,8 +51,12 @@ public static class CostEndpoints
         DateTimeOffset? to,
         CancellationToken cancellationToken)
     {
+        if (!Cvoya.Spring.Core.Identifiers.GuidFormatter.TryParse(id, out var idGuid))
+        {
+            return Results.Problem(detail: $"Agent id '{id}' is not a valid Guid.", statusCode: StatusCodes.Status400BadRequest);
+        }
         var (rangeFrom, rangeTo) = ResolveTimeRange(from, to);
-        var summary = await costQueryService.GetAgentCostAsync(id, rangeFrom, rangeTo, cancellationToken);
+        var summary = await costQueryService.GetAgentCostAsync(idGuid, rangeFrom, rangeTo, cancellationToken);
         return Results.Ok(ToResponse(summary));
     }
 
@@ -63,8 +67,12 @@ public static class CostEndpoints
         DateTimeOffset? to,
         CancellationToken cancellationToken)
     {
+        if (!Cvoya.Spring.Core.Identifiers.GuidFormatter.TryParse(id, out var idGuid))
+        {
+            return Results.Problem(detail: $"Agent id '{id}' is not a valid Guid.", statusCode: StatusCodes.Status400BadRequest);
+        }
         var (rangeFrom, rangeTo) = ResolveTimeRange(from, to);
-        var entries = await costQueryService.GetAgentCostBreakdownAsync(id, rangeFrom, rangeTo, cancellationToken);
+        var entries = await costQueryService.GetAgentCostBreakdownAsync(idGuid, rangeFrom, rangeTo, cancellationToken);
         var response = new CostBreakdownResponse(
             AgentId: id,
             From: rangeFrom,
@@ -82,8 +90,12 @@ public static class CostEndpoints
         DateTimeOffset? to,
         CancellationToken cancellationToken)
     {
+        if (!Cvoya.Spring.Core.Identifiers.GuidFormatter.TryParse(id, out var idGuid))
+        {
+            return Results.Problem(detail: $"Unit id '{id}' is not a valid Guid.", statusCode: StatusCodes.Status400BadRequest);
+        }
         var (rangeFrom, rangeTo) = ResolveTimeRange(from, to);
-        var summary = await costQueryService.GetUnitCostAsync(id, rangeFrom, rangeTo, cancellationToken);
+        var summary = await costQueryService.GetUnitCostAsync(idGuid, rangeFrom, rangeTo, cancellationToken);
         return Results.Ok(ToResponse(summary));
     }
 
@@ -94,7 +106,10 @@ public static class CostEndpoints
         string? tenantId,
         CancellationToken cancellationToken)
     {
-        var tenant = tenantId ?? "default";
+        var tenant = !string.IsNullOrWhiteSpace(tenantId)
+            && Cvoya.Spring.Core.Identifiers.GuidFormatter.TryParse(tenantId, out var parsed)
+                ? parsed
+                : Cvoya.Spring.Core.Tenancy.OssTenantIds.Default;
         var (rangeFrom, rangeTo) = ResolveTimeRange(from, to);
         var summary = await costQueryService.GetTenantCostAsync(tenant, rangeFrom, rangeTo, cancellationToken);
         return Results.Ok(ToResponse(summary));

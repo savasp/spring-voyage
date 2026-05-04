@@ -53,7 +53,8 @@ public class CodexLauncherTests
             ThreadId: "conv-77",
             Prompt: "## Platform Instructions\nWrite clean code.",
             McpEndpoint: "http://host.docker.internal:9999/mcp/",
-            McpToken: "codex-secret-token");
+            McpToken: "codex-secret-token",
+            TenantId: Cvoya.Spring.Core.Tenancy.OssTenantIds.Default);
 
         var prep = await _launcher.PrepareAsync(context, TestContext.Current.CancellationToken);
 
@@ -90,7 +91,8 @@ public class CodexLauncherTests
             ThreadId: "conv-1",
             Prompt: "Be helpful.",
             McpEndpoint: "http://host.docker.internal:9999/mcp/",
-            McpToken: "codex-secret-token");
+            McpToken: "codex-secret-token",
+            TenantId: Cvoya.Spring.Core.Tenancy.OssTenantIds.Default);
 
         var prep = await _launcher.PrepareAsync(context, TestContext.Current.CancellationToken);
 

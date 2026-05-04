@@ -262,7 +262,7 @@ public class AgentStateCoordinator(
         return new ActivityEvent(
             Guid.NewGuid(),
             DateTimeOffset.UtcNow,
-            new Core.Messaging.Address("agent", agentId),
+            Core.Messaging.Address.For("agent", agentId),
             eventType,
             severity,
             summary,
