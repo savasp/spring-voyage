@@ -111,7 +111,7 @@ require() {
 
 load_env() {
     if [[ ! -f "${ENV_FILE}" ]]; then
-        die "env file not found: ${ENV_FILE} (copy spring.env.example to spring.env and edit)"
+        die "env file not found: ${ENV_FILE}. Run '${BASH_SOURCE[0]##*/} init' to generate one (creates spring.env from the example template and provisions a fresh AES-256 secrets key)."
     fi
     require envsubst
     # Source the env file for this script's use (e.g., image tags, DEPLOY_HOSTNAME).
@@ -120,6 +120,19 @@ load_env() {
     # shellcheck disable=SC1090
     source "${ENV_FILE}"
     set +a
+
+    # Tier-1 secrets-key gate: SPRING_SECRETS_AES_KEY (or Secrets__AesKeyFile)
+    # is now mandatory; the previous AllowEphemeralDevKey fallback was
+    # removed because a per-process random key cannot work in the platform's
+    # multi-process topology. Catch the placeholder + the unset case here so
+    # operators see a precise message at `deploy.sh up` rather than a
+    # cryptic boot-time validator throw inside spring-api.
+    if [[ -z "${SPRING_SECRETS_AES_KEY:-}" && -z "${Secrets__AesKeyFile:-}" ]]; then
+        die "SPRING_SECRETS_AES_KEY is not set in ${ENV_FILE}. Run '${BASH_SOURCE[0]##*/} init' to generate one, or set Secrets__AesKeyFile to a mounted key file."
+    fi
+    if [[ "${SPRING_SECRETS_AES_KEY:-}" == "REPLACE_ME_WITH_BASE64_32_BYTES" ]]; then
+        die "SPRING_SECRETS_AES_KEY in ${ENV_FILE} still carries the placeholder value. Run '${BASH_SOURCE[0]##*/} init' to substitute a freshly-generated key."
+    fi
 
     # Expand ${VAR} references inside the env file itself and write the
     # result to a short-lived file that we pass to podman --env-file.
@@ -130,6 +143,73 @@ load_env() {
     chmod 600 "${RESOLVED_ENV_FILE}"
     envsubst < "${ENV_FILE}" > "${RESOLVED_ENV_FILE}"
     trap 'rm -f "${RESOLVED_ENV_FILE}"' EXIT
+}
+
+# Provisions a fresh deployment env file. Idempotent against an empty start
+# (no spring.env yet) but refuses to overwrite an existing key once
+# substituted — that key is the only thing that can decrypt the secrets in
+# the postgres state store, and silently rotating it would orphan every
+# stored secret.
+cmd_init() {
+    require openssl
+    local example_file="${SCRIPT_DIR}/spring.env.example"
+    if [[ ! -f "${example_file}" ]]; then
+        die "spring.env.example not found at ${example_file}; cannot bootstrap."
+    fi
+
+    if [[ -f "${ENV_FILE}" ]]; then
+        # Honour an in-place key already substituted by a previous init or
+        # set by the operator. Refuse to clobber it.
+        local current_key
+        current_key="$(awk -F= '/^SPRING_SECRETS_AES_KEY=/ { sub(/^SPRING_SECRETS_AES_KEY=/, ""); print; exit }' "${ENV_FILE}" || true)"
+        if [[ -n "${current_key}" && "${current_key}" != "REPLACE_ME_WITH_BASE64_32_BYTES" ]]; then
+            die "SPRING_SECRETS_AES_KEY is already set in ${ENV_FILE}. Refusing to overwrite — rotating it would orphan every encrypted secret in the state store. To rotate intentionally, see docs/developer/secret-store.md (key rotation requires re-encrypting existing values)."
+        fi
+        log "reusing existing ${ENV_FILE} (no SPRING_SECRETS_AES_KEY yet, or placeholder still present)"
+    else
+        log "copying ${example_file} -> ${ENV_FILE}"
+        cp "${example_file}" "${ENV_FILE}"
+    fi
+
+    chmod 0600 "${ENV_FILE}"
+
+    local generated_key
+    generated_key="$(openssl rand -base64 32)"
+
+    if grep -q '^SPRING_SECRETS_AES_KEY=' "${ENV_FILE}"; then
+        # In-place rewrite of the existing line. Use a temp file so a
+        # signal mid-write can't leave a half-rewritten env on disk.
+        local tmp
+        tmp="$(mktemp "${ENV_FILE}.XXXXXX")"
+        awk -v key="${generated_key}" '
+            BEGIN { replaced = 0 }
+            /^SPRING_SECRETS_AES_KEY=/ {
+                print "SPRING_SECRETS_AES_KEY=" key
+                replaced = 1
+                next
+            }
+            { print }
+            END { if (!replaced) print "SPRING_SECRETS_AES_KEY=" key }
+        ' "${ENV_FILE}" > "${tmp}"
+        chmod 0600 "${tmp}"
+        mv "${tmp}" "${ENV_FILE}"
+    else
+        printf '\nSPRING_SECRETS_AES_KEY=%s\n' "${generated_key}" >> "${ENV_FILE}"
+    fi
+
+    log "provisioned SPRING_SECRETS_AES_KEY in ${ENV_FILE} (mode 0600)"
+    log ""
+    log "  IMPORTANT: ${ENV_FILE} now contains the only key that can decrypt"
+    log "  any secret stored in this deployment's state. Back it up alongside"
+    log "  your postgres volume; deleting it permanently orphans every"
+    log "  encrypted secret. To rotate intentionally, see"
+    log "  docs/developer/secret-store.md (rotation requires re-encrypting"
+    log "  existing values, not just regenerating the env entry)."
+    log ""
+    log "Next steps:"
+    log "  1. Edit ${ENV_FILE} to fill in deployment-specific values"
+    log "     (DEPLOY_HOSTNAME, GitHub__*, runtime credentials, …)"
+    log "  2. ${BASH_SOURCE[0]##*/} up"
 }
 
 ensure_network() {
@@ -718,6 +798,10 @@ usage() {
 Spring Voyage — Podman deployment
 
 Commands:
+  init                   First-run bootstrap: copy spring.env.example to
+                         spring.env (if missing) and provision a fresh
+                         SPRING_SECRETS_AES_KEY. Refuses to overwrite an
+                         existing key.
   up                     Start the full stack on ${NETWORK_NAME}
   down                   Stop and remove containers (keeps volumes)
   restart                down + up
@@ -728,6 +812,10 @@ Commands:
 
 Environment file: ${ENV_FILE}
   Override with SPRING_ENV_FILE=/path/to/other.env
+
+The first time you deploy, run 'init' to generate the secrets key, then
+'up'. The key in spring.env is the only thing that can decrypt secrets in
+the state store — back it up alongside the postgres volume.
 EOF
 }
 
@@ -735,6 +823,7 @@ main() {
     local cmd="${1:-}"
     shift || true
     case "${cmd}" in
+        init)                cmd_init "$@" ;;
         up)                  cmd_up "$@" ;;
         down)                cmd_down "$@" ;;
         restart)             cmd_restart "$@" ;;

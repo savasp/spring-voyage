@@ -302,8 +302,6 @@ public class UnitHumansEndpointsUnauthenticatedTests : IDisposable
                 // handler ever runs.
                 builder.UseSetting("ConnectionStrings:SpringDb",
                     "Host=test;Database=test;Username=test;Password=test");
-                builder.UseSetting("Secrets:AllowEphemeralDevKey", "true");
-
                 builder.ConfigureServices(services =>
                 {
                     var dbDescriptors = services

@@ -46,12 +46,9 @@ public class SecretsEncryptorTests : IDisposable
 
     private static ILogger<SecretsEncryptor> Log() => Substitute.For<ILogger<SecretsEncryptor>>();
 
-    private static IOptions<SecretsOptions> Opts(
-        bool allowEphemeralDevKey = false,
-        string? aesKeyFile = null) =>
+    private static IOptions<SecretsOptions> Opts(string? aesKeyFile = null) =>
         Options.Create(new SecretsOptions
         {
-            AllowEphemeralDevKey = allowEphemeralDevKey,
             AesKeyFile = aesKeyFile,
         });
 
@@ -63,20 +60,6 @@ public class SecretsEncryptorTests : IDisposable
         var ex = Should.Throw<InvalidOperationException>(() => new SecretsEncryptor(Opts(), Log()));
         ex.Message.ShouldContain(EnvVar);
         ex.Message.ShouldContain("AesKeyFile");
-        ex.Message.ShouldContain("AllowEphemeralDevKey");
-    }
-
-    [Fact]
-    public void Ctor_EphemeralDevKey_Allowed()
-    {
-        Environment.SetEnvironmentVariable(EnvVar, null);
-        var sut = new SecretsEncryptor(Opts(allowEphemeralDevKey: true), Log());
-
-        var envelope = sut.Encrypt("hunter2", TenantAcme, "k1");
-        var round = sut.Decrypt(envelope, TenantAcme, "k1", out var wasEnveloped);
-
-        wasEnveloped.ShouldBeTrue();
-        round.ShouldBe("hunter2");
     }
 
     [Fact]

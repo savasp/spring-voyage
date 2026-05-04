@@ -79,8 +79,6 @@ public class OllamaLegacyBindingTests
                 builder.UseSetting("LocalDev", "true");
                 builder.UseSetting("ConnectionStrings:SpringDb",
                     "Host=test;Database=test;Username=test;Password=test");
-                builder.UseSetting("Secrets:AllowEphemeralDevKey", "true");
-
                 configure(builder);
 
                 builder.ConfigureServices(services =>

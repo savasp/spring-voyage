@@ -36,12 +36,9 @@ public class SecretsConfigurationRequirementTests : IDisposable
         GC.SuppressFinalize(this);
     }
 
-    private static IOptions<SecretsOptions> Opts(
-        bool allowEphemeralDevKey = false,
-        string? aesKeyFile = null) =>
+    private static IOptions<SecretsOptions> Opts(string? aesKeyFile = null) =>
         Options.Create(new SecretsOptions
         {
-            AllowEphemeralDevKey = allowEphemeralDevKey,
             AesKeyFile = aesKeyFile,
         });
 
@@ -80,22 +77,7 @@ public class SecretsConfigurationRequirementTests : IDisposable
     }
 
     [Fact]
-    public async Task ValidateAsync_EphemeralDevKey_ReturnsMetWithWarning()
-    {
-        Environment.SetEnvironmentVariable(EnvVar, null);
-        var requirement = new SecretsConfigurationRequirement(Opts(allowEphemeralDevKey: true));
-
-        var status = await requirement.ValidateAsync(TestContext.Current.CancellationToken);
-
-        status.Status.ShouldBe(ConfigurationStatus.Met);
-        status.Severity.ShouldBe(SeverityLevel.Warning);
-        status.Reason.ShouldNotBeNull();
-        status.Reason!.ShouldContain("Ephemeral");
-        status.Suggestion.ShouldNotBeNull();
-    }
-
-    [Fact]
-    public async Task ValidateAsync_NoKeyNoEphemeral_ReturnsInvalidWithFatal()
+    public async Task ValidateAsync_NoKeyConfigured_ReturnsInvalidWithFatal()
     {
         Environment.SetEnvironmentVariable(EnvVar, null);
         var requirement = new SecretsConfigurationRequirement(Opts());
@@ -108,7 +90,10 @@ public class SecretsConfigurationRequirementTests : IDisposable
         status.Suggestion.ShouldNotBeNull();
         status.Suggestion!.ShouldContain(EnvVar);
         status.Suggestion!.ShouldContain("AesKeyFile");
-        status.Suggestion!.ShouldContain("AllowEphemeralDevKey");
+        // The previous "ephemeral dev key" path was removed (#TBD-secrets):
+        // a per-process random key cannot work in the platform's
+        // multi-process topology. Help text should no longer reference it.
+        status.Suggestion!.ShouldNotContain("AllowEphemeralDevKey");
     }
 
     [Fact]
@@ -183,14 +168,16 @@ public class SecretsConfigurationRequirementTests : IDisposable
     public async Task RequirementMetadata_IsStable()
     {
         Environment.SetEnvironmentVariable(EnvVar, null);
-        var requirement = new SecretsConfigurationRequirement(Opts(allowEphemeralDevKey: true));
+        var requirement = new SecretsConfigurationRequirement(Opts());
 
         requirement.RequirementId.ShouldBe("secrets-encryption-key");
         requirement.SubsystemName.ShouldBe("Secrets");
         requirement.IsMandatory.ShouldBeTrue();
         requirement.EnvironmentVariableNames.ShouldContain(EnvVar);
         requirement.EnvironmentVariableNames.ShouldContain("Secrets__AesKeyFile");
-        requirement.EnvironmentVariableNames.ShouldContain("Secrets__AllowEphemeralDevKey");
+        // The "Secrets__AllowEphemeralDevKey" entry was removed when the
+        // ephemeral path was deleted — only env-var and file remain.
+        requirement.EnvironmentVariableNames.ShouldNotContain("Secrets__AllowEphemeralDevKey");
         requirement.ConfigurationSectionPath.ShouldBe(SecretsOptions.SectionName);
         requirement.DocumentationUrl.ShouldNotBeNull();
         await Task.CompletedTask;

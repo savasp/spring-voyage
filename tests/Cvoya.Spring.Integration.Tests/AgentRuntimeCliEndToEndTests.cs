@@ -548,7 +548,6 @@ public sealed class AgentRuntimeCliEndToEndTests : IDisposable
             builder.UseSetting("LocalDev", "true");
             builder.UseSetting("ConnectionStrings:SpringDb",
                 "Host=test;Database=test;Username=test;Password=test");
-            builder.UseSetting("Secrets:AllowEphemeralDevKey", "true");
             builder.UseSetting("Skills:PackagesRoot", _packagesRoot);
 
             builder.ConfigureServices(services =>

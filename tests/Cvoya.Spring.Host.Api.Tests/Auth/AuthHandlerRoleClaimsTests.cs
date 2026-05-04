@@ -198,8 +198,6 @@ public class AuthHandlerRoleClaimsTests : IDisposable
                 // replaces the DbContext with an in-memory provider.
                 builder.UseSetting("ConnectionStrings:SpringDb",
                     "Host=test;Database=test;Username=test;Password=test");
-                builder.UseSetting("Secrets:AllowEphemeralDevKey", "true");
-
                 builder.ConfigureServices(services =>
                 {
                     // #568: strip the Dapr workflow worker so factory

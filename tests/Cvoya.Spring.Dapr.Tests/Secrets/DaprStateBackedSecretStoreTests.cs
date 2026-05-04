@@ -3,6 +3,7 @@
 
 namespace Cvoya.Spring.Dapr.Tests.Secrets;
 
+using System;
 using System.Collections.Generic;
 
 using Cvoya.Spring.Core.Secrets;
@@ -29,12 +30,33 @@ using Xunit;
 /// format path (<see cref="SecretsOptions.ComponentNameFormat"/>) resolves
 /// the correct component.
 /// </summary>
-public class DaprStateBackedSecretStoreTests
+[Collection(SecretsEnvironmentVariableCollection.Name)]
+public class DaprStateBackedSecretStoreTests : IDisposable
 {
     private const string Component = "statestore";
     private static readonly Guid TenantId = new("aaaaaaaa-1111-1111-1111-000000000001");
 
     private readonly DaprClient _dapr = Substitute.For<DaprClient>();
+    private readonly string? _savedEnv =
+        Environment.GetEnvironmentVariable(SecretsEncryptor.KeyEnvironmentVariable);
+
+    public DaprStateBackedSecretStoreTests()
+    {
+        // The platform no longer supports an in-memory ephemeral dev key
+        // (it cannot work across the multi-process topology). Tests that
+        // build a real SecretsEncryptor must provide a key via the
+        // process-wide environment variable; SecretsEnvironmentVariableCollection
+        // serialises this class with sibling env-var-mutating tests.
+        Environment.SetEnvironmentVariable(
+            SecretsEncryptor.KeyEnvironmentVariable, SecretsTestKey.Base64);
+    }
+
+    public void Dispose()
+    {
+        Environment.SetEnvironmentVariable(
+            SecretsEncryptor.KeyEnvironmentVariable, _savedEnv);
+        GC.SuppressFinalize(this);
+    }
 
     private static ITenantContext TenantContext(Guid? tenantId = null)
     {
@@ -43,12 +65,9 @@ public class DaprStateBackedSecretStoreTests
         return ctx;
     }
 
-    private static ISecretsEncryptor RealEncryptor(bool allowEphemeral = true)
+    private static ISecretsEncryptor RealEncryptor()
     {
-        var options = Options.Create(new SecretsOptions
-        {
-            AllowEphemeralDevKey = allowEphemeral,
-        });
+        var options = Options.Create(new SecretsOptions());
         var logger = Substitute.For<ILogger<SecretsEncryptor>>();
         return new SecretsEncryptor(options, logger);
     }

@@ -54,8 +54,6 @@ public sealed class CredentialHealthWatchdogWiringTests : IDisposable
                 builder.UseSetting("LocalDev", "true");
                 builder.UseSetting("ConnectionStrings:SpringDb",
                     "Host=test;Database=test;Username=test;Password=test");
-                builder.UseSetting("Secrets:AllowEphemeralDevKey", "true");
-
                 builder.ConfigureServices(services =>
                 {
                     // Strip the Dapr Workflow IHostedService — same #568

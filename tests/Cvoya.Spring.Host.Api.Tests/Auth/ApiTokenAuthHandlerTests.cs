@@ -59,8 +59,6 @@ public class ApiTokenAuthHandlerTests : IDisposable
                 // #639 SecretsConfigurationRequirement — use an ephemeral
                 // dev key so the validator reports Met+Warning instead of
                 // aborting on missing key material.
-                builder.UseSetting("Secrets:AllowEphemeralDevKey", "true");
-
                 builder.ConfigureServices(services =>
                 {
                     // Replace DbContext with in-memory. Strip EF / Npgsql

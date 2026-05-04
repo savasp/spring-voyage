@@ -237,9 +237,8 @@ Key sources (priority order):
 
 1. `SPRING_SECRETS_AES_KEY` environment variable (base64-encoded 32-byte key).
 2. `Secrets:AesKeyFile` config pointing at a file containing the base64-encoded key.
-3. An ephemeral in-memory key, only when `Secrets:AllowEphemeralDevKey=true`. Intended for `dotnet run` only; restarts render existing envelopes unreadable.
 
-If none is configured the encryptor refuses to start. A startup self-check also rejects obviously weak keys (all zeros, ascending sentinel patterns, `"testtest…"`, etc.). Detailed key rotation and operational guidance: [OSS Secret Store: At-Rest Encryption & Per-Tenant Components](../developer/secret-store.md).
+If neither is configured the encryptor refuses to start. A startup self-check also rejects obviously weak keys (all zeros, ascending sentinel patterns, `"testtest…"`, etc.). The previous in-memory `Secrets:AllowEphemeralDevKey=true` fallback was removed because the platform's multi-process topology (spring-api / spring-worker share the same encrypted secret store) cannot function with a per-process random key. Detailed key rotation and operational guidance: [OSS Secret Store: At-Rest Encryption & Per-Tenant Components](../developer/secret-store.md).
 
 ### Per-tenant component isolation
 
