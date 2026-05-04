@@ -197,23 +197,26 @@ public class UnitPolicyEndpointsAuthorizationTests : IClassFixture<CustomWebAppl
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 
-    private static string NewUnitName() => $"policy-auth-{Guid.NewGuid():N}";
+    // Post-#1629 the {id} URL segment is parsed as a Guid hex by the
+    // endpoint, so the test must produce exactly that wire form.
+    private static string NewUnitName() => Guid.NewGuid().ToString("N");
 
     private void ArrangeNotFound(string unitName)
     {
+        var unitGuid = Guid.Parse(unitName);
         _factory.DirectoryService
             .ResolveAsync(
-                Arg.Is<Address>(a => a.Scheme == "unit" && a.Path == unitName),
+                Arg.Is<Address>(a => a.Scheme == "unit" && a.Id == unitGuid),
                 Arg.Any<CancellationToken>())
             .Returns((DirectoryEntry?)null);
     }
 
     private void ArrangeResolved(string unitName)
     {
-        var unitGuid = Guid.TryParse(unitName, out var parsed) ? parsed : Guid.NewGuid();
+        var unitGuid = Guid.Parse(unitName);
         _factory.DirectoryService
             .ResolveAsync(
-                Arg.Is<Address>(a => a.Scheme == "unit" && (a.Id == unitGuid || a.Path == unitName)),
+                Arg.Is<Address>(a => a.Scheme == "unit" && a.Id == unitGuid),
                 Arg.Any<CancellationToken>())
             .Returns(_ => new DirectoryEntry(
                 new Address("unit", unitGuid),
