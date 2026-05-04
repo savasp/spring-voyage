@@ -101,6 +101,11 @@ public static class PackageCommand
         packageCommand.Subcommands.Add(CreateExportCommand(outputOption));
         packageCommand.Subcommands.Add(CreateListCommand(outputOption));
         packageCommand.Subcommands.Add(CreateShowCommand(outputOption));
+        // #1680: offline validator for the in-tree CI gate and operator
+        // pre-publish checks. No --output binding because the table/json
+        // selector (--format) lives on the subcommand itself, mirroring the
+        // dotnet CLI conventions for verb-specific output shapes.
+        packageCommand.Subcommands.Add(Package.ValidateCommand.Create());
 
         return packageCommand;
     }
