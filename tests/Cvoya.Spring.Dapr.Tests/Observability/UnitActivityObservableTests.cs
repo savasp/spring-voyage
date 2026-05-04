@@ -53,7 +53,7 @@ public class UnitActivityObservableTests : IDisposable
             .Returns(unit);
 
         var sut = CreateSut();
-        var stream = await sut.GetStreamAsync("unit-1", TestContext.Current.CancellationToken);
+        var stream = await sut.GetStreamAsync(TestSlugIds.HexFor("unit-1"), TestContext.Current.CancellationToken);
 
         var observed = new List<ActivityEvent>();
         using var subscription = stream.Subscribe(observed.Add);
@@ -64,9 +64,9 @@ public class UnitActivityObservableTests : IDisposable
         _bus.Publish(Evt(Address.For("agent", TestSlugIds.HexFor("agent-b")), ActivityEventType.TokenDelta));
 
         observed.Count.ShouldBe(3);
-        observed[0].Source.Path.ShouldBe("agent-a");
-        observed[1].Source.Path.ShouldBe("unit-1");
-        observed[2].Source.Path.ShouldBe("agent-b");
+        observed[0].Source.Path.ShouldBe(TestSlugIds.HexFor("agent-a"));
+        observed[1].Source.Path.ShouldBe(TestSlugIds.HexFor("unit-1"));
+        observed[2].Source.Path.ShouldBe(TestSlugIds.HexFor("agent-b"));
     }
 
     [Fact]
@@ -85,7 +85,7 @@ public class UnitActivityObservableTests : IDisposable
         _proxyFactory.CreateActorProxy<IUnitActor>(new ActorId(TestSlugIds.HexFor("unit-2")), nameof(UnitActor))
             .Returns(sub);
 
-        var unit2Id = Guid.NewGuid();
+        var unit2Id = TestSlugIds.For("unit-2");
         _directory.ResolveAsync(Arg.Any<Address>(), Arg.Any<CancellationToken>())
             .Returns(new DirectoryEntry(
                 Address: new Address("unit", unit2Id),
@@ -96,7 +96,7 @@ public class UnitActivityObservableTests : IDisposable
                 RegisteredAt: DateTimeOffset.UtcNow));
 
         var sut = CreateSut();
-        var stream = await sut.GetStreamAsync("unit-1", TestContext.Current.CancellationToken);
+        var stream = await sut.GetStreamAsync(TestSlugIds.HexFor("unit-1"), TestContext.Current.CancellationToken);
 
         var observed = new List<ActivityEvent>();
         using var subscription = stream.Subscribe(observed.Add);
@@ -106,8 +106,8 @@ public class UnitActivityObservableTests : IDisposable
         _bus.Publish(Evt(Address.For("agent", TestSlugIds.HexFor("agent-not-mine")), ActivityEventType.MessageReceived));
 
         observed.Count.ShouldBe(2);
-        observed.ShouldContain(e => e.Source.Path == "agent-z");
-        observed.ShouldContain(e => e.Source.Path == "unit-2");
+        observed.ShouldContain(e => e.Source.Path == TestSlugIds.HexFor("agent-z"));
+        observed.ShouldContain(e => e.Source.Path == TestSlugIds.HexFor("unit-2"));
     }
 
     [Fact]

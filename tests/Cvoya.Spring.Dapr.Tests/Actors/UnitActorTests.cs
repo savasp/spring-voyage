@@ -81,7 +81,7 @@ public class UnitActorTests
         return new Message(
             Guid.NewGuid(),
             Address.For("agent", TestSlugIds.HexFor("test-sender")),
-            Address.For("unit", TestSlugIds.HexFor("test-unit")),
+            Address.For("unit", TestUnitActorId),
             type,
             threadId ?? Guid.NewGuid().ToString(),
             payload ?? JsonSerializer.SerializeToElement(new { }),
@@ -138,7 +138,7 @@ public class UnitActorTests
         await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
 
         capturedContext.ShouldNotBeNull();
-        capturedContext!.UnitAddress.ShouldBe(Address.For("unit", TestSlugIds.HexFor("test-unit")));
+        capturedContext!.UnitAddress.ShouldBe(Address.For("unit", TestUnitActorId));
     }
 
     [Fact]
@@ -182,7 +182,7 @@ public class UnitActorTests
 
         result.ShouldNotBeNull();
         result!.Type.ShouldBe(MessageType.StatusQuery);
-        result.From.ShouldBe(Address.For("unit", TestSlugIds.HexFor("test-unit")));
+        result.From.ShouldBe(Address.For("unit", TestUnitActorId));
 
         var payload = result.Payload.Deserialize<JsonElement>();
         payload.GetProperty("Status").GetString().ShouldBe("Draft");
@@ -330,7 +330,7 @@ public class UnitActorTests
         await _actor.ReceiveAsync(message, TestContext.Current.CancellationToken);
 
         capturedContext.ShouldNotBeNull();
-        capturedContext!.UnitAddress.ShouldBe(Address.For("unit", TestSlugIds.HexFor("test-unit")));
+        capturedContext!.UnitAddress.ShouldBe(Address.For("unit", TestUnitActorId));
         capturedContext.Members.ShouldHaveSingleItem().ShouldBe(member1);
     }
 

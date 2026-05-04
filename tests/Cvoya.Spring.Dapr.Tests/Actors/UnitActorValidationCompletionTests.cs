@@ -36,7 +36,7 @@ using Xunit;
 /// </summary>
 public class UnitActorValidationCompletionTests
 {
-    private const string TestUnitActorId = "test-unit";
+    private static readonly string TestUnitActorId = TestSlugIds.HexFor("test-unit");
     private const string CurrentRunId = "run-42";
 
     private readonly IActorStateManager _stateManager = Substitute.For<IActorStateManager>();
@@ -54,6 +54,7 @@ public class UnitActorValidationCompletionTests
 
         var host = ActorHost.CreateForTest<UnitActor>(new ActorTestOptions
         {
+            ActorId = new ActorId(TestUnitActorId),
         });
         _actor = new UnitActor(
             host,

@@ -224,9 +224,15 @@ public class DbOrchestrationStrategyProviderTests
         }
 
         var resolvedActorId = actorId ?? Guid.NewGuid().ToString();
+        // Post-#1629 the provider keys off the row's Guid Id; align it with
+        // the actorId (Guid hex or TestSlugIds-derived) so lookups by
+        // resolvedActorId hit the seeded row.
+        var rowId = Cvoya.Spring.Core.Identifiers.GuidFormatter.TryParse(resolvedActorId, out var parsed)
+            ? parsed
+            : TestSlugIds.For(resolvedActorId);
         db.UnitDefinitions.Add(new UnitDefinitionEntity
         {
-            Id = Guid.NewGuid(),
+            Id = rowId,
             DisplayName = unitId ?? resolvedActorId,
             Description = "test",
             Definition = stableDefinition,

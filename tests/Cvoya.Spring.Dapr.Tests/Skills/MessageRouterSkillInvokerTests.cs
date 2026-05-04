@@ -107,7 +107,7 @@ public class MessageRouterSkillInvokerTests
 
         routedMessage.ShouldNotBeNull();
         routedMessage.To.ShouldBe(agent);
-        routedMessage.From.Path.ShouldBe("caller");
+        routedMessage.From.Path.ShouldBe(TestSlugIds.HexFor("caller"));
         routedMessage.Type.ShouldBe(MessageType.Domain);
         routedMessage.ThreadId.ShouldBe("conv-42");
         // Envelope carries skill metadata + original arguments.

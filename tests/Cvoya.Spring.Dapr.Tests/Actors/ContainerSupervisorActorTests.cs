@@ -25,7 +25,7 @@ using Xunit;
 /// </summary>
 public class ContainerSupervisorActorTests
 {
-    private const string TestAgentId = "test-agent-123";
+    private static readonly string TestAgentId = TestSlugIds.HexFor("test-agent-123");
     private static readonly Guid TestTenantId = new("acacacac-0000-0000-0000-000000000001");
 
     private readonly IActorStateManager _stateManager = Substitute.For<IActorStateManager>();
@@ -50,6 +50,7 @@ public class ContainerSupervisorActorTests
 
         var host = ActorHost.CreateForTest<ContainerSupervisorActor>(new ActorTestOptions
         {
+            ActorId = new ActorId(TestAgentId),
             TimerManager = _timerManager,
         });
 
