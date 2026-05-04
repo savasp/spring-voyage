@@ -156,6 +156,21 @@ public class ClaudeAgentRuntime : IAgentRuntime
 
         var model = config.DefaultModel ?? string.Empty;
 
+        // `--bare` skips hooks, plugin sync, auto-memory, and (per the CLI's
+        // own help text) limits Anthropic auth to ANTHROPIC_API_KEY /
+        // apiKeyHelper — OAuth tokens (CLAUDE_CODE_OAUTH_TOKEN) are
+        // explicitly NOT read in bare mode. Use it only when the credential
+        // is an API key. For OAuth tokens, drop `--bare` so the CLI's
+        // standard auth path picks up CLAUDE_CODE_OAUTH_TOKEN; the
+        // remaining arguments still keep the call minimal and
+        // JSON-shaped.
+        var validateArgs = isOAuth
+            ? new[] { "claude", "-p", "--output-format", "json", "respond with OK" }
+            : new[] { "claude", "--bare", "-p", "--output-format", "json", "respond with OK" };
+        var resolveModelArgs = isOAuth
+            ? new[] { "claude", "-p", "--output-format", "json", $"--model={model}", "respond with OK" }
+            : new[] { "claude", "--bare", "-p", "--output-format", "json", $"--model={model}", "respond with OK" };
+
         return new[]
         {
             new ProbeStep(
@@ -167,12 +182,10 @@ public class ClaudeAgentRuntime : IAgentRuntime
 
             new ProbeStep(
                 Step: UnitValidationStep.ValidatingCredential,
-                // Bare mode disables hooks, plugin sync, and auto-memory
-                // lookup so the spawn is minimal and does not touch on-disk
-                // Claude config baked into the image. The CLI returns a
-                // --output-format=json envelope with an `is_error` flag
-                // and `api_error_status` for 401 / 403 / 5xx.
-                Args: new[] { "claude", "--bare", "-p", "--output-format", "json", "respond with OK" },
+                // The CLI returns a --output-format=json envelope with an
+                // `is_error` flag and `api_error_status` for 401 / 403 /
+                // 5xx. See validateArgs above for the bare-vs-oauth split.
+                Args: validateArgs,
                 Env: credentialEnv,
                 Timeout: ValidateCredentialTimeout,
                 InterpretOutput: InterpretValidateCredential),
@@ -183,8 +196,9 @@ public class ClaudeAgentRuntime : IAgentRuntime
                 // canary call (credentialed) and read the response
                 // envelope's `model` field to confirm the configured model
                 // is honoured. Timeout is the credential budget since
-                // we're making the same call shape.
-                Args: new[] { "claude", "--bare", "-p", "--output-format", "json", $"--model={model}", "respond with OK" },
+                // we're making the same call shape. resolveModelArgs
+                // applies the same bare-vs-oauth split as validateArgs.
+                Args: resolveModelArgs,
                 Env: credentialEnv,
                 Timeout: ResolveModelTimeout,
                 InterpretOutput: (exit, stdout, stderr) => InterpretResolveModel(exit, stdout, stderr, model)),
