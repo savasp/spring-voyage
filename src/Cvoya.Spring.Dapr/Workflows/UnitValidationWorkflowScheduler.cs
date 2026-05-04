@@ -177,15 +177,17 @@ public class UnitValidationWorkflowScheduler(
     /// <remarks>
     /// <para>
     /// Precedence — <see cref="UnitExecutionDefaults.Agent"/> wins, then
-    /// <see cref="UnitExecutionDefaults.Runtime"/>, then
+    /// <see cref="UnitExecutionDefaults.Runtime"/> (skipping known container-runtime
+    /// selectors <c>docker</c> / <c>podman</c>), then
     /// <see cref="UnitExecutionDefaults.Provider"/>. <c>Agent</c> is the
     /// source of truth (sourced from the manifest's <c>ai.agent</c>
-    /// field by <c>UnitCreationService</c>); <c>Runtime</c> is the
-    /// container-runtime selector (<c>docker</c> | <c>podman</c>) and
-    /// only kicks in as a fallback for units persisted before the
-    /// <c>agent</c> slot existed; <c>Provider</c> is a last-ditch
-    /// fallback because dapr-agent-style runtimes carry the same string
-    /// in both their <c>provider</c> and <c>id</c> slots.
+    /// field by <c>UnitCreationService</c>, or set via the execution PUT endpoint);
+    /// <c>Runtime</c> is used as a back-compat fallback for units persisted before
+    /// the <c>agent</c> slot existed where <c>Runtime</c> held the agent-runtime id
+    /// (e.g. <c>ollama</c>) — container-runtime selectors (<c>docker</c> /
+    /// <c>podman</c>) are filtered out so they cannot land as an agent-runtime id;
+    /// <c>Provider</c> is a last-ditch fallback because dapr-agent-style runtimes
+    /// carry the same string in both their <c>provider</c> and <c>id</c> slots.
     /// </para>
     /// <para>
     /// Returns <c>null</c> when none of the slots are populated; the
@@ -195,8 +197,13 @@ public class UnitValidationWorkflowScheduler(
     internal static string? ResolveAgentRuntimeId(UnitExecutionDefaults defaults)
     {
         if (!string.IsNullOrWhiteSpace(defaults.Agent)) return defaults.Agent;
-        if (!string.IsNullOrWhiteSpace(defaults.Runtime)) return defaults.Runtime;
+        if (!string.IsNullOrWhiteSpace(defaults.Runtime)
+            && !IsContainerRuntimeSelector(defaults.Runtime)) return defaults.Runtime;
         if (!string.IsNullOrWhiteSpace(defaults.Provider)) return defaults.Provider;
         return null;
     }
+
+    private static bool IsContainerRuntimeSelector(string value) =>
+        string.Equals(value, "podman", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(value, "docker", StringComparison.OrdinalIgnoreCase);
 }

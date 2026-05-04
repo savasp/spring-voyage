@@ -52,6 +52,9 @@ public class RunContainerProbeActivity(
         var runtime = runtimeRegistry.Get(input.RuntimeId);
         if (runtime is null)
         {
+            _logger.LogWarning(
+                "No agent runtime registered with id '{RuntimeId}' for probe step {Step}.",
+                input.RuntimeId, input.Step);
             return FailureOutput(
                 input,
                 input.Step,

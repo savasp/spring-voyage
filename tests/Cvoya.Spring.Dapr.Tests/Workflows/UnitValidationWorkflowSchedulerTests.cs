@@ -24,9 +24,6 @@ public class UnitValidationWorkflowSchedulerTests
     [Fact]
     public void ResolveAgentRuntimeId_PrefersAgent_OverRuntime()
     {
-        // Pre-fix this would land on "podman" (the container-runtime
-        // selector) and the workflow's RunContainerProbe would fail
-        // every Step 1 with `No agent runtime is registered with id 'podman'.`
         var defaults = new UnitExecutionDefaults(
             Runtime: "podman",
             Agent: "claude");
@@ -40,11 +37,40 @@ public class UnitValidationWorkflowSchedulerTests
     public void ResolveAgentRuntimeId_FallsBackToRuntime_WhenAgentNull()
     {
         // Back-compat: a unit persisted before #1683 lacks the `agent`
-        // slot, so the validator must keep working off `runtime` /
-        // `provider` so existing units don't suddenly fail validation.
+        // slot and had an agent-runtime id (e.g. "ollama") in `runtime`.
         var defaults = new UnitExecutionDefaults(
             Runtime: "ollama",
             Agent: null);
+
+        var runtimeId = UnitValidationWorkflowScheduler.ResolveAgentRuntimeId(defaults);
+
+        runtimeId.ShouldBe("ollama");
+    }
+
+    [Fact]
+    public void ResolveAgentRuntimeId_SkipsContainerRuntimeSelectors_InRuntimeSlot()
+    {
+        // "podman" and "docker" are container-runtime selectors, not agent-runtime
+        // ids. A unit created from scratch without a manifest sets Runtime="podman"
+        // and Agent=null; the resolver must skip the Runtime slot and fall through
+        // to Provider (or return null) rather than returning "podman" and causing
+        // every RunContainerProbeActivity to fail with ProbeInternalError.
+        var podmanDefaults = new UnitExecutionDefaults(Runtime: "podman");
+        var dockerDefaults = new UnitExecutionDefaults(Runtime: "docker");
+
+        UnitValidationWorkflowScheduler.ResolveAgentRuntimeId(podmanDefaults).ShouldBeNull();
+        UnitValidationWorkflowScheduler.ResolveAgentRuntimeId(dockerDefaults).ShouldBeNull();
+    }
+
+    [Fact]
+    public void ResolveAgentRuntimeId_SkipsContainerRuntimeSelector_FallsToProvider()
+    {
+        // When Runtime is a container-runtime selector and Provider is set,
+        // Provider wins — this is the path for units with Provider="ollama" but
+        // no Agent field (e.g. units created via the API before Agent was exposed).
+        var defaults = new UnitExecutionDefaults(
+            Runtime: "podman",
+            Provider: "ollama");
 
         var runtimeId = UnitValidationWorkflowScheduler.ResolveAgentRuntimeId(defaults);
 
@@ -76,17 +102,16 @@ public class UnitValidationWorkflowSchedulerTests
     }
 
     [Fact]
-    public void ResolveAgentRuntimeId_TreatsWhitespaceAgent_AsUnset()
+    public void ResolveAgentRuntimeId_TreatsWhitespaceAgent_AsUnset_FallsToRuntime()
     {
-        // The store trims on read but a unit constructed in-memory by a
-        // caller may still pass whitespace through; the resolver must
-        // not treat that as a real agent-runtime id.
+        // Whitespace Agent is treated as unset; Runtime is used as back-compat
+        // fallback when it holds an agent-runtime id (non-container-runtime value).
         var defaults = new UnitExecutionDefaults(
-            Runtime: "podman",
+            Runtime: "ollama",
             Agent: "   ");
 
         var runtimeId = UnitValidationWorkflowScheduler.ResolveAgentRuntimeId(defaults);
 
-        runtimeId.ShouldBe("podman");
+        runtimeId.ShouldBe("ollama");
     }
 }
