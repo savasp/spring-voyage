@@ -469,6 +469,20 @@
                 "type": "string"
               }
             }
+          },
+          {
+            "name": "display_name",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "unit_id",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -1140,6 +1154,22 @@
         ],
         "summary": "List all registered units",
         "operationId": "ListUnits",
+        "parameters": [
+          {
+            "name": "display_name",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "parent_id",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK",

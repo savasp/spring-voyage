@@ -187,12 +187,51 @@ public static class UnitEndpoints
 
     private static async Task<IResult> ListUnitsAsync(
         IDirectoryService directoryService,
+        [FromServices] IUnitSubunitMembershipRepository subunitRepository,
+        [FromQuery(Name = "display_name")] string? displayName,
+        [FromQuery(Name = "parent_id")] string? parentId,
         CancellationToken cancellationToken)
     {
         var entries = await directoryService.ListAllAsync(cancellationToken);
 
-        var units = entries
+        var unitEntries = entries
             .Where(e => string.Equals(e.Address.Scheme, "unit", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        // #1649: server-side display_name + parent_id filtering. Same shape
+        // and acceptance as the agents list (see ListAgentsAsync). The
+        // parent_id constraint walks the parent → child edge projection
+        // (#1154) so the result is "direct children of this unit" — the
+        // grandparent / multi-hop case is intentionally out of scope; the
+        // CLI's `--unit` flag scopes to the immediate parent. Wire form is
+        // the canonical no-dash hex but we accept dashed for parity with
+        // GuidFormatter.TryParse.
+        if (!string.IsNullOrWhiteSpace(displayName))
+        {
+            var trimmed = displayName.Trim();
+            unitEntries = unitEntries
+                .Where(e => string.Equals(e.DisplayName, trimmed, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+        }
+
+        if (!string.IsNullOrWhiteSpace(parentId))
+        {
+            if (Cvoya.Spring.Core.Identifiers.GuidFormatter.TryParse(parentId, out var parentGuid))
+            {
+                var children = await subunitRepository.ListByParentAsync(parentGuid, cancellationToken);
+                var childIds = new HashSet<Guid>(children.Select(c => c.ChildId));
+                unitEntries = unitEntries
+                    .Where(e => childIds.Contains(e.ActorId))
+                    .ToList();
+            }
+            else
+            {
+                // Unparseable parent_id ⇒ no units satisfy the filter.
+                unitEntries = new List<DirectoryEntry>();
+            }
+        }
+
+        var units = unitEntries
             .Select(e => ToUnitResponse(e))
             .ToList();
 

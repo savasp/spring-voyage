@@ -60,10 +60,22 @@ public class SpringApiClient
     /// <c>?initiative=</c> (repeated); an older server ignores these and the CLI
     /// falls back to client-side filtering.
     /// </param>
+    /// <param name="displayName">
+    /// Optional case-insensitive equality filter on <c>display_name</c> (#1649).
+    /// An older server ignores it; the CLI's <see cref="CliResolver"/> falls
+    /// back to a client-side scan in that case.
+    /// </param>
+    /// <param name="unitId">
+    /// Optional unit-membership filter (#1649). When set the server returns
+    /// only agents that are members of the named unit. Sent as the canonical
+    /// no-dash hex Guid form.
+    /// </param>
     /// <param name="ct">Cancellation token.</param>
     public async Task<IReadOnlyList<AgentResponse>> ListAgentsAsync(
         string? hosting = null,
         IReadOnlyList<string>? initiative = null,
+        string? displayName = null,
+        Guid? unitId = null,
         CancellationToken ct = default)
     {
         var result = await _client.Api.V1.Tenant.Agents.GetAsync(
@@ -80,6 +92,20 @@ public class SpringApiClient
                 if (initiative is { Count: > 0 })
                 {
                     config.QueryParameters.Initiative = initiative.ToArray();
+                }
+                // #1649: server-side display_name + unit_id search. Sent as
+                // strings so the wire form (no-dash hex) matches the route
+                // template in #1643. The CLI resolver gates this call so
+                // older servers (which ignore the params) get the same
+                // pre-filter all-agents list and the resolver's existing
+                // client-side narrowing takes over.
+                if (!string.IsNullOrWhiteSpace(displayName))
+                {
+                    config.QueryParameters.DisplayName = displayName;
+                }
+                if (unitId is Guid uid)
+                {
+                    config.QueryParameters.UnitId = Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(uid);
                 }
             },
             cancellationToken: ct);
@@ -302,10 +328,31 @@ public class SpringApiClient
 
     // Units
 
-    /// <summary>Lists all units.</summary>
-    public async Task<IReadOnlyList<UnitResponse>> ListUnitsAsync(CancellationToken ct = default)
+    /// <summary>
+    /// Lists all units, optionally filtered by <c>display_name</c> and / or
+    /// <c>parent_id</c> (#1649). When the server supports server-side
+    /// search the result set is narrowed before transmission; an older
+    /// server ignores the params and returns the full list, in which
+    /// case <see cref="CliResolver"/> falls back to a client-side scan.
+    /// </summary>
+    public async Task<IReadOnlyList<UnitResponse>> ListUnitsAsync(
+        string? displayName = null,
+        Guid? parentId = null,
+        CancellationToken ct = default)
     {
-        var result = await _client.Api.V1.Tenant.Units.GetAsync(cancellationToken: ct);
+        var result = await _client.Api.V1.Tenant.Units.GetAsync(
+            config =>
+            {
+                if (!string.IsNullOrWhiteSpace(displayName))
+                {
+                    config.QueryParameters.DisplayName = displayName;
+                }
+                if (parentId is Guid pid)
+                {
+                    config.QueryParameters.ParentId = Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(pid);
+                }
+            },
+            cancellationToken: ct);
         return result ?? new List<UnitResponse>();
     }
 

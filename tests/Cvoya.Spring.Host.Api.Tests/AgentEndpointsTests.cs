@@ -187,4 +187,231 @@ public class AgentEndpointsTests : IClassFixture<CustomWebApplicationFactory>
         ctx.UnitMemberships.RemoveRange(ctx.UnitMemberships.ToList());
         ctx.SaveChanges();
     }
+
+    // -------------------------------------------------------------------
+    // #1649: server-side search filters on GET /api/v1/tenant/agents.
+    // The CLI's `agent show <name>` resolver (PR #1650) used to list
+    // every agent and filter client-side. With ?display_name= and
+    // ?unit_id= the resolver collapses to one round-trip per call.
+    //
+    // Each test seeds DirectoryService.ListAllAsync with three agents +
+    // one unit, optionally seeds membership rows (real EF repo via the
+    // in-memory DB), then asserts the wire-shape returned by the endpoint.
+    // -------------------------------------------------------------------
+
+    [Fact]
+    public async Task ListAgents_DisplayNameFilter_NoMatch_ReturnsEmptyArray()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        ClearMemberships();
+        SeedThreeAgentsAndOneUnit();
+
+        var response = await _client.GetAsync(
+            "/api/v1/tenant/agents?display_name=ghost", ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var agents = await response.Content.ReadFromJsonAsync<List<AgentResponse>>(JsonOptions, ct);
+        agents.ShouldNotBeNull();
+        agents.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ListAgents_DisplayNameFilter_OneMatch_ReturnsSingleAgent()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        ClearMemberships();
+        SeedThreeAgentsAndOneUnit();
+
+        var response = await _client.GetAsync(
+            "/api/v1/tenant/agents?display_name=Alice", ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var agents = await response.Content.ReadFromJsonAsync<List<AgentResponse>>(JsonOptions, ct);
+        agents.ShouldNotBeNull();
+        agents.Count.ShouldBe(1);
+        agents[0].DisplayName.ShouldBe("Alice");
+    }
+
+    [Fact]
+    public async Task ListAgents_DisplayNameFilter_CaseInsensitive_ReturnsMatch()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        ClearMemberships();
+        SeedThreeAgentsAndOneUnit();
+
+        var response = await _client.GetAsync(
+            "/api/v1/tenant/agents?display_name=ALICE", ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var agents = await response.Content.ReadFromJsonAsync<List<AgentResponse>>(JsonOptions, ct);
+        agents.ShouldNotBeNull();
+        agents.Count.ShouldBe(1);
+        agents[0].DisplayName.ShouldBe("Alice");
+    }
+
+    [Fact]
+    public async Task ListAgents_DisplayNameFilter_MultipleMatches_ReturnsAll()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        ClearMemberships();
+        SeedAgentsWithDuplicateDisplayName();
+
+        var response = await _client.GetAsync(
+            "/api/v1/tenant/agents?display_name=Alice", ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var agents = await response.Content.ReadFromJsonAsync<List<AgentResponse>>(JsonOptions, ct);
+        agents.ShouldNotBeNull();
+        agents.Count.ShouldBe(2);
+        agents.ShouldAllBe(a => a.DisplayName == "Alice");
+    }
+
+    [Fact]
+    public async Task ListAgents_UnitIdFilter_NarrowsToMembershipMembers()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        ClearMemberships();
+        var (alice, bob, _) = SeedThreeAgentsAndOneUnit();
+
+        // Only Alice is a member of the engineering unit.
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var repo = scope.ServiceProvider.GetRequiredService<IUnitMembershipRepository>();
+            await repo.UpsertAsync(
+                new Cvoya.Spring.Core.Units.UnitMembership(
+                    UnitId: UnitEngineeringUuid,
+                    AgentId: alice,
+                    Enabled: true),
+                ct);
+        }
+
+        var response = await _client.GetAsync(
+            $"/api/v1/tenant/agents?unit_id={UnitEngineeringUuid:N}", ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var agents = await response.Content.ReadFromJsonAsync<List<AgentResponse>>(JsonOptions, ct);
+        agents.ShouldNotBeNull();
+        agents.Count.ShouldBe(1);
+        agents[0].Id.ShouldBe(alice);
+    }
+
+    [Fact]
+    public async Task ListAgents_DisplayNameAndUnitIdFilters_Compose()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        ClearMemberships();
+        var (alice, bob, _) = SeedThreeAgentsAndOneUnit();
+
+        // Both Alice and Bob are in engineering, but display_name=Alice
+        // narrows to one.
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var repo = scope.ServiceProvider.GetRequiredService<IUnitMembershipRepository>();
+            await repo.UpsertAsync(
+                new Cvoya.Spring.Core.Units.UnitMembership(
+                    UnitId: UnitEngineeringUuid,
+                    AgentId: alice,
+                    Enabled: true),
+                ct);
+            await repo.UpsertAsync(
+                new Cvoya.Spring.Core.Units.UnitMembership(
+                    UnitId: UnitEngineeringUuid,
+                    AgentId: bob,
+                    Enabled: true),
+                ct);
+        }
+
+        var response = await _client.GetAsync(
+            $"/api/v1/tenant/agents?display_name=Alice&unit_id={UnitEngineeringUuid:N}", ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var agents = await response.Content.ReadFromJsonAsync<List<AgentResponse>>(JsonOptions, ct);
+        agents.ShouldNotBeNull();
+        agents.Count.ShouldBe(1);
+        agents[0].Id.ShouldBe(alice);
+        agents[0].DisplayName.ShouldBe("Alice");
+    }
+
+    [Fact]
+    public async Task ListAgents_UnitIdFilter_NotMember_ReturnsEmptyArray()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        ClearMemberships();
+        SeedThreeAgentsAndOneUnit();
+
+        // No memberships seeded ⇒ the engineering unit has zero members.
+        var response = await _client.GetAsync(
+            $"/api/v1/tenant/agents?unit_id={UnitEngineeringUuid:N}", ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var agents = await response.Content.ReadFromJsonAsync<List<AgentResponse>>(JsonOptions, ct);
+        agents.ShouldNotBeNull();
+        agents.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ListAgents_MalformedUnitId_ReturnsEmptyArray()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        ClearMemberships();
+        SeedThreeAgentsAndOneUnit();
+
+        var response = await _client.GetAsync(
+            "/api/v1/tenant/agents?unit_id=not-a-guid", ct);
+
+        // Malformed unit_id is treated as "no match" rather than 400 — the
+        // empty result is the canonical "no matches" wire shape and the CLI
+        // never sends a malformed unit_id (it parses through GuidFormatter
+        // before dispatching).
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var agents = await response.Content.ReadFromJsonAsync<List<AgentResponse>>(JsonOptions, ct);
+        agents.ShouldNotBeNull();
+        agents.ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// Seeds the directory mock with three agents (Alice / Bob / Carol)
+    /// and the engineering unit. Returns the agents' Guids so individual
+    /// tests can wire memberships through the real EF repo.
+    /// </summary>
+    private (Guid alice, Guid bob, Guid carol) SeedThreeAgentsAndOneUnit()
+    {
+        var alice = Guid.NewGuid();
+        var bob = Guid.NewGuid();
+        var carol = Guid.NewGuid();
+
+        var entries = new List<DirectoryEntry>
+        {
+            new(new Address("agent", alice), alice, "Alice", "alice", null, DateTimeOffset.UtcNow),
+            new(new Address("agent", bob), bob, "Bob", "bob", null, DateTimeOffset.UtcNow),
+            new(new Address("agent", carol), carol, "Carol", "carol", null, DateTimeOffset.UtcNow),
+            new(new Address("unit", UnitEngineeringUuid), UnitEngineeringUuid, "engineering", "eng", null, DateTimeOffset.UtcNow),
+        };
+        _factory.DirectoryService
+            .ListAllAsync(Arg.Any<CancellationToken>())
+            .Returns(entries);
+
+        return (alice, bob, carol);
+    }
+
+    /// <summary>
+    /// Seeds two agents that both carry the display_name "Alice" — used to
+    /// verify the n-match path returns the full candidate list.
+    /// </summary>
+    private void SeedAgentsWithDuplicateDisplayName()
+    {
+        var aliceOne = Guid.NewGuid();
+        var aliceTwo = Guid.NewGuid();
+        var bob = Guid.NewGuid();
+
+        var entries = new List<DirectoryEntry>
+        {
+            new(new Address("agent", aliceOne), aliceOne, "Alice", "alice", null, DateTimeOffset.UtcNow),
+            new(new Address("agent", aliceTwo), aliceTwo, "Alice", "alice", null, DateTimeOffset.UtcNow),
+            new(new Address("agent", bob), bob, "Bob", "bob", null, DateTimeOffset.UtcNow),
+        };
+        _factory.DirectoryService
+            .ListAllAsync(Arg.Any<CancellationToken>())
+            .Returns(entries);
+    }
 }
