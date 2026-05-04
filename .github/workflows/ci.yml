@@ -42,6 +42,7 @@ jobs:
       docs: ${{ steps.filter.outputs.docs }}
       api_docs: ${{ steps.filter.outputs.api_docs }}
       efcore_model: ${{ steps.filter.outputs.efcore_model }}
+      packages: ${{ steps.filter.outputs.packages }}
     steps:
       - uses: actions/checkout@v6
 
@@ -135,6 +136,14 @@ jobs:
               # there), or a dotnet-ef tooling bump.
               - 'src/Cvoya.Spring.Dapr/Data/**'
               - '.config/dotnet-tools.json'
+            packages:
+              # #1680: re-run `spring package validate --strict` against
+              # every in-tree package whenever the package YAML, the
+              # validator, or the CLI change. Keeps the in-repo packages
+              # installable on every PR.
+              - 'packages/**'
+              - 'src/Cvoya.Spring.Manifest/**'
+              - 'src/Cvoya.Spring.Cli/**'
 
   build:
     name: Build
@@ -233,6 +242,107 @@ jobs:
 
       - name: Test
         run: dotnet test --solution SpringVoyage.slnx --no-restore --no-build --configuration Release
+
+  package-validate:
+    name: Validate in-tree packages
+    runs-on: ubuntu-latest
+    needs: changes
+    # #1680: offline pre-publish gate. Runs `spring package validate --strict
+    # --format json` against every package directory under packages/ and
+    # converts each diagnostic into a GitHub file annotation. Static-input
+    # check, so it's safe to skip in the merge queue — the validator's
+    # output is a function of the PR's own sources.
+    if: >
+      github.event_name != 'merge_group' &&
+      (needs.changes.outputs.packages == 'true' || needs.changes.outputs.workflows == 'true')
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "10.0.x"
+          cache: true
+          cache-dependency-path: |
+            **/*.csproj
+            Directory.Packages.props
+            global.json
+            NuGet.config
+
+      - name: Restore dependencies
+        run: dotnet restore SpringVoyage.slnx
+
+      - name: Restore dotnet tools (Kiota)
+        run: dotnet tool restore
+
+      - name: Build CLI
+        run: dotnet build src/Cvoya.Spring.Cli/Cvoya.Spring.Cli.csproj --no-restore --configuration Release
+
+      - name: Validate every in-tree package (--strict, JSON, file annotations)
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Discover every package directory (one level deep under packages/).
+          # Skip directories that don't carry package.yaml — those are
+          # ancillary trees (e.g. snapshots) and not installable packages.
+          mapfile -t pkgs < <(
+            find packages -maxdepth 2 -mindepth 2 -name package.yaml -printf '%h\n' \
+              | sort
+          )
+
+          if [ ${#pkgs[@]} -eq 0 ]; then
+            echo "No package.yaml found under packages/ — nothing to validate."
+            exit 0
+          fi
+
+          failed=0
+          for pkg in "${pkgs[@]}"; do
+            echo
+            echo "── Validating $pkg ──"
+
+            # Capture JSON to a tmp file so we can both display table output
+            # AND parse JSON for annotations without re-running the validator.
+            tmp_json="$(mktemp)"
+            set +e
+            dotnet run --project src/Cvoya.Spring.Cli --no-build --configuration Release -- \
+              package validate "$pkg" --strict --format json >"$tmp_json"
+            rc=$?
+            set -e
+
+            # Re-render the table form for readable logs.
+            dotnet run --project src/Cvoya.Spring.Cli --no-build --configuration Release -- \
+              package validate "$pkg" --strict || true
+
+            # Emit one GitHub annotation per diagnostic. The CLI's JSON shape
+            # is documented on the ValidateCommand class — `diagnostics[]`
+            # carries `{file, severity, code, message}`. jq is preinstalled
+            # on ubuntu-latest runners.
+            pkg_root="$pkg" jq -r '
+              .diagnostics[] |
+              "::" +
+                (if .severity == "error" then "error" else "warning" end) +
+                " file=" + env.pkg_root + "/" + .file +
+                ",title=" + .code +
+                "::" + (.message | gsub("\n"; " ") | gsub("%"; "%25"))
+            ' "$tmp_json"
+
+            rm -f "$tmp_json"
+
+            if [ "$rc" -ne 0 ]; then
+              failed=1
+            fi
+          done
+
+          if [ "$failed" -ne 0 ]; then
+            echo
+            echo "::error::One or more packages failed validation. See annotations above."
+            exit 1
+          fi
+
+          echo
+          echo "All packages validated cleanly."
 
   format:
     name: Format check
@@ -1125,6 +1235,7 @@ jobs:
       - audit-no-container-cli
       - agent-images-smoke
       - docs-evergreen-framing
+      - package-validate
     # Always runs - branch protection depends on a single "Required checks"
     # context, so this job must report a status even when upstream jobs were
     # path-filtered out.
@@ -1157,6 +1268,7 @@ jobs:
           AUDIT_RESULT: ${{ needs.audit-no-container-cli.result }}
           AGENT_IMAGES_RESULT: ${{ needs.agent-images-smoke.result }}
           DOCS_FRAMING_RESULT: ${{ needs.docs-evergreen-framing.result }}
+          PACKAGE_VALIDATE_RESULT: ${{ needs.package-validate.result }}
           CHANGES_RESULT: ${{ needs.changes.result }}
         run: |
           echo "changes=$CHANGES_RESULT"
@@ -1182,6 +1294,7 @@ jobs:
           echo "audit-no-container-cli=$AUDIT_RESULT"
           echo "agent-images-smoke=$AGENT_IMAGES_RESULT"
           echo "docs-evergreen-framing=$DOCS_FRAMING_RESULT"
+          echo "package-validate=$PACKAGE_VALIDATE_RESULT"
 
           # The 'changes' gate itself must have run cleanly - if path detection
           # failed we can't trust the skip decisions downstream.
@@ -1217,3 +1330,4 @@ jobs:
           ok "$AUDIT_RESULT"            || { echo "::error::audit-no-container-cli failed"; exit 1; }
           ok "$AGENT_IMAGES_RESULT"     || { echo "::error::agent-images-smoke failed"; exit 1; }
           ok "$DOCS_FRAMING_RESULT"     || { echo "::error::docs-evergreen-framing failed"; exit 1; }
+          ok "$PACKAGE_VALIDATE_RESULT" || { echo "::error::package-validate failed"; exit 1; }
