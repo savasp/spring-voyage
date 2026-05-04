@@ -126,7 +126,10 @@ public class UnitAgentsEndpointTests : IClassFixture<CustomWebApplicationFactory
         agents[0].Specialty.ShouldBe("reviewer");
         agents[0].Enabled.ShouldBeTrue();
         agents[0].ExecutionMode.ShouldBe(AgentExecutionMode.OnDemand);
-        agents[0].ParentUnit.ShouldBe(UnitName);
+        // ParentUnit derives from the unit's DisplayName via the directory
+        // (legacy slug-compat field) — the directory entry was registered
+        // with display name UnitDisplayName.
+        agents[0].ParentUnit.ShouldBe(UnitDisplayName);
     }
 
     [Fact]
@@ -226,7 +229,7 @@ public class UnitAgentsEndpointTests : IClassFixture<CustomWebApplicationFactory
         membership!.Enabled.ShouldBeTrue();
 
         await unitProxy.Received(1).AddMemberAsync(
-            Arg.Is<Address>(a => a.Scheme == "agent" && a.Path == "ada"),
+            Arg.Is<Address>(a => a.Scheme == "agent" && a.Id == AgentAdaUuid),
             Arg.Any<CancellationToken>());
     }
 
@@ -328,7 +331,7 @@ public class UnitAgentsEndpointTests : IClassFixture<CustomWebApplicationFactory
         (await GetMembershipAsync("marketing", "ada")).ShouldNotBeNull();
 
         await unitProxy.Received(1).RemoveMemberAsync(
-            Arg.Is<Address>(a => a.Scheme == "agent" && a.Path == "ada"),
+            Arg.Is<Address>(a => a.Scheme == "agent" && a.Id == AgentAdaUuid),
             Arg.Any<CancellationToken>());
         // Cached pointer tracks the surviving membership now — it must NOT
         // have been cleared, since the agent still belongs to marketing.
@@ -504,6 +507,10 @@ public class UnitAgentsEndpointTests : IClassFixture<CustomWebApplicationFactory
         var uuid = actorUuid == default ? UnitEngineeringUuid : actorUuid;
         var actorId = uuid.ToString("N");
         _slugToUuid[$"unit:{name}"] = uuid;
+        // Also key by the Guid hex so URL-shaped identifiers used by tests
+        // (e.g. UnitName = UnitEngineeringUuid.ToString("N")) resolve to the
+        // same UUID for membership lookups.
+        _slugToUuid[$"unit:{actorId}"] = uuid;
 
         var entry = new DirectoryEntry(
             new Address("unit", uuid),
