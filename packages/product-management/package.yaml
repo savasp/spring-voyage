@@ -3,4 +3,19 @@ kind: UnitPackage
 metadata:
   name: product-management
   description: Product squad — product management and design shaping and prioritising work.
+
+inputs:
+  - name: github_owner
+    type: string
+    required: true
+    description: GitHub owner (org or user) that owns the repository this squad operates on.
+  - name: github_repo
+    type: string
+    required: true
+    description: GitHub repository name this squad operates on.
+  - name: github_installation_id
+    type: string
+    required: true
+    description: GitHub App installation ID for the Spring Voyage App on the target repository.
+
 unit: product-squad

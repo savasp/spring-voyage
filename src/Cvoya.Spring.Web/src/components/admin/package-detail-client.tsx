@@ -19,6 +19,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ArrowRight,
+  BookOpen,
   Download,
   FileText,
   Layers,
@@ -30,6 +31,8 @@ import {
   Plus,
   Trash2,
 } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { useState, type ReactNode } from "react";
 
 import { Breadcrumbs } from "@/components/breadcrumbs";
@@ -64,7 +67,12 @@ export default function PackageDetailClient({ name }: Props) {
   const installMutation = useInstallPackages();
 
   function openInstall() {
-    setInputRows([]);
+    const declared = pkg?.inputs ?? [];
+    setInputRows(
+      declared.length > 0
+        ? declared.map((inp) => ({ key: inp.name, value: inp.default ?? "" }))
+        : [],
+    );
     setSubmitError(null);
     setInstallOpen(true);
   }
@@ -219,6 +227,24 @@ export default function PackageDetailClient({ name }: Props) {
           </Button>
         </div>
 
+        {pkg.readme && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <BookOpen className="h-4 w-4" />
+                README
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="prose prose-sm dark:prose-invert max-w-none [&_table]:w-full [&_table]:border-collapse [&_th]:border [&_th]:border-border [&_th]:px-3 [&_th]:py-1.5 [&_th]:text-left [&_td]:border [&_td]:border-border [&_td]:px-3 [&_td]:py-1.5 [&_pre]:bg-muted [&_pre]:rounded [&_pre]:p-3 [&_code:not(pre_code)]:bg-muted [&_code:not(pre_code)]:rounded [&_code:not(pre_code)]:px-1">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {pkg.readme}
+                </ReactMarkdown>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         <Section
           title="Unit templates"
           icon={<Layers className="h-4 w-4" />}
@@ -344,7 +370,7 @@ export default function PackageDetailClient({ name }: Props) {
         open={installOpen}
         onClose={closeInstall}
         title={`Install ${pkg.name ?? name}`}
-        description="Supply any input values required by the package, then click Install. Leave the list empty if the package declares no inputs."
+        description="Supply the values required by this package, then click Install."
         footer={
           <>
             <Button
@@ -369,41 +395,80 @@ export default function PackageDetailClient({ name }: Props) {
         <form id="install-inputs-form" onSubmit={handleInstallSubmit} noValidate>
           {inputRows.length > 0 && (
             <div
-              className="mb-3 space-y-2"
+              className="mb-3 space-y-3"
               role="list"
               aria-label="Package inputs"
             >
-              {inputRows.map((row, i) => (
-                <div
-                  key={i}
-                  className="flex items-center gap-2"
-                  role="listitem"
-                >
-                  <Input
-                    placeholder="Key"
-                    value={row.key}
-                    onChange={(e) => updateInputRow(i, "key", e.target.value)}
-                    aria-label={`Input key ${i + 1}`}
-                    className="flex-1"
-                  />
-                  <Input
-                    placeholder="Value"
-                    value={row.value}
-                    onChange={(e) => updateInputRow(i, "value", e.target.value)}
-                    aria-label={`Input value ${i + 1}`}
-                    className="flex-1"
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => removeInputRow(i)}
-                    aria-label={`Remove input ${i + 1}`}
+              {inputRows.map((row, i) => {
+                const declared = (pkg.inputs ?? []).find(
+                  (inp) => inp.name === row.key,
+                );
+                return declared ? (
+                  // Declared input — show label + description hint
+                  <div key={i} className="space-y-1" role="listitem">
+                    <label
+                      htmlFor={`input-value-${i}`}
+                      className="block text-sm font-medium"
+                    >
+                      {declared.name}
+                      {declared.required && (
+                        <span className="ml-1 text-destructive">*</span>
+                      )}
+                    </label>
+                    {declared.description && (
+                      <p className="text-xs text-muted-foreground">
+                        {declared.description}
+                      </p>
+                    )}
+                    <Input
+                      id={`input-value-${i}`}
+                      placeholder={declared.default ?? ""}
+                      value={row.value}
+                      onChange={(e) =>
+                        updateInputRow(i, "value", e.target.value)
+                      }
+                      type={declared.secret ? "password" : "text"}
+                      aria-label={declared.name}
+                      required={declared.required}
+                    />
+                  </div>
+                ) : (
+                  // Free-form input row
+                  <div
+                    key={i}
+                    className="flex items-center gap-2"
+                    role="listitem"
                   >
-                    <Trash2 className="h-4 w-4" aria-hidden="true" />
-                  </Button>
-                </div>
-              ))}
+                    <Input
+                      placeholder="Key"
+                      value={row.key}
+                      onChange={(e) =>
+                        updateInputRow(i, "key", e.target.value)
+                      }
+                      aria-label={`Input key ${i + 1}`}
+                      className="flex-1"
+                    />
+                    <Input
+                      placeholder="Value"
+                      value={row.value}
+                      onChange={(e) =>
+                        updateInputRow(i, "value", e.target.value)
+                      }
+                      aria-label={`Input value ${i + 1}`}
+                      className="flex-1"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => removeInputRow(i)}
+                      aria-label={`Remove input ${i + 1}`}
+                    >
+                      <Trash2 className="h-4 w-4" aria-hidden="true" />
+                    </Button>
+                  </div>
+                );
+              })}
             </div>
           )}
 
