@@ -1176,7 +1176,7 @@ export function useAgentExpertise(
 }
 
 // ---------------------------------------------------------------------------
-// Ollama (model discovery for dapr-agent + ollama hosting)
+// Ollama (model discovery for spring-voyage + ollama hosting)
 // ---------------------------------------------------------------------------
 
 export interface OllamaModelEntry {

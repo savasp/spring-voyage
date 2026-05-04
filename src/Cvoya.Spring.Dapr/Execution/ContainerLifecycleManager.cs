@@ -132,8 +132,8 @@ public class ContainerLifecycleManager(
     /// on a per-launch <c>spring-net-&lt;guid&gt;</c> bridge, dual-attached to
     /// the tenant network — same as <see cref="LaunchWithSidecarAsync"/>, but
     /// uses <see cref="IContainerRuntime.StartAsync"/> so the A2A server and
-    /// the <c>dapr-agents</c> workflow runtime keep running. Used for
-    /// <c>tool=dapr-agent</c> ephemeral and persistent dispatches.
+    /// the <c>spring-voyages</c> workflow runtime keep running. Used for
+    /// <c>tool=spring-voyage</c> ephemeral and persistent dispatches.
     /// </summary>
     public async Task<DetachedContainerLifecycleResult> LaunchWithSidecarDetachedAsync(
         ContainerConfig config, CancellationToken ct = default)

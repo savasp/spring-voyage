@@ -26,7 +26,6 @@ import { queryKeys } from "@/lib/api/query-keys";
 import type { UnitExecutionResponse } from "@/lib/api/types";
 import {
   EXECUTION_PROVIDERS,
-  EXECUTION_RUNTIMES,
   EXECUTION_TOOL_KEYS,
 } from "@/lib/api/types";
 import { getToolRuntimeId, type ExecutionTool } from "@/lib/ai-models";
@@ -62,27 +61,19 @@ function providerToRuntimeId(provider: string): string | null {
 /**
  * Unit Execution tab (#601 / #603 / #409 B-wide, portal half).
  *
- * Exposes the unit-level defaults (image / runtime / tool / provider /
+ * Exposes the unit-level defaults (image / agent runtime / model provider /
  * model) that member agents inherit at dispatch time. Reads / writes
  * through `/api/v1/units/{id}/execution` (backend landed in PR #628);
  * each field is independently editable and independently clearable so
- * the operator can declare `runtime: podman` only and leave `image`
+ * the operator can declare `tool: claude-code` only and leave `image`
  * etc. for each agent to provide.
  *
- * Gating mirrors #598 (PR #627) + #641 (PR #645): Provider only
- * renders when the declared launcher tool is `dapr-agent` or unset —
- * other launchers hard-code their provider inside their own CLI so a
- * Provider dropdown would be misleading. Model is rendered whenever
- * the effective tool has a known model catalog (dapr-agent via the
- * selected provider; claude-code / codex / gemini via their implicit
- * provider). `custom` collapses the Model slot entirely. The
- * credential-status banner from #598 reuses its
- * `useProviderCredentialStatus` hook whenever Provider is shown and
- * has a selected value.
- *
- * Follow-ups the scope deliberately defers:
- *   - Image reference autocomplete → #622 (V2.1).
- *   - Registry discovery → #623 (V2.1).
+ * #1702: the legacy Runtime (docker/podman) field is gone — the platform
+ * picks the container runtime; operators only choose the agent runtime.
+ * Labels also moved: "Tool" → "Agent Runtime", "Provider" → "Model
+ * Provider". Model Provider only renders when Agent Runtime is
+ * `spring-voyage` — the other launchers hard-code their provider
+ * inside their CLI. Model is always rendered.
  */
 
 interface ExecutionTabProps {
@@ -119,12 +110,13 @@ export function ExecutionTab({ unitId }: ExecutionTabProps) {
   };
 
   // Per-field dirtiness — only the fields the operator actually touched
-  // differ from the persisted block.
+  // differ from the persisted block. #1702: the legacy `runtime` field
+  // is no longer surfaced from this panel, so it doesn't take part in
+  // the dirty calculation.
   const dirty = useMemo(() => {
     const current = persisted ?? {};
     return (
       (form.image ?? null) !== (current.image ?? null) ||
-      (form.runtime ?? null) !== (current.runtime ?? null) ||
       (form.tool ?? null) !== (current.tool ?? null) ||
       (form.provider ?? null) !== (current.provider ?? null) ||
       (form.model ?? null) !== (current.model ?? null)
@@ -132,14 +124,11 @@ export function ExecutionTab({ unitId }: ExecutionTabProps) {
   }, [form, persisted]);
 
   const effectiveToolForGating = form.tool ?? null;
-  const showProvider =
-    effectiveToolForGating === null || effectiveToolForGating === "dapr-agent";
+  const showProvider = effectiveToolForGating === "spring-voyage";
 
-  // #641: tools that hide Provider (claude-code / codex / gemini) still
-  // expose a Model dropdown populated from that tool's catalog. Derive
-  // the runtime id from the effective tool; use the explicit Provider
-  // value when dapr-agent is active. `custom` returns null, which
-  // collapses the Model slot entirely. #735: route the catalog through
+  // #641 / #1702: Model is always rendered. Derive the runtime id from
+  // the effective tool; use the explicit Provider value when
+  // spring-voyage is active. #735: route the catalog through
   // `useAgentRuntimeModels` so the hardcoded provider→model table is
   // gone — the tenant's installed runtimes are the single source of
   // truth.
@@ -149,7 +138,6 @@ export function ExecutionTab({ unitId }: ExecutionTabProps) {
   const runtimeIdForModels = showProvider
     ? providerToRuntimeId(form.provider ?? "")
     : toolRuntimeId;
-  const showModel = showProvider || toolRuntimeId !== null;
 
   // Provider-dependent model suggestions (#597 / PR #613). The field is
   // a plain text input when no provider is selected, falling back to a
@@ -215,17 +203,17 @@ export function ExecutionTab({ unitId }: ExecutionTabProps) {
   };
 
   const handleSave = () => {
-    // Null out stale gated fields so the wire shape stays clean — if
-    // the operator switched Tool away from dapr-agent we shouldn't keep
-    // the prior provider value around. #641: Provider stays gated on
-    // dapr-agent (Option A for #598); Model rides along whenever the
-    // tool has a known catalog.
+    // #1702: the portal no longer manages the container `runtime` field
+    // — the platform picks it. The selected agent runtime tool also
+    // populates the new `agent` field on the wire so the dispatcher can
+    // resolve the agent-runtime registry entry without re-deriving it
+    // from `tool`. Provider stays gated on `spring-voyage`.
     const next: UnitExecutionResponse = {
       image: form.image ?? null,
-      runtime: form.runtime ?? null,
       tool: form.tool ?? null,
+      agent: form.tool ?? null,
       provider: showProvider ? (form.provider ?? null) : null,
-      model: showModel ? (form.model ?? null) : null,
+      model: form.model ?? null,
     };
     setMutation.mutate(next);
   };
@@ -272,7 +260,7 @@ export function ExecutionTab({ unitId }: ExecutionTabProps) {
         </CardHeader>
         <CardContent className="space-y-4 text-sm">
           <p className="text-xs text-muted-foreground">
-            Unit-level defaults for the container runtime and launcher that
+            Unit-level defaults for the agent image and runtime that
             member agents inherit at dispatch time. Every field is
             independently optional — declare only what you want enforced
             here; agents can override any value on their own Execution
@@ -301,29 +289,10 @@ export function ExecutionTab({ unitId }: ExecutionTabProps) {
             />
           </FieldRow>
 
-          {/* Runtime — fixed dropdown. */}
+          {/* Agent Runtime — launcher key (#1702 renamed from "Tool"). */}
           <FieldRow
-            label="Runtime"
-            help="Container runtime the launcher drives."
-            onClear={
-              persisted?.runtime ? () => clearField("runtime") : undefined
-            }
-            busy={setMutation.isPending}
-          >
-            <SelectField
-              value={form.runtime ?? null}
-              onChange={(next) => setField("runtime", next)}
-              options={EXECUTION_RUNTIMES}
-              unsetLabel="(leave to default)"
-              ariaLabel="Execution runtime"
-              testid="execution-runtime-select"
-            />
-          </FieldRow>
-
-          {/* Tool — launcher key. */}
-          <FieldRow
-            label="Tool"
-            help="Launcher key the dispatcher uses to bring the agent container up."
+            label="Agent Runtime"
+            help="Agent runtime the dispatcher uses to bring the agent container up."
             onClear={persisted?.tool ? () => clearField("tool") : undefined}
             busy={setMutation.isPending}
           >
@@ -332,16 +301,17 @@ export function ExecutionTab({ unitId }: ExecutionTabProps) {
               onChange={(next) => setField("tool", next)}
               options={EXECUTION_TOOL_KEYS}
               unsetLabel="(leave to default)"
-              ariaLabel="Execution tool"
+              ariaLabel="Agent runtime"
               testid="execution-tool-select"
             />
           </FieldRow>
 
-          {/* Provider — gated behind tool=dapr-agent (#598 Option A). */}
+          {/* Model Provider — gated behind tool=spring-voyage (#1702
+              renamed from "Provider"). */}
           {showProvider && (
             <FieldRow
-              label="Provider"
-              help="LLM provider — only meaningful when Tool is Dapr Agent."
+              label="Model Provider"
+              help="LLM provider — only meaningful when Agent Runtime is Spring Voyage Agent."
               onClear={
                 persisted?.provider
                   ? () => clearField("provider")
@@ -354,64 +324,60 @@ export function ExecutionTab({ unitId }: ExecutionTabProps) {
                 onChange={(next) => setField("provider", next)}
                 options={EXECUTION_PROVIDERS}
                 unsetLabel="(leave to default)"
-                ariaLabel="Execution provider"
+                ariaLabel="Model provider"
                 testid="execution-provider-select"
               />
             </FieldRow>
           )}
 
-          {/* Model — #641: rendered whenever the tool has a known
-              catalog, which includes dapr-agent (via selected Provider)
-              and claude-code / codex / gemini (via the tool's implicit
-              provider). `custom` and unset tool without a selected
-              Provider collapse the field. */}
-          {showModel && (
-            <FieldRow
-              label="Model"
-              help="Model identifier. Populated from the provider's live catalog when available."
-              onClear={
-                persisted?.model ? () => clearField("model") : undefined
-              }
-              busy={setMutation.isPending}
-            >
-              {providerModelsEnabled &&
-              providerModels &&
-              providerModels.length > 0 ? (
-                <select
-                  value={form.model ?? ""}
-                  onChange={(e) =>
-                    setField(
-                      "model",
-                      e.target.value ? e.target.value : null,
-                    )
-                  }
-                  aria-label="Execution model"
-                  data-testid="execution-model-select"
-                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                >
-                  <option value="">(leave to default)</option>
-                  {providerModels.map((m) => (
-                    <option key={m} value={m}>
-                      {m}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <Input
-                  value={form.model ?? ""}
-                  onChange={(e) =>
-                    setField(
-                      "model",
-                      e.target.value ? e.target.value : null,
-                    )
-                  }
-                  placeholder="e.g. claude-sonnet-4-6"
-                  aria-label="Execution model"
-                  data-testid="execution-model-input"
-                />
-              )}
-            </FieldRow>
-          )}
+          {/* Model — #1702: always rendered. Populated from the tool's
+              implicit catalog (claude-code / codex / gemini) or the
+              selected Model Provider's catalog (spring-voyage). */}
+          <FieldRow
+            label="Model"
+            help="Model identifier. Populated from the provider's live catalog when available."
+            onClear={
+              persisted?.model ? () => clearField("model") : undefined
+            }
+            busy={setMutation.isPending}
+          >
+            {providerModelsEnabled &&
+            providerModels &&
+            providerModels.length > 0 ? (
+              <select
+                value={form.model ?? ""}
+                onChange={(e) =>
+                  setField(
+                    "model",
+                    e.target.value ? e.target.value : null,
+                  )
+                }
+                aria-label="Execution model"
+                data-testid="execution-model-select"
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                <option value="">(leave to default)</option>
+                {providerModels.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <Input
+                value={form.model ?? ""}
+                onChange={(e) =>
+                  setField(
+                    "model",
+                    e.target.value ? e.target.value : null,
+                  )
+                }
+                placeholder="e.g. claude-sonnet-4-6"
+                aria-label="Execution model"
+                data-testid="execution-model-input"
+              />
+            )}
+          </FieldRow>
 
           {showProvider && form.provider && (
             <CredentialStatusBanner providerId={form.provider} />
@@ -458,7 +424,7 @@ function FieldRow({ label, help, onClear, busy, children }: FieldRowProps) {
             disabled={busy}
             className="h-7 px-2 text-xs"
             aria-label={`Clear ${label.toLowerCase()}`}
-            data-testid={`execution-clear-${label.toLowerCase()}`}
+            data-testid={`execution-clear-${label.toLowerCase().replace(/\s+/g, "-")}`}
           >
             <Trash2 className="mr-1 h-3 w-3" />
             Clear
@@ -511,7 +477,7 @@ function SelectField({
 
 function isEmpty(block: UnitExecutionResponse): boolean {
   return (
-    !block.image && !block.runtime && !block.tool && !block.provider && !block.model
+    !block.image && !block.tool && !block.provider && !block.model
   );
 }
 

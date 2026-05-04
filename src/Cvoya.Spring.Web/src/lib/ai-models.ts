@@ -13,7 +13,7 @@ export type ExecutionTool =
   | "claude-code"
   | "codex"
   | "gemini"
-  | "dapr-agent"
+  | "spring-voyage"
   | "custom";
 
 export const EXECUTION_TOOLS: readonly {
@@ -23,7 +23,7 @@ export const EXECUTION_TOOLS: readonly {
   { id: "claude-code", label: "Claude Code" },
   { id: "codex", label: "Codex (OpenAI)" },
   { id: "gemini", label: "Gemini (Google)" },
-  { id: "dapr-agent", label: "Dapr Agent" },
+  { id: "spring-voyage", label: "Spring Voyage Agent" },
   { id: "custom", label: "Custom" },
 ];
 
@@ -41,8 +41,8 @@ export const DEFAULT_HOSTING_MODE: HostingMode = "ephemeral";
 
 /**
  * Maps an execution tool to the canonical runtime id the wizard and
- * related surfaces resolve via the agent-runtimes endpoint. Non-Dapr-
- * Agent tools hardcode their provider inside the CLI (Claude Code →
+ * related surfaces resolve via the agent-runtimes endpoint. Non-Spring-
+ * Voyage tools hardcode their provider inside the CLI (Claude Code →
  * Anthropic, Codex → OpenAI, Gemini → Google), so callers can still
  * surface a Model dropdown by routing through the matching runtime.
  */
@@ -54,7 +54,7 @@ export function getToolRuntimeId(tool: ExecutionTool): string | null {
       return "openai";
     case "gemini":
       return "google";
-    case "dapr-agent":
+    case "spring-voyage":
     case "custom":
     default:
       return null;
@@ -63,7 +63,7 @@ export function getToolRuntimeId(tool: ExecutionTool): string | null {
 
 /**
  * Maps an execution tool to the wire-level `provider` field the unit
- * creation endpoint expects. `dapr-agent` passes the explicit provider
+ * creation endpoint expects. `spring-voyage` passes the explicit provider
  * the caller picked; all other tools have a fixed provider derived from
  * the CLI they drive.
  */
@@ -78,7 +78,7 @@ export function getToolWireProvider(
       return "openai";
     case "gemini":
       return "google";
-    case "dapr-agent":
+    case "spring-voyage":
       return runtimeId ?? undefined;
     case "custom":
     default:

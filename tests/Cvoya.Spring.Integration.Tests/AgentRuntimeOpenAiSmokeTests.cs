@@ -43,8 +43,8 @@ public class AgentRuntimeOpenAiSmokeTests
 
         runtime.ShouldNotBeNull();
         runtime!.Id.ShouldBe("openai");
-        runtime.DisplayName.ShouldBe("OpenAI (dapr-agent + OpenAI API)");
-        runtime.ToolKind.ShouldBe("dapr-agent");
+        runtime.DisplayName.ShouldBe("Spring Voyage Agent (OpenAI)");
+        runtime.ToolKind.ShouldBe("spring-voyage");
         runtime.CredentialSchema.Kind.ShouldBe(AgentRuntimeCredentialKind.ApiKey);
     }
 

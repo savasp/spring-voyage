@@ -23,15 +23,15 @@ public class UnitCommandTests
     // when they combine --provider / --model with a tool that doesn't
     // accept that flag.
     private const string ExpectedErrorMessage =
-        "--provider is only meaningful for --tool=dapr-agent; " +
+        "--provider is only meaningful for --tool=spring-voyage; " +
         "other tools (claude-code, codex, gemini) have their provider hardcoded in the tool CLI, " +
         "but accept --model to pick within that provider's model family.";
 
     [Theory]
-    [InlineData("dapr-agent", "openai", "gpt-4o")]
-    [InlineData("dapr-agent", "anthropic", null)]
-    [InlineData("dapr-agent", null, "claude-sonnet-4-6")]
-    [InlineData("dapr-agent", null, null)]
+    [InlineData("spring-voyage", "openai", "gpt-4o")]
+    [InlineData("spring-voyage", "anthropic", null)]
+    [InlineData("spring-voyage", null, "claude-sonnet-4-6")]
+    [InlineData("spring-voyage", null, null)]
     public void ValidateProviderModelAgainstTool_DaprAgent_Accepts(
         string tool,
         string? provider,
@@ -121,10 +121,10 @@ public class UnitCommandTests
     public void ValidateProviderModelAgainstTool_CaseInsensitive_OnTool()
     {
         // The option's allow-list is lowercase but operators sometimes
-        // type "Dapr-Agent"; the validator must normalise before the
+        // type "Spring-Voyage"; the validator must normalise before the
         // check so they're not rejected for a casing accident.
         UnitCommand.ValidateProviderModelAgainstTool(
-            "Dapr-Agent",
+            "Spring-Voyage",
             provider: "openai",
             model: "gpt-4o")
             .ShouldBeNull();
@@ -201,13 +201,13 @@ public class UnitCommandTests
     [InlineData("claude-code", null, "claude")]
     [InlineData("codex", null, "openai")]
     [InlineData("gemini", null, "google")]
-    [InlineData("dapr-agent", "anthropic", "claude")]
-    [InlineData("dapr-agent", "claude", "claude")]
-    [InlineData("dapr-agent", "openai", "openai")]
-    [InlineData("dapr-agent", "google", "google")]
-    [InlineData("dapr-agent", "gemini", "google")]
-    [InlineData("dapr-agent", "ollama", "ollama")]
-    [InlineData("dapr-agent", "unknown", null)]
+    [InlineData("spring-voyage", "anthropic", "claude")]
+    [InlineData("spring-voyage", "claude", "claude")]
+    [InlineData("spring-voyage", "openai", "openai")]
+    [InlineData("spring-voyage", "google", "google")]
+    [InlineData("spring-voyage", "gemini", "google")]
+    [InlineData("spring-voyage", "ollama", "ollama")]
+    [InlineData("spring-voyage", "unknown", null)]
     [InlineData("custom", "openai", null)]
     [InlineData(null, null, null)]
     public void DeriveRequiredRuntimeId_MatchesMatrix(
@@ -270,7 +270,7 @@ public class UnitCommandTests
         // CredentialSecretName is the empty string — the resolver
         // surfaces that as "no credential to write".
         var result = await UnitCommand.ResolveCredentialOptionsAsync(
-            tool: "dapr-agent",
+            tool: "spring-voyage",
             provider: "ollama",
             apiKey: "sk-test",
             apiKeyFromFile: null,

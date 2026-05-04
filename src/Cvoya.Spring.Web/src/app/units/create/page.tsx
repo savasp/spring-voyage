@@ -347,7 +347,7 @@ export function deriveRequiredCredentialRuntime(
       return lookup("openai");
     case "gemini":
       return lookup("google");
-    case "dapr-agent": {
+    case "spring-voyage": {
       const normalised = provider.trim().toLowerCase();
       const runtimeId =
         normalised === "anthropic" ? "claude" : normalised;
@@ -384,7 +384,7 @@ function deriveRuntimeDefaultImage(
       return lookup("openai")?.defaultImage ?? null;
     case "gemini":
       return lookup("google")?.defaultImage ?? null;
-    case "dapr-agent": {
+    case "spring-voyage": {
       const normalised = provider.trim().toLowerCase();
       const runtimeId = normalised === "anthropic" ? "claude" : normalised;
       return lookup(runtimeId)?.defaultImage ?? null;
@@ -913,7 +913,7 @@ export default function CreateUnitPage() {
     : null;
 
   // #690: agent runtimes installed on the current tenant. Feeds the
-  // provider dropdown (dapr-agent path) and the per-runtime
+  // provider dropdown (spring-voyage path) and the per-runtime
   // credential/model metadata consumed by the execution step.
   const agentRuntimesQuery = useAgentRuntimes();
   const agentRuntimes = useMemo<InstalledAgentRuntimeResponse[]>(
@@ -921,22 +921,22 @@ export default function CreateUnitPage() {
     [agentRuntimesQuery.data],
   );
 
-  // #350: Ollama model discovery — enabled only when dapr-agent + ollama
-  // is selected. The Ollama endpoint is still consulted directly because
-  // it surfaces richer per-model metadata (pull status) than the
+  // #350: Ollama model discovery — enabled only when spring-voyage +
+  // ollama is selected. The Ollama endpoint is still consulted directly
+  // because it surfaces richer per-model metadata (pull status) than the
   // agent-runtimes catalog lookup.
   const ollamaEnabled =
-    form.tool === "dapr-agent" && form.provider === "ollama";
+    form.tool === "spring-voyage" && form.provider === "ollama";
   const ollamaQuery = useOllamaModels({ enabled: ollamaEnabled });
   const ollamaModels = ollamaQuery.data?.map((m) => m.name) ?? null;
   const ollamaModelsLoading = ollamaEnabled && ollamaQuery.isPending;
 
   // #690: Model catalog for the active runtime. The wizard selects
   // the runtime based on tool (fixed-provider tools) or the provider
-  // dropdown (dapr-agent). Ollama keeps its dedicated hook above.
+  // dropdown (spring-voyage). Ollama keeps its dedicated hook above.
   const activeRuntimeId = useMemo<string | null>(() => {
     if (form.tool === "custom") return null;
-    if (form.tool === "dapr-agent") {
+    if (form.tool === "spring-voyage") {
       const normalised = form.provider.trim().toLowerCase();
       if (!normalised || normalised === "ollama") return null;
       return normalised === "anthropic" ? "claude" : normalised;
@@ -963,14 +963,14 @@ export default function CreateUnitPage() {
     agentRuntimeModelsQuery.data?.map((m) => m.id) ?? null;
 
   // #690: seed the provider dropdown from the first installed
-  // dapr-agent runtime the first time the runtimes list arrives.
+  // spring-voyage runtime the first time the runtimes list arrives.
   // The wizard stayed empty before this because the initial form
   // declares `provider: ""` — without the seed the dropdown would
   // render with no selection.
-  const daprAgentRuntimes = useMemo(
+  const springVoyageRuntimes = useMemo(
     () =>
       agentRuntimes.filter(
-        (r) => r.toolKind === "dapr-agent",
+        (r) => r.toolKind === "spring-voyage",
       ),
     [agentRuntimes],
   );
@@ -982,13 +982,13 @@ export default function CreateUnitPage() {
   // gated through memoised identifiers so they only fire when the
   // stored value actually needs to change.
   const effectiveProvider = useMemo(() => {
-    if (form.tool !== "dapr-agent") return form.provider;
+    if (form.tool !== "spring-voyage") return form.provider;
     if (form.provider !== "") return form.provider;
-    return daprAgentRuntimes.length > 0 ? daprAgentRuntimes[0].id : "";
-  }, [form.tool, form.provider, daprAgentRuntimes]);
-  if (form.tool === "dapr-agent" && effectiveProvider !== form.provider) {
+    return springVoyageRuntimes.length > 0 ? springVoyageRuntimes[0].id : "";
+  }, [form.tool, form.provider, springVoyageRuntimes]);
+  if (form.tool === "spring-voyage" && effectiveProvider !== form.provider) {
     setForm((prev) =>
-      prev.provider === "" && prev.tool === "dapr-agent"
+      prev.provider === "" && prev.tool === "spring-voyage"
         ? { ...prev, provider: effectiveProvider }
         : prev,
     );
@@ -996,7 +996,7 @@ export default function CreateUnitPage() {
 
   const effectiveModel = useMemo(() => {
     if (form.tool === "custom") return form.model;
-    // Issue #1072: dapr-agent + ollama sources its model list from the
+    // Issue #1072: spring-voyage + ollama sources its model list from the
     // live Ollama server (not the agent-runtimes catalog), so it needs
     // its own auto-seed branch. Without it the controlled <select>
     // shows the first option visually while `form.model` stays "" —
@@ -1005,7 +1005,7 @@ export default function CreateUnitPage() {
     // already on screen. Mirror the catalog branch below: keep the
     // current value if it's still in the list, otherwise snap to the
     // first available model.
-    if (form.tool === "dapr-agent" && form.provider === "ollama") {
+    if (form.tool === "spring-voyage" && form.provider === "ollama") {
       if (!ollamaModels || ollamaModels.length === 0) return form.model;
       if (ollamaModels.includes(form.model)) return form.model;
       return ollamaModels[0];
@@ -1069,15 +1069,15 @@ export default function CreateUnitPage() {
     : null;
 
   // Status probe runs whenever a provider needs a key. For the
-  // dapr-agent+ollama case it still runs so the existing reachability
+  // spring-voyage+ollama case it still runs so the existing reachability
   // banner stays visible; when the derivation returns null (custom
   // tool) the query is disabled entirely.
   const credentialProbeProvider =
     requiredCredentialProvider ??
-    // When tool=dapr-agent + provider=ollama we still want the banner
+    // When tool=spring-voyage + provider=ollama we still want the banner
     // because the operator expects a reachability read-out. Any other
     // `null` (custom, tool mismatch) skips the probe.
-    (form.tool === "dapr-agent" && form.provider === "ollama"
+    (form.tool === "spring-voyage" && form.provider === "ollama"
       ? "ollama"
       : null);
   const credentialStatusQuery = useProviderCredentialStatus(
@@ -1106,7 +1106,7 @@ export default function CreateUnitPage() {
   // it. The Model dropdown always renders against the agent-runtime
   // catalog so Next is never gated on a live reach-out to the LLM.
   const isOllamaDapr =
-    form.tool === "dapr-agent" && form.provider === "ollama";
+    form.tool === "spring-voyage" && form.provider === "ollama";
   const activeModelList: readonly string[] | null = useMemo(() => {
     if (isOllamaDapr) return ollamaModels;
     if (providerModels && providerModels.length > 0) return providerModels;
@@ -1191,7 +1191,7 @@ export default function CreateUnitPage() {
     // Issue #661: the Execution screen requires a selected model whenever
     // the tool has a known catalog. `modelIsSelected` covers the happy
     // path; the one branch it doesn't cover is "tool=custom" (no catalog
-    // at all — skip the check) and "dapr-agent + ollama still loading"
+    // at all — skip the check) and "spring-voyage + ollama still loading"
     // (the list is empty, so the user cannot pick anything yet).
     if (form.tool === "custom") return null;
     if (isOllamaDapr && ollamaModelsLoading) {
@@ -1792,10 +1792,10 @@ export default function CreateUnitPage() {
     if (agentRuntimes.length === 0) {
       return "No configured agent runtimes.";
     }
-    if (form.tool === "dapr-agent" && form.provider.trim() === "") {
-      return "Pick an LLM provider for the Dapr Agent runtime.";
+    if (form.tool === "spring-voyage" && form.provider.trim() === "") {
+      return "Pick an LLM provider for the Spring Voyage Agent runtime.";
     }
-    if (form.tool !== "dapr-agent" && requiredCredentialRuntime === null) {
+    if (form.tool !== "spring-voyage" && requiredCredentialRuntime === null) {
       return `The "${toolLabel}" agent runtime is not installed on this server. Pick a different execution tool, or install the matching runtime.`;
     }
     if (isOllamaDapr && ollamaModelsLoading) {
@@ -2487,7 +2487,7 @@ export default function CreateUnitPage() {
                 ))}
               </select>
             </label>
-            {form.tool === "dapr-agent" && (
+            {form.tool === "spring-voyage" && (
               <label className="block space-y-1">
                 <span className="text-sm text-muted-foreground">LLM Provider</span>
                 <select
@@ -2495,7 +2495,7 @@ export default function CreateUnitPage() {
                   onChange={(e) => {
                     const nextProvider = e.target.value;
                     const runtimeImage = deriveRuntimeDefaultImage(
-                      "dapr-agent",
+                      "spring-voyage",
                       nextProvider,
                       agentRuntimes.length > 0 ? agentRuntimes : null,
                     );
@@ -2507,10 +2507,10 @@ export default function CreateUnitPage() {
                     }
                   }}
                   aria-label="LLM provider"
-                  disabled={daprAgentRuntimes.length === 0}
+                  disabled={springVoyageRuntimes.length === 0}
                   className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {daprAgentRuntimes.map((r) => (
+                  {springVoyageRuntimes.map((r) => (
                     <option key={r.id} value={r.id}>{r.displayName}</option>
                   ))}
                 </select>
@@ -2538,7 +2538,7 @@ export default function CreateUnitPage() {
                 }}
               />
             )}
-            {form.tool === "dapr-agent" &&
+            {form.tool === "spring-voyage" &&
               form.provider === "ollama" &&
               credentialStatus && (
                 <OllamaReachabilityBanner data={credentialStatus} />
@@ -3510,7 +3510,7 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
  *   - `requiredProvider === null` → nothing (Ollama/custom paths).
  *   - probe pending → nothing (the Provider dropdown already paints a
  *     loading state; a flashing "checking…" line would add noise).
- *   - Ollama (dapr-agent + provider=ollama) → reuses PR #627's
+ *   - Ollama (spring-voyage + provider=ollama) → reuses PR #627's
  *     reachability banner verbatim. No inline input — Ollama doesn't
  *     use API keys.
  *   - probe error → muted "could not verify" line.
@@ -3842,7 +3842,7 @@ function CredentialInputControls({
 /**
  * Standalone Ollama reachability banner. PR #627 defined the shape;
  * #626 just factors it out so the new `CredentialSection` can reuse
- * it verbatim when the tool is `dapr-agent + provider=ollama`.
+ * it verbatim when the tool is `spring-voyage + provider=ollama`.
  */
 function OllamaReachabilityBanner({
   data,

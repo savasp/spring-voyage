@@ -100,7 +100,7 @@ describe("AgentExecutionPanel", () => {
     getAgentExecution.mockResolvedValue({});
     getUnitExecution.mockResolvedValue({
       image: "ghcr.io/acme/spring-agent:v1",
-      runtime: "podman",
+      tool: "claude-code",
     });
 
     render(
@@ -154,8 +154,8 @@ describe("AgentExecutionPanel", () => {
     }
   });
 
-  it("hides Provider when the effective tool is codex (non-dapr-agent launcher)", async () => {
-    // #641: Provider stays hidden for non-dapr-agent launchers, but the
+  it("hides Model Provider when the effective tool is codex (non-spring-voyage launcher)", async () => {
+    // #641: Provider stays hidden for non-spring-voyage launchers, but the
     // Model dropdown is now rendered against the tool's catalog so the
     // operator can still pick a model family (e.g. gpt-4o for Codex).
     getAgentExecution.mockResolvedValue({ tool: "codex" });
@@ -210,8 +210,8 @@ describe("AgentExecutionPanel", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("shows both Provider and Model when tool=dapr-agent", async () => {
-    getAgentExecution.mockResolvedValue({ tool: "dapr-agent" });
+  it("shows both Model Provider and Model when tool=spring-voyage", async () => {
+    getAgentExecution.mockResolvedValue({ tool: "spring-voyage" });
     getUnitExecution.mockResolvedValue({});
     getAgentRuntimeModels.mockResolvedValue([]);
 
@@ -227,7 +227,7 @@ describe("AgentExecutionPanel", () => {
     ).toBeInTheDocument();
   });
 
-  it("omits the Model dropdown when tool=custom (no known catalog)", async () => {
+  it("keeps the Model slot visible when tool=custom (always rendered post-#1702)", async () => {
     getAgentExecution.mockResolvedValue({ tool: "custom" });
     getUnitExecution.mockResolvedValue({});
     getAgentRuntimeModels.mockResolvedValue([]);
@@ -242,21 +242,19 @@ describe("AgentExecutionPanel", () => {
     expect(
       screen.queryByTestId("agent-execution-provider-select"),
     ).not.toBeInTheDocument();
-    // Neither a Model select nor a free-text Model input is rendered.
+    // Model is always rendered — a free-text input is shown when no
+    // catalog is available for the chosen tool.
     expect(
-      screen.queryByTestId("agent-execution-model-select"),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByTestId("agent-execution-model-input"),
-    ).not.toBeInTheDocument();
+      screen.getByTestId("agent-execution-model-input"),
+    ).toBeInTheDocument();
   });
 
-  it("PUTs only the fields the operator declared, carrying nulls through unchanged slots", async () => {
+  it("PUTs only the fields the operator declared, carrying nulls through unchanged slots; mirrors tool into agent and drops runtime", async () => {
     getAgentExecution.mockResolvedValue({});
     getUnitExecution.mockResolvedValue({
       image: "ghcr.io/acme/spring-agent:v1",
     });
-    setAgentExecution.mockResolvedValue({ runtime: "podman" });
+    setAgentExecution.mockResolvedValue({ tool: "claude-code" });
 
     render(
       <Wrapper>
@@ -264,10 +262,10 @@ describe("AgentExecutionPanel", () => {
       </Wrapper>,
     );
 
-    const runtimeSelect = (await screen.findByTestId(
-      "agent-execution-runtime-select",
+    const toolSelect = (await screen.findByTestId(
+      "agent-execution-tool-select",
     )) as HTMLSelectElement;
-    fireEvent.change(runtimeSelect, { target: { value: "podman" } });
+    fireEvent.change(toolSelect, { target: { value: "claude-code" } });
 
     fireEvent.click(screen.getByRole("button", { name: /^Save$/i }));
 
@@ -276,7 +274,11 @@ describe("AgentExecutionPanel", () => {
     });
     const [id, body] = setAgentExecution.mock.calls[0];
     expect(id).toBe("alpha");
-    expect(body?.runtime).toBe("podman");
+    expect(body?.tool).toBe("claude-code");
+    // #1702: agent mirrors tool.
+    expect((body as { agent?: string | null })?.agent).toBe("claude-code");
+    // #1702: portal no longer sends runtime.
+    expect((body as { runtime?: string | null })?.runtime).toBeUndefined();
     // Image is still inherited — not explicitly set — so the wire
     // payload carries null, matching the backend's "resolve at
     // dispatch" contract.
@@ -287,7 +289,7 @@ describe("AgentExecutionPanel", () => {
     getAgentExecution.mockResolvedValue({});
     getUnitExecution.mockResolvedValue({
       image: "ghcr.io/acme/spring-agent:v1",
-      runtime: "podman",
+      tool: "claude-code",
     });
 
     const { container } = render(

@@ -17,14 +17,14 @@ namespace Cvoya.Spring.Host.Api.Models;
 /// subset. Resolution chain (see <c>docs/architecture/units.md</c>):
 /// agent.X → unit.X → fail-clean at dispatch / save time.
 /// <see cref="Provider"/> and <see cref="Model"/> are meaningful only
-/// when <see cref="Tool"/> = <c>dapr-agent</c> — the portal hides them
+/// when <see cref="Tool"/> = <c>spring-voyage</c> — the portal hides them
 /// for other tool selections (#598 gating).
 /// </remarks>
 /// <param name="Image">Default container image reference.</param>
 /// <param name="Runtime">Default container runtime (<c>docker</c> / <c>podman</c>).</param>
-/// <param name="Tool">Default external agent tool identifier (<c>claude-code</c>, <c>codex</c>, <c>gemini</c>, <c>dapr-agent</c>).</param>
-/// <param name="Provider">Default LLM provider (Dapr-Agent-tool-specific).</param>
-/// <param name="Model">Default model identifier (Dapr-Agent-tool-specific).</param>
+/// <param name="Tool">Default external agent tool identifier (<c>claude-code</c>, <c>codex</c>, <c>gemini</c>, <c>spring-voyage</c>).</param>
+/// <param name="Provider">Default LLM model provider (Spring Voyage Agent–specific).</param>
+/// <param name="Model">Default model identifier (Spring Voyage Agent–specific).</param>
 /// <param name="Agent">Agent-runtime registry id (e.g. <c>ollama</c>, <c>claude</c>, <c>openai</c>). Takes precedence over <c>Provider</c> when resolving which <see cref="Cvoya.Spring.Core.AgentRuntimes.IAgentRuntime"/> plugin to use for validation and dispatch.</param>
 public record UnitExecutionResponse(
     string? Image = null,

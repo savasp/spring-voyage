@@ -179,24 +179,24 @@ function defaultRuntimes(): InstalledAgentRuntimeResponse[] {
     }),
     makeRuntime({
       id: "openai",
-      displayName: "OpenAI (dapr-agent + OpenAI API)",
-      toolKind: "dapr-agent",
+      displayName: "OpenAI (spring-voyage + OpenAI API)",
+      toolKind: "spring-voyage",
       models: ["gpt-4o", "gpt-4o-mini", "o3-mini"],
       defaultModel: "gpt-4o",
       credentialKind: "ApiKey",
     }),
     makeRuntime({
       id: "google",
-      displayName: "Google AI (dapr-agent + Google AI API)",
-      toolKind: "dapr-agent",
+      displayName: "Google AI (spring-voyage + Google AI API)",
+      toolKind: "spring-voyage",
       models: ["gemini-2.5-pro", "gemini-2.5-flash"],
       defaultModel: "gemini-2.5-pro",
       credentialKind: "ApiKey",
     }),
     makeRuntime({
       id: "ollama",
-      displayName: "Ollama (dapr-agent + local Ollama)",
-      toolKind: "dapr-agent",
+      displayName: "Ollama (spring-voyage + local Ollama)",
+      toolKind: "spring-voyage",
       models: ["qwen2.5:14b", "llama3.2:3b"],
       defaultModel: "qwen2.5:14b",
       credentialKind: "None",
@@ -538,7 +538,7 @@ describe("CreateUnitPage — scratch branch (#1563)", () => {
       status: "Draft",
       model: "qwen2.5:14b",
       color: "#6366f1",
-      tool: "dapr-agent",
+      tool: "spring-voyage",
       provider: "ollama",
       hosting: null,
       lastValidationError: null,
@@ -710,17 +710,17 @@ describe("CreateUnitPage — wizard reads tenant-installed agent runtimes (#690)
     expect(options).toContain("gpt-4o");
   });
 
-  it("shows installed dapr-agent runtimes in the Provider dropdown", async () => {
+  it("shows installed spring-voyage runtimes in the Provider dropdown", async () => {
     renderPage();
     await advanceToExecution();
-    await selectTool("dapr-agent");
+    await selectTool("spring-voyage");
 
     const providerSelect = (await screen.findByLabelText(
       /^LLM provider$/i,
     )) as HTMLSelectElement;
     const options = Array.from(providerSelect.options).map((o) => o.value);
 
-    // Only dapr-agent runtimes are listed — the claude runtime's
+    // Only spring-voyage runtimes are listed — the claude runtime's
     // toolKind is claude-code-cli and is filtered out.
     expect(options).toContain("openai");
     expect(options).toContain("google");
@@ -731,7 +731,7 @@ describe("CreateUnitPage — wizard reads tenant-installed agent runtimes (#690)
   it("hides the credential input for runtimes with CredentialKind=None (ollama)", async () => {
     renderPage();
     await advanceToExecution();
-    await selectTool("dapr-agent");
+    await selectTool("spring-voyage");
 
     const providerSelect = screen.getByLabelText(
       /^LLM provider$/i,
@@ -744,15 +744,15 @@ describe("CreateUnitPage — wizard reads tenant-installed agent runtimes (#690)
     expect(screen.queryByTestId("credential-input")).not.toBeInTheDocument();
   });
 
-  // Issue #1072: with dapr-agent + ollama selected, the wizard's Next
+  // Issue #1072: with spring-voyage + ollama selected, the wizard's Next
   // button stayed disabled because the model field was never seeded
   // from the live Ollama catalog.
-  it("auto-seeds the model when dapr-agent + ollama is selected (#1072)", async () => {
+  it("auto-seeds the model when spring-voyage + ollama is selected (#1072)", async () => {
     listOllamaModels.mockResolvedValue([{ name: "llama3.2:3b" }]);
 
     renderPage();
     await advanceToExecution();
-    await selectTool("dapr-agent");
+    await selectTool("spring-voyage");
 
     const providerSelect = screen.getByLabelText(
       /^LLM provider$/i,
@@ -885,7 +885,7 @@ describe("CreateUnitPage — Step 3 scratch explains a disabled Next", () => {
       makeRuntime({
         id: "openai",
         displayName: "OpenAI",
-        toolKind: "dapr-agent",
+        toolKind: "spring-voyage",
         models: ["gpt-4o"],
         defaultModel: "gpt-4o",
         credentialKind: "ApiKey",

@@ -174,7 +174,7 @@ public static class UnitCommand
             Description =
                 "Optional LLM model identifier (e.g. claude-sonnet-4-6). " +
                 "Accepted as opaque for every tool that carries a known provider " +
-                "(claude-code / codex / gemini / dapr-agent); validation happens at unit activation.",
+                "(claude-code / codex / gemini / spring-voyage); validation happens at unit activation.",
         };
         var colorOption = new Option<string?>("--color")
         {
@@ -183,12 +183,12 @@ public static class UnitCommand
         // #350: execution tool, provider, and hosting mode.
         var toolOption = new Option<string?>("--tool")
         {
-            Description = "Execution tool (claude-code, codex, gemini, dapr-agent, custom).",
+            Description = "Execution tool (claude-code, codex, gemini, spring-voyage, custom).",
         };
-        toolOption.AcceptOnlyFromAmong("claude-code", "codex", "gemini", "dapr-agent", "custom");
+        toolOption.AcceptOnlyFromAmong("claude-code", "codex", "gemini", "spring-voyage", "custom");
         var providerOption = new Option<string?>("--provider")
         {
-            Description = "LLM provider (ollama, openai, google, anthropic). Relevant when --tool is dapr-agent.",
+            Description = "LLM provider (ollama, openai, google, anthropic). Relevant when --tool is spring-voyage.",
         };
         providerOption.AcceptOnlyFromAmong("ollama", "openai", "google", "anthropic", "claude");
         var hostingOption = new Option<string?>("--hosting")
@@ -322,7 +322,7 @@ public static class UnitCommand
                 return;
             }
 
-            // #598 + #644: reject --provider on non-dapr-agent tools
+            // #598 + #644: reject --provider on non-spring-voyage tools
             // (their provider is baked in), and reject both flags on
             // --tool=custom (no declared contract). --model is accepted
             // for every tool that carries a known provider family so
@@ -1525,10 +1525,10 @@ public static class UnitCommand
     // Canonical rejection message (#644) — operators read this verbatim
     // when they combine --provider / --model with a tool that doesn't
     // accept that flag. The CLI and the portal mirror the same policy:
-    // dapr-agent takes both, claude-code/codex/gemini take --model only,
+    // spring-voyage takes both, claude-code/codex/gemini take --model only,
     // custom takes neither.
     internal const string ProviderModelRejectionMessage =
-        "--provider is only meaningful for --tool=dapr-agent; " +
+        "--provider is only meaningful for --tool=spring-voyage; " +
         "other tools (claude-code, codex, gemini) have their provider hardcoded in the tool CLI, " +
         "but accept --model to pick within that provider's model family.";
 
@@ -1538,7 +1538,7 @@ public static class UnitCommand
     /// and <c>--model</c> on the tools that don't accept them (#598,
     /// #644). The matrix is:
     /// <list type="bullet">
-    /// <item><description><c>dapr-agent</c> — both flags accepted.</description></item>
+    /// <item><description><c>spring-voyage</c> — both flags accepted.</description></item>
     /// <item><description><c>claude-code</c> / <c>codex</c> / <c>gemini</c> —
     /// provider is hardcoded in the tool's own CLI (rejected), but
     /// <c>--model</c> is accepted so operators can pick within the tool's
@@ -1584,13 +1584,13 @@ public static class UnitCommand
             return null;
         }
 
-        // dapr-agent is the only tool that takes a user-chosen provider.
+        // spring-voyage is the only tool that takes a user-chosen provider.
         // The other supported tools (claude-code, codex, gemini) have
         // their provider baked in but still accept --model. custom has
         // no declared contract so both flags are rejected.
         return normalizedTool switch
         {
-            "dapr-agent" => null,
+            "spring-voyage" => null,
             "claude-code" or "codex" or "gemini" => hasProvider
                 ? ProviderModelRejectionMessage
                 : null,
@@ -1623,7 +1623,7 @@ public static class UnitCommand
     /// instead of hardcoding the provider → secret-name map. Returns
     /// <c>null</c> when the combination has no declared credential contract
     /// (<c>custom</c> tool, <c>--tool</c> omitted, or an unknown provider on
-    /// <c>dapr-agent</c>).
+    /// <c>spring-voyage</c>).
     /// </summary>
     /// <remarks>
     /// Ollama maps to the <c>ollama</c> runtime id even though it needs no
@@ -1644,7 +1644,7 @@ public static class UnitCommand
             "claude-code" => "claude",
             "codex" => "openai",
             "gemini" => "google",
-            "dapr-agent" => normalizedProvider switch
+            "spring-voyage" => normalizedProvider switch
             {
                 "claude" or "anthropic" => "claude",
                 "openai" => "openai",
@@ -1719,7 +1719,7 @@ public static class UnitCommand
         {
             return UnitCredentialOptions.Rejected(
                 "--api-key / --api-key-from-file is only valid for tools that map to a registered agent runtime " +
-                "(claude-code, codex, gemini, or dapr-agent with a known provider). " +
+                "(claude-code, codex, gemini, or spring-voyage with a known provider). " +
                 "custom tools have no declared credential contract.");
         }
 

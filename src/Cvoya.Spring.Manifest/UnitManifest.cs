@@ -239,7 +239,7 @@ public class MemberManifest
 /// <para>
 /// <see cref="Provider"/> and <see cref="Model"/> are Dapr-Agent-tool
 /// specific (#598 gating) — they're only meaningful when
-/// <see cref="Tool"/> = <c>dapr-agent</c>. The portal hides them for
+/// <see cref="Tool"/> = <c>spring-voyage</c>. The portal hides them for
 /// other tool selections.
 /// </para>
 /// </remarks>
@@ -265,7 +265,7 @@ public class ExecutionManifest
     /// <summary>
     /// Default external agent tool identifier inherited by member agents
     /// that do not declare their own (e.g. <c>claude-code</c>,
-    /// <c>codex</c>, <c>gemini</c>, <c>dapr-agent</c>).
+    /// <c>codex</c>, <c>gemini</c>, <c>spring-voyage</c>).
     /// </summary>
     [YamlMember(Alias = "tool")]
     public string? Tool { get; set; }

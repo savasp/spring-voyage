@@ -37,9 +37,9 @@ public class DaprAgentLauncherTests
     }
 
     [Fact]
-    public void Tool_IsDaprAgent()
+    public void Tool_IsSpringVoyage()
     {
-        _launcher.Tool.ShouldBe("dapr-agent");
+        _launcher.Tool.ShouldBe("spring-voyage");
     }
 
     // Issue #1042: launchers must not materialise workspace dirs on the

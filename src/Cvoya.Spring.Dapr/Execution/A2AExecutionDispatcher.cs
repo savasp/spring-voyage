@@ -236,7 +236,7 @@ public class A2AExecutionDispatcher(
         {
             if (useDaprSidecar)
             {
-                // dapr-agent + dapr-agents 1.x: the Python process needs a
+                // spring-voyage + spring-voyages 1.x: the Python process needs a
                 // daprd with the delegated component profile, placement, and
                 // scheduler so the DurableAgent workflow loop can start (see
                 // ADR 0028 V2 interim dual-attach deployment).
@@ -395,7 +395,7 @@ public class A2AExecutionDispatcher(
 
     /// <summary>
     /// Produces a stable, short Dapr <c>app-id</c> for a persistent
-    /// <c>dapr-agent</c> so workflow / actor state can survive process restarts.
+    /// <c>spring-voyage</c> so workflow / actor state can survive process restarts.
     /// </summary>
     private static string BuildPersistentDaprAppId(string agentId)
     {
@@ -648,7 +648,7 @@ public class A2AExecutionDispatcher(
 
         // A2A v0.3 wire shape: MessageSendParams { message, configuration } —
         // the JSON-RPC method name is `message/send` (set by the SDK), which
-        // is what the Python a2a-sdk server in the dapr-agent image expects.
+        // is what the Python a2a-sdk server in the spring-voyage image expects.
         // Parts is List<Part> with derived TextPart/FilePart/DataPart; the
         // discriminator (`kind`) is set by the constructor on each subtype.
         var request = new MessageSendParams
@@ -936,7 +936,7 @@ public class A2AExecutionDispatcher(
         // ExitCode != 0. Mirror the agent's text into Error so a Failed task
         // doesn't render as a blank "Container exit code 1: " in the activity
         // log — the message body is the only signal we have about why the
-        // agent's workflow failed (e.g. dapr-agents loop error, MCP timeout).
+        // agent's workflow failed (e.g. spring-voyages loop error, MCP timeout).
         var payload = exitCode == 0
             ? JsonSerializer.SerializeToElement(new
             {

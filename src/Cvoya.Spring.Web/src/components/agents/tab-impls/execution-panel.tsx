@@ -30,7 +30,6 @@ import type {
 } from "@/lib/api/types";
 import {
   EXECUTION_PROVIDERS,
-  EXECUTION_RUNTIMES,
   EXECUTION_TOOL_KEYS,
 } from "@/lib/api/types";
 import {
@@ -81,16 +80,11 @@ function providerToRuntimeId(provider: string): string | null {
  * save persists `null` on the agent block, and the dispatcher merges
  * the unit default at runtime (PR #628).
  *
- * Inherit indicator is implemented at the **component level** rather
- * than via CSS-only placeholder text so that:
- *   - The inheritance source (unit name + field) remains screen-reader
- *     accessible via the help copy alongside the input.
- *   - Dropdown controls (runtime / tool / provider) can also render
- *     the inherited label, which a plain `placeholder` attribute on
- *     `<input>` cannot do.
- * The inputs still carry a native `placeholder` that matches the
- * indicator text so axe-ee contrast rules cover the grey rendering in
- * one axe sweep.
+ * #1702: legacy Runtime (docker/podman) field is gone — the platform
+ * picks the container runtime; operators only choose the agent
+ * runtime. Labels also moved: "Tool" → "Agent Runtime", "Provider" →
+ * "Model Provider". Model Provider only renders when Agent Runtime is
+ * `spring-voyage`. Model is always rendered.
  */
 
 interface ExecutionPanelProps {
@@ -102,7 +96,6 @@ const FIELD_UNSET = "__unset__";
 
 type ExecutionField =
   | "image"
-  | "runtime"
   | "tool"
   | "provider"
   | "model"
@@ -145,7 +138,6 @@ export function AgentExecutionPanel({
     const current = persisted ?? {};
     return (
       (form.image ?? null) !== (current.image ?? null) ||
-      (form.runtime ?? null) !== (current.runtime ?? null) ||
       (form.tool ?? null) !== (current.tool ?? null) ||
       (form.provider ?? null) !== (current.provider ?? null) ||
       (form.model ?? null) !== (current.model ?? null) ||
@@ -157,18 +149,14 @@ export function AgentExecutionPanel({
   // unit default fills in otherwise.
   const effectiveToolForGating =
     form.tool ?? persisted?.tool ?? unitDefaults?.tool ?? null;
-  const showProvider =
-    effectiveToolForGating === null || effectiveToolForGating === "dapr-agent";
+  const showProvider = effectiveToolForGating === "spring-voyage";
 
-  // #641: tools that hide Provider (claude-code / codex / gemini) still
-  // expose a Model dropdown populated from that tool's catalog. Derive
-  // the runtime id from the effective tool; use the explicit Provider
-  // value when dapr-agent is active. `custom` and unset tool for a
-  // non-dapr-agent effective return null, which collapses the Model
-  // dropdown into the inherited/free-text fallback below. #735: route
-  // the catalog through `useAgentRuntimeModels` so the hardcoded
-  // provider→model table is gone — the tenant's installed runtimes
-  // are the single source of truth.
+  // #641 / #1702: Model is always rendered. Derive the runtime id from
+  // the effective tool; use the explicit Provider value when
+  // spring-voyage is active. #735: route the catalog through
+  // `useAgentRuntimeModels` so the hardcoded provider→model table is
+  // gone — the tenant's installed runtimes are the single source of
+  // truth.
   const toolForCatalog = (effectiveToolForGating ?? null) as
     | ExecutionTool
     | null;
@@ -182,7 +170,6 @@ export function AgentExecutionPanel({
           "",
       )
     : toolRuntimeId;
-  const showModel = showProvider || toolRuntimeId !== null;
   const agentRuntimeModelsQuery = useAgentRuntimeModels(
     runtimeIdForModels ?? "",
     { enabled: runtimeIdForModels !== null },
@@ -242,14 +229,16 @@ export function AgentExecutionPanel({
   };
 
   const handleSave = () => {
+    // #1702: drop the legacy `runtime` field; mirror `tool` into the
+    // new wire-level `agent` field so the dispatcher can resolve the
+    // agent-runtime registry entry without re-deriving it. Provider
+    // stays gated on spring-voyage.
     const next: AgentExecutionResponse = {
       image: form.image ?? null,
-      runtime: form.runtime ?? null,
       tool: form.tool ?? null,
-      // #641: Provider stays gated on dapr-agent (Option A for #598);
-      // Model rides along whenever the tool has a known catalog.
+      agent: form.tool ?? null,
       provider: showProvider ? (form.provider ?? null) : null,
-      model: showModel ? (form.model ?? null) : null,
+      model: form.model ?? null,
       hosting: form.hosting ?? null,
     };
     setMutation.mutate(next);
@@ -301,8 +290,8 @@ export function AgentExecutionPanel({
       </CardHeader>
       <CardContent className="space-y-4 text-sm">
         <p className="text-xs text-muted-foreground">
-          Agent-level overrides for the container runtime and launcher.
-          Any field left blank inherits from the owning unit
+          Agent-level overrides for the agent image and runtime. Any
+          field left blank inherits from the owning unit
           {parentUnitId ? (
             <>
               {" "}
@@ -350,31 +339,11 @@ export function AgentExecutionPanel({
         </FieldRow>
 
         <FieldRow
-          label="Runtime"
-          help={
-            inherited("runtime")
-              ? `inherited from unit: ${inherited("runtime")}`
-              : "Container runtime the launcher drives."
-          }
-          onClear={persisted?.runtime ? () => clearField("runtime") : undefined}
-          busy={setMutation.isPending}
-        >
-          <SelectField
-            value={form.runtime ?? null}
-            onChange={(next) => setField("runtime", next)}
-            options={EXECUTION_RUNTIMES}
-            inheritedLabel={inherited("runtime")}
-            ariaLabel="Agent execution runtime"
-            testid="agent-execution-runtime-select"
-          />
-        </FieldRow>
-
-        <FieldRow
-          label="Tool"
+          label="Agent Runtime"
           help={
             inherited("tool")
               ? `inherited from unit: ${inherited("tool")}`
-              : "Launcher key the dispatcher uses."
+              : "Agent runtime the dispatcher uses."
           }
           onClear={persisted?.tool ? () => clearField("tool") : undefined}
           busy={setMutation.isPending}
@@ -384,18 +353,18 @@ export function AgentExecutionPanel({
             onChange={(next) => setField("tool", next)}
             options={EXECUTION_TOOL_KEYS}
             inheritedLabel={inherited("tool")}
-            ariaLabel="Agent execution tool"
+            ariaLabel="Agent runtime"
             testid="agent-execution-tool-select"
           />
         </FieldRow>
 
         {showProvider && (
           <FieldRow
-            label="Provider"
+            label="Model Provider"
             help={
               inherited("provider")
                 ? `inherited from unit: ${inherited("provider")}`
-                : "LLM provider — only meaningful when Tool is Dapr Agent."
+                : "LLM provider — only meaningful when Agent Runtime is Spring Voyage Agent."
             }
             onClear={
               persisted?.provider ? () => clearField("provider") : undefined
@@ -407,68 +376,66 @@ export function AgentExecutionPanel({
               onChange={(next) => setField("provider", next)}
               options={EXECUTION_PROVIDERS}
               inheritedLabel={inherited("provider")}
-              ariaLabel="Agent execution provider"
+              ariaLabel="Model provider"
               testid="agent-execution-provider-select"
             />
           </FieldRow>
         )}
 
-        {showModel && (
-          <FieldRow
-            label="Model"
-            help={
-              inherited("model")
-                ? `inherited from unit: ${inherited("model")}`
-                : "Model identifier."
-            }
-            onClear={persisted?.model ? () => clearField("model") : undefined}
-            busy={setMutation.isPending}
-          >
-            {providerModelsEnabled &&
-            providerModels &&
-            providerModels.length > 0 ? (
-              <select
-                value={form.model ?? ""}
-                onChange={(e) =>
-                  setField("model", e.target.value ? e.target.value : null)
-                }
-                aria-label="Agent execution model"
-                data-testid="agent-execution-model-select"
-                className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              >
-                <option value="">
-                  {inherited("model")
-                    ? `inherited: ${inherited("model")}`
-                    : "(leave to default)"}
+        <FieldRow
+          label="Model"
+          help={
+            inherited("model")
+              ? `inherited from unit: ${inherited("model")}`
+              : "Model identifier."
+          }
+          onClear={persisted?.model ? () => clearField("model") : undefined}
+          busy={setMutation.isPending}
+        >
+          {providerModelsEnabled &&
+          providerModels &&
+          providerModels.length > 0 ? (
+            <select
+              value={form.model ?? ""}
+              onChange={(e) =>
+                setField("model", e.target.value ? e.target.value : null)
+              }
+              aria-label="Agent execution model"
+              data-testid="agent-execution-model-select"
+              className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            >
+              <option value="">
+                {inherited("model")
+                  ? `inherited: ${inherited("model")}`
+                  : "(leave to default)"}
+              </option>
+              {providerModels.map((m) => (
+                <option key={m} value={m}>
+                  {m}
                 </option>
-                {providerModels.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <Input
-                value={form.model ?? ""}
-                onChange={(e) =>
-                  setField("model", e.target.value ? e.target.value : null)
-                }
-                placeholder={
-                  inherited("model")
-                    ? `inherited from unit: ${inherited("model")}`
-                    : "e.g. claude-sonnet-4-6"
-                }
-                aria-label="Agent execution model"
-                data-testid="agent-execution-model-input"
-                className={
-                  !form.model && inherited("model")
-                    ? "italic text-muted-foreground placeholder:italic placeholder:text-muted-foreground"
-                    : undefined
-                }
-              />
-            )}
-          </FieldRow>
-        )}
+              ))}
+            </select>
+          ) : (
+            <Input
+              value={form.model ?? ""}
+              onChange={(e) =>
+                setField("model", e.target.value ? e.target.value : null)
+              }
+              placeholder={
+                inherited("model")
+                  ? `inherited from unit: ${inherited("model")}`
+                  : "e.g. claude-sonnet-4-6"
+              }
+              aria-label="Agent execution model"
+              data-testid="agent-execution-model-input"
+              className={
+                !form.model && inherited("model")
+                  ? "italic text-muted-foreground placeholder:italic placeholder:text-muted-foreground"
+                  : undefined
+              }
+            />
+          )}
+        </FieldRow>
 
         {showProvider &&
           (form.provider ?? persisted?.provider ?? unitDefaults?.provider) && (
@@ -543,7 +510,7 @@ function FieldRow({ label, help, onClear, busy, children }: FieldRowProps) {
             disabled={busy}
             className="h-7 px-2 text-xs"
             aria-label={`Clear agent ${label.toLowerCase()}`}
-            data-testid={`agent-execution-clear-${label.toLowerCase()}`}
+            data-testid={`agent-execution-clear-${label.toLowerCase().replace(/\s+/g, "-")}`}
           >
             <Trash2 className="mr-1 h-3 w-3" />
             Clear
@@ -621,7 +588,6 @@ function SelectField({
 function isEmpty(block: AgentExecutionResponse): boolean {
   return (
     !block.image &&
-    !block.runtime &&
     !block.tool &&
     !block.provider &&
     !block.model &&
