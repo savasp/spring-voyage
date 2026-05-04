@@ -25,6 +25,15 @@ public class AnthropicProvider(
     IOptions<AiProviderOptions> options,
     ILoggerFactory loggerFactory) : IAiProvider
 {
+    /// <summary>
+    /// Stable provider id; matches the manifest's <c>execution.provider</c>
+    /// slot value when the operator selects Anthropic.
+    /// </summary>
+    public const string ProviderId = "anthropic";
+
+    /// <inheritdoc />
+    public string Id => ProviderId;
+
     private readonly ILogger _logger = loggerFactory.CreateLogger<AnthropicProvider>();
     private readonly AiProviderOptions _options = options.Value;
 

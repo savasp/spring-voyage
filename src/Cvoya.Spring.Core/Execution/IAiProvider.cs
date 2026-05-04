@@ -10,8 +10,25 @@ namespace Cvoya.Spring.Core.Execution;
 /// provider is for utility calls such as routing decisions, classification, and
 /// summarisation that don't warrant a full agent runtime.
 /// </summary>
+/// <remarks>
+/// <para>
+/// Each implementation declares a stable <see cref="Id"/> matching the manifest's
+/// <c>execution.provider</c> slot value (e.g. <c>"anthropic"</c>, <c>"ollama"</c>).
+/// <see cref="IAiProviderRegistry"/> enumerates every registered provider and
+/// resolves callers' dispatches by that id, so a unit configured with
+/// <c>provider: ollama</c> reaches <c>OllamaProvider</c> and <c>provider: anthropic</c>
+/// reaches <c>AnthropicProvider</c>. The same enumerable also feeds the platform's
+/// status / model-listing surfaces.
+/// </para>
+/// </remarks>
 public interface IAiProvider
 {
+    /// <summary>
+    /// Stable provider identifier matching the manifest's <c>execution.provider</c>
+    /// slot value. Looked up by <see cref="IAiProviderRegistry"/>.
+    /// </summary>
+    string Id { get; }
+
     /// <summary>
     /// Sends a prompt to the AI model and returns the response.
     /// </summary>

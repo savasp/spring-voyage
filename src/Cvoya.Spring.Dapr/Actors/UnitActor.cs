@@ -956,7 +956,17 @@ public class UnitActor : Actor, IUnitActor
     private async Task<Message?> HandleDomainMessageAsync(Message message, CancellationToken ct)
     {
         var members = await GetMembersListAsync(ct);
-        var context = new UnitContext(Address, members.AsReadOnly(), _logger);
+
+        // #1696: surface the unit's persisted execution.provider id to
+        // orchestration strategies via IUnitContext so AiOrchestrationStrategy
+        // can resolve the right IAiProvider through IAiProviderRegistry.
+        // Absent state falls back to null, which leaves the strategy on
+        // whatever IAiProvider DI's GetService returns (the OSS default
+        // is Anthropic, registered last in ServiceCollectionExtensions.Execution).
+        var providerStateResult = await StateManager.TryGetStateAsync<string>(StateKeys.UnitProvider, ct);
+        var providerId = providerStateResult.HasValue ? providerStateResult.Value : null;
+
+        var context = new UnitContext(Address, members.AsReadOnly(), providerId, _logger);
 
         if (_strategyResolver is null)
         {

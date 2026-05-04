@@ -21,6 +21,16 @@ public interface IUnitContext
     IReadOnlyList<Address> Members { get; }
 
     /// <summary>
+    /// The unit's declared AI provider id (matches
+    /// <c>IAiProvider.Id</c> — e.g. <c>anthropic</c>, <c>ollama</c>).
+    /// Sourced from the persisted <c>execution.provider</c> slot.
+    /// <c>null</c> when the unit hasn't declared one — orchestration
+    /// strategies that need a provider then fall back to whichever
+    /// <c>IAiProvider</c> the DI default resolves to (#1696).
+    /// </summary>
+    string? ProviderId { get; }
+
+    /// <summary>
     /// Sends a message to a specific member of the unit.
     /// </summary>
     /// <param name="message">The message to send.</param>

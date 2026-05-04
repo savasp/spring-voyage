@@ -21,11 +21,19 @@ internal sealed class UnitContext : IUnitContext
     /// </summary>
     /// <param name="unitAddress">The address of the owning unit.</param>
     /// <param name="members">The current list of unit members.</param>
+    /// <param name="providerId">
+    /// The unit's persisted AI-provider id (matches <c>IAiProvider.Id</c>);
+    /// <c>null</c> when the unit hasn't declared one. Orchestration
+    /// strategies pass this to <c>IAiProviderRegistry.Get</c> at dispatch
+    /// time so per-unit provider selection follows the manifest's
+    /// <c>execution.provider</c> slot (#1696).
+    /// </param>
     /// <param name="logger">The logger instance.</param>
-    public UnitContext(Address unitAddress, IReadOnlyList<Address> members, ILogger logger)
+    public UnitContext(Address unitAddress, IReadOnlyList<Address> members, string? providerId, ILogger logger)
     {
         UnitAddress = unitAddress;
         Members = members;
+        ProviderId = providerId;
         _logger = logger;
     }
 
@@ -34,6 +42,9 @@ internal sealed class UnitContext : IUnitContext
 
     /// <inheritdoc />
     public IReadOnlyList<Address> Members { get; }
+
+    /// <inheritdoc />
+    public string? ProviderId { get; }
 
     /// <inheritdoc />
     public Task<Message?> SendAsync(Message message, CancellationToken cancellationToken = default)

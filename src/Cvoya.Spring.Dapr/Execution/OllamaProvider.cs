@@ -38,6 +38,15 @@ public class OllamaProvider(
     IOptions<OllamaOptions> options,
     ILoggerFactory loggerFactory) : IAiProvider
 {
+    /// <summary>
+    /// Stable provider id; matches the manifest's <c>execution.provider</c>
+    /// slot value when the operator selects Ollama.
+    /// </summary>
+    public const string ProviderId = "ollama";
+
+    /// <inheritdoc />
+    public string Id => ProviderId;
+
     private readonly ILogger _logger = loggerFactory.CreateLogger<OllamaProvider>();
     private readonly OllamaOptions _options = options.Value;
 
