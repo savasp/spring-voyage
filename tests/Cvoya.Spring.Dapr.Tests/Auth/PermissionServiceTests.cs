@@ -6,6 +6,7 @@ namespace Cvoya.Spring.Dapr.Tests.Auth;
 using Cvoya.Spring.Core.Directory;
 using Cvoya.Spring.Core.Identifiers;
 using Cvoya.Spring.Core.Messaging;
+using Cvoya.Spring.Core.Security;
 using Cvoya.Spring.Core.Units;
 using Cvoya.Spring.Dapr.Actors;
 using Cvoya.Spring.Dapr.Auth;
@@ -13,6 +14,7 @@ using Cvoya.Spring.Dapr.Auth;
 using global::Dapr.Actors;
 using global::Dapr.Actors.Client;
 
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 using NSubstitute;
@@ -329,5 +331,111 @@ public class PermissionServiceTests
         var result = await service.ResolveEffectivePermissionAsync(HumanIdString, Id(Guid.NewGuid()), ct);
 
         result.ShouldBeNull();
+    }
+
+    // -- #1695 ----------------------------------------------------------
+    // Identity-form callers (human:id:<guid>) hand the GUID-hex through
+    // PermissionService directly. The pre-fix code blindly passed every
+    // humanId string to IHumanIdentityResolver.ResolveByUsernameAsync,
+    // which on miss upserted a phantom row keyed by the GUID-hex with
+    // its own brand-new UUID — the unit's permission map then 403'd the
+    // legitimate caller and the spring.humans table grew a leaking row
+    // per send. The guard short-circuits the resolver when humanId
+    // already parses as a Guid, so neither symptom can recur.
+
+    [Fact]
+    public async Task ResolveHumanGuidAsync_IdentityFormGuid_ResolvesDirectly()
+    {
+        // Identity-form: 32-hex-char "N" form (the wire shape produced by
+        // GuidFormatter.Format and emitted on the From address path
+        // component). Must round-trip through the service to the unit
+        // permission map without ever calling the resolver.
+        var ct = TestContext.Current.CancellationToken;
+        var resolver = Substitute.For<IHumanIdentityResolver>();
+        var service = BuildServiceWithResolver(resolver);
+
+        var identityFormHex = HumanGuid.ToString("N");
+        Unit(UnitOneId).GetHumanPermissionAsync(HumanGuid, ct).Returns(PermissionLevel.Owner);
+
+        var result = await service.ResolvePermissionAsync(identityFormHex, Id(UnitOneId), ct);
+
+        result.ShouldBe(PermissionLevel.Owner);
+        await resolver.DidNotReceive().ResolveByUsernameAsync(
+            Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ResolveHumanGuidAsync_IdentityFormGuid_DashedForm_ResolvesDirectly()
+    {
+        // GuidFormatter.TryParse accepts both "N" and "D" forms — assert
+        // the dashed shape also short-circuits (callers in either form
+        // must land on the same row, per the issue's prescription).
+        var ct = TestContext.Current.CancellationToken;
+        var resolver = Substitute.For<IHumanIdentityResolver>();
+        var service = BuildServiceWithResolver(resolver);
+
+        Unit(UnitOneId).GetHumanPermissionAsync(HumanGuid, ct).Returns(PermissionLevel.Owner);
+
+        var result = await service.ResolvePermissionAsync(HumanIdString, Id(UnitOneId), ct);
+
+        result.ShouldBe(PermissionLevel.Owner);
+        await resolver.DidNotReceive().ResolveByUsernameAsync(
+            Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ResolveHumanGuidAsync_LegacyUsername_FallsThroughToResolver()
+    {
+        // Username-form callers (e.g. "local-dev-user", cloud OAuth
+        // usernames) must still flow through the resolver so the
+        // upsert-on-first-contact behaviour is preserved.
+        var ct = TestContext.Current.CancellationToken;
+        var resolver = Substitute.For<IHumanIdentityResolver>();
+        resolver.ResolveByUsernameAsync("local-dev-user", null, Arg.Any<CancellationToken>())
+            .Returns(HumanGuid);
+        var service = BuildServiceWithResolver(resolver);
+
+        Unit(UnitOneId).GetHumanPermissionAsync(HumanGuid, ct).Returns(PermissionLevel.Owner);
+
+        var result = await service.ResolvePermissionAsync("local-dev-user", Id(UnitOneId), ct);
+
+        result.ShouldBe(PermissionLevel.Owner);
+        await resolver.Received(1).ResolveByUsernameAsync(
+            "local-dev-user", null, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ResolveHumanGuidAsync_IdentityForm_DoesNotCreatePhantomRow()
+    {
+        // Regression test for the phantom-humans-row symptom in #1695.
+        // Sending a message with an identity-form From address used to
+        // call ResolveByUsernameAsync(<guid-hex>) → resolver upsert
+        // created a row whose username was the GUID-hex. We assert
+        // ResolveByUsernameAsync is never invoked for any of the input
+        // shapes the AuthenticatedCallerAccessor produces (#1485 / #1491
+        // shape: bare "N" form, plus the dashed "D" form for resilience).
+        var ct = TestContext.Current.CancellationToken;
+        var resolver = Substitute.For<IHumanIdentityResolver>();
+        var service = BuildServiceWithResolver(resolver);
+
+        await service.ResolvePermissionAsync(HumanGuid.ToString("N"), Id(UnitOneId), ct);
+        await service.ResolvePermissionAsync(HumanGuid.ToString("D"), Id(UnitOneId), ct);
+
+        await resolver.DidNotReceive().ResolveByUsernameAsync(
+            Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
+    }
+
+    private PermissionService BuildServiceWithResolver(IHumanIdentityResolver resolver)
+    {
+        var services = new ServiceCollection();
+        services.AddScoped(_ => resolver);
+        var scopeFactory = services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>();
+
+        return new PermissionService(
+            _actorProxyFactory,
+            _hierarchyResolver,
+            _directoryService,
+            _loggerFactory,
+            scopeFactory);
     }
 }
