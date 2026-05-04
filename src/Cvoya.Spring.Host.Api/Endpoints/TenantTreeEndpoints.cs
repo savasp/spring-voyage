@@ -65,6 +65,7 @@ public static class TenantTreeEndpoints
         [FromServices] IUnitMembershipRepository memberships,
         [FromServices] IUnitSubunitMembershipRepository subunitMemberships,
         [FromServices] ITenantContext tenantContext,
+        [FromServices] ITenantRegistry tenantRegistry,
         [FromServices] IActorProxyFactory actorProxyFactory,
         [FromServices] ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
@@ -185,9 +186,11 @@ public static class TenantTreeEndpoints
             .ToList();
 
         var tenantIdString = Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(tenantId);
+        var tenantRecord = await tenantRegistry.GetAsync(tenantId, cancellationToken).ConfigureAwait(false);
+        var tenantName = tenantRecord?.DisplayName ?? tenantIdString;
         var tenantNode = new TenantTreeNode(
             Id: $"tenant://{tenantIdString}",
-            Name: tenantIdString,
+            Name: tenantName,
             Kind: "Tenant",
             Status: "running",
             Children: rootUnitNodes);
