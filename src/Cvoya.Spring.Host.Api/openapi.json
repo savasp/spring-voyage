@@ -9868,6 +9868,39 @@
           "Revoked"
         ]
       },
+      "CredentialPathEntry": {
+        "required": [
+          "path",
+          "accepted"
+        ],
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "accepted": {
+            "type": "boolean"
+          }
+        }
+      },
+      "CredentialPathResolvability": {
+        "required": [
+          "summary",
+          "paths"
+        ],
+        "type": "object",
+        "properties": {
+          "summary": {
+            "type": "string"
+          },
+          "paths": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CredentialPathEntry"
+            }
+          }
+        }
+      },
       "CredentialValidateRequest": {
         "required": [
           "credential",
@@ -11316,6 +11349,16 @@
             "type": [
               "null",
               "string"
+            ]
+          },
+          "paths": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CredentialPathResolvability"
+              }
             ]
           }
         }

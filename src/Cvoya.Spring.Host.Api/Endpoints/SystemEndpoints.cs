@@ -72,6 +72,23 @@ public static class SystemEndpoints
     private const string DispatchPathRest = "rest";
     private const string DispatchPathAgentRuntime = "agent-runtime";
 
+    // Machine-readable values for ProviderCredentialStatusResponse.Paths[i].Source.
+    // Captures the per-path resolvability matrix surfaced by #1690 so
+    // callers can reason about which dispatch paths will accept the
+    // stored credential without firing a second probe with a different
+    // dispatchPath query argument. The strings are stable; new entries
+    // are additive.
+    //
+    // - all-paths            — every dispatch path the runtime exposes
+    //                          will accept the stored credential.
+    // - in-container-cli-only — only the in-container agent-runtime CLI
+    //                          accepts the credential (e.g. a Claude.ai
+    //                          OAuth token authenticates `claude` inside
+    //                          the unit container but is rejected by
+    //                          the Anthropic Platform REST endpoint).
+    private const string PathSourceAllPaths = "all-paths";
+    private const string PathSourceInContainerCliOnly = "in-container-cli-only";
+
     /// <summary>
     /// Registers the system-level endpoints on <paramref name="app"/>.
     /// </summary>
@@ -150,8 +167,9 @@ public static class SystemEndpoints
                     // and surface `format-rejected` so the wizard does not
                     // show a green badge for a credential that will fail
                     // dispatch on the first message. (#1003)
+                    var runtime = agentRuntimeRegistry.Get(runtimeId);
                     if (resolvable
-                        && agentRuntimeRegistry.Get(runtimeId) is { } runtime
+                        && runtime is not null
                         && !runtime.IsCredentialFormatAccepted(resolution.Value!, path))
                     {
                         resolvable = false;
@@ -163,6 +181,19 @@ public static class SystemEndpoints
                         suggestion = BuildFormatRejectedSuggestion(normalized, path, agentImage);
                     }
 
+                    // #1690: per-path resolvability matrix. Captures both
+                    // dispatch paths in a single response so the portal /
+                    // CLI can render a per-path table without firing a
+                    // second probe with a different ?dispatchPath= value.
+                    // Only emitted when a credential is actually present
+                    // (resolution.Value non-empty); for not-configured /
+                    // unreadable / format-rejected (whole-credential)
+                    // states the per-path detail is null because there is
+                    // no stored shape to evaluate against the matrix.
+                    var paths = resolution.Value is { Length: > 0 } storedValue && runtime is not null
+                        ? BuildPathResolvability(runtime, storedValue)
+                        : null;
+
                     // NEVER include `resolution.Value` in the response —
                     // the endpoint is read-by-anyone (within the tenant)
                     // and the key material must stay server-side.
@@ -171,7 +202,8 @@ public static class SystemEndpoints
                         Resolvable: resolvable,
                         Source: source,
                         Suggestion: suggestion,
-                        Reason: reason));
+                        Reason: reason,
+                        Paths: paths));
                 }
             case ProviderOllama:
                 {
@@ -194,7 +226,11 @@ public static class SystemEndpoints
                         // (tier-1), so Source is always null.
                         Source: null,
                         Suggestion: suggestion,
-                        Reason: reachable ? null : ReasonUnreachable));
+                        Reason: reachable ? null : ReasonUnreachable,
+                        // Ollama is reached over a single host-side HTTP
+                        // path, so per-path matrix carries no extra
+                        // signal. Skip it.
+                        Paths: null));
                 }
             default:
                 return Results.BadRequest(new
@@ -320,6 +356,58 @@ public static class SystemEndpoints
             "or switch to a dispatch path that accepts the current format.";
     }
 
+    /// <summary>
+    /// Builds the per-path resolvability matrix for a credential the
+    /// resolver has already produced. Each enum value of
+    /// <see cref="CredentialDispatchPath"/> is evaluated against the
+    /// runtime's <see cref="IAgentRuntime.IsCredentialFormatAccepted"/>;
+    /// the result is reported as one row per path with a stable
+    /// machine-readable label so the portal can render a matrix without
+    /// hard-coding the per-path branching that lives in the runtime.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The matrix's <c>source</c> column collapses the two paths into a
+    /// summary string (<c>all-paths</c> when both paths accept the
+    /// credential, <c>in-container-cli-only</c> when only the agent
+    /// runtime path does). The summary is what the portal renders as the
+    /// "where this credential works" badge; the per-path entries supply
+    /// the underlying truth so future paths added to
+    /// <see cref="CredentialDispatchPath"/> appear in the matrix without
+    /// having to extend the summary string.
+    /// </para>
+    /// </remarks>
+    private static CredentialPathResolvability BuildPathResolvability(
+        IAgentRuntime runtime,
+        string credential)
+    {
+        var restAccepted = runtime.IsCredentialFormatAccepted(
+            credential, CredentialDispatchPath.Rest);
+        var agentRuntimeAccepted = runtime.IsCredentialFormatAccepted(
+            credential, CredentialDispatchPath.AgentRuntime);
+
+        var summary = (restAccepted, agentRuntimeAccepted) switch
+        {
+            (true, true) => PathSourceAllPaths,
+            (false, true) => PathSourceInContainerCliOnly,
+            // Reverse asymmetry — REST accepts but in-container CLI does
+            // not — is theoretically possible for a future runtime, but
+            // for the credential shapes Anthropic exposes today it is not
+            // observed. Surface the explicit per-path entries below so a
+            // caller seeing it can still reason precisely.
+            (true, false) => DispatchPathRest,
+            (false, false) => ReasonFormatRejected,
+        };
+
+        return new CredentialPathResolvability(
+            Summary: summary,
+            Paths: new[]
+            {
+                new CredentialPathEntry(DispatchPathRest, restAccepted),
+                new CredentialPathEntry(DispatchPathAgentRuntime, agentRuntimeAccepted),
+            });
+    }
+
     private static bool TryParseDispatchPath(string? raw, out CredentialDispatchPath path)
     {
         if (string.IsNullOrWhiteSpace(raw))
@@ -412,9 +500,65 @@ public static class SystemEndpoints
 /// resolvable. The portal uses this to pick a specific banner copy;
 /// additional codes may be appended in later waves.
 /// </param>
+/// <param name="Paths">
+/// Per-path resolvability matrix for the stored credential (#1690).
+/// <c>null</c> when no credential is configured (the
+/// <see cref="Resolvable"/>/<see cref="Reason"/> fields already carry
+/// the only signal available); populated when a credential decrypts so
+/// the portal can render which dispatch paths will accept it. The
+/// scalar <see cref="Resolvable"/> + <see cref="Source"/> fields stay
+/// the canonical "yes/no" answer for the path the caller asked about
+/// via <c>?dispatchPath=</c>; <see cref="Paths"/> is the richer view
+/// that decouples per-shape capability from per-call evaluation.
+/// </param>
 public record ProviderCredentialStatusResponse(
     [property: JsonPropertyName("provider")] string Provider,
     [property: JsonPropertyName("resolvable")] bool Resolvable,
     [property: JsonPropertyName("source")] string? Source,
     [property: JsonPropertyName("suggestion")] string? Suggestion,
-    [property: JsonPropertyName("reason")] string? Reason = null);
+    [property: JsonPropertyName("reason")] string? Reason = null,
+    [property: JsonPropertyName("paths")] CredentialPathResolvability? Paths = null);
+
+/// <summary>
+/// Per-dispatch-path resolvability matrix for a stored credential (#1690).
+/// </summary>
+/// <param name="Summary">
+/// Stable machine-readable label collapsing the per-path entries into
+/// a portal-renderable shorthand. Values:
+/// <list type="bullet">
+///   <item><c>"all-paths"</c> — every dispatch path accepts the credential.</item>
+///   <item><c>"in-container-cli-only"</c> — only the in-container agent-runtime CLI path accepts it (e.g. an <c>sk-ant-oat…</c> OAuth token).</item>
+///   <item><c>"rest"</c> — only the host-side REST path accepts it (theoretical; not produced for any credential shape today).</item>
+///   <item><c>"format-rejected"</c> — neither path accepts the credential's shape.</item>
+/// </list>
+/// New paths added to <see cref="CredentialDispatchPath"/> appear in
+/// <see cref="Paths"/> automatically; the summary set is extended only
+/// when a meaningful new combination is observed.
+/// </param>
+/// <param name="Paths">
+/// Explicit per-path acceptance list. Each entry names a path and
+/// reports whether the runtime's pre-flight format check accepts the
+/// stored credential on that path. The list is exhaustive across the
+/// runtime's supported paths.
+/// </param>
+public record CredentialPathResolvability(
+    [property: JsonPropertyName("summary")] string Summary,
+    [property: JsonPropertyName("paths")] IReadOnlyList<CredentialPathEntry> Paths);
+
+/// <summary>
+/// One row of <see cref="CredentialPathResolvability.Paths"/>: a
+/// dispatch-path label plus the runtime's acceptance verdict.
+/// </summary>
+/// <param name="Path">
+/// Wire-stable dispatch path identifier — mirrors the <c>?dispatchPath=</c>
+/// query parameter. Today: <c>"rest"</c> or <c>"agent-runtime"</c>.
+/// </param>
+/// <param name="Accepted">
+/// <c>true</c> when the runtime's pre-flight format check accepts the
+/// stored credential on this path (no network round-trip is performed —
+/// this is shape-only). <c>false</c> when the path is known to reject
+/// it (e.g. the Anthropic Platform REST endpoint rejects OAuth tokens).
+/// </param>
+public record CredentialPathEntry(
+    [property: JsonPropertyName("path")] string Path,
+    [property: JsonPropertyName("accepted")] bool Accepted);

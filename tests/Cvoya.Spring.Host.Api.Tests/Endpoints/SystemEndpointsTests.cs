@@ -123,7 +123,10 @@ public class SystemEndpointsTests : IClassFixture<CustomWebApplicationFactory>
     public async Task Status_Anthropic_TenantConfigured_ReportsTenantSource()
     {
         var ct = TestContext.Current.CancellationToken;
-        await SeedTenantSecretAsync("anthropic-api-key", "sk-top-secret", ct);
+        // #1690: the format check now rejects values that are neither
+        // sk-ant-api… nor sk-ant-oat… on every dispatch path, so the
+        // tenant-configured fixture must use a valid Anthropic shape.
+        await SeedTenantSecretAsync("anthropic-api-key", "sk-ant-api-tenant-default", ct);
 
         var response = await _client.GetAsync(
             "/api/v1/platform/credentials/anthropic/status", ct);
@@ -133,7 +136,7 @@ public class SystemEndpointsTests : IClassFixture<CustomWebApplicationFactory>
         var raw = await response.Content.ReadAsStringAsync(ct);
         // Non-negotiable: the key material must never appear in the
         // response. If this ever fails, the endpoint has leaked plaintext.
-        raw.ShouldNotContain("sk-top-secret");
+        raw.ShouldNotContain("sk-ant-api-tenant-default");
 
         var body = await response.Content.ReadFromJsonAsync<ProviderCredentialStatusResponse>(ct);
         body.ShouldNotBeNull();
@@ -250,6 +253,43 @@ public class SystemEndpointsTests : IClassFixture<CustomWebApplicationFactory>
         body.Reason.ShouldBe("format-rejected");
         body.Suggestion.ShouldNotBeNullOrWhiteSpace();
         body.Suggestion!.ShouldContain("OAuth token");
+
+        // #1690: the per-path matrix must still report OAuth as in-container-only,
+        // even when the caller asked about the REST path (the scalar fields above
+        // already say "no for REST", but the matrix lets the portal render the
+        // operator-friendlier "your token works for the in-container CLI" copy
+        // without firing a second probe).
+        body.Paths.ShouldNotBeNull();
+        body.Paths!.Summary.ShouldBe("in-container-cli-only");
+        body.Paths.Paths.ShouldNotBeNull();
+        body.Paths.Paths.Single(p => p.Path == "rest").Accepted.ShouldBeFalse();
+        body.Paths.Paths.Single(p => p.Path == "agent-runtime").Accepted.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task Status_Anthropic_GibberishCredential_ReportsFormatRejectedOnAllPaths()
+    {
+        // #1690: a stored value that is neither sk-ant-api… nor sk-ant-oat…
+        // is rejected pre-flight on every path. Today the runtime probe
+        // would still fire the live API call, see the 400/422 response,
+        // and translate it to format-rejected — the pre-flight check
+        // saves that round-trip.
+        var ct = TestContext.Current.CancellationToken;
+        await SeedTenantSecretAsync("anthropic-api-key", "totally-not-a-key", ct);
+
+        var response = await _client.GetAsync(
+            "/api/v1/platform/credentials/anthropic/status?dispatchPath=agent-runtime", ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        var body = await response.Content.ReadFromJsonAsync<ProviderCredentialStatusResponse>(ct);
+        body.ShouldNotBeNull();
+        body!.Resolvable.ShouldBeFalse();
+        body.Reason.ShouldBe("format-rejected");
+        body.Paths.ShouldNotBeNull();
+        body.Paths!.Summary.ShouldBe("format-rejected");
+        body.Paths.Paths.Single(p => p.Path == "rest").Accepted.ShouldBeFalse();
+        body.Paths.Paths.Single(p => p.Path == "agent-runtime").Accepted.ShouldBeFalse();
     }
 
     [Fact]
@@ -275,6 +315,12 @@ public class SystemEndpointsTests : IClassFixture<CustomWebApplicationFactory>
         body.Source.ShouldBe("tenant");
         body.Reason.ShouldBeNull();
         body.Suggestion.ShouldBeNull();
+
+        // #1690: matrix mirrors the per-path acceptance.
+        body.Paths.ShouldNotBeNull();
+        body.Paths!.Summary.ShouldBe("in-container-cli-only");
+        body.Paths.Paths.Single(p => p.Path == "rest").Accepted.ShouldBeFalse();
+        body.Paths.Paths.Single(p => p.Path == "agent-runtime").Accepted.ShouldBeTrue();
     }
 
     [Fact]
@@ -297,6 +343,14 @@ public class SystemEndpointsTests : IClassFixture<CustomWebApplicationFactory>
             body!.Resolvable.ShouldBeTrue();
             body.Source.ShouldBe("tenant");
             body.Reason.ShouldBeNull();
+
+            // #1690: matrix says "all-paths" regardless of which path the caller
+            // asked about — the matrix decouples shape capability from per-call
+            // evaluation.
+            body.Paths.ShouldNotBeNull();
+            body.Paths!.Summary.ShouldBe("all-paths");
+            body.Paths.Paths.Count.ShouldBe(2);
+            body.Paths.Paths.ShouldAllBe(p => p.Accepted);
         }
     }
 

@@ -73,6 +73,9 @@ public class ClaudeAgentRuntime : IAgentRuntime
     /// <summary>Credential prefix that identifies a Claude.ai OAuth token (<c>claude setup-token</c>).</summary>
     private const string OAuthTokenPrefix = "sk-ant-oat";
 
+    /// <summary>Credential prefix that identifies an Anthropic Platform API key (<c>console.anthropic.com</c>).</summary>
+    private const string ApiKeyPrefix = "sk-ant-api";
+
     // Probe timeouts — generous caps so a stuck CLI / network round-trip
     // cannot stall the UnitValidationWorkflow indefinitely. The tool
     // probe is a cheap --version; the credential probe spawns a real
@@ -431,6 +434,11 @@ public class ClaudeAgentRuntime : IAgentRuntime
     /// Messages API used by <see cref="Cvoya.Spring.Core.Execution.IAiProvider"/>)
     /// accepts only API keys — OAuth tokens are rejected with a 401
     /// (see #981 / the fail-fast guard in <c>AnthropicProvider</c>).
+    /// Values that are neither shape (no <c>sk-ant-api…</c> nor
+    /// <c>sk-ant-oat…</c> prefix) are rejected on both paths because they
+    /// cannot authenticate against either Anthropic surface — the probe
+    /// would otherwise burn a network round-trip just to receive a 401
+    /// (#1690).
     /// </remarks>
     public bool IsCredentialFormatAccepted(string credential, CredentialDispatchPath dispatchPath)
     {
@@ -441,8 +449,21 @@ public class ClaudeAgentRuntime : IAgentRuntime
             return true;
         }
 
-        if (dispatchPath == CredentialDispatchPath.Rest
-            && credential.StartsWith(OAuthTokenPrefix, StringComparison.Ordinal))
+        var isApiKey = credential.StartsWith(ApiKeyPrefix, StringComparison.Ordinal);
+        var isOAuth = credential.StartsWith(OAuthTokenPrefix, StringComparison.Ordinal);
+
+        // Neither-shape: Anthropic accepts no other prefix on either
+        // surface. Reject pre-flight on every path so the wizard surfaces
+        // `format-rejected` instead of a misleading 401 from the live
+        // probe.
+        if (!isApiKey && !isOAuth)
+        {
+            return false;
+        }
+
+        // OAuth tokens authenticate the `claude` CLI (in-container path)
+        // only; the Anthropic Platform REST endpoint rejects them.
+        if (dispatchPath == CredentialDispatchPath.Rest && isOAuth)
         {
             return false;
         }

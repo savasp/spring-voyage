@@ -216,6 +216,46 @@ public class DaprAgentLauncherTests
             .ShouldBe(AgentVolumeManager.WorkspaceMountPath);
     }
 
+    [Fact]
+    public async Task PrepareAsync_AnthropicProvider_DoesNotPropagateAnthropicApiKey_TrackedByFollowUp()
+    {
+        // #1690 + #1714: when an operator configures
+        //   `agent: spring-voyage, provider: anthropic, model: <m>`
+        // the credential matrix says ANTHROPIC_API_KEY should land on
+        // the agent container's env so agent.py's DaprChatClient (or
+        // any direct Anthropic SDK call) can authenticate. Today the
+        // launcher does not propagate the credential — neither
+        // DaprAgentLauncher nor AgentContextBuilder injects it, and the
+        // OSS deploy ships only conversation-ollama.yaml so the Dapr
+        // Conversation component the Python agent dials is wired to
+        // Ollama regardless of `provider`.
+        //
+        // This test pins the gap so #1714's fix lands as a single
+        // delete-this-assertion + add-the-positive-assertion diff.
+        var context = new AgentLaunchContext(
+            AgentId: "dapr-anthropic-agent",
+            ThreadId: "conv-anthropic-1",
+            Prompt: "## System\nYou are a helpful assistant.",
+            McpEndpoint: "http://host.docker.internal:9999/mcp/",
+            McpToken: "t",
+            TenantId: Cvoya.Spring.Core.Tenancy.OssTenantIds.Default,
+            Provider: "anthropic",
+            Model: "claude-sonnet-4-6");
+
+        var prep = await _launcher.PrepareAsync(context, TestContext.Current.CancellationToken);
+
+        prep.EnvironmentVariables["SPRING_LLM_PROVIDER"].ShouldBe("anthropic");
+        prep.EnvironmentVariables["SPRING_MODEL"].ShouldBe("claude-sonnet-4-6");
+        // GAP: the launcher does not yet propagate the Anthropic credential.
+        // Once #1714 wires per-provider Conversation components and credential
+        // injection, flip this to a positive assertion that ANTHROPIC_API_KEY
+        // is set to the resolved slot value.
+        prep.EnvironmentVariables.ShouldNotContainKey(
+            "ANTHROPIC_API_KEY",
+            "ANTHROPIC_API_KEY propagation for spring-voyage + Anthropic is tracked by #1714 — " +
+            "flip this assertion when that issue lands.");
+    }
+
     private static AgentLaunchContext CreateContext() =>
         new(
             AgentId: "dapr-test-agent",
