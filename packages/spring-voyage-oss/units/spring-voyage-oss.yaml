@@ -1,5 +1,5 @@
 unit:
-  name: spring-voyage-oss
+  name: Spring Voyage OSS
   description: The Spring Voyage OSS dogfooding unit — software engineering, design, product management, and program management teams collaborating on the Spring Voyage platform itself.
   structure: hierarchical
   ai:

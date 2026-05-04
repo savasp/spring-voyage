@@ -1,5 +1,5 @@
 unit:
-  name: sv-oss-software-engineering
+  name: Software Engineering
   description: Software engineering team for Spring Voyage OSS — implements features, fixes bugs, runs the build/test/lint loop.
   structure: hierarchical
   ai:

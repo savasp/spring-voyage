@@ -1,5 +1,5 @@
 unit:
-  name: sv-oss-design
+  name: Design
   description: Design team for Spring Voyage OSS — owns visual design, accessibility, and DESIGN.md alignment for the portal.
   structure: hierarchical
   ai:

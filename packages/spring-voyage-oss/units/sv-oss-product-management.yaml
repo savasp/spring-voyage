@@ -1,5 +1,5 @@
 unit:
-  name: sv-oss-product-management
+  name: Product Management
   description: Product management team for Spring Voyage OSS — triage, roadmap, and sprint planning against the v0.1 plan-of-record.
   structure: hierarchical
   ai:

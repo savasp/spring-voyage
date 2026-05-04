@@ -1,5 +1,5 @@
 unit:
-  name: sv-oss-program-management
+  name: Program Management
   description: Program management team for Spring Voyage OSS — milestone hygiene, sub-issue and blocked-by wiring, dependency tracking.
   structure: hierarchical
   ai:
