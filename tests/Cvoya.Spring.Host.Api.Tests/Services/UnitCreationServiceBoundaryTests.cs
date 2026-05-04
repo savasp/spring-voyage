@@ -81,9 +81,11 @@ public class UnitCreationServiceBoundaryTests
             manifest, new UnitCreationOverrides(IsTopLevel: true), TestContext.Current.CancellationToken);
 
         // One SetAsync call carrying the projected UnitBoundary — check the
-        // exact content so YAML → core projection stays stable.
+        // exact content so YAML → core projection stays stable. Post-#1629
+        // the Address is keyed by the unit's actor Guid (server-minted),
+        // so we assert on scheme only here.
         await boundaryStore.Received(1).SetAsync(
-            Arg.Is<Address>(a => a.Scheme == "unit" && a.Path == "boundary-cell"),
+            Arg.Is<Address>(a => a.Scheme == "unit"),
             Arg.Is<UnitBoundary>(b =>
                 b.Opacities != null && b.Opacities.Count == 2
                 && b.Projections != null && b.Projections.Count == 1
@@ -169,7 +171,9 @@ public class UnitCreationServiceBoundaryTests
         var result = await service.CreateFromManifestAsync(
             manifest, new UnitCreationOverrides(IsTopLevel: true), TestContext.Current.CancellationToken);
 
-        result.Unit.Name.ShouldBe("flaky-boundary");
+        // Post-#1629 Unit.Name carries the address Path (Guid hex) and the
+        // human-readable label travels in DisplayName.
+        result.Unit.DisplayName.ShouldBe("flaky-boundary");
     }
 
     [Fact]

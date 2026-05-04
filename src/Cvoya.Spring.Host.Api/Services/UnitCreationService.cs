@@ -251,9 +251,11 @@ public class UnitCreationService : IUnitCreationService
         // keeps YAML-applied and API-applied boundaries wire-identical. An
         // absent or all-empty block is a no-op so the unit's default
         // "transparent" view is preserved.
+        // Post-#1629 the address is keyed by the unit's actor Guid (parsed
+        // back from result.Unit.Id, the hex form returned by CreateCoreAsync).
         if (manifest.Boundary is { IsEmpty: false })
         {
-            await PersistUnitBoundaryAsync(name, manifest.Boundary, cancellationToken);
+            await PersistUnitBoundaryAsync(name, result.Unit.Id, manifest.Boundary, cancellationToken);
         }
 
         // #601 / #603 / #409 B-wide: persist the manifest's `execution:`
@@ -474,6 +476,7 @@ public class UnitCreationService : IUnitCreationService
     /// </summary>
     private async Task PersistUnitBoundaryAsync(
         string unitName,
+        string unitIdHex,
         BoundaryManifest boundary,
         CancellationToken cancellationToken)
     {
@@ -496,7 +499,7 @@ public class UnitCreationService : IUnitCreationService
                 return;
             }
 
-            var address = Address.For("unit", unitName);
+            var address = Address.For("unit", unitIdHex);
             await _boundaryStore.SetAsync(address, core, cancellationToken);
         }
         catch (OperationCanceledException)
