@@ -56,12 +56,17 @@ public interface IUnitValidationCoordinator
     /// Delegate that writes the status to actor state and emits the
     /// <c>StateChanged</c> activity event. Called by the coordinator when
     /// scheduler failure forces a recovery transition into
-    /// <see cref="UnitStatus.Error"/>.
+    /// <see cref="UnitStatus.Error"/>. The optional
+    /// <see cref="UnitValidationError"/> argument carries the structured
+    /// failure context (#1665) so the activity event can elevate severity
+    /// and inject the validation <c>code</c>/<c>message</c> into
+    /// <c>summary</c> + <c>details</c>; passed as <c>null</c> for non-failure
+    /// transitions.
     /// </param>
     /// <param name="cancellationToken">Cancels the schedule.</param>
     Task<TransitionResult?> TryStartWorkflowAsync(
         string unitActorId,
-        Func<UnitStatus, UnitStatus, CancellationToken, Task<TransitionResult>> persistTransition,
+        Func<UnitStatus, UnitStatus, UnitValidationError?, CancellationToken, Task<TransitionResult>> persistTransition,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -82,13 +87,18 @@ public interface IUnitValidationCoordinator
     /// </param>
     /// <param name="persistTransition">
     /// Delegate that writes the status to actor state and emits the
-    /// <c>StateChanged</c> activity event.
+    /// <c>StateChanged</c> activity event. The optional
+    /// <see cref="UnitValidationError"/> argument carries the structured
+    /// failure context (#1665) so the activity event can elevate severity
+    /// and inject the validation <c>code</c>/<c>message</c> into
+    /// <c>summary</c> + <c>details</c>; passed as <c>null</c> on the
+    /// success path.
     /// </param>
     /// <param name="cancellationToken">Cancels the completion handling.</param>
     Task<TransitionResult> CompleteValidationAsync(
         string unitActorId,
         UnitValidationCompletion completion,
         Func<CancellationToken, Task<UnitStatus>> getCurrentStatus,
-        Func<UnitStatus, UnitStatus, CancellationToken, Task<TransitionResult>> persistTransition,
+        Func<UnitStatus, UnitStatus, UnitValidationError?, CancellationToken, Task<TransitionResult>> persistTransition,
         CancellationToken cancellationToken = default);
 }

@@ -25,10 +25,11 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatCard } from "@/components/stat-card";
-import { useUnitCostTimeseries } from "@/lib/api/queries";
+import { useUnit, useUnitCostTimeseries, useUnitExecution } from "@/lib/api/queries";
 import { formatCost } from "@/lib/utils";
 
 import { aggregate, type UnitNode } from "../aggregate";
+import ValidationPanel from "../detail/validation-panel";
 import { UnitOverviewExpertiseCard } from "../unit-overview-expertise-card";
 
 import { registerTab, type TabContentProps } from "./index";
@@ -98,9 +99,20 @@ function UnitOverviewTab({ node }: TabContentProps) {
     { enabled: node.kind === "Unit" },
   );
 
+  // #1665: pull the live unit envelope so we can surface the structured
+  // `lastValidationError` when the unit has failed validation. The tree's
+  // `node.status` is the aggregated worst-status, not the unit's actual
+  // lifecycle state, so we mirror `<UnitPaneActions>` and read from the
+  // per-unit endpoint instead.
+  const unitQuery = useUnit(node.id, { enabled: node.kind === "Unit" });
+  const executionQuery = useUnitExecution(node.id, {
+    enabled: node.kind === "Unit",
+  });
+
   if (node.kind !== "Unit") return null;
   const unit = node as UnitNode;
   const roll = aggregate(unit);
+  const liveUnit = unitQuery.data ?? null;
 
   const sparklinePoints =
     timeseriesQuery.data?.points?.map((p) => p.costUsd) ?? [];
@@ -110,6 +122,25 @@ function UnitOverviewTab({ node }: TabContentProps) {
       {unit.desc ? (
         <p className="text-sm text-muted-foreground">{unit.desc}</p>
       ) : null}
+      {/*
+       * #1665: surface the unit's most recent validation error and the
+       * structured remediation copy when the unit is in `Error`. The
+       * existing `<ValidationPanel>` already maps the persisted
+       * `lastValidationError` blob to friendly per-code copy and
+       * exposes the retry / edit-credential affordances; reusing it
+       * here keeps the Overview tab and the create-wizard's
+       * post-validation step in lockstep. We deliberately scope this
+       * to `Error` only — for healthy units the panel would clutter
+       * the Overview, and the four-step probe animation while
+       * `Validating` already lives on the live status surface.
+       */}
+      {liveUnit && liveUnit.status === "Error" && (
+        <ValidationPanel
+          unit={liveUnit}
+          image={executionQuery.data?.image ?? null}
+          runtime={executionQuery.data?.runtime ?? null}
+        />
+      )}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <StatCard
           label="Agents"

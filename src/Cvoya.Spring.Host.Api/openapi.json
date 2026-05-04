@@ -10639,7 +10639,8 @@
           "timestamp": {
             "type": "string",
             "format": "date-time"
-          }
+          },
+          "details": { }
         }
       },
       "JsonElement": { },

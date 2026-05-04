@@ -3,6 +3,8 @@
 
 namespace Cvoya.Spring.Core.Observability;
 
+using System.Text.Json;
+
 /// <summary>
 /// Paginated result of an activity event query.
 /// </summary>
@@ -23,5 +25,14 @@ public record ActivityQueryResult(IReadOnlyList<ActivityQueryResult.Item> Items,
     /// <param name="CorrelationId">An optional correlation identifier.</param>
     /// <param name="Cost">An optional cost associated with the event.</param>
     /// <param name="Timestamp">When the event occurred.</param>
-    public record Item(Guid Id, string Source, string EventType, string Severity, string Summary, string? CorrelationId, decimal? Cost, DateTimeOffset Timestamp);
+    /// <param name="Details">
+    /// Optional structured event details, mirroring the SSE payload's
+    /// <c>details</c> field (#1665). Populated for events that carry
+    /// additional context — e.g. a <c>StateChanged</c> row driven by
+    /// validation failure carries the validation <c>code</c>,
+    /// <c>message</c>, and full structured error blob so the portal
+    /// Activity tab can expand the row without falling back to a stream
+    /// subscription.
+    /// </param>
+    public record Item(Guid Id, string Source, string EventType, string Severity, string Summary, string? CorrelationId, decimal? Cost, DateTimeOffset Timestamp, JsonElement? Details = null);
 }

@@ -381,7 +381,7 @@ public class UnitActor : Actor, IUnitActor
             return new TransitionResult(false, current, reason);
         }
 
-        var result = await PersistTransitionAsync(current, target, ct);
+        var result = await PersistTransitionAsync(current, target, failure: null, ct);
 
         // #947 / T-05: whenever the unit enters Validating we must schedule
         // the in-container probe workflow and persist its instance id so
@@ -442,6 +442,7 @@ public class UnitActor : Actor, IUnitActor
         return await PersistTransitionAsync(
             UnitStatus.Validating,
             completion.Success ? UnitStatus.Stopped : UnitStatus.Error,
+            completion.Success ? null : completion.Failure,
             ct);
     }
 
@@ -737,8 +738,22 @@ public class UnitActor : Actor, IUnitActor
     /// activity event. Shared by <see cref="TransitionAsync"/> and the
     /// <see cref="Cvoya.Spring.Dapr.Actors.UnitValidationCoordinator"/>.
     /// </summary>
+    /// <remarks>
+    /// #1665: when <paramref name="failure"/> is non-null (the
+    /// Validating → Error case driven by
+    /// <see cref="IUnitValidationCoordinator"/>) the activity event's
+    /// severity is elevated to <see cref="ActivitySeverity.Warning"/> and
+    /// the validation <c>code</c>, <c>message</c>, and <c>step</c> are
+    /// folded into the row's <c>summary</c> + <c>details</c>. Without
+    /// this the Activity tab shows a bare "Unit transitioned from
+    /// Validating to Error" line tagged Debug — invisible in the default
+    /// feed and devoid of any cue as to *why* the validation failed.
+    /// </remarks>
     private async Task<TransitionResult> PersistTransitionAsync(
-        UnitStatus current, UnitStatus target, CancellationToken ct)
+        UnitStatus current,
+        UnitStatus target,
+        UnitValidationError? failure,
+        CancellationToken ct)
     {
         await StateManager.SetStateAsync(StateKeys.UnitStatus, target, ct);
 
@@ -746,15 +761,37 @@ public class UnitActor : Actor, IUnitActor
             "Unit {ActorId} transitioned from {Current} to {Target}",
             Id.GetId(), current, target);
 
-        await EmitActivityEventAsync(ActivityEventType.StateChanged,
-            $"Unit transitioned from {current} to {target}",
-            ct,
-            details: JsonSerializer.SerializeToElement(new
+        var summary = failure is not null
+            ? $"Unit transitioned from {current} to {target}: {failure.Code} \u2014 {failure.Message}"
+            : $"Unit transitioned from {current} to {target}";
+
+        var details = failure is not null
+            ? JsonSerializer.SerializeToElement(new
             {
                 action = "StatusTransition",
                 from = current.ToString(),
-                to = target.ToString()
-            }));
+                to = target.ToString(),
+                validationStep = failure.Step.ToString(),
+                validationCode = failure.Code,
+                validationMessage = failure.Message,
+                error = failure,
+            })
+            : JsonSerializer.SerializeToElement(new
+            {
+                action = "StatusTransition",
+                from = current.ToString(),
+                to = target.ToString(),
+            });
+
+        var severityOverride = failure is not null
+            ? (ActivitySeverity?)ActivitySeverity.Warning
+            : null;
+
+        await EmitActivityEventAsync(ActivityEventType.StateChanged,
+            summary,
+            ct,
+            details: details,
+            severityOverride: severityOverride);
 
         return new TransitionResult(true, target, null);
     }
@@ -977,21 +1014,29 @@ public class UnitActor : Actor, IUnitActor
     /// Emits an activity event through the activity event bus.
     /// Failures are logged but never allowed to escape the actor turn.
     /// </summary>
+    /// <remarks>
+    /// <paramref name="severityOverride"/>, when set, takes precedence
+    /// over the <paramref name="eventType"/>-driven default — used by
+    /// <see cref="PersistTransitionAsync"/> to promote a validation-failure
+    /// transition above the default <c>Debug</c> level so the row is
+    /// visually distinct in the Activity feed (#1665).
+    /// </remarks>
     private async Task EmitActivityEventAsync(
         ActivityEventType eventType,
         string description,
         CancellationToken cancellationToken,
         JsonElement? details = null,
-        string? correlationId = null)
+        string? correlationId = null,
+        ActivitySeverity? severityOverride = null)
     {
         try
         {
-            var severity = eventType switch
+            var severity = severityOverride ?? (eventType switch
             {
                 ActivityEventType.ErrorOccurred => ActivitySeverity.Error,
                 ActivityEventType.StateChanged => ActivitySeverity.Debug,
                 _ => ActivitySeverity.Info,
-            };
+            });
 
             var activityEvent = new ActivityEvent(
                 Guid.NewGuid(),

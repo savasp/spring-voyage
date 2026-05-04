@@ -44,6 +44,12 @@ The probe plan is built by `IAgentRuntime.GetProbeSteps(config, credential)`. Ea
 
 **Retry surface.** `POST /api/v1/units/{name}/revalidate` (allowed only from `Error` / `Stopped`) flips the unit back into `Validating` and dispatches a fresh workflow instance. The CLI (`spring unit revalidate <name>`) wraps this and polls the terminal state.
 
+**Operator-facing surfaces for failure.** When the terminal transition is `Validating → Error`:
+
+- The structured `LastValidationError` blob persisted on the unit row (`{ Step, Code, Message, Details }`) is exposed on `UnitResponse.lastValidationError` (`GET /api/v1/tenant/units/{id}`).
+- The portal's **unit Overview tab** mounts the `<ValidationPanel>` for `Error` units, mapping `Code` to friendly remediation copy and exposing the `Retry validation` / `Edit credential & retry` affordances. Healthy units don't render the panel.
+- The `StateChanged` activity event for the failure transition is emitted at `Warning` severity (not the `Debug` level used for ordinary lifecycle moves) and carries the validation `code`, `message`, and `step` in both the human-readable summary and the structured `details` payload. The portal's **Activity tab** lets an operator expand any row whose `details` is non-empty to see the full payload — including the original `LastValidationError.Details` map — without falling back to the SSE stream.
+
 ---
 
 ## Path A: Imperative (CLI)

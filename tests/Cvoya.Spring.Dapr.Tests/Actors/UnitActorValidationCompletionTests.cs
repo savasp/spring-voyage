@@ -148,6 +148,68 @@ public class UnitActorValidationCompletionTests
         roundTripped.Details!["status"].ShouldBe("401");
     }
 
+    [Fact]
+    public async Task Failure_EmitsWarningStateChangedActivityWithValidationContext()
+    {
+        // #1665: the StateChanged row used to be tagged Debug with a bare
+        // "Unit transitioned from Validating to Error" summary — invisible in
+        // the Activity tab and devoid of any cue as to *why*. Assert that the
+        // failure path now emits a Warning row with the validation code +
+        // message embedded in summary and details.
+        ActivityEvent? capturedEvent = null;
+        _activityEventBus
+            .When(b => b.PublishAsync(Arg.Any<ActivityEvent>(), Arg.Any<CancellationToken>()))
+            .Do(ci => capturedEvent = ci.ArgAt<ActivityEvent>(0));
+
+        await _actor.CompleteValidationAsync(
+            Failure(), TestContext.Current.CancellationToken);
+
+        capturedEvent.ShouldNotBeNull();
+        capturedEvent!.EventType.ShouldBe(ActivityEventType.StateChanged);
+        capturedEvent.Severity.ShouldBe(ActivitySeverity.Warning);
+        capturedEvent.Summary.ShouldContain(UnitValidationCodes.CredentialInvalid);
+        capturedEvent.Summary.ShouldContain("credential rejected");
+
+        capturedEvent.Details.ShouldNotBeNull();
+        var details = capturedEvent.Details!.Value;
+        details.GetProperty("action").GetString().ShouldBe("StatusTransition");
+        details.GetProperty("from").GetString().ShouldBe(UnitStatus.Validating.ToString());
+        details.GetProperty("to").GetString().ShouldBe(UnitStatus.Error.ToString());
+        details.GetProperty("validationCode").GetString().ShouldBe(UnitValidationCodes.CredentialInvalid);
+        details.GetProperty("validationMessage").GetString().ShouldBe("credential rejected");
+        details.GetProperty("validationStep").GetString().ShouldBe(UnitValidationStep.ValidatingCredential.ToString());
+        // The full structured error blob is also present so the portal can
+        // expand the row to show every field (including validation Details).
+        details.GetProperty("error").GetProperty("Code").GetString()
+            .ShouldBe(UnitValidationCodes.CredentialInvalid);
+    }
+
+    [Fact]
+    public async Task Success_EmitsDebugStateChangedActivityWithoutValidationContext()
+    {
+        // Negative control for the test above — non-failure transitions
+        // keep the original Debug severity and bare details payload so we
+        // don't accidentally promote every StateChanged row to Warning.
+        ActivityEvent? capturedEvent = null;
+        _activityEventBus
+            .When(b => b.PublishAsync(Arg.Any<ActivityEvent>(), Arg.Any<CancellationToken>()))
+            .Do(ci => capturedEvent = ci.ArgAt<ActivityEvent>(0));
+
+        await _actor.CompleteValidationAsync(
+            Success(), TestContext.Current.CancellationToken);
+
+        capturedEvent.ShouldNotBeNull();
+        capturedEvent!.EventType.ShouldBe(ActivityEventType.StateChanged);
+        capturedEvent.Severity.ShouldBe(ActivitySeverity.Debug);
+        capturedEvent.Summary.ShouldBe(
+            $"Unit transitioned from {UnitStatus.Validating} to {UnitStatus.Stopped}");
+
+        capturedEvent.Details.ShouldNotBeNull();
+        var details = capturedEvent.Details!.Value;
+        details.TryGetProperty("validationCode", out _).ShouldBeFalse();
+        details.TryGetProperty("error", out _).ShouldBeFalse();
+    }
+
     // --- Guards ---
 
     [Fact]
