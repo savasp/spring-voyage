@@ -4,6 +4,7 @@ import { Bot, Globe, Layers } from "lucide-react";
 import {
   type KeyboardEvent,
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -76,6 +77,15 @@ export function UnitTree({
   // the selected row, but tracks arrow-key movement separately so operators
   // can survey the tree without shifting selection.
   const [focusedId, setFocusedId] = useState<string>(selectedId);
+
+  // #1704: re-anchor the tabstop when `selectedId` changes externally (URL
+  // navigation, Cmd-K teleport, dashboard deep-link). Without this, keyboard
+  // Enter would re-select the previously-focused row, making selection appear
+  // to "snap back" to the old node.
+  useEffect(() => {
+    setFocusedId(selectedId);
+  }, [selectedId]);
+
   const containerRef = useRef<HTMLDivElement>(null);
   // Short-lived type-ahead buffer: printable keys append; ~500 ms of
   // silence resets.
