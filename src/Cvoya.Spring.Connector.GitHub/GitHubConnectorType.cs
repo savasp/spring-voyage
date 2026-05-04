@@ -721,6 +721,14 @@ public class GitHubConnectorType : IConnectorType
             // the result is intersected with the *user's* repository
             // permissions — narrower than the App-installation listing.
             //
+            // The result of `ListUserAccessibleRepositoriesAsync` is
+            // already intersected on the GitHub side, but we run it
+            // through `UserScopedRepositoryFilter.Intersect(…, null)`
+            // anyway — the helper enforces the canonical alphabetical
+            // ordering and stays the single seam a private cloud impl
+            // can override to layer additional filtering on top
+            // (e.g. tenant-scoped repo allow-lists).
+            //
             // A failure on one installation MUST NOT poison the list —
             // log it and keep the other installations' rows so the
             // wizard still has something to render.
@@ -768,7 +776,15 @@ public class GitHubConnectorType : IConnectorType
                     continue;
                 }
 
-                foreach (var repo in repos)
+                // Run the per-installation result through the pure
+                // intersection helper (#1663). With a null user-set
+                // this is a no-op besides the canonical alphabetical
+                // sort; the helper exists so the cloud overlay can
+                // wedge in tenant-scoped allow-lists at this seam
+                // without re-implementing the rule.
+                var filtered = UserScopedRepositoryFilter
+                    .Intersect(repos, userAccessibleRepoIds: null);
+                foreach (var repo in filtered)
                 {
                     aggregated.Add(new GitHubRepositoryResponse(
                         installation.InstallationId,
