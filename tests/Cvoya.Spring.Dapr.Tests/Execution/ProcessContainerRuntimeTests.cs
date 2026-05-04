@@ -286,35 +286,59 @@ public class ProcessContainerRuntimeTests
         AssertFlagPair(args, "-e", "KEY=val with spaces");
     }
 
-    // ── BuildPullArguments tests (#1676) ──
+    // ── BuildPullArguments / BuildImageInspectArguments tests (#1676 / #1698) ──
 
     [Fact]
-    public void BuildPullArguments_IncludesPolicyMissing()
+    public void BuildPullArguments_IsBarePullWithImageAsTrailingArgv()
     {
-        // #1676: pull must short-circuit on a locally cached image. Without
-        // `--policy missing` podman/docker always round-trip to the registry
-        // to check for a newer manifest, which fails (with a confusing 403)
-        // for private images even when a perfectly good local copy exists.
+        // The locally-cached short-circuit lives on the caller side as an
+        // `image inspect` probe (see BuildImageInspectArguments below); the
+        // pull itself must therefore stay as a vanilla `pull <image>` so
+        // the dispatcher does not depend on the runtime's pull-policy
+        // semantics. #1682 had wired `--policy missing` directly onto the
+        // pull, which exits non-zero on podman 4.9.x once the image is
+        // already in the store and propagates as a 502 from
+        // POST /v1/images/pull (#1698 regression).
         var args = ProcessContainerRuntime.BuildPullArguments("ghcr.io/example/agent:latest");
 
-        args.ShouldBe(["pull", "--policy", "missing", "ghcr.io/example/agent:latest"]);
-        AssertFlagPair(args, "--policy", "missing");
+        args.ShouldBe(["pull", "ghcr.io/example/agent:latest"]);
     }
 
     [Fact]
-    public void BuildPullArguments_ImageRidesAsSingleArgvEntryAfterPolicyFlag()
+    public void BuildPullArguments_ImageRidesAsSingleTrailingArgvEntry()
     {
-        // The image reference is the trailing positional argv entry; it must
-        // not be split or fused with the --policy/missing pair, regardless
-        // of whether the reference happens to contain characters podman
-        // would normally treat as separators in a string-args path.
+        // The image reference is always the trailing positional argv entry;
+        // values containing characters podman would normally treat as
+        // separators in a string-args path (`:`, `-`) must travel through
+        // verbatim as one argv entry.
         var args = ProcessContainerRuntime.BuildPullArguments("registry.local:5000/team/img:tag-with-dashes");
 
-        var imageIndex = IndexOf(args, "registry.local:5000/team/img:tag-with-dashes");
-        imageIndex.ShouldBe(args.Count - 1);
-        // policy/missing precede the image, in order, with no other tokens between.
-        IndexOf(args, "--policy").ShouldBe(imageIndex - 2);
-        IndexOf(args, "missing").ShouldBe(imageIndex - 1);
+        args.Count.ShouldBe(2);
+        args[0].ShouldBe("pull");
+        args[1].ShouldBe("registry.local:5000/team/img:tag-with-dashes");
+    }
+
+    [Fact]
+    public void BuildImageInspectArguments_IsLocalStoreProbe()
+    {
+        // The pull short-circuit (#1676) relies on `image inspect` returning
+        // exit 0 strictly when the image is in the local store. The argv
+        // shape must stay as `image inspect <image>` so neither podman nor
+        // docker is ever asked to round-trip to the registry from this path.
+        var args = ProcessContainerRuntime.BuildImageInspectArguments("ghcr.io/example/agent:latest");
+
+        args.ShouldBe(["image", "inspect", "ghcr.io/example/agent:latest"]);
+    }
+
+    [Fact]
+    public void BuildImageInspectArguments_ImageRidesAsSingleTrailingArgvEntry()
+    {
+        var args = ProcessContainerRuntime.BuildImageInspectArguments("registry.local:5000/team/img:tag-with-dashes");
+
+        args.Count.ShouldBe(3);
+        args[0].ShouldBe("image");
+        args[1].ShouldBe("inspect");
+        args[2].ShouldBe("registry.local:5000/team/img:tag-with-dashes");
     }
 
     // ── RewriteUrlHost tests (ProbeHttpFromHostAsync helper, issue #1175) ──

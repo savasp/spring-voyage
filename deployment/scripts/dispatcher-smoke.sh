@@ -173,22 +173,58 @@ if [[ "${NET_DEL_CODE}" != "204" ]]; then
     exit 1
 fi
 
-# Image pull through /v1/images/pull. We re-pull the same alpine image
-# the run step above used; podman/docker treat this as a no-op when
-# the image is already cached locally, so the round-trip is fast even
-# on the second invocation in a single CI job.
+# Image pull through /v1/images/pull. We exercise BOTH codepaths in
+# turn so neither silently regresses:
+#   1. Fresh pull — image NOT in the local store. Exercises the actual
+#      `<binary> pull` shellout. We pre-`rmi` hello-world so this is
+#      deterministic across CI re-runs that may have inherited a warm
+#      cache from a previous attempt.
+#   2. Cached pull — image already present. Exercises the
+#      `<binary> image inspect` short-circuit (#1698) that replaced the
+#      ill-fated `pull --policy missing` (#1682). The earlier
+#      POST /v1/containers (alpine:latest) step seeded this cache, so
+#      the second iteration of the loop is the real cached-path test.
+#
+# After each pull we run `<binary> image inspect` ourselves and assert
+# exit 0. This catches the otherwise-silent failure mode where the
+# dispatcher's inspect probe wrongly returns "cached" for an image that
+# is not actually present — the endpoint would still 200, but every
+# downstream operation that depends on the image would fail far away
+# from the root cause.
 PULL_URL="http://${TEST_HOST}:${TEST_PORT}/v1/images/pull"
-echo "[smoke] POST ${PULL_URL} (alpine:latest)"
-PULL_CODE="$(curl -sS -o /dev/null -w '%{http_code}' \
-    --max-time 180 \
-    -H "Authorization: Bearer ${TOKEN}" \
-    -H 'Content-Type: application/json' \
-    -X POST \
-    -d '{"image":"docker.io/library/alpine:latest","timeoutSeconds":120}' \
-    "${PULL_URL}" || echo 000)"
-if [[ "${PULL_CODE}" != "200" ]]; then
-    echo "[smoke] /v1/images/pull POST returned ${PULL_CODE} (expected 200)"
-    exit 1
-fi
+PULL_BODY="$(mktemp)"
 
-echo "[smoke] dispatcher round-trip succeeded (run + network create/remove + image pull, no exit-125 in log)"
+# Pre-clean hello-world so the fresh-pull iteration exercises the real
+# pull codepath even on a runner that arrived with a warm cache.
+"${RUNTIME}" rmi -f docker.io/library/hello-world:latest >/dev/null 2>&1 || true
+
+for PULL_IMAGE in \
+    'docker.io/library/hello-world:latest' \
+    'docker.io/library/alpine:latest'; do
+    echo "[smoke] POST ${PULL_URL} (${PULL_IMAGE})"
+    PULL_CODE="$(curl -sS -o "${PULL_BODY}" -w '%{http_code}' \
+        --max-time 180 \
+        -H "Authorization: Bearer ${TOKEN}" \
+        -H 'Content-Type: application/json' \
+        -X POST \
+        -d "{\"image\":\"${PULL_IMAGE}\",\"timeoutSeconds\":120}" \
+        "${PULL_URL}" || echo 000)"
+    if [[ "${PULL_CODE}" != "200" ]]; then
+        echo "[smoke] /v1/images/pull POST (${PULL_IMAGE}) returned ${PULL_CODE} (expected 200)" >&2
+        echo "----- response body -----" >&2
+        cat "${PULL_BODY}" >&2 || true
+        echo >&2
+        echo "-------------------------" >&2
+        rm -f "${PULL_BODY}"
+        exit 1
+    fi
+
+    if ! "${RUNTIME}" image inspect "${PULL_IMAGE}" >/dev/null 2>&1; then
+        echo "[smoke] /v1/images/pull POST (${PULL_IMAGE}) returned 200 but the image is NOT in the local store" >&2
+        rm -f "${PULL_BODY}"
+        exit 1
+    fi
+done
+rm -f "${PULL_BODY}"
+
+echo "[smoke] dispatcher round-trip succeeded (run + network create/remove + image pull fresh+cached, no exit-125 in log)"

@@ -41,34 +41,49 @@ public class ProcessContainerRuntime(
     };
 
     /// <summary>
-    /// Pulls a container image by shelling out to
-    /// <c>&lt;binary&gt; pull --policy missing &lt;image&gt;</c>.
+    /// Pulls a container image, short-circuiting to a no-op when the image
+    /// is already in the local container store. The local-store probe runs
+    /// as <c>&lt;binary&gt; image inspect &lt;image&gt;</c>; only on a miss
+    /// does the method shell out to <c>&lt;binary&gt; pull &lt;image&gt;</c>.
     /// </summary>
     /// <param name="image">The fully-qualified container image reference.</param>
     /// <param name="timeout">Maximum wall-clock time the pull is allowed to run.</param>
     /// <param name="ct">A token to cancel the operation.</param>
     /// <remarks>
-    /// <c>--policy missing</c> tells podman / docker to use the locally
-    /// cached image when it is already present and only round-trip to the
-    /// registry when it is not. Without this flag, pull always queries the
-    /// registry to check for a newer manifest, so a perfectly good local
-    /// copy is not enough to satisfy the unit-validation pull step when the
-    /// registry is private, anonymous-pull-disabled, or unreachable
-    /// (#1676). Operators who want a forced refresh can call
-    /// <c>podman pull</c> themselves.
+    /// The cache pre-check is what <c>--policy missing</c> was originally
+    /// expressing on the pull (#1676), but that flag had to be removed
+    /// (#1698) because <c>podman pull --policy missing</c> exits non-zero
+    /// on podman 4.9.x once the image is already in the store, which the
+    /// dispatcher surfaced as a 502 from <c>POST /v1/images/pull</c>.
+    /// <c>image inspect</c> is a strictly-local lookup on both podman and
+    /// docker — it never contacts the registry — so the same "use the
+    /// local copy when present, round-trip only when missing" outcome holds
+    /// for private / unreachable registries without depending on the
+    /// runtime's pull-policy semantics.
     /// </remarks>
     public async Task PullImageAsync(string image, TimeSpan timeout, CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(image);
-
-        _logger.LogInformation(
-            "Pulling image {Image} using {Binary}", image, binaryName);
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeoutCts.CancelAfter(timeout);
 
         try
         {
+            var (inspectExit, _, _) = await RunProcessAsync(
+                binaryName, BuildImageInspectArguments(image), timeoutCts.Token);
+
+            if (inspectExit == 0)
+            {
+                _logger.LogInformation(
+                    "Image {Image} already present in {Binary} local store; skipping pull",
+                    image, binaryName);
+                return;
+            }
+
+            _logger.LogInformation(
+                "Pulling image {Image} using {Binary}", image, binaryName);
+
             var (exitCode, _, stderr) = await RunProcessAsync(
                 binaryName, BuildPullArguments(image), timeoutCts.Token);
 
@@ -832,13 +847,27 @@ public class ProcessContainerRuntime(
     }
 
     /// <summary>
-    /// Builds the argv vector for an image-pull command (#1676). Includes
-    /// <c>--policy missing</c> so the pull short-circuits on a locally
-    /// cached image and only round-trips to the registry when no local
-    /// copy is present.
+    /// Builds the argv vector for an image-pull command. The locally-cached
+    /// short-circuit lives on the caller side as an explicit
+    /// <see cref="BuildImageInspectArguments(string)"/> probe rather than as
+    /// a <c>--policy missing</c> flag on the pull, because the latter exits
+    /// non-zero on podman 4.9.x for already-cached images and the dispatcher
+    /// surfaces the failure as a 502 from <c>POST /v1/images/pull</c>
+    /// (regression from #1682, fixed in #1698).
     /// </summary>
     internal static IReadOnlyList<string> BuildPullArguments(string image)
-        => ["pull", "--policy", "missing", image];
+        => ["pull", image];
+
+    /// <summary>
+    /// Builds the argv vector for the local-store image probe used by
+    /// <see cref="PullImageAsync(string, TimeSpan, CancellationToken)"/>.
+    /// Both podman and docker treat <c>image inspect &lt;image&gt;</c> as a
+    /// strictly-local lookup that never contacts the registry: exit 0 when
+    /// the image is in the local store and exit 1 otherwise. That is what
+    /// drives the pull-time short-circuit (#1676 / #1698).
+    /// </summary>
+    internal static IReadOnlyList<string> BuildImageInspectArguments(string image)
+        => ["image", "inspect", image];
 
     /// <summary>
     /// Appends the option / image / command portion shared by run and
