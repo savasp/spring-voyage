@@ -105,7 +105,8 @@ public static class UnitExecutionEndpoints
             Runtime: request.Runtime,
             Tool: request.Tool,
             Provider: request.Provider,
-            Model: request.Model);
+            Model: request.Model,
+            Agent: request.Agent);
 
         if (defaults.IsEmpty)
         {
@@ -145,5 +146,6 @@ public static class UnitExecutionEndpoints
                 Runtime: defaults.Runtime,
                 Tool: defaults.Tool,
                 Provider: defaults.Provider,
-                Model: defaults.Model);
+                Model: defaults.Model,
+                Agent: defaults.Agent);
 }

@@ -12398,6 +12398,12 @@
               "null",
               "string"
             ]
+          },
+          "agent": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },

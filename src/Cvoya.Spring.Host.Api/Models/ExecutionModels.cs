@@ -25,12 +25,14 @@ namespace Cvoya.Spring.Host.Api.Models;
 /// <param name="Tool">Default external agent tool identifier (<c>claude-code</c>, <c>codex</c>, <c>gemini</c>, <c>dapr-agent</c>).</param>
 /// <param name="Provider">Default LLM provider (Dapr-Agent-tool-specific).</param>
 /// <param name="Model">Default model identifier (Dapr-Agent-tool-specific).</param>
+/// <param name="Agent">Agent-runtime registry id (e.g. <c>ollama</c>, <c>claude</c>, <c>openai</c>). Takes precedence over <c>Provider</c> when resolving which <see cref="Cvoya.Spring.Core.AgentRuntimes.IAgentRuntime"/> plugin to use for validation and dispatch.</param>
 public record UnitExecutionResponse(
     string? Image = null,
     string? Runtime = null,
     string? Tool = null,
     string? Provider = null,
-    string? Model = null);
+    string? Model = null,
+    string? Agent = null);
 
 /// <summary>
 /// Wire-level representation of an agent's <c>execution:</c> block on
