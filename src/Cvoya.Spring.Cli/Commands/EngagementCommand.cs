@@ -95,7 +95,7 @@ public static class EngagementCommand
         };
         var participantOption = new Option<string?>("--participant")
         {
-            Description = "Filter by participant address (e.g. human://alice, agent://ada)",
+            Description = "Filter by participant address in canonical scheme:<guid> form (e.g. human:8c5fab2a8e7e4b9c92f1d8a3b4c5d6e7)",
         };
         var statusOption = new Option<string?>("--status")
         {
@@ -153,7 +153,7 @@ public static class EngagementCommand
         var idArg = new Argument<string>("id") { Description = "The engagement (thread) id to observe" };
         var sourceOption = new Option<string?>("--source")
         {
-            Description = "Additional source filter (e.g. agent://ada) — narrows the SSE stream",
+            Description = "Additional source filter in canonical scheme:<guid> form (e.g. agent:8c5fab2a8e7e4b9c92f1d8a3b4c5d6e7) — narrows the SSE stream",
         };
 
         var command = new Command(
@@ -262,7 +262,7 @@ public static class EngagementCommand
         var messageArg = new Argument<string>("message") { Description = "Message text to send" };
         var addressArg = new Argument<string>("address")
         {
-            Description = "Destination address (e.g. agent://ada, unit://engineering-team)",
+            Description = "Destination address in canonical scheme:<guid> form (e.g. agent:8c5fab2a8e7e4b9c92f1d8a3b4c5d6e7, unit:e9d72a18bf5c4f028a13c9b6f7d2e405)",
         };
 
         var command = new Command(
@@ -314,7 +314,7 @@ public static class EngagementCommand
         var answerArg = new Argument<string>("answer") { Description = "Your answer to the unit's clarifying question" };
         var addressArg = new Argument<string>("address")
         {
-            Description = "Address of the agent or unit that asked the question (e.g. agent://ada)",
+            Description = "Address of the agent or unit that asked the question in canonical scheme:<guid> form (e.g. agent:8c5fab2a8e7e4b9c92f1d8a3b4c5d6e7)",
         };
 
         // `engagement answer` sends kind=answer so the portal can distinguish

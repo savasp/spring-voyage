@@ -400,8 +400,10 @@ public class CliResolverTests
         {
             if (i > 0) sb.Append(',');
             // Wire shape mirrors the post-#1643 envelope: agentAddress
-            // carries the canonical no-dash 32-hex form (no scheme prefix)
-            // — the resolver also accepts agent://<id>.
+            // carries the canonical no-dash 32-hex form (no scheme prefix).
+            // The resolver itself takes a Guid id (or a name) on input —
+            // see CliResolver.ResolveAgentAsync; it does not parse a
+            // scheme-prefixed address (those go through AddressParser).
             sb.Append('{');
             sb.Append("\"agentAddress\":\"").Append(agentIds[i].ToString("N")).Append('"');
             sb.Append('}');

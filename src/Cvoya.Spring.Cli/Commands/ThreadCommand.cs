@@ -51,7 +51,7 @@ public static class ThreadCommand
         statusOption.AcceptOnlyFromAmong("active", "completed");
         var participantOption = new Option<string?>("--participant")
         {
-            Description = "Filter by participant address (scheme://path, e.g. agent://ada)",
+            Description = "Filter by participant address in canonical scheme:<guid> form (e.g. agent:8c5fab2a8e7e4b9c92f1d8a3b4c5d6e7)",
         };
         var limitOption = new Option<int?>("--limit") { Description = "Maximum rows to return (default 50)" };
 
@@ -149,7 +149,7 @@ public static class ThreadCommand
         };
         var addressArg = new Argument<string>("address")
         {
-            Description = "Destination address (e.g. agent://engineering-team/ada)",
+            Description = "Destination address in canonical scheme:<guid> form (e.g. agent:8c5fab2a8e7e4b9c92f1d8a3b4c5d6e7)",
         };
         var textArg = new Argument<string>("text") { Description = "Message text" };
 

@@ -87,7 +87,7 @@ public static class DirectoryCommand
         };
         var ownerOption = new Option<string?>("--owner")
         {
-            Description = "Restrict to entries contributed by this owner (scheme://path).",
+            Description = "Restrict to entries contributed by this owner in canonical scheme:<guid> form.",
         };
         var typedOption = new Option<bool>("--typed-only")
         {
@@ -134,7 +134,7 @@ public static class DirectoryCommand
                 var parsed = ParseAddress(owner!);
                 if (parsed is null)
                 {
-                    Console.Error.WriteLine($"Invalid --owner address '{owner}'. Expected 'scheme://path'.");
+                    Console.Error.WriteLine($"Invalid --owner address '{owner}'. Expected 'scheme:<guid>' (e.g. unit:8c5fab2a8e7e4b9c92f1d8a3b4c5d6e7).");
                     return;
                 }
                 (ownerScheme, ownerPath) = parsed.Value;
@@ -201,7 +201,7 @@ public static class DirectoryCommand
         };
         var ownerOption = new Option<string?>("--owner")
         {
-            Description = "Restrict to entries contributed by this owner (scheme://path).",
+            Description = "Restrict to entries contributed by this owner in canonical scheme:<guid> form.",
         };
         var typedOption = new Option<bool>("--typed-only")
         {
@@ -246,7 +246,7 @@ public static class DirectoryCommand
                 var parsed = ParseAddress(owner!);
                 if (parsed is null)
                 {
-                    Console.Error.WriteLine($"Invalid --owner address '{owner}'. Expected 'scheme://path'.");
+                    Console.Error.WriteLine($"Invalid --owner address '{owner}'. Expected 'scheme:<guid>' (e.g. unit:8c5fab2a8e7e4b9c92f1d8a3b4c5d6e7).");
                     return;
                 }
                 (ownerScheme, ownerPath) = parsed.Value;
@@ -445,18 +445,22 @@ public static class DirectoryCommand
     }
 
     /// <summary>
-    /// Parses an <c>scheme://path</c> address. Returns <c>null</c> when the
-    /// input is malformed (either missing the <c>://</c> separator or with
-    /// an empty scheme or path). Public so unit tests can pin the parser
-    /// without routing through the whole command pipeline.
+    /// Parses an address in the canonical wire form <c>scheme:&lt;guid&gt;</c>
+    /// (ADR-0036). Returns <c>null</c> on malformed input — kept as a
+    /// nullable-returning helper so the <c>--owner</c> action can render a
+    /// command-shaped error message rather than surface a thrown exception.
+    /// Delegates to <see cref="AddressParser.Parse"/> for the actual shape
+    /// check so the CLI has a single source of truth for address grammar.
     /// </summary>
     public static (string Scheme, string Path)? ParseAddress(string address)
     {
-        var sep = address.IndexOf("://", StringComparison.Ordinal);
-        if (sep <= 0 || sep >= address.Length - 3)
+        try
+        {
+            return AddressParser.Parse(address);
+        }
+        catch (FormatException)
         {
             return null;
         }
-        return (address[..sep], address[(sep + 3)..]);
     }
 }

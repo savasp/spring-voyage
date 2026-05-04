@@ -29,7 +29,7 @@ public static class MessageCommand
 
     private static Command CreateSendCommand(Option<string> outputOption)
     {
-        var addressArg = new Argument<string>("address") { Description = "Destination address (e.g. agent://ada)" };
+        var addressArg = new Argument<string>("address") { Description = "Destination address in canonical form scheme:<guid> (e.g. agent:8c5fab2a8e7e4b9c92f1d8a3b4c5d6e7)" };
         var textArg = new Argument<string>("text") { Description = "Message text" };
         var conversationOption = new Option<string?>("--thread") { Description = "Thread identifier" };
         var command = new Command("send", "Send a message to an address");

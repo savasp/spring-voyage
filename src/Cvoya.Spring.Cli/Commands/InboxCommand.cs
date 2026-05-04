@@ -135,7 +135,7 @@ public static class InboxCommand
         var addressOption = new Option<string?>("--to")
         {
             Description =
-                "Destination address (e.g. agent://engineering-team/ada). "
+                "Destination address in canonical scheme:<guid> form (e.g. agent:8c5fab2a8e7e4b9c92f1d8a3b4c5d6e7). "
                 + "Optional — when omitted the reply goes to the sender of the pending ask.",
         };
         var textArg = new Argument<string>("text") { Description = "Reply text" };

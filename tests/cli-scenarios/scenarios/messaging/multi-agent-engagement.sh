@@ -57,6 +57,10 @@ else
     definition="{\"execution\":{\"tool\":\"dapr-agent\",\"image\":\"${image}\",\"provider\":\"${provider}\",\"model\":\"${model}\"}}"
 fi
 
+# Track each agent's Guid so we can address them in canonical
+# `agent:<guid>` form (ADR-0036) — the legacy `agent://<name>` shape was
+# retired with #1653.
+declare -A agent_addresses
 for agent in "${agent_a}" "${agent_b}"; do
     e2e::log "spring agent create ${agent} --unit ${unit}"
     response="$(e2e::cli_agent_create --output json "${agent}" \
@@ -64,7 +68,16 @@ for agent in "${agent_a}" "${agent_b}"; do
         --name "Multi-agent test agent" \
         --definition "${definition}")"
     code="${response##*$'\n'}"
+    body="${response%$'\n'*}"
     e2e::expect_status "0" "${code}" "agent create ${agent} succeeds"
+
+    agent_id="$(printf '%s' "${body}" | awk -F'"' '/"id":/ { print $4; exit }')"
+    if [[ -z "${agent_id}" ]]; then
+        e2e::fail "could not extract agent id for ${agent}: ${body:0:200}"
+        e2e::summary
+        exit 1
+    fi
+    agent_addresses["${agent}"]="agent:${agent_id}"
 done
 
 # Helper: poll thread show until at least 1 agent-from event lands.
@@ -87,8 +100,8 @@ wait_for_agent_reply_on_thread() {
 # Send to agent_a, wait for reply, then send to agent_b. Running them
 # sequentially keeps a single-Ollama-instance host from serialising both
 # turns into one timeout window.
-e2e::log "spring message send agent://${agent_a} (thread=${thread_a})"
-response="$(e2e::cli --output json message send "agent://${agent_a}" \
+e2e::log "spring message send ${agent_addresses[${agent_a}]} (thread=${thread_a})"
+response="$(e2e::cli --output json message send "${agent_addresses[${agent_a}]}" \
     "Reply with just the single word 'a' and nothing else." \
     --thread "${thread_a}")"
 code="${response##*$'\n'}"
@@ -100,8 +113,8 @@ else
     e2e::fail "agent_a thread did not surface a reply within ${turn_timeout}s"
 fi
 
-e2e::log "spring message send agent://${agent_b} (thread=${thread_b})"
-response="$(e2e::cli --output json message send "agent://${agent_b}" \
+e2e::log "spring message send ${agent_addresses[${agent_b}]} (thread=${thread_b})"
+response="$(e2e::cli --output json message send "${agent_addresses[${agent_b}]}" \
     "Reply with just the single word 'b' and nothing else." \
     --thread "${thread_b}")"
 code="${response##*$'\n'}"
