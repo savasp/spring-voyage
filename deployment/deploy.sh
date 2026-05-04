@@ -466,10 +466,21 @@ start_worker() {
 # wrapper exists so the deploy.sh up/down lifecycle is one verb for the
 # operator; advanced workflows (bounce dispatcher only, tail dispatcher
 # logs without touching the stack) call the host script directly.
+#
+# `restart` (not `start`) is deliberate — see #1675. `spring-voyage-host.sh
+# start` short-circuits when a dispatcher PID is already live, which left
+# stale dispatchers serving prior code (and, in the reported case, a
+# deleted worktree cwd) for operators who ran `deploy.sh build &&
+# deploy.sh up` expecting a fresh process. `restart` is a clean
+# stop+start — a cold start path is an idempotent no-op on the stop
+# side, so this is safe on a fresh machine too. `spring-voyage-host.sh
+# build` (invoked by `deploy.sh build`) has already published the new
+# binary by the time we get here, so the restarted process picks up
+# whatever was just published.
 start_dispatcher() {
     [[ -x "${HOST_SCRIPT}" ]] || die "host-services script not found at ${HOST_SCRIPT} — run 'chmod +x ${HOST_SCRIPT}'"
-    log "starting spring-dispatcher via ${HOST_SCRIPT##${REPO_ROOT}/}"
-    "${HOST_SCRIPT}" start
+    log "bouncing spring-dispatcher via ${HOST_SCRIPT##${REPO_ROOT}/} (restart)"
+    "${HOST_SCRIPT}" restart
 }
 
 stop_dispatcher() {
@@ -694,7 +705,9 @@ cmd_up() {
     # IContainerRuntime binding is a DispatcherClientContainerRuntime that
     # HTTP-calls spring-dispatcher on first use (#513). Since #1063 the
     # dispatcher runs on the host, so this is a host-process start, not a
-    # container.
+    # container. We restart (not start-if-missing) so `deploy.sh up`
+    # always picks up a freshly-published dispatcher binary and resets a
+    # stale cwd — see #1675 and the comment above `start_dispatcher`.
     start_dispatcher
 
     start_worker
