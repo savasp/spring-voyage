@@ -182,7 +182,7 @@ $EDITOR spring.env             # deploy-time config: hostname, DB password, imag
                                # GitHub__*, Anthropic / OpenAI / Google credentials, …
 
 ./deploy.sh build              # build platform + agent images, publish dispatcher binary
-./deploy.sh up                 # create network, start the stack + spring-dispatcher (host)
+./deploy.sh up                 # create network, start the stack + bounce spring-dispatcher (host)
 ./deploy.sh status             # list running containers + host services
 ./deploy.sh logs spring-api    # tail a single container service
 ./deploy.sh down               # stop containers + host services (volumes preserved)

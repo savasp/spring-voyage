@@ -57,6 +57,10 @@ builder.Services.AddSingleton<IWorkspaceMaterializer, WorkspaceMaterializer>();
 // then 500s on every dispatch with "No such file or directory". See #984.
 builder.Services.TryAddSingleton<IContainerRuntimeBinaryProbe, ContainerRuntimeBinaryProbe>();
 builder.Services.TryAddSingleton<IWorkspaceRootProbe, WorkspaceRootProbe>();
+// Cwd probe — keeps the dispatcher from silently starting in a deleted
+// working directory (e.g. a git worktree that was removed while the
+// dispatcher was still running). See issue #1674.
+builder.Services.TryAddSingleton<IDispatcherCwdProbe, DispatcherCwdProbe>();
 builder.Services.AddCvoyaSpringConfigurationValidator();
 builder.Services.TryAddEnumerable(
     ServiceDescriptor.Singleton<IConfigurationRequirement, ContainerRuntimeBinaryConfigurationRequirement>());
@@ -68,6 +72,13 @@ builder.Services.TryAddEnumerable(
     ServiceDescriptor.Singleton<IConfigurationRequirement, ContainerRuntimeConfigurationRequirement>());
 builder.Services.TryAddEnumerable(
     ServiceDescriptor.Singleton<IConfigurationRequirement, WorkspaceRootConfigurationRequirement>());
+// Cwd fail-fast — mandatory tier-1 requirement that aborts boot when the
+// dispatcher's working directory is unreachable (#1674). Paired with the
+// error-translation path in ProcessContainerRuntime.RunProcessAsync so a
+// cwd loss during the host's lifetime also surfaces with a precise
+// diagnostic instead of the generic "Unable to find the specified file".
+builder.Services.TryAddEnumerable(
+    ServiceDescriptor.Singleton<IConfigurationRequirement, DispatcherCwdConfigurationRequirement>());
 
 // Named HttpClient used by /v1/llm/forward and /v1/llm/forward/stream
 // to dispatch the upstream LLM call from the dispatcher process. We set
