@@ -426,8 +426,11 @@ public static class AgentEndpoints
         IDirectoryService directoryService,
         [FromServices] IAgentExecutionStore executionStore,
         [FromServices] IInitiativeEngine initiativeEngine,
+        [FromServices] IUnitMembershipRepository membershipRepository,
         [FromQuery] string? hosting,
         [FromQuery(Name = "initiative")] string[]? initiative,
+        [FromQuery(Name = "display_name")] string? displayName,
+        [FromQuery(Name = "unit_id")] string? unitId,
         CancellationToken cancellationToken)
     {
         var entries = await directoryService.ListAllAsync(cancellationToken);
@@ -446,6 +449,50 @@ public static class AgentEndpoints
         var agentEntries = entries
             .Where(e => string.Equals(e.Address.Scheme, "agent", StringComparison.OrdinalIgnoreCase))
             .ToList();
+
+        // #1649: server-side display_name + unit_id filtering. Applied
+        // BEFORE enrichment so the cheap directory equality check eliminates
+        // most candidates before the per-agent execution-store / initiative
+        // fan-out fires. The CLI resolver (PR #1650) used to list+filter
+        // client-side; with these filters in place the resolver collapses
+        // to a single round-trip per name lookup.
+        //
+        // Filtering rules per the issue:
+        // - display_name match is case-insensitive equality (substring /
+        //   fuzzy is an explicit follow-up, not in scope here).
+        // - unit_id constrains the result to agents whose membership row
+        //   names that unit. We accept both no-dash and dashed Guid forms
+        //   so the CLI's lenient parse round-trips. A malformed unit_id is
+        //   silently treated as "no match" rather than 400, mirroring the
+        //   directory's "not found returns empty" stance — the CLI never
+        //   sends a malformed unit_id since it parses with the same
+        //   GuidFormatter, and a 400 here would force every caller to
+        //   thread a no-match branch.
+        if (!string.IsNullOrWhiteSpace(displayName))
+        {
+            var trimmed = displayName.Trim();
+            agentEntries = agentEntries
+                .Where(e => string.Equals(e.DisplayName, trimmed, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+        }
+
+        if (!string.IsNullOrWhiteSpace(unitId))
+        {
+            if (Cvoya.Spring.Core.Identifiers.GuidFormatter.TryParse(unitId, out var unitGuid))
+            {
+                var memberships = await membershipRepository.ListByUnitAsync(unitGuid, cancellationToken);
+                var memberAgentIds = new HashSet<Guid>(memberships.Select(m => m.AgentId));
+                agentEntries = agentEntries
+                    .Where(e => memberAgentIds.Contains(e.ActorId))
+                    .ToList();
+            }
+            else
+            {
+                // Unparseable unit_id ⇒ no agents can satisfy the filter.
+                // Empty array is the canonical "no match" wire shape.
+                agentEntries = new List<DirectoryEntry>();
+            }
+        }
 
         var enrichmentTasks = agentEntries.Select(async e =>
         {

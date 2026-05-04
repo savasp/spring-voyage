@@ -145,7 +145,7 @@ public static class UnitCommand
             var output = parseResult.GetValue(outputOption) ?? "table";
             var client = ClientFactory.Create();
 
-            var result = await client.ListUnitsAsync(ct);
+            var result = await client.ListUnitsAsync(ct: ct);
 
             Console.WriteLine(output == "json"
                 ? OutputFormatter.FormatJson(result)

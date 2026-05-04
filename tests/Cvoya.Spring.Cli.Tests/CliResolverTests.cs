@@ -153,15 +153,13 @@ public class CliResolverTests
     public async Task ResolveAgent_NameWithUnitContext_NarrowsToMembers()
     {
         // Two Alices in the tenant — but only AliceA is a member of
-        // Engineering. The --unit filter resolves the ambiguity to a
-        // single match.
+        // Engineering. Post-#1649 the server applies the
+        // ?display_name=&unit_id= filter, so the wire shape the CLI
+        // observes is just the narrowed list. The resolver no longer
+        // issues a second round-trip for the membership intersection.
         var handler = new RoutingMockHandler();
         handler.OnGet("/api/v1/tenant/agents", AgentsListJson(
-            (AliceA, "Alice", "engineering"),
-            (AliceB, "Alice", "design")));
-        handler.OnGet(
-            $"/api/v1/tenant/units/{Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(Engineering)}/memberships",
-            MembershipsListJson(AliceA));
+            (AliceA, "Alice", "engineering")));
 
         using var http = new HttpClient(handler);
         var client = new SpringApiClient(http, BaseUrl);
@@ -173,19 +171,19 @@ public class CliResolverTests
             ct: TestContext.Current.CancellationToken);
 
         resolved.ShouldBe(AliceA);
+        // Single round-trip per #1649's acceptance criterion.
+        handler.CallCount.ShouldBe(1);
     }
 
     [Fact]
     public async Task ResolveAgent_NameWithUnitContext_NoMatchInUnit_ThrowsZeroMatch()
     {
-        // Alice exists, but the requested unit has no member matching her.
-        // Result is 0-match — caller can print "No agent found … in unit …".
+        // Server's ?unit_id= filter eliminated Alice from the result set
+        // because she is not a member of Design. Empty array on the wire
+        // ⇒ 0-match exception. Mirrors the post-#1649 single-round-trip
+        // contract.
         var handler = new RoutingMockHandler();
-        handler.OnGet("/api/v1/tenant/agents", AgentsListJson(
-            (AliceA, "Alice", "engineering")));
-        handler.OnGet(
-            $"/api/v1/tenant/units/{Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(Design)}/memberships",
-            MembershipsListJson(/* nobody */));
+        handler.OnGet("/api/v1/tenant/agents", AgentsListJson(/* none */));
 
         using var http = new HttpClient(handler);
         var client = new SpringApiClient(http, BaseUrl);
@@ -199,6 +197,34 @@ public class CliResolverTests
 
         ex.Candidates.Count.ShouldBe(0);
         ex.Context.ShouldBe(Design);
+    }
+
+    [Fact]
+    public async Task ResolveAgent_NameWithUnitContext_PassesFilterToServer()
+    {
+        // Wire-level assertion: the resolver must pass display_name and
+        // unit_id as query parameters so the server can apply the filter
+        // and the CLI does not have to scan the full tenant.
+        var handler = new RoutingMockHandler();
+        handler.OnGet("/api/v1/tenant/agents", AgentsListJson(
+            (AliceA, "Alice", "engineering")));
+
+        using var http = new HttpClient(handler);
+        var client = new SpringApiClient(http, BaseUrl);
+        var resolver = new CliResolver(client);
+
+        await resolver.ResolveAgentAsync(
+            "Alice",
+            unitContext: Engineering,
+            ct: TestContext.Current.CancellationToken);
+
+        // The captured query string must carry both filter params; the
+        // exact wire form for unit_id is GuidFormatter.Format (no-dash
+        // 32-hex per #1629 §3).
+        var query = handler.LastQueryString;
+        query.ShouldNotBeNull();
+        query.ShouldContain("display_name=Alice");
+        query.ShouldContain("unit_id=" + Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(Engineering));
     }
 
     [Fact]
@@ -400,6 +426,13 @@ internal sealed class RoutingMockHandler : HttpMessageHandler
 
     public List<string> Paths { get; } = new();
 
+    /// <summary>
+    /// Captured raw query string (without the leading '?') from the most
+    /// recent request — empty when no query was supplied. Lets tests
+    /// assert the server-side search params surface verbatim on the wire.
+    /// </summary>
+    public string? LastQueryString { get; private set; }
+
     public void OnGet(string path, string body, HttpStatusCode status = HttpStatusCode.OK)
     {
         _routes[Key(HttpMethod.Get, path)] = (status, body);
@@ -409,6 +442,7 @@ internal sealed class RoutingMockHandler : HttpMessageHandler
     {
         CallCount++;
         Paths.Add(request.RequestUri!.AbsolutePath);
+        LastQueryString = request.RequestUri!.Query?.TrimStart('?');
 
         var key = Key(request.Method, request.RequestUri!.AbsolutePath);
         if (!_routes.TryGetValue(key, out var route))

@@ -88,47 +88,25 @@ public sealed class CliResolver
             return direct;
         }
 
-        // Server-side filtering by display_name + unit isn't on the API
-        // today (see follow-up issue filed alongside this PR). Falling
-        // back to client-side filter on the agents list — acceptable for
-        // OSS scale; would prefer a dedicated search endpoint later.
-        var agents = await _client.ListAgentsAsync(ct: ct);
-
-        // Optional unit-context filter: list the unit's memberships and
-        // intersect by agent address. The server's GET /units/{id}/memberships
-        // returns one row per agent that belongs to this unit (with the
-        // post-#1643 ParticipantRef shape carrying displayName), so the
-        // intersection is one extra round-trip and avoids a per-agent fan-out.
-        HashSet<Guid>? unitAgentIds = null;
-        if (unitContext is Guid unitId)
-        {
-            var memberships = await _client.ListUnitMembershipsAsync(
-                Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(unitId),
-                ct);
-
-            unitAgentIds = new HashSet<Guid>();
-            foreach (var membership in memberships)
-            {
-                // Membership rows carry the agent's address as a string; for
-                // a Guid-only model the path is the agent's Guid in no-dash
-                // form. Lenient parse in case mixed forms are still in flight
-                // during the v0.1 transition.
-                if (TryExtractAgentId(membership, out var agentId))
-                {
-                    unitAgentIds.Add(agentId);
-                }
-            }
-        }
+        // #1649: server-side `display_name` + `unit_id` filtering. A current
+        // server narrows the candidate set before transmission so this call
+        // is O(matches) on the wire and a single round-trip for the
+        // unit-context branch (no separate memberships fetch).
+        //
+        // An older server (pre-#1649) ignores the query params and returns
+        // the full agent list — the post-filter below stays as a defensive
+        // fallback so the resolver behaves identically against both wire
+        // versions. The fallback is the same case-insensitive equality the
+        // server applies, so no behavioural drift between client and server.
+        var agents = await _client.ListAgentsAsync(
+            displayName: idOrName,
+            unitId: unitContext,
+            ct: ct);
 
         var matches = new List<AgentResponse>();
         foreach (var agent in agents)
         {
             if (agent.Id is not Guid aid)
-            {
-                continue;
-            }
-
-            if (unitAgentIds is not null && !unitAgentIds.Contains(aid))
             {
                 continue;
             }
@@ -188,39 +166,21 @@ public sealed class CliResolver
             return direct;
         }
 
-        var units = await _client.ListUnitsAsync(ct);
-
-        HashSet<Guid>? childUnitIds = null;
-        if (parentContext is Guid parentId)
-        {
-            var members = await _client.ListUnitMembersAsync(
-                Cvoya.Spring.Core.Identifiers.GuidFormatter.Format(parentId),
-                ct);
-
-            childUnitIds = new HashSet<Guid>();
-            foreach (var member in members)
-            {
-                // Only unit-scheme members count toward sub-unit context.
-                if (!string.Equals(member.Scheme, "unit", StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-                if (TryParseGuid(member.Path ?? string.Empty, out var childGuid))
-                {
-                    childUnitIds.Add(childGuid);
-                }
-            }
-        }
+        // #1649: server-side `display_name` + `parent_id` filtering.
+        // Mirrors the agents-side simplification — the resolver collapses
+        // to a single round-trip, the server walks the parent → child
+        // edge projection (#1154) for the parent constraint, and the
+        // post-filter below stays as a defensive case-insensitive check
+        // against pre-#1649 servers that ignore the params.
+        var units = await _client.ListUnitsAsync(
+            displayName: idOrName,
+            parentId: parentContext,
+            ct: ct);
 
         var matches = new List<UnitResponse>();
         foreach (var unit in units)
         {
             if (unit.Id is not Guid uid)
-            {
-                continue;
-            }
-
-            if (childUnitIds is not null && !childUnitIds.Contains(uid))
             {
                 continue;
             }
@@ -255,40 +215,6 @@ public sealed class CliResolver
         => !string.IsNullOrWhiteSpace(candidate)
            && string.Equals(candidate.Trim(), query.Trim(), StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>
-    /// Membership rows store the agent address as a string. After #1629 the
-    /// canonical form is a bare Guid (no-dash 32-hex) but the wire shape is
-    /// historically <c>agent://&lt;id&gt;</c>; this helper accepts either so
-    /// the resolver works on both pre- and post-PR5 wire flavours.
-    /// </summary>
-    private static bool TryExtractAgentId(UnitMembershipResponse membership, out Guid id)
-    {
-        id = default;
-
-        // AgentAddress is the canonical field; Member is the scheme-prefixed
-        // mirror added by #1060. Try AgentAddress first, then Member.
-        if (TryExtractGuidFromAddress(membership.AgentAddress, out id))
-        {
-            return true;
-        }
-
-        return TryExtractGuidFromAddress(membership.Member, out id);
-    }
-
-    private static bool TryExtractGuidFromAddress(string? address, out Guid id)
-    {
-        id = default;
-        if (string.IsNullOrWhiteSpace(address))
-        {
-            return false;
-        }
-
-        // Strip a leading scheme:// if present so a bare Guid stays parseable.
-        var idx = address.IndexOf("://", StringComparison.Ordinal);
-        var path = idx >= 0 ? address[(idx + 3)..] : address;
-
-        return TryParseGuid(path, out id);
-    }
 }
 
 /// <summary>
