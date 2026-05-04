@@ -302,6 +302,29 @@ public class ClaudeAgentRuntimeTests
     }
 
     [Fact]
+    public void IsCredentialFormatAccepted_NeitherShape_RejectedOnAllPaths()
+    {
+        // #1690: a non-empty value that is neither sk-ant-api… nor
+        // sk-ant-oat… cannot authenticate against either Anthropic
+        // surface. Reject pre-flight on every path so the wizard
+        // surfaces `format-rejected` instead of burning a network
+        // round-trip just to read a 401.
+        var runtime = CreateRuntime(out _);
+
+        runtime.IsCredentialFormatAccepted("totally-not-a-key", CredentialDispatchPath.Rest)
+            .ShouldBeFalse();
+        runtime.IsCredentialFormatAccepted("totally-not-a-key", CredentialDispatchPath.AgentRuntime)
+            .ShouldBeFalse();
+        // OpenAI-shaped accidents must also be rejected — a stale paste
+        // of `sk-…` from a different provider is the most common cause
+        // of a "neither" state.
+        runtime.IsCredentialFormatAccepted("sk-proj-1234", CredentialDispatchPath.Rest)
+            .ShouldBeFalse();
+        runtime.IsCredentialFormatAccepted("sk-proj-1234", CredentialDispatchPath.AgentRuntime)
+            .ShouldBeFalse();
+    }
+
+    [Fact]
     public async Task FetchLiveModelsAsync_RestSuccess_ReturnsModels()
     {
         var handler = new StubHttpHandler();

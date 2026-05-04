@@ -110,6 +110,27 @@ A one-time rewrite is only needed if operators want to reclaim storage eagerly; 
 
 ---
 
+## Anthropic credentials: per-path routing (#1690)
+
+The `anthropic-api-key` slot accepts two credential shapes. Both are first-class; the platform routes each shape to the dispatch paths it can actually authenticate.
+
+| Stored value | `IAgentRuntime` (in-container `claude` CLI) | `IAgentRuntime` validation probe (`claude --bare`) | `IAiProvider` (`AnthropicProvider` REST) | BYOI agents calling Anthropic REST directly |
+|---|---|---|---|---|
+| `sk-ant-api-…` (Platform API key) | Routed as `ANTHROPIC_API_KEY` | Routed as `ANTHROPIC_API_KEY` | Accepted | Accepted (when the agent image reads `ANTHROPIC_API_KEY` itself) |
+| `sk-ant-oat-…` (Claude.ai OAuth token) | Routed as `CLAUDE_CODE_OAUTH_TOKEN` | Probe drops `--bare` so the CLI's standard auth path picks it up | Rejected pre-flight by `ClaudeAgentRuntime.IsCredentialFormatAccepted` | Rejected — REST does not honour OAuth tokens |
+| Neither | Rejected pre-flight | Rejected pre-flight | Rejected pre-flight | Rejected pre-flight |
+
+**Where the routing lives:**
+
+- **Format check (pre-flight):** `ClaudeAgentRuntime.IsCredentialFormatAccepted(string credential, CredentialDispatchPath dispatchPath)` — implemented in `src/Cvoya.Spring.AgentRuntimes.Claude/ClaudeAgentRuntime.cs`. Returns `false` for OAuth on `Rest`, `false` for neither-shape on every path. Empty values pass-through (the resolver's `NotConfigured` state owns "no credential").
+- **Env-var routing (in-container probes):** `ClaudeAgentRuntime.GetProbeSteps` switches on the OAuth prefix to set either `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` and to drop `--bare` for OAuth (so the CLI's standard auth path picks the token up).
+- **REST guard:** `AnthropicProvider.RejectOAuthToken` in `src/Cvoya.Spring.Dapr/Execution/AnthropicProvider.cs` fails-fast on OAuth tokens at REST-call time — keeps the 401 from looking like an "expired key" in the activity log.
+- **Status endpoint:** `GET /api/v1/platform/credentials/anthropic/status` reports both the scalar resolvability for the path the caller asked about (`?dispatchPath=`) and a `paths` matrix that names each path's verdict (`summary`: `all-paths` / `in-container-cli-only` / `format-rejected`).
+
+**Adding a runtime that accepts a new shape.** Implement `IAgentRuntime.IsCredentialFormatAccepted` to encode the per-path acceptance rules. The status endpoint reads the matrix automatically — adding a new dispatch path to `CredentialDispatchPath` flows through to the response without endpoint changes; adding a new `summary` label requires extending the switch in `SystemEndpoints.BuildPathResolvability`.
+
+> **`agent: spring-voyage, provider: anthropic` is not yet wired in OSS.** The Dapr-Agent runtime (`spring-voyage` tool) talks to the LLM through Dapr Conversation components. The OSS deployment ships only `conversation-ollama.yaml` (the tenant-network Ollama instance); there is no `conversation-anthropic.yaml`, and the `DaprAgentLauncher` does not propagate `ANTHROPIC_API_KEY` into the container today. An operator who configures `agent: spring-voyage, provider: anthropic` will see the unit deploy, but the agentic loop's first `DaprChatClient.generate` call will fail because the `llm-provider` Dapr component has no Anthropic backend wired. Tracked in #1714 — covers the per-provider Conversation-component work and `DaprAgentLauncher` env-injection.
+
 ## Recommended Defaults
 
 | Environment   | `SPRING_SECRETS_AES_KEY` | `ComponentNameFormat` |

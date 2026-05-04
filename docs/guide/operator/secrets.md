@@ -174,6 +174,34 @@ spring secret create --scope unit --unit research-team \
 
 Via portal: **Tenant defaults** panel at `/settings` for the tenant-wide key; unit's **Secrets** tab for per-unit overrides. The Secrets tab shows an "inherited from tenant" badge for transitively inherited secrets.
 
+### Anthropic credentials: API key vs OAuth token (#1690)
+
+Anthropic exposes two credential shapes. Both are first-class in Spring Voyage and both are stored in the same `anthropic-api-key` slot, but they authenticate different code paths:
+
+| Stored value | `claude` CLI in container (full surface) | `claude --bare` probe | `AnthropicProvider` REST | Custom agent calling Anthropic REST |
+|---|---|---|---|---|
+| `sk-ant-api-…` (Platform API key, from `console.anthropic.com`) | Yes — via `ANTHROPIC_API_KEY` | Yes — via `ANTHROPIC_API_KEY` | Yes | Yes |
+| `sk-ant-oat-…` (Claude.ai OAuth token, output of `claude setup-token`) | Yes — via `CLAUDE_CODE_OAUTH_TOKEN` | No (silently ignored — looks like "Not logged in") | No (REST rejects) | No (REST rejects) |
+| Neither (typo, stale paste from a different provider) | No | No | No | No |
+
+**Pick the API key when:** your unit uses any agent image that calls the Anthropic Platform REST API directly — single-shot completions through `IAiProvider`, custom agent images that wrap the Anthropic SDK, or any third-party CLI that itself dials `api.anthropic.com`.
+
+**Pick the OAuth token when:** your unit uses the Claude Code container image (`ghcr.io/cvoya-com/spring-voyage-agent-claude-code`) and you want the full `claude` CLI surface — hooks, plugins, skills, keychain, auto-memory. OAuth tokens cannot authenticate the REST API; the platform's `IAiProvider` and any custom REST caller will see a 401.
+
+**Both code paths in the same fleet?** Pick whichever is the more common dispatch path; the other will probe-pass-but-runtime-fail and you will need to plan around it. The platform's pre-flight check (`GET /api/v1/platform/credentials/anthropic/status?dispatchPath=…`) reports per-path resolvability so the wizard / portal can warn you before the first message dispatches.
+
+> **`agent: spring-voyage, provider: anthropic` is not fully wired in v0.1.** The Dapr-Agent (`spring-voyage`) tool calls Anthropic via a Dapr Conversation component, and the OSS deployment ships only the Ollama Conversation YAML today. If you want to run Anthropic models, use the Claude Code agent (`agent: claude-code`) — it consumes `anthropic-api-key` directly through the in-container `claude` CLI and works on both credential shapes per the matrix above. See #1714 for the tracking issue.
+
+```bash
+# Anthropic Platform API key — works with REST and the in-container CLI
+spring secret create --scope tenant anthropic-api-key --value "sk-ant-api-..."
+
+# Claude.ai OAuth token — produced by `claude setup-token` on a
+# workstation that is signed in to claude.ai; works with the
+# in-container CLI only
+spring secret create --scope tenant anthropic-api-key --value "sk-ant-oat-..."
+```
+
 ## Supplying a credential during unit creation
 
 Both the portal wizard (`/units/create`) and `spring unit create` accept an LLM API key inline — the lowest-friction onboarding path.
