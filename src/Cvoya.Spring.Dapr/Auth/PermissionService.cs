@@ -282,6 +282,20 @@ public class PermissionService(
         string humanId,
         CancellationToken cancellationToken)
     {
+        // #1695: identity-form callers (human:id:<uuid>) hand the GUID-hex
+        // through this seam directly. Without this guard the next branch
+        // calls ResolveByUsernameAsync(<guid-hex>) which doesn't match the
+        // canonical username row (e.g. "local-dev-user"), and the
+        // resolver's upsert-on-miss path creates a phantom humans row
+        // keyed by the GUID-hex. The phantom's distinct UUID never
+        // matches the unit's permission map → 403, plus a leaking row.
+        // Recognise the format and short-circuit so the lookup goes
+        // straight to the directory's id.
+        if (Cvoya.Spring.Core.Identifiers.GuidFormatter.TryParse(humanId, out var identityFormGuid))
+        {
+            return identityFormGuid;
+        }
+
         if (scopeFactory is not null)
         {
             try
