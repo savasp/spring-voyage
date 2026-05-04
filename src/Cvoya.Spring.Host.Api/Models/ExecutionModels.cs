@@ -54,4 +54,5 @@ public record AgentExecutionResponse(
     string? Tool = null,
     string? Provider = null,
     string? Model = null,
-    string? Hosting = null);
+    string? Hosting = null,
+    string? Agent = null);
