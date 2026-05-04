@@ -65,7 +65,11 @@ public class AgentEndpointsTests : IClassFixture<CustomWebApplicationFactory>
 
         var agents = await response.Content.ReadFromJsonAsync<List<AgentResponse>>(JsonOptions, ct);
         agents!.Count().ShouldBe(1);
-        agents![0].Name.ShouldBe(agentId.ToString("N"));
+        // Post-#1629 the AgentResponse Name and DisplayName both project the
+        // entry's DisplayName (slug-form preserved for legacy compat); Id
+        // is the agent's Guid hex.
+        agents![0].Id.ShouldBe(agentId.ToString("N"));
+        agents[0].Name.ShouldBe("Test Agent");
         agents[0].DisplayName.ShouldBe("Test Agent");
         agents[0].Role.ShouldBe("backend");
     }
@@ -80,19 +84,22 @@ public class AgentEndpointsTests : IClassFixture<CustomWebApplicationFactory>
         ArrangeUnitEntry("engineering", UnitEngineeringUuid);
         ArrangeAgentActorProxy();
 
+        // Post-#1629 CreateAgentRequest.Name carries the agent's Guid hex;
+        // the human-readable label travels in DisplayName. UnitIds are also
+        // Guid hex strings.
+        var newAgentId = Guid.NewGuid().ToString("N");
         var request = new CreateAgentRequest(
-            "new-agent", "New Agent", "A brand new agent", "frontend",
-            UnitIds: new[] { "engineering" });
+            newAgentId, "New Agent", "A brand new agent", "frontend",
+            UnitIds: new[] { UnitEngineeringUuid.ToString("N") });
 
         var response = await _client.PostAsJsonAsync("/api/v1/tenant/agents", request, ct);
 
         response.StatusCode.ShouldBe(HttpStatusCode.Created);
-        response.Headers.Location!.ToString().ShouldContain("/api/v1/tenant/agents/new-agent");
+        response.Headers.Location!.ToString().ShouldContain($"/api/v1/tenant/agents/{newAgentId}");
 
         await _factory.DirectoryService.Received(1).RegisterAsync(
             Arg.Is<DirectoryEntry>(e =>
                 e.Address.Scheme == "agent" &&
-                e.Address.Path == "new-agent" &&
                 e.DisplayName == "New Agent"),
             Arg.Any<CancellationToken>());
 
@@ -112,7 +119,7 @@ public class AgentEndpointsTests : IClassFixture<CustomWebApplicationFactory>
         _factory.DirectoryService.ClearReceivedCalls();
 
         var request = new CreateAgentRequest(
-            "orphan", "Orphan", "A would-be orphan", "frontend",
+            Guid.NewGuid().ToString("N"), "Orphan", "A would-be orphan", "frontend",
             UnitIds: Array.Empty<string>());
 
         var response = await _client.PostAsJsonAsync("/api/v1/tenant/agents", request, ct);
@@ -132,8 +139,8 @@ public class AgentEndpointsTests : IClassFixture<CustomWebApplicationFactory>
             .Returns((DirectoryEntry?)null);
 
         var request = new CreateAgentRequest(
-            "lost", "Lost", "Unit does not exist", "frontend",
-            UnitIds: new[] { "ghost-unit" });
+            Guid.NewGuid().ToString("N"), "Lost", "Unit does not exist", "frontend",
+            UnitIds: new[] { Guid.NewGuid().ToString("N") });
 
         var response = await _client.PostAsJsonAsync("/api/v1/tenant/agents", request, ct);
 
