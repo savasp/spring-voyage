@@ -182,7 +182,8 @@ public static class ContainersEndpoints
                 : new Dictionary<string, string>(request.Labels),
             ExtraHosts: request.ExtraHosts,
             WorkingDirectory: workdir,
-            ContainerName: request.ContainerName);
+            ContainerName: request.ContainerName,
+            Entrypoint: request.Entrypoint);
 
         if (request.Detached)
         {

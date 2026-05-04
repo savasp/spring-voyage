@@ -108,11 +108,25 @@ public class RunContainerProbeActivity(
                 redactedStdErr: string.Empty);
         }
 
+        // #1686: override the image's ENTRYPOINT so the probe runs the
+        // declared tool (e.g. `claude --version`) directly. The OSS agent
+        // images inherit a long-running A2A bridge as their ENTRYPOINT
+        // (per Dockerfile.agent.claude-code) — without this override the
+        // bridge swallows the CMD and the probe deadlocks until the per-
+        // step timeout fires. Convention: the first entry of step.Args is
+        // the binary; the rest are its arguments.
+        var probeArgs = step.Args ?? Array.Empty<string>();
+        var entrypoint = probeArgs.Count > 0 ? probeArgs[0] : null;
+        var commandArgs = probeArgs.Count > 1
+            ? probeArgs.Skip(1).ToArray()
+            : Array.Empty<string>();
+
         var containerConfig = new ContainerConfig(
             Image: input.Image,
-            Command: step.Args,
+            Command: commandArgs,
             EnvironmentVariables: step.Env,
-            Timeout: step.Timeout);
+            Timeout: step.Timeout,
+            Entrypoint: entrypoint);
 
         ContainerResult containerResult;
         try

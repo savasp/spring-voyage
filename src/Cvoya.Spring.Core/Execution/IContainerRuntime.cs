@@ -458,6 +458,14 @@ public interface IContainerRuntime
 /// host" failure mode in containerised dispatcher deployments — see issue
 /// #1042.
 /// </param>
+/// <param name="Entrypoint">
+/// Override for the image's <c>ENTRYPOINT</c>. When non-null, the runtime
+/// passes <c>--entrypoint &lt;Entrypoint&gt;</c> to podman / docker so the
+/// container runs the specified binary instead of the image's declared
+/// entrypoint. Used by the validation probe (#1686) to invoke a one-shot
+/// tool (e.g. <c>claude --version</c>) on an image whose entrypoint is the
+/// long-running A2A bridge sidecar.
+/// </param>
 /// <param name="ContextWorkspace">
 /// Optional per-invocation context workspace materialised at
 /// <c>/spring/context/</c> inside the container (D1 spec § 2.2.2 — D3a).
@@ -486,7 +494,8 @@ public record ContainerConfig(
     string? WorkingDirectory = null,
     ContainerWorkspace? Workspace = null,
     string? ContainerName = null,
-    ContainerWorkspace? ContextWorkspace = null);
+    ContainerWorkspace? ContextWorkspace = null,
+    string? Entrypoint = null);
 
 /// <summary>
 /// A per-invocation set of text files the dispatcher must materialise into a

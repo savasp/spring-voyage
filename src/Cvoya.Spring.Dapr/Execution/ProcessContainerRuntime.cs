@@ -952,6 +952,17 @@ public class ProcessContainerRuntime(
             args.Add(config.WorkingDirectory);
         }
 
+        // #1686: --entrypoint must precede the image positional entry so
+        // podman / docker apply it as the override for the launched
+        // container. Used by RunContainerProbeActivity to bypass the OSS
+        // agent images' inherited A2A-bridge ENTRYPOINT and run a one-shot
+        // tool invocation (e.g. `claude --version`) directly.
+        if (!string.IsNullOrWhiteSpace(config.Entrypoint))
+        {
+            args.Add("--entrypoint");
+            args.Add(config.Entrypoint);
+        }
+
         args.Add(config.Image);
 
         if (config.Command is { Count: > 0 } command)
