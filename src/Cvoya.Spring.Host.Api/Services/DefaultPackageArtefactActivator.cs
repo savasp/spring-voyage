@@ -11,6 +11,7 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using Cvoya.Spring.Core.Directory;
+using Cvoya.Spring.Core.Identifiers;
 using Cvoya.Spring.Core.Messaging;
 using Cvoya.Spring.Dapr.Data;
 using Cvoya.Spring.Dapr.Data.Entities;
@@ -31,6 +32,20 @@ using YamlDotNet.RepresentationModel;
 /// portal's <c>/agents/create</c> path) is fully addressable when the
 /// install flips to <c>active</c>.
 /// </summary>
+/// <remarks>
+/// #1664: before forwarding a unit manifest to <see cref="IUnitCreationService"/>
+/// this activator rewrites every <c>members[]</c> reference into the
+/// canonical Guid form of the resolved peer artefact. Resolution probes
+/// the install-batch <see cref="LocalSymbolMap"/> first (the per-package
+/// pre-minted Guids), then the tenant directory by display name, and
+/// finally throws <see cref="UmbrellaMemberNotFoundException"/>. Without
+/// this rewrite the creation service's slow-path lookup compared the
+/// member's display name against the unit's display name (different
+/// strings in a typical package — the YAML <c>name:</c> is human-readable
+/// while the manifest's <c>members:</c> entries use the package slug) and
+/// silently minted fresh Guids on miss, leaving the children stranded at
+/// top level in the Explorer tree.
+/// </remarks>
 public class DefaultPackageArtefactActivator : IPackageArtefactActivator
 {
     private readonly IUnitCreationService _unitCreationService;
@@ -110,8 +125,152 @@ public class DefaultPackageArtefactActivator : IPackageArtefactActivator
         // display name — exactly the inconsistency #1629 PR7 sets out to fix.
         var actorId = symbolMap.GetOrMint(ArtefactKind.Unit, artefact.Name);
 
+        // #1664: rewrite each `members:` entry's reference field to the
+        // canonical Guid form of the resolved peer artefact. The downstream
+        // unit-creation service's member loop has a Guid-vs-name fork: a Guid
+        // takes the fast path; a name fall-through hits the directory by
+        // display name and silently mints a fresh Guid on miss — which is
+        // exactly the bug this fix addresses.
+        //
+        // Resolution precedence:
+        //   1. Symbol map (peer artefacts in this same install batch).
+        //      The map was minted in Phase 1 by PackageInstallService so
+        //      every in-package unit / agent already has a Guid.
+        //   2. Directory by display name (member already exists from a
+        //      prior install or a manual create).
+        //   3. Throw UmbrellaMemberNotFoundException — installing an
+        //      umbrella whose members aren't being created and don't already
+        //      exist is operator error, not a silent stranding.
+        if (manifest.Members is { Count: > 0 })
+        {
+            await ResolveMemberReferencesAsync(manifest.Members, symbolMap, ct);
+        }
+
         var overrides = new UnitCreationOverrides(IsTopLevel: true, ActorId: actorId);
         await _unitCreationService.CreateFromManifestAsync(manifest, overrides, ct);
+    }
+
+    /// <summary>
+    /// Rewrites every <see cref="MemberManifest"/> reference (<c>unit:</c> /
+    /// <c>agent:</c>) in place from a local symbol or display name into the
+    /// canonical <c>"N"</c>-format Guid of the resolved target. References
+    /// that already parse as Guids are left untouched (they are the
+    /// cross-package wire form and the creation service already takes the
+    /// Guid fast path on them).
+    /// </summary>
+    /// <exception cref="UmbrellaMemberNotFoundException">
+    /// Thrown when a non-Guid reference resolves neither through the
+    /// install-batch symbol map nor through a directory display-name lookup.
+    /// Surfaced through <see cref="PackageInstallService"/>'s Phase-2
+    /// failure handling so the operator sees a precise message rather than
+    /// the install silently leaving members stranded at top level.
+    /// </exception>
+    private async Task ResolveMemberReferencesAsync(
+        IReadOnlyList<MemberManifest> members,
+        LocalSymbolMap symbolMap,
+        CancellationToken ct)
+    {
+        // Cache the directory listing once per call — both the unit-typed and
+        // agent-typed branches consult the same snapshot. Loaded lazily so
+        // members fully resolvable through the symbol map alone don't pay
+        // for a directory round-trip.
+        IReadOnlyList<DirectoryEntry>? directoryEntries = null;
+
+        foreach (var member in members)
+        {
+            if (!string.IsNullOrWhiteSpace(member.Unit))
+            {
+                // Unit-typed members are the heart of #1664. An unresolvable
+                // unit reference would mint a phantom Guid that has no
+                // corresponding unit_definitions row — the failure mode is
+                // a "stranded" sub-unit hierarchy in the Explorer tree.
+                // Fail loudly here so the operator hears about it.
+                (member.Unit, directoryEntries) = await ResolveUnitReferenceAsync(
+                    member.Unit!, symbolMap, directoryEntries, ct);
+            }
+            else if (!string.IsNullOrWhiteSpace(member.Agent))
+            {
+                // Agent-typed members keep the historic auto-register fall-
+                // back: when the agent isn't a batch peer or a pre-existing
+                // directory entry, the reference rides through unchanged
+                // and the unit-creation service's agent-scheme branch
+                // mints a Guid and registers it. Pre-#1664 the OSS package
+                // (and any package that lists agents only inside sub-unit
+                // YAMLs rather than at package level) relied on exactly
+                // this fallback, so tightening it here would be a separate,
+                // larger refactor.
+                (member.Agent, directoryEntries) = await ResolveAgentReferenceAsync(
+                    member.Agent!, symbolMap, directoryEntries, ct);
+            }
+            // Members with neither field set fall through to the creation
+            // service, which surfaces the same "no 'agent' or 'unit' field"
+            // warning it always has.
+        }
+    }
+
+    private async Task<(string Resolved, IReadOnlyList<DirectoryEntry>? Snapshot)> ResolveUnitReferenceAsync(
+        string reference,
+        LocalSymbolMap symbolMap,
+        IReadOnlyList<DirectoryEntry>? directoryEntries,
+        CancellationToken ct)
+    {
+        // 1. Symbol map first. Also handles the cross-package Guid form —
+        //    LocalSymbolMap.TryResolve probes GuidFormatter.TryParse before
+        //    the dictionary so a 32-char no-dash hex value parses as a Guid
+        //    and the reference rides through unchanged.
+        if (symbolMap.TryResolve(ArtefactKind.Unit, reference, out var guid))
+        {
+            return (GuidFormatter.Format(guid), directoryEntries);
+        }
+
+        // 2. Directory fall-back by display name. Lets a manifest reference
+        //    a unit created by an earlier install or by direct create — i.e.
+        //    a member that's already in the directory but isn't a peer in
+        //    this batch.
+        directoryEntries ??= await _directoryService.ListAllAsync(ct);
+        var match = directoryEntries.FirstOrDefault(e =>
+            string.Equals(e.Address.Scheme, "unit", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(e.DisplayName, reference, StringComparison.Ordinal));
+        if (match is not null)
+        {
+            return (GuidFormatter.Format(match.ActorId), directoryEntries);
+        }
+
+        // 3. Fail loudly. Operator error: the umbrella names a unit
+        //    member that's neither in the install batch nor in the tenant
+        //    directory. Pre-#1664 this silently minted a fresh Guid and
+        //    left the member orphaned at the top of the Explorer tree.
+        throw new UmbrellaMemberNotFoundException(reference, "unit");
+    }
+
+    private async Task<(string Resolved, IReadOnlyList<DirectoryEntry>? Snapshot)> ResolveAgentReferenceAsync(
+        string reference,
+        LocalSymbolMap symbolMap,
+        IReadOnlyList<DirectoryEntry>? directoryEntries,
+        CancellationToken ct)
+    {
+        // 1. Symbol map.
+        if (symbolMap.TryResolve(ArtefactKind.Agent, reference, out var guid))
+        {
+            return (GuidFormatter.Format(guid), directoryEntries);
+        }
+
+        // 2. Directory fall-back by display name.
+        directoryEntries ??= await _directoryService.ListAllAsync(ct);
+        var match = directoryEntries.FirstOrDefault(e =>
+            string.Equals(e.Address.Scheme, "agent", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(e.DisplayName, reference, StringComparison.Ordinal));
+        if (match is not null)
+        {
+            return (GuidFormatter.Format(match.ActorId), directoryEntries);
+        }
+
+        // 3. Pass-through. The downstream unit-creation service auto-
+        //    registers the agent with a fresh Guid and writes a directory
+        //    entry — that is the historic OSS-package install path for
+        //    agents that only appear inside sub-unit `members:` lists.
+        //    Tightening this to a hard failure is out of scope for #1664.
+        return (reference, directoryEntries);
     }
 
     /// <summary>
@@ -315,4 +474,44 @@ public class DefaultPackageArtefactActivator : IPackageArtefactActivator
             _ => null,
         };
     }
+}
+
+/// <summary>
+/// Thrown by <see cref="DefaultPackageArtefactActivator"/> when an umbrella
+/// unit's <c>members:</c> entry names a peer artefact that is neither a
+/// local symbol in the same install batch nor an entry already in the
+/// tenant directory. Surfaces from <see cref="PackageInstallService"/>'s
+/// Phase-2 failure handling so the operator sees a precise message rather
+/// than the install silently leaving members stranded at the top of the
+/// Explorer tree (the symptom of issue #1664).
+/// </summary>
+public class UmbrellaMemberNotFoundException : Exception
+{
+    /// <summary>
+    /// Initialises a new <see cref="UmbrellaMemberNotFoundException"/>.
+    /// </summary>
+    /// <param name="reference">
+    /// The unresolved <c>members[]</c> reference value (the local symbol
+    /// or display name as it appears in the unit YAML).
+    /// </param>
+    /// <param name="scheme">
+    /// The address scheme of the missing artefact (<c>"unit"</c> or
+    /// <c>"agent"</c>) — preserved on the exception so callers can shape
+    /// downstream diagnostics without re-parsing the message.
+    /// </param>
+    public UmbrellaMemberNotFoundException(string reference, string scheme)
+        : base($"UmbrellaMemberNotFound: '{reference}' (scheme: {scheme}). " +
+            "The umbrella unit names a member that is neither a peer artefact " +
+            "in this install batch nor an existing entry in the tenant directory. " +
+            "Either add the member to the package or install it first.")
+    {
+        Reference = reference;
+        Scheme = scheme;
+    }
+
+    /// <summary>The unresolved <c>members[]</c> reference value.</summary>
+    public string Reference { get; }
+
+    /// <summary>The address scheme of the missing artefact.</summary>
+    public string Scheme { get; }
 }
