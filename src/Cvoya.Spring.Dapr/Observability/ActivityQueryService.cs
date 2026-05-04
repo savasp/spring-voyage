@@ -59,13 +59,18 @@ public class ActivityQueryService(SpringDbContext dbContext) : IActivityQuerySer
             .OrderByDescending(e => e.Timestamp)
             .Skip((parameters.Page - 1) * parameters.PageSize)
             .Take(parameters.PageSize)
-            .Select(e => new { e.Id, e.SourceId, e.EventType, e.Severity, e.Summary, e.CorrelationId, e.Cost, e.Timestamp })
+            .Select(e => new { e.Id, e.SourceId, e.EventType, e.Severity, e.Summary, e.CorrelationId, e.Cost, e.Timestamp, e.Details })
             .ToListAsync(cancellationToken);
 
+        // #1665: include the persisted Details payload so the portal's
+        // Activity tab can expand a row to see the full structured payload
+        // (validation code/message, transition context, etc.) without
+        // falling back to the SSE stream — historical rows were previously
+        // unrecoverable from the REST surface.
         var items = rawItems
             .Select(e => new ActivityQueryResult.Item(
                 e.Id, GuidFormatter.Format(e.SourceId), e.EventType, e.Severity, e.Summary,
-                e.CorrelationId, e.Cost, e.Timestamp))
+                e.CorrelationId, e.Cost, e.Timestamp, e.Details))
             .ToList();
 
         return new ActivityQueryResult(items, totalCount, parameters.Page, parameters.PageSize);

@@ -1,5 +1,5 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 
 import type { UnitNode } from "../aggregate";
@@ -23,14 +23,38 @@ vi.mock("../unit-overview-expertise-card", () => ({
 }));
 
 const useUnitCostTimeseriesMock = vi.fn();
+const useUnitMock = vi.fn();
+const useUnitExecutionMock = vi.fn();
 vi.mock("@/lib/api/queries", () => ({
   useUnitCostTimeseries: (id: string, window: string, bucket: string) =>
     useUnitCostTimeseriesMock(id, window, bucket),
+  useUnit: (id: string) => useUnitMock(id),
+  useUnitExecution: (id: string) => useUnitExecutionMock(id),
+}));
+
+// `<ValidationPanel>` is rendered for `Error` units; stub it out so the
+// Overview tests don't need to thread the panel's full mutation /
+// query-client wiring through every assertion.
+vi.mock("../detail/validation-panel", () => ({
+  default: ({ unit }: { unit: { lastValidationError?: { code?: string } | null } }) => (
+    <div
+      data-testid="validation-panel-stub"
+      data-validation-code={unit.lastValidationError?.code ?? ""}
+    />
+  ),
 }));
 
 import UnitOverviewTab from "./unit-overview";
 
 const emptyTimeseries = { data: null, isLoading: false };
+const noUnit = { data: null, isLoading: false };
+const noExecution = { data: null, isLoading: false };
+
+beforeEach(() => {
+  useUnitCostTimeseriesMock.mockReturnValue(emptyTimeseries);
+  useUnitMock.mockReturnValue(noUnit);
+  useUnitExecutionMock.mockReturnValue(noExecution);
+});
 
 describe("UnitOverviewTab", () => {
   it("renders subtree stat tiles rolled up from the node", () => {
@@ -133,5 +157,57 @@ describe("UnitOverviewTab", () => {
       "/engagement/mine?unit=engineering",
     );
     expect(link).toHaveTextContent("View engagements for this unit");
+  });
+
+  // #1665: when the live unit is in `Error`, the validation panel
+  // surfaces the structured `lastValidationError` so the operator
+  // sees *why* validation failed without leaving the Overview tab.
+  it("renders the validation panel when the live unit is in Error", () => {
+    useUnitMock.mockReturnValue({
+      data: {
+        id: "engineering",
+        name: "engineering",
+        displayName: "Engineering",
+        status: "Error",
+        lastValidationError: {
+          step: "SchedulingWorkflow",
+          code: "ConfigurationIncomplete",
+          message:
+            "No execution defaults are configured on this unit. Set a container image (and optionally a runtime) before validation can run.",
+          details: { missing: "image,runtime" },
+        },
+      },
+      isLoading: false,
+    });
+    const node: UnitNode = {
+      kind: "Unit",
+      id: "engineering",
+      name: "Engineering",
+      status: "error",
+    };
+    render(<UnitOverviewTab node={node} path={[node]} />);
+    const panel = screen.getByTestId("validation-panel-stub");
+    expect(panel.dataset.validationCode).toBe("ConfigurationIncomplete");
+  });
+
+  it("does not render the validation panel for healthy units", () => {
+    useUnitMock.mockReturnValue({
+      data: {
+        id: "engineering",
+        name: "engineering",
+        displayName: "Engineering",
+        status: "Running",
+        lastValidationError: null,
+      },
+      isLoading: false,
+    });
+    const node: UnitNode = {
+      kind: "Unit",
+      id: "engineering",
+      name: "Engineering",
+      status: "running",
+    };
+    render(<UnitOverviewTab node={node} path={[node]} />);
+    expect(screen.queryByTestId("validation-panel-stub")).not.toBeInTheDocument();
   });
 });

@@ -33,7 +33,7 @@ public class UnitValidationCoordinator(
     /// <inheritdoc />
     public async Task<TransitionResult?> TryStartWorkflowAsync(
         string unitActorId,
-        Func<UnitStatus, UnitStatus, CancellationToken, Task<TransitionResult>> persistTransition,
+        Func<UnitStatus, UnitStatus, UnitValidationError?, CancellationToken, Task<TransitionResult>> persistTransition,
         CancellationToken cancellationToken = default)
     {
         if (scheduler is null)
@@ -101,7 +101,7 @@ public class UnitValidationCoordinator(
         string unitActorId,
         UnitValidationCompletion completion,
         Func<CancellationToken, Task<UnitStatus>> getCurrentStatus,
-        Func<UnitStatus, UnitStatus, CancellationToken, Task<TransitionResult>> persistTransition,
+        Func<UnitStatus, UnitStatus, UnitValidationError?, CancellationToken, Task<TransitionResult>> persistTransition,
         CancellationToken cancellationToken = default)
     {
         var current = await getCurrentStatus(cancellationToken);
@@ -154,7 +154,7 @@ public class UnitValidationCoordinator(
                 await tracker.SetFailureAsync(unitActorId, null, cancellationToken);
             }
 
-            return await persistTransition(UnitStatus.Validating, UnitStatus.Stopped, cancellationToken);
+            return await persistTransition(UnitStatus.Validating, UnitStatus.Stopped, null, cancellationToken);
         }
 
         // Failure: serialize the payload and persist before the transition
@@ -168,7 +168,11 @@ public class UnitValidationCoordinator(
             await tracker.SetFailureAsync(unitActorId, payload, cancellationToken);
         }
 
-        return await persistTransition(UnitStatus.Validating, UnitStatus.Error, cancellationToken);
+        // #1665: forward the structured failure to PersistTransitionAsync so
+        // the StateChanged activity event can elevate its severity and embed
+        // the validation code/message in the activity feed.
+        return await persistTransition(
+            UnitStatus.Validating, UnitStatus.Error, completion.Failure, cancellationToken);
     }
 
     /// <summary>
@@ -181,7 +185,7 @@ public class UnitValidationCoordinator(
     private async Task<TransitionResult> PersistSchedulerFailureAsync(
         string unitActorId,
         UnitValidationError error,
-        Func<UnitStatus, UnitStatus, CancellationToken, Task<TransitionResult>> persistTransition,
+        Func<UnitStatus, UnitStatus, UnitValidationError?, CancellationToken, Task<TransitionResult>> persistTransition,
         CancellationToken cancellationToken)
     {
         if (tracker is not null)
@@ -200,6 +204,9 @@ public class UnitValidationCoordinator(
             }
         }
 
-        return await persistTransition(UnitStatus.Validating, UnitStatus.Error, cancellationToken);
+        // #1665: forward the structured failure to PersistTransitionAsync so
+        // the StateChanged activity event can elevate its severity and embed
+        // the validation code/message in the activity feed.
+        return await persistTransition(UnitStatus.Validating, UnitStatus.Error, error, cancellationToken);
     }
 }

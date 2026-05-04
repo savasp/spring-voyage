@@ -86,6 +86,11 @@ vi.mock("@/lib/api/queries", () => ({
   // Unit Overview tab (#1363) — cost timeseries sparkline. Stub with "no
   // data" so Explorer page tests don't need to model analytics.
   useUnitCostTimeseries: () => ({ data: null, isLoading: false }),
+  // Unit Overview tab (#1665) — the validation panel reads the unit's
+  // execution slice (image / runtime) for friendly error copy. Stub
+  // with "no data" so Explorer page tests don't need to model
+  // execution defaults.
+  useUnitExecution: () => ({ data: null, isLoading: false }),
 }));
 
 function wrap(node: ReactNode) {
