@@ -561,6 +561,15 @@ export type GitHubRepositoryResponse = Schemas["GitHubRepositoryResponse"];
  */
 export type GitHubCollaboratorResponse = Schemas["GitHubCollaboratorResponse"];
 
+/**
+ * 401 body shape for `GET /api/v1/tenant/connectors/github/actions/list-repositories`
+ * when the caller has no usable GitHub OAuth user session (#1663). The
+ * wizard / connector tab parses this off `ApiError.body` to render a
+ * "Link your GitHub account" panel with `authorizeUrl` as the call-to-action.
+ * @public Consumed by `Cvoya.Spring.Connector.GitHub/web/*` cross-workspace.
+ */
+export type GitHubMissingOAuthResponse = Schemas["GitHubMissingOAuthResponse"];
+
 /** GET /api/v1/units/{id}/readiness response. */
 export type UnitReadinessResponse = Schemas["UnitReadinessResponse"];
 

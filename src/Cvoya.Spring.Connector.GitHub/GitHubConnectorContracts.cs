@@ -121,3 +121,40 @@ public record GitHubRepositoryResponse(
 public record GitHubCollaboratorResponse(
     string Login,
     string? AvatarUrl);
+
+/// <summary>
+/// Structured body for the <c>401 Unauthorized</c> emitted by
+/// <c>GET /api/v1/connectors/github/actions/list-repositories</c> when
+/// the caller has no usable GitHub OAuth user session. The endpoint is
+/// fail-closed (#1663): a session-less call MUST NOT fall back to the
+/// installation-scoped list, because the resulting set leaks repos the
+/// caller may not have permission to see in their own GitHub identity.
+/// The portal renders the body as a "Link your GitHub account" panel
+/// with a button that points at <see cref="AuthorizeUrl"/>.
+/// </summary>
+/// <param name="MissingOAuth">
+/// Always <c>true</c>. Lets the portal key its remediation panel off a
+/// single, stable extension field rather than parsing the title.
+/// </param>
+/// <param name="Reason">
+/// A short, human-readable sentence the portal shows to the operator.
+/// Distinguishes "no session id supplied", "session not found",
+/// "access token missing", and "OAuth not configured on this
+/// deployment" so an operator can act on the right gap.
+/// </param>
+/// <param name="AuthorizeUrl">
+/// The GitHub OAuth authorize URL the portal should open in a popup /
+/// new tab. Populated when <c>GitHub:OAuth</c> is configured;
+/// <c>null</c> when it isn't (which the portal renders as "the
+/// operator must configure the OAuth App first").
+/// </param>
+/// <param name="State">
+/// The state value bound to the authorize URL. Echoed back here so
+/// callers that prefer not to parse the URL can match it against the
+/// callback. Only set when <see cref="AuthorizeUrl"/> is.
+/// </param>
+public record GitHubMissingOAuthResponse(
+    bool MissingOAuth,
+    string Reason,
+    string? AuthorizeUrl,
+    string? State);

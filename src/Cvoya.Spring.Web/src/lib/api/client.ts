@@ -939,12 +939,15 @@ export const api = {
    * the installation id back so the connector never has to re-resolve
    * `(owner, repo) → installation`.
    *
-   * #1505: The optional `sessionId` parameter scopes the result to only
-   * installations belonging to the calling user's GitHub identity (their
-   * personal login plus any organisations they belong to). When omitted
-   * the full unfiltered list is returned for backward compatibility.
-   * Pass the GitHub OAuth session id from the portal's OAuth flow when
-   * available to prevent cross-tenant repository leakage.
+   * #1663: the endpoint is fail-closed against session-less callers. The
+   * `sessionId` parameter is now effectively required — the caller MUST
+   * supply a GitHub OAuth session id minted via the portal's OAuth flow.
+   * Calling without one (or with an unknown one) lands the user on a 401
+   * response with a structured `GitHubMissingOAuthResponse` body the UI
+   * surfaces as a "Link your GitHub account" panel. The signature keeps
+   * `sessionId` optional so the caller can pass `undefined` and let the
+   * 401 happen — the UI drives the OAuth dance off the response, not the
+   * request shape.
    */
   listGitHubRepositories: async (sessionId?: string) =>
     unwrap(
@@ -953,6 +956,29 @@ export const api = {
         sessionId
           ? { params: { query: { session_id: sessionId } as never } }
           : {},
+      ),
+    ),
+  /**
+   * #1663: starts the GitHub OAuth flow used by the wizard / connector
+   * tab to mint a session id. Returns the GitHub authorize URL the
+   * caller redirects the user to and the server-issued state value the
+   * callback later validates. The portal opens the URL in a new
+   * tab/popup and consumes the resulting session id via the API's
+   * `/oauth/callback` endpoint — see the GitHub connector's web/
+   * components for the full flow.
+   */
+  beginGitHubOAuthAuthorize: async (
+    body?: { scopes?: string[] | null; clientState?: string | null },
+  ) =>
+    unwrap(
+      await fetchClient.POST(
+        "/api/v1/tenant/connectors/github/oauth/authorize",
+        {
+          body: {
+            scopes: body?.scopes ?? null,
+            clientState: body?.clientState ?? null,
+          },
+        },
       ),
     ),
   /**
