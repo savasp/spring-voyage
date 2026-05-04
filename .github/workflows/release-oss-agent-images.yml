@@ -145,6 +145,14 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Make GHCR package public
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PKG_NAME: ${{ matrix.name }}
+        run: |
+          gh api -X PATCH "/orgs/cvoya-com/packages/container/${PKG_NAME}" \
+            -F visibility=public
+
       - name: Summary
         shell: bash
         env:

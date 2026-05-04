@@ -37,22 +37,63 @@ Pre-release versions use a SemVer-compatible suffix:
 
 | Suffix | Purpose |
 | --- | --- |
-| `-alpha.N` | Early, possibly broken. Internal testing. May change freely. |
-| `-beta.N` | Feature-complete for the target release; stabilising. Public testing encouraged. Breaking changes possible but called out. |
-| `-rc.N` | Release candidate. Expected to become the final release unless a blocker is found. No further feature additions; only blocker fixes. |
+| `-alpha.<date>` | Early, possibly broken. Internal testing. May change freely. |
+| `-beta.<date>` | Feature-complete for the target release; stabilising. Public testing encouraged. Breaking changes possible but called out. |
+| `-rc.<date>` | Release candidate. Expected to become the final release unless a blocker is found. No further feature additions; only blocker fixes. |
 
-Examples: `0.2.0-alpha.1`, `0.2.0-beta.3`, `1.0.0-rc.1`.
+### Date-anchored convention
 
-Pre-release versions are published alongside (not in place of) the most recent stable version; consumers must opt in explicitly (e.g., `--prerelease` on package commands).
+The date field uses the `YYYYMMDD` form of the release date (UTC). Same-day re-releases append a numeric counter: `.1`, `.2`, …
+
+```
+v0.1.0-alpha.20260504       # first alpha on 2026-05-04
+v0.1.0-alpha.20260504.1     # second alpha on the same day
+v0.1.0-rc.20260601          # release candidate on 2026-06-01
+v0.1.0                      # stable release
+```
+
+The git tag is the sole source of truth for the release version. There is no `VERSION` file.
+
+Pre-release versions are published alongside (not in place of) the most recent stable version; consumers must opt in explicitly.
 
 ## How Releases Are Cut
 
-1. **Source of truth: tags on `main`.** Releases are cut from `main` by creating an annotated git tag of the form `vMAJOR.MINOR.PATCH` (e.g., `v0.2.0`). Pre-releases use `vMAJOR.MINOR.PATCH-<suffix>` (e.g., `v0.2.0-rc.1`).
-2. **Changelog finalisation.** Before tagging, move the `## [Unreleased]` section in `CHANGELOG.md` to `## [X.Y.Z] - YYYY-MM-DD`, create a fresh empty `[Unreleased]` section, and open a PR titled `Release vX.Y.Z`.
-3. **Tag after merge.** Once the release PR merges, create the tag on the merge commit: `git tag -a vX.Y.Z -m "Release vX.Y.Z" && git push origin vX.Y.Z`.
-4. **Automated release pipeline.** Pushing the tag triggers [`.github/workflows/release.yml`](../../.github/workflows/release.yml), which runs the full test suite, builds and pushes the container images, and creates the GitHub Release with the `## [Unreleased]` section of `CHANGELOG.md` as the release notes.
-5. **No long-lived release branches.** Branches are short-lived and PR-scoped. Patch releases on older minor versions are an exception (see "Patch releases on prior versions" below) and will use `release/X.Y` branches when needed.
-6. **Who can cut a release.** Maintainers with write access to the repository. The release PR still goes through normal review.
+Use `scripts/release.sh` to cut a release. The script pushes four component tags in dependency order and waits for each workflow to succeed before proceeding.
+
+```bash
+# Dry-run: print the computed tags without pushing anything.
+./scripts/release.sh v0.1.0 --pre alpha --plan
+
+# Cut an alpha release.
+./scripts/release.sh v0.1.0 --pre alpha
+
+# Cut a stable release.
+./scripts/release.sh v0.1.0
+```
+
+**Tag chain** (pushed in order, each waited on before the next):
+
+| Step | Tag pushed | Workflow triggered |
+| --- | --- | --- |
+| 1 | `agent-base-v<version>` | `release-agent-base.yml` |
+| 2 | `agents-v<version>` | `release-spring-voyage-agents.yml` |
+| 3 | `oss-agents-v<version>` | `release-oss-agent-images.yml` |
+| 4 | `v<version>` | `release.yml` (platform + GitHub Release) |
+
+After all four workflows succeed, the script verifies that every image referenced in `packages/**/*.yaml` is anonymously pullable from `ghcr.io`.
+
+**Flags:**
+
+| Flag | Effect |
+| --- | --- |
+| `--pre alpha\|beta\|rc` | Append `-<suffix>.YYYYMMDD` to the semver argument. |
+| `--plan` | Print the computed tags and exit 0; no tags pushed. |
+| `--force-retag` | Skip the idempotency guard (allows re-tagging an existing version). |
+
+**Changelog finalisation** (stable releases only):
+
+1. Before tagging, move the `## [Unreleased]` section in `CHANGELOG.md` to `## [X.Y.Z] - YYYY-MM-DD`, create a fresh empty `[Unreleased]` section, and merge a PR titled `Release vX.Y.Z`.
+2. Run `./scripts/release.sh vX.Y.Z` from clean `main`.
 
 ### Patch releases on prior versions
 
@@ -77,18 +118,21 @@ The repository has two continuous-integration workflows under [`.github/workflow
   - `required-checks` — aggregation gate for branch protection.
 - **[`codeql.yml`](../../.github/workflows/codeql.yml)** — CodeQL C# analysis on pushes, pull requests, merge queue, and weekly.
 
-### Release pipeline (`release.yml`)
+### Release workflows
 
-[`.github/workflows/release.yml`](../../.github/workflows/release.yml) fires on tag pushes matching `v[0-9]+.[0-9]+.[0-9]+*` (e.g., `v0.1.0`, `v0.2.0-rc.1`). It can also be triggered manually via `workflow_dispatch` with an explicit tag input.
+Releases are triggered by tag pushes only — never by merges to `main`. The table below shows each workflow and the tag prefix that activates it.
 
-Jobs, in order:
+| Workflow | Tag prefix | Publishes |
+| --- | --- | --- |
+| [`release-agent-base.yml`](../../.github/workflows/release-agent-base.yml) | `agent-base-v*` | `ghcr.io/cvoya-com/agent-base`, `@cvoya/spring-voyage-agent-sidecar` npm package, SEA binaries |
+| [`release-spring-voyage-agents.yml`](../../.github/workflows/release-spring-voyage-agents.yml) | `agents-v*` | `ghcr.io/cvoya-com/spring-voyage-agents` |
+| [`release-oss-agent-images.yml`](../../.github/workflows/release-oss-agent-images.yml) | `oss-agents-v*` | Four OSS role images (software-engineering, design, product-management, program-management) |
+| [`release.yml`](../../.github/workflows/release.yml) | `v*` | `ghcr.io/cvoya-com/spring-agent`, `ghcr.io/cvoya-com/agent-base`, `ghcr.io/cvoya-com/agent-dapr`, GitHub Release |
+| [`release-spring-dispatcher.yml`](../../.github/workflows/release-spring-dispatcher.yml) | `dispatcher-v*` | Self-contained dispatcher binaries (5 RIDs) |
 
-1. **`resolve`** — validates the tag shape (`vMAJOR.MINOR.PATCH[-prerelease]`) and emits `version`, `major_minor`, and `is_prerelease` outputs consumed by downstream jobs.
-2. **`test`** — runs the full .NET test suite (restore, build, `dotnet test`) with a Dapr slim init, mirroring `ci.yml`'s `test` job exactly. The release is gated on tests passing.
-3. **`publish-images`** — builds the three agent container images via `deployment/build-agent-images.sh`, then tags and pushes them to `ghcr.io` (see Container Images section below).
-4. **`github-release`** — creates the GitHub Release using `scripts/extract-changelog-section.sh` to pull the `## [Unreleased]` block of `CHANGELOG.md` as the release body.
+`scripts/release.sh` orchestrates steps 1–4 in dependency order. The dispatcher workflow is independent and not driven by the release script.
 
-Component-scoped release workflows (agent-base binaries, dispatcher self-contained builds) use separate tag prefixes (`agent-base-v*`, `dispatcher-v*`) so they do not fight with `release.yml`.
+Each release workflow calls `gh api -X PATCH /orgs/cvoya-com/packages/container/<name> -F visibility=public` after pushing, so packages are publicly pullable from the first publish onward.
 
 ## NuGet Package Publishing
 
@@ -98,13 +142,18 @@ The decision to publish NuGet packages (names, registry, `IsPackable` wiring) is
 
 ## Container Image Tagging and Publishing
 
-Container images are published to the GitHub Container Registry (`ghcr.io/cvoya/`) by the `release.yml` workflow on every tag push. Three images are built and pushed:
+Container images are published to the GitHub Container Registry (`ghcr.io/cvoya-com/`). All images are publicly pullable (no credentials required).
 
-| Image | Description |
-| --- | --- |
-| `ghcr.io/cvoya/spring-agent` | Primary agent runtime (claude-code); the default image in `UnitRuntimeOptions.cs`. |
-| `ghcr.io/cvoya/agent-base`   | BYOI conformance path-1 base image; bundles the A2A sidecar bridge. |
-| `ghcr.io/cvoya/agent-dapr`   | Dapr-native A2A agent (path-3). |
+| Image | Published by | Description |
+| --- | --- | --- |
+| `ghcr.io/cvoya-com/spring-agent` | `release.yml` | Primary agent runtime (claude-code); the default image in `UnitRuntimeOptions.cs`. |
+| `ghcr.io/cvoya-com/agent-base` | `release-agent-base.yml`, `release.yml` | BYOI conformance path-1 base image; bundles the A2A sidecar bridge. |
+| `ghcr.io/cvoya-com/agent-dapr` | `release.yml` | Dapr-native A2A agent (path-3). |
+| `ghcr.io/cvoya-com/spring-voyage-agents` | `release-spring-voyage-agents.yml` | Omnibus image: all OSS runtime CLIs pre-installed. Default for OSS unit creation. |
+| `ghcr.io/cvoya-com/spring-voyage-agent-oss-software-engineering` | `release-oss-agent-images.yml` | OSS software-engineering role agent. |
+| `ghcr.io/cvoya-com/spring-voyage-agent-oss-design` | `release-oss-agent-images.yml` | OSS design role agent. |
+| `ghcr.io/cvoya-com/spring-voyage-agent-oss-product-management` | `release-oss-agent-images.yml` | OSS product-management role agent. |
+| `ghcr.io/cvoya-com/spring-voyage-agent-oss-program-management` | `release-oss-agent-images.yml` | OSS program-management role agent. |
 
 ### Tag convention
 
@@ -114,13 +163,13 @@ Container images are published to the GitHub Container Registry (`ghcr.io/cvoya/
 | `:X.Y` | Floating tag pointing at the latest patch of the `X.Y` minor line. |
 | `:latest` | Floating tag pointing at the most recent stable release. Never points at a pre-release. |
 
-Pre-release tags (e.g., `v0.2.0-rc.1`) push only the immutable `:X.Y.Z-rc.N` tag; `:latest` and `:X.Y` are not updated.
+Pre-release tags (e.g., `v0.1.0-alpha.20260504`) push only the immutable version tag; `:latest` and `:X.Y` are not updated.
 
 The tag pushed to the container registry has the leading `v` stripped (e.g., git tag `v0.1.0` → image tag `0.1.0`).
 
 ### Local and VPS deployment
 
-`deployment/deploy.sh` and `deployment/deploy-remote.sh` build images locally with Podman on the target host. They do not pull from the registry; `ghcr.io/cvoya/spring-agent:latest` is available for operators who prefer a pre-built image.
+`deployment/deploy.sh` and `deployment/deploy-remote.sh` build images locally with Podman on the target host. They do not pull from the registry; `ghcr.io/cvoya-com/spring-agent:latest` is available for operators who prefer a pre-built image.
 
 ## Changelog
 
@@ -130,6 +179,7 @@ The canonical changelog is [`CHANGELOG.md`](../../CHANGELOG.md) at the repositor
 
 | Script | Purpose |
 | --- | --- |
+| [`scripts/release.sh`](../../scripts/release.sh) | Orchestrates the full release: computes tags, pushes them in dependency order, waits on each workflow, verifies anonymous pull. Flags: `--pre alpha\|beta\|rc`, `--plan` (dry-run), `--force-retag`. |
 | [`scripts/extract-changelog-section.sh`](../../scripts/extract-changelog-section.sh) | Extracts a named section (default: `Unreleased`) from `CHANGELOG.md` and prints it to stdout. Used by `release.yml` to populate the GitHub Release body. |
 
 ## Summary Table
@@ -137,9 +187,10 @@ The canonical changelog is [`CHANGELOG.md`](../../CHANGELOG.md) at the repositor
 | Topic | State today |
 | --- | --- |
 | SemVer | Adopted |
-| Git tags | Tag-based from `main`; `v*` prefix |
-| GitHub Releases | Automated via `release.yml` on tag push |
+| Git tags | Tag-based from `main`; sole source of truth for version |
+| GitHub Releases | Automated via `release.yml` on `v*` tag push |
 | NuGet packages | Not published; decision tracked in [#1395](https://github.com/cvoya-com/spring-voyage/issues/1395) |
-| Container images | Published to `ghcr.io/cvoya/*` by `release.yml` |
+| Container images | Published to `ghcr.io/cvoya-com/*`; all images public |
+| Component release script | In place ([`scripts/release.sh`](../../scripts/release.sh)) |
 | CI (build, test, format, lint) | In place ([`ci.yml`](../../.github/workflows/ci.yml), [`codeql.yml`](../../.github/workflows/codeql.yml)) |
-| Release-publishing workflow | In place ([`release.yml`](../../.github/workflows/release.yml)) |
+| Release-publishing workflows | In place (five tag-scoped workflows) |

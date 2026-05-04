@@ -4,12 +4,12 @@ Spring Voyage ships two classes of container image for running agents:
 
 | Image | GHCR reference | Purpose |
 |-------|----------------|---------|
-| `spring-voyage-agent-base` | `ghcr.io/cvoya-com/spring-voyage-agent-base:latest` | BYOI minimal — the A2A sidecar bridge only. Operators layer their own CLI on top. |
+| `agent-base` | `ghcr.io/cvoya-com/agent-base:latest` | BYOI minimal — the A2A sidecar bridge only. Operators layer their own CLI on top. |
 | `spring-voyage-agents` | `ghcr.io/cvoya-com/spring-voyage-agents:latest` | Omnibus default — all OSS runtime CLIs pre-installed. The wizard default. |
 
 Per-runtime images (`spring-voyage-agent-claude-code`, `spring-voyage-agent-dapr`) exist for single-runtime deployments or CI build verification and are not published to GHCR by default.
 
-## spring-voyage-agent-base (BYOI minimal)
+## agent-base (BYOI minimal)
 
 **Source:** `deployment/Dockerfile.agent-base`
 **Published by:** `release-agent-base.yml` on `agent-base-v*` tags.
@@ -26,7 +26,7 @@ The minimal layer an operator needs to plug any CLI into the Spring Voyage dispa
 **Example:**
 
 ```dockerfile
-FROM ghcr.io/cvoya-com/spring-voyage-agent-base:latest
+FROM ghcr.io/cvoya-com/agent-base:latest
 USER root
 RUN npm install -g my-private-agent-cli@1.2.3
 USER agent
@@ -38,7 +38,7 @@ USER agent
 **Published by:** `release-spring-voyage-agents.yml` on `agents-v*` tags.
 **Wizard default:** The unit-creation wizard pre-fills this image when no runtime-specific image is set.
 
-The omnibus image layers all four OSS CLI runtimes on top of `spring-voyage-agent-base`:
+The omnibus image layers all four OSS CLI runtimes on top of `agent-base`:
 
 | CLI | npm package | Version (pinned) | Runtime ID |
 |-----|-------------|-----------------|------------|
@@ -99,12 +99,12 @@ RUN apt-get update \
 USER agent
 ```
 
-### Extending spring-voyage-agent-base (BYOI custom agent)
+### Extending agent-base (BYOI custom agent)
 
 For a completely custom agent CLI that is not one of the OSS runtimes:
 
 ```dockerfile
-FROM ghcr.io/cvoya-com/spring-voyage-agent-base:latest
+FROM ghcr.io/cvoya-com/agent-base:latest
 USER root
 RUN npm install -g my-private-agent-cli@1.2.3 \
  && command -v my-agent >/dev/null
@@ -114,6 +114,8 @@ USER agent
 Set `SPRING_AGENT_ARGV='["my-agent","--flag"]'` at launch time.
 
 ## Pull and verify commands
+
+All images are publicly available on GHCR — no credentials required.
 
 ```bash
 # Pull the omnibus default
@@ -128,5 +130,5 @@ docker inspect ghcr.io/cvoya-com/spring-voyage-agents:latest \
   --format '{{json .Config.Labels}}' | jq .
 
 # Pull the BYOI minimal base
-docker pull ghcr.io/cvoya-com/spring-voyage-agent-base:latest
+docker pull ghcr.io/cvoya-com/agent-base:latest
 ```
