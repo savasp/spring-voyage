@@ -58,6 +58,8 @@ Two consequences for image authors:
 
 This is the recommended path. The `agent-base` image bundles `tini`, Node 22, and a pre-installed copy of the A2A bridge under `/opt/spring-voyage/sidecar/`. The image's ENTRYPOINT runs the bridge on `:8999`. You add your CLI tool on top.
 
+> **Version:** Replace `1.0.0` in the examples below with the current release tag. Check the [latest `agent-base-v*` release](https://github.com/cvoya-com/spring-voyage/releases?q=agent-base-v) for the most recently published version.
+
 ```dockerfile
 # syntax=docker/dockerfile:1.7
 FROM ghcr.io/cvoya-com/agent-base:1.0.0
