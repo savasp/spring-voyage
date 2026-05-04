@@ -395,27 +395,37 @@ cmd_stop() {
     load_env
     resolve_settings
 
-    if ! is_running; then
-        log "dispatcher is not running"
-        return 0
+    if is_running; then
+        log "stopping dispatcher (pid=${PID})"
+        kill -TERM "${PID}" 2>/dev/null || true
+
+        local waited=0
+        while (( waited < 10 )) && kill -0 "${PID}" 2>/dev/null; do
+            sleep 1
+            waited=$(( waited + 1 ))
+        done
+
+        if kill -0 "${PID}" 2>/dev/null; then
+            log "dispatcher did not exit within 10s; sending SIGKILL"
+            kill -KILL "${PID}" 2>/dev/null || true
+        fi
+
+        rm -f "${PID_FILE}"
+        log "dispatcher stopped"
     fi
 
-    log "stopping dispatcher (pid=${PID})"
-    kill -TERM "${PID}" 2>/dev/null || true
-
-    local waited=0
-    while (( waited < 10 )) && kill -0 "${PID}" 2>/dev/null; do
-        sleep 1
-        waited=$(( waited + 1 ))
-    done
-
-    if kill -0 "${PID}" 2>/dev/null; then
-        log "dispatcher did not exit within 10s; sending SIGKILL"
-        kill -KILL "${PID}" 2>/dev/null || true
+    # Kill any stale dispatcher on the configured port (e.g. left over from a
+    # different worktree whose PID file is absent from this STATE_DIR).
+    local stale_pids
+    stale_pids="$(lsof -t -i "TCP:${DISPATCHER_PORT}" -sTCP:LISTEN 2>/dev/null || true)"
+    if [[ -n "${stale_pids}" ]]; then
+        log "killing stale dispatcher on port ${DISPATCHER_PORT} (pid(s)=${stale_pids})"
+        # shellcheck disable=SC2086
+        kill -TERM ${stale_pids} 2>/dev/null || true
+        sleep 2
+        # shellcheck disable=SC2086
+        kill -KILL ${stale_pids} 2>/dev/null || true
     fi
-
-    rm -f "${PID_FILE}"
-    log "dispatcher stopped"
 }
 
 cmd_restart() {
