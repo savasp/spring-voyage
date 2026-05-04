@@ -41,14 +41,15 @@ public class CloneEndpointsTests : IClassFixture<CustomWebApplicationFactory>
     public async Task ListClones_AgentExists_NoClones_ReturnsEmptyList()
     {
         var ct = TestContext.Current.CancellationToken;
+        var agentId = Agent_TestAgent_Id.ToString("N");
         var agentAddress = new Address("agent", Agent_TestAgent_Id);
         var entry = new DirectoryEntry(agentAddress, Actor1_Id, "Test Agent", "A test agent", "backend", DateTimeOffset.UtcNow);
         _factory.DirectoryService.ResolveAsync(agentAddress, Arg.Any<CancellationToken>()).Returns(entry);
         _factory.StateStore.GetAsync<List<string>>(
-            $"test-agent:{StateKeys.CloneChildren}", Arg.Any<CancellationToken>())
+            $"{agentId}:{StateKeys.CloneChildren}", Arg.Any<CancellationToken>())
             .Returns((List<string>?)null);
 
-        var response = await _client.GetAsync("/api/v1/tenant/agents/test-agent/clones", ct);
+        var response = await _client.GetAsync($"/api/v1/tenant/agents/{agentId}/clones", ct);
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
@@ -71,20 +72,23 @@ public class CloneEndpointsTests : IClassFixture<CustomWebApplicationFactory>
             $"{agentId}:{StateKeys.CloneChildren}", Arg.Any<CancellationToken>())
             .Returns(cloneIds);
 
-        var identityA = new CloneIdentity(agentId, Agent_CloneA_Id.ToString("N"), CloningPolicy.EphemeralNoMemory, AttachmentMode.Detached);
+        var cloneAHex = Agent_CloneA_Id.ToString("N");
+        var cloneBHex = Agent_CloneB_Id.ToString("N");
+
+        var identityA = new CloneIdentity(agentId, cloneAHex, CloningPolicy.EphemeralNoMemory, AttachmentMode.Detached);
         _factory.StateStore.GetAsync<CloneIdentity>(
-            $"clone-a:{StateKeys.CloneIdentity}", Arg.Any<CancellationToken>())
+            $"{cloneAHex}:{StateKeys.CloneIdentity}", Arg.Any<CancellationToken>())
             .Returns(identityA);
 
-        var identityB = new CloneIdentity(agentId, Agent_CloneB_Id.ToString("N"), CloningPolicy.EphemeralWithMemory, AttachmentMode.Attached);
+        var identityB = new CloneIdentity(agentId, cloneBHex, CloningPolicy.EphemeralWithMemory, AttachmentMode.Attached);
         _factory.StateStore.GetAsync<CloneIdentity>(
-            $"clone-b:{StateKeys.CloneIdentity}", Arg.Any<CancellationToken>())
+            $"{cloneBHex}:{StateKeys.CloneIdentity}", Arg.Any<CancellationToken>())
             .Returns(identityB);
 
-        var cloneEntryA = new DirectoryEntry(new Address("agent", Agent_CloneA_Id), Agent_CloneA_Id, "Clone:clone-a", "Clone of list-parent", null, DateTimeOffset.UtcNow);
+        var cloneEntryA = new DirectoryEntry(new Address("agent", Agent_CloneA_Id), Agent_CloneA_Id, $"Clone:{cloneAHex}", "Clone of list-parent", null, DateTimeOffset.UtcNow);
         _factory.DirectoryService.ResolveAsync(new Address("agent", Agent_CloneA_Id), Arg.Any<CancellationToken>()).Returns(cloneEntryA);
 
-        var cloneEntryB = new DirectoryEntry(new Address("agent", Agent_CloneB_Id), Agent_CloneB_Id, "Clone:clone-b", "Clone of list-parent", null, DateTimeOffset.UtcNow);
+        var cloneEntryB = new DirectoryEntry(new Address("agent", Agent_CloneB_Id), Agent_CloneB_Id, $"Clone:{cloneBHex}", "Clone of list-parent", null, DateTimeOffset.UtcNow);
         _factory.DirectoryService.ResolveAsync(new Address("agent", Agent_CloneB_Id), Arg.Any<CancellationToken>()).Returns(cloneEntryB);
 
         var response = await _client.GetAsync($"/api/v1/tenant/agents/{agentId}/clones", ct);
@@ -113,7 +117,8 @@ public class CloneEndpointsTests : IClassFixture<CustomWebApplicationFactory>
         var agentAddress = new Address("agent", Agent_NonexistentListAgent_Id);
         _factory.DirectoryService.ResolveAsync(agentAddress, Arg.Any<CancellationToken>()).Returns((DirectoryEntry?)null);
 
-        var response = await _client.GetAsync("/api/v1/tenant/agents/nonexistent-list-agent/clones", ct);
+        var response = await _client.GetAsync(
+            $"/api/v1/tenant/agents/{Agent_NonexistentListAgent_Id:N}/clones", ct);
 
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
@@ -134,7 +139,7 @@ public class CloneEndpointsTests : IClassFixture<CustomWebApplicationFactory>
             Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() },
         };
         var response = await _client.PostAsJsonAsync(
-            "/api/v1/tenant/agents/nonexistent-agent/clones", request, jsonOptions, ct);
+            $"/api/v1/tenant/agents/{Agent_NonexistentAgent_Id:N}/clones", request, jsonOptions, ct);
 
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
@@ -183,7 +188,8 @@ public class CloneEndpointsTests : IClassFixture<CustomWebApplicationFactory>
         var cloneAddress = new Address("agent", Agent_NonexistentClone_Id);
         _factory.DirectoryService.ResolveAsync(cloneAddress, Arg.Any<CancellationToken>()).Returns((DirectoryEntry?)null);
 
-        var response = await _client.GetAsync("/api/v1/tenant/agents/test-agent/clones/nonexistent-clone", ct);
+        var response = await _client.GetAsync(
+            $"/api/v1/tenant/agents/{Agent_TestAgent_Id:N}/clones/{Agent_NonexistentClone_Id:N}", ct);
 
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
@@ -195,7 +201,8 @@ public class CloneEndpointsTests : IClassFixture<CustomWebApplicationFactory>
         var cloneAddress = new Address("agent", Agent_NonexistentClone_Id);
         _factory.DirectoryService.ResolveAsync(cloneAddress, Arg.Any<CancellationToken>()).Returns((DirectoryEntry?)null);
 
-        var response = await _client.DeleteAsync("/api/v1/tenant/agents/test-agent/clones/nonexistent-clone", ct);
+        var response = await _client.DeleteAsync(
+            $"/api/v1/tenant/agents/{Agent_TestAgent_Id:N}/clones/{Agent_NonexistentClone_Id:N}", ct);
 
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
