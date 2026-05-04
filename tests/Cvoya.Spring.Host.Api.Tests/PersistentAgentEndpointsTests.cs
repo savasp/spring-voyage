@@ -51,12 +51,13 @@ public class PersistentAgentEndpointsTests : IClassFixture<CustomWebApplicationF
     public async Task Deploy_WhenAgentNotInDirectory_Returns404()
     {
         var ct = TestContext.Current.CancellationToken;
+        var ghostId = Guid.NewGuid();
         _factory.DirectoryService
-            .ResolveAsync(Arg.Is<Address>(a => a.Path == "ghost"), Arg.Any<CancellationToken>())
+            .ResolveAsync(Arg.Is<Address>(a => a.Id == ghostId), Arg.Any<CancellationToken>())
             .Returns((DirectoryEntry?)null);
 
         var response = await _client.PostAsJsonAsync(
-            "/api/v1/tenant/agents/ghost/deploy", new DeployPersistentAgentRequest(), ct);
+            $"/api/v1/tenant/agents/{ghostId:N}/deploy", new DeployPersistentAgentRequest(), ct);
 
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
@@ -75,7 +76,7 @@ public class PersistentAgentEndpointsTests : IClassFixture<CustomWebApplicationF
                 null,
                 DateTimeOffset.UtcNow));
 
-        var response = await _client.PostAsync("/api/v1/tenant/agents/idle/undeploy", content: null, ct);
+        var response = await _client.PostAsync($"/api/v1/tenant/agents/{Agent_Idle_Id:N}/undeploy", content: null, ct);
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
         var body = await response.Content
@@ -101,7 +102,7 @@ public class PersistentAgentEndpointsTests : IClassFixture<CustomWebApplicationF
                 DateTimeOffset.UtcNow));
 
         var response = await _client.PostAsJsonAsync(
-            "/api/v1/tenant/agents/a/scale",
+            $"/api/v1/tenant/agents/{Agent_A_Id:N}/scale",
             new ScalePersistentAgentRequest(2),
             ct);
 
@@ -122,7 +123,7 @@ public class PersistentAgentEndpointsTests : IClassFixture<CustomWebApplicationF
                 null,
                 DateTimeOffset.UtcNow));
 
-        var response = await _client.GetAsync("/api/v1/tenant/agents/a/deployment", ct);
+        var response = await _client.GetAsync($"/api/v1/tenant/agents/{Agent_A_Id:N}/deployment", ct);
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
         var body = await response.Content
@@ -147,7 +148,7 @@ public class PersistentAgentEndpointsTests : IClassFixture<CustomWebApplicationF
                 null,
                 DateTimeOffset.UtcNow));
 
-        var response = await _client.GetAsync("/api/v1/tenant/agents/a/logs", ct);
+        var response = await _client.GetAsync($"/api/v1/tenant/agents/{Agent_A_Id:N}/logs", ct);
 
         // The lifecycle service throws SpringException when there's no entry
         // and the endpoint translates that into a 404 so the CLI surfaces a
