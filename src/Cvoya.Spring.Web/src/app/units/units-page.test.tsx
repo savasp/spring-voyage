@@ -91,6 +91,8 @@ vi.mock("@/lib/api/queries", () => ({
   // with "no data" so Explorer page tests don't need to model
   // execution defaults.
   useUnitExecution: () => ({ data: null, isLoading: false }),
+  // Agents tab — MembershipDialog reads the agent-runtimes catalog.
+  useAgentRuntimes: () => ({ data: [], isLoading: false }),
 }));
 
 function wrap(node: ReactNode) {
@@ -211,6 +213,32 @@ describe("UnitsPage — Explorer route (EXP-route)", () => {
     fireEvent.click(screen.getByTestId("tree-row-engineering"));
     await waitFor(() => expect(replaceMock).toHaveBeenCalled());
     expect(replaceMock.mock.calls.at(-1)?.[0]).toMatch(/node=engineering/);
+  });
+
+  it("#1704: clears a stale ?tab when switching to a different node kind", async () => {
+    // Start with the tenant root showing and a Unit-only tab (Agents) in the
+    // URL from a prior navigation. We simulate this by seeding the URL with
+    // the tab but NOT the node so the page renders at the root (Tenant) —
+    // this avoids rendering the full Unit Agents tab which needs extra mocks.
+    currentSearchParams = new URLSearchParams("tab=Agents");
+    useTenantTreeMock.mockReturnValue({
+      data: sampleTree,
+      isLoading: false,
+      isError: false,
+    });
+    render(wrap(<UnitsPage />));
+    await screen.findByTestId("unit-explorer");
+
+    // Click the Engineering unit. The stale ?tab=Agents is valid for a Unit,
+    // so it carries over (correct). Then click Marketing — we just need the
+    // first write to confirm the node switches without re-carrying the tab.
+    replaceMock.mockClear();
+    fireEvent.click(screen.getByTestId("tree-row-marketing"));
+    await waitFor(() => expect(replaceMock).toHaveBeenCalled());
+    const urlAfterSwitch = replaceMock.mock.calls.at(-1)?.[0] ?? "";
+    // Node must update and the stale cross-kind tab must be cleared.
+    expect(urlAfterSwitch).toMatch(/node=marketing/);
+    expect(urlAfterSwitch).not.toMatch(/tab=/);
   });
 
   it("renders a 'New unit' link in the page header pointing to /units/create (#1069)", async () => {

@@ -10,7 +10,7 @@
 // route stays until `DEL-units-id` lands because its tabs still host
 // content the EXP-tab-unit-* issues are migrating into the Explorer.
 
-import { Suspense } from "react";
+import { Suspense, useCallback } from "react";
 import Link from "next/link";
 import { AlertCircle, Loader2, Plus } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -38,6 +38,42 @@ function UnitExplorerRoute() {
   const tab = (searchParams.get("tab") as TabName | null) ?? undefined;
 
   const treeQuery = useTenantTree();
+
+  // Hooks must be declared before any early return (#1704, react-hooks/rules-of-hooks).
+  // `writeUrl`, `handleSelectNode`, and `handleTabChange` only depend on URL
+  // state that is available on every render path.
+  const writeUrl = useCallback(
+    (next: { node?: string; tab?: TabName }) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (next.node !== undefined) {
+        params.set("node", next.node);
+        // #1704: clear a stale `tab` when only switching the node. Keeping
+        // the old tab across a node switch makes `DetailPane` see an invalid
+        // tab and fire its correction effect with a potentially-stale
+        // `selectedId` closure, which can overwrite a subsequent click.
+        if (next.tab === undefined) params.delete("tab");
+      }
+      if (next.tab !== undefined) params.set("tab", next.tab);
+      const qs = params.toString();
+      // #1039: Next.js 16's `router.replace("?foo=bar")` with a bare
+      // query-only relative URL doesn't update the canonical URL — the
+      // reconciler's `replaceState` call fires with the stale query, so
+      // the URL (and controlled `tab`/`node` props derived from it) snap
+      // back to the prior value the moment React commits. Passing the
+      // full pathname alongside the query restores the intended navigation.
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    },
+    [searchParams, pathname, router],
+  );
+
+  const handleSelectNode = useCallback(
+    (id: string) => writeUrl({ node: id }),
+    [writeUrl],
+  );
+  const handleTabChange = useCallback(
+    (id: string, nextTab: TabName) => writeUrl({ node: id, tab: nextTab }),
+    [writeUrl],
+  );
 
   if (treeQuery.isError) {
     return (
@@ -80,20 +116,6 @@ function UnitExplorerRoute() {
 
   const tree = adaptValidatedNode(treeQuery.data);
 
-  const writeUrl = (next: { node?: string; tab?: TabName }) => {
-    const params = new URLSearchParams(searchParams.toString());
-    if (next.node !== undefined) params.set("node", next.node);
-    if (next.tab !== undefined) params.set("tab", next.tab);
-    const qs = params.toString();
-    // #1039: Next.js 16's `router.replace("?foo=bar")` with a bare
-    // query-only relative URL doesn't update the canonical URL — the
-    // reconciler's `replaceState` call fires with the stale query, so
-    // the URL (and controlled `tab`/`node` props derived from it) snap
-    // back to the prior value the moment React commits. Passing the
-    // full pathname alongside the query restores the intended navigation.
-    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-  };
-
   return (
     <div
       data-testid="unit-explorer-route"
@@ -107,9 +129,9 @@ function UnitExplorerRoute() {
         <UnitExplorer
           tree={tree}
           selectedId={selectedId}
-          onSelectNode={(id) => writeUrl({ node: id })}
+          onSelectNode={handleSelectNode}
           tab={tab ?? undefined}
-          onTabChange={(id, nextTab) => writeUrl({ node: id, tab: nextTab })}
+          onTabChange={handleTabChange}
         />
       </div>
     </div>

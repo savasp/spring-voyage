@@ -353,6 +353,41 @@ describe("UnitTree", () => {
     });
   });
 
+  it("#1704: re-anchors keyboard tabstop when selectedId changes externally", () => {
+    const { rerender } = render(
+      <UnitTree
+        tree={tree}
+        selectedId="tenant-acme"
+        onSelect={vi.fn()}
+        defaultExpanded={{ "tenant-acme": true }}
+      />,
+    );
+    expect(screen.getByTestId("tree-row-tenant-acme")).toHaveAttribute(
+      "tabindex",
+      "0",
+    );
+
+    // Simulate an external selection change (URL navigation / Cmd-K / deep-link).
+    rerender(
+      <UnitTree
+        tree={tree}
+        selectedId="unit-eng"
+        onSelect={vi.fn()}
+        defaultExpanded={{ "tenant-acme": true }}
+      />,
+    );
+
+    // The new selection should now hold tabIndex=0 so keyboard Enter targets it.
+    expect(screen.getByTestId("tree-row-unit-eng")).toHaveAttribute(
+      "tabindex",
+      "0",
+    );
+    expect(screen.getByTestId("tree-row-tenant-acme")).toHaveAttribute(
+      "tabindex",
+      "-1",
+    );
+  });
+
   it("surfaces a worst-status buried four levels deep on the collapsed top-level row", () => {
     // Fixture independent of the file-scoped `tree` above: a
     // Tenant → Unit → Unit → Unit → Agent(error) chain where only the leaf
