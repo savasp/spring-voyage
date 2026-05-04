@@ -68,10 +68,12 @@ public class CommandParsingTests
         var rootCommand = new RootCommand { Options = { outputOption } };
         rootCommand.Subcommands.Add(messageCommand);
 
-        var parseResult = rootCommand.Parse("message send agent://ada \"Review PR #42\"");
+        // Canonical address shape per ADR-0036 — `scheme:<32-hex-no-dash>`.
+        const string addr = "agent:8c5fab2a8e7e4b9c92f1d8a3b4c5d6e7";
+        var parseResult = rootCommand.Parse($"message send {addr} \"Review PR #42\"");
 
         parseResult.Errors.ShouldBeEmpty();
-        parseResult.GetValue<string>("address").ShouldBe("agent://ada");
+        parseResult.GetValue<string>("address").ShouldBe(addr);
         parseResult.GetValue<string>("text").ShouldBe("Review PR #42");
     }
 
@@ -688,14 +690,16 @@ public class CommandParsingTests
         var rootCommand = new RootCommand { Options = { outputOption } };
         rootCommand.Subcommands.Add(threadCommand);
 
+        // Canonical participant address per ADR-0036.
+        const string participant = "agent:8c5fab2a8e7e4b9c92f1d8a3b4c5d6e7";
         var parseResult = rootCommand.Parse(
-            "thread list --unit eng-team --agent ada --status active --participant agent://ada --limit 25");
+            $"thread list --unit eng-team --agent ada --status active --participant {participant} --limit 25");
 
         parseResult.Errors.ShouldBeEmpty();
         parseResult.GetValue<string>("--unit").ShouldBe("eng-team");
         parseResult.GetValue<string>("--agent").ShouldBe("ada");
         parseResult.GetValue<string>("--status").ShouldBe("active");
-        parseResult.GetValue<string>("--participant").ShouldBe("agent://ada");
+        parseResult.GetValue<string>("--participant").ShouldBe(participant);
         parseResult.GetValue<int?>("--limit").ShouldBe(25);
     }
 
@@ -734,12 +738,14 @@ public class CommandParsingTests
         var rootCommand = new RootCommand { Options = { outputOption } };
         rootCommand.Subcommands.Add(threadCommand);
 
+        // Canonical address shape per ADR-0036.
+        const string addr = "agent:8c5fab2a8e7e4b9c92f1d8a3b4c5d6e7";
         var parseResult = rootCommand.Parse(
-            "thread send --thread t-42 agent://ada \"Ship it.\"");
+            $"thread send --thread t-42 {addr} \"Ship it.\"");
 
         parseResult.Errors.ShouldBeEmpty();
         parseResult.GetValue<string>("--thread").ShouldBe("t-42");
-        parseResult.GetValue<string>("address").ShouldBe("agent://ada");
+        parseResult.GetValue<string>("address").ShouldBe(addr);
         parseResult.GetValue<string>("text").ShouldBe("Ship it.");
     }
 
@@ -753,7 +759,7 @@ public class CommandParsingTests
         var rootCommand = new RootCommand { Options = { outputOption } };
         rootCommand.Subcommands.Add(threadCommand);
 
-        var parseResult = rootCommand.Parse("thread send agent://ada \"Hello\"");
+        var parseResult = rootCommand.Parse("thread send agent:8c5fab2a8e7e4b9c92f1d8a3b4c5d6e7 \"Hello\"");
 
         parseResult.Errors.ShouldNotBeEmpty();
         parseResult.Errors.ShouldContain(e => e.Message.Contains("--thread"));

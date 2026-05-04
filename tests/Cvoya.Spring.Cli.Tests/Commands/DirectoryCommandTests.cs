@@ -22,29 +22,34 @@ using Xunit;
 [Collection(ConsoleRedirectionCollection.Name)]
 public class DirectoryCommandTests
 {
+    private const string CanonicalNoDash = "8c5fab2a8e7e4b9c92f1d8a3b4c5d6e7";
+
     [Fact]
     public void ParseAddress_Valid_ReturnsSchemeAndPath()
     {
-        var parsed = DirectoryCommand.ParseAddress("agent://ada");
+        // Canonical wire form per ADR-0036.
+        var parsed = DirectoryCommand.ParseAddress($"agent:{CanonicalNoDash}");
         parsed.ShouldNotBeNull();
         parsed!.Value.Scheme.ShouldBe("agent");
-        parsed.Value.Path.ShouldBe("ada");
+        parsed.Value.Path.ShouldBe(CanonicalNoDash);
     }
 
     [Fact]
     public void ParseAddress_UnitScheme_ReturnsPath()
     {
-        var parsed = DirectoryCommand.ParseAddress("unit://platform/foundation");
+        var parsed = DirectoryCommand.ParseAddress($"unit:{CanonicalNoDash}");
         parsed.ShouldNotBeNull();
         parsed!.Value.Scheme.ShouldBe("unit");
-        parsed.Value.Path.ShouldBe("platform/foundation");
+        parsed.Value.Path.ShouldBe(CanonicalNoDash);
     }
 
     [Theory]
     [InlineData("")]
     [InlineData("no-separator")]
-    [InlineData("://empty-scheme")]
-    [InlineData("scheme://")]
+    [InlineData(":8c5fab2a8e7e4b9c92f1d8a3b4c5d6e7")] // empty scheme
+    [InlineData("scheme:")] // empty path
+    [InlineData("agent://ada")] // legacy `://` form (#1653)
+    [InlineData("agent:ada")] // path is not a Guid
     public void ParseAddress_Invalid_ReturnsNull(string address)
     {
         DirectoryCommand.ParseAddress(address).ShouldBeNull();

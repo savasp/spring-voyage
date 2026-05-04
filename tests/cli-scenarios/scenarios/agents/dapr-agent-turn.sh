@@ -67,7 +67,19 @@ response="$(e2e::cli_agent_create --output json "${agent}" \
     --name "Dapr Agent" \
     --definition "${definition}")"
 code="${response##*$'\n'}"
+body="${response%$'\n'*}"
 e2e::expect_status "0" "${code}" "agent create with dapr-agent execution succeeds"
+
+# Extract the agent's Guid from the create response so we can address it in
+# canonical `agent:<guid>` form (ADR-0036). The legacy `agent://<name>` shape
+# was retired with #1653.
+agent_id="$(printf '%s' "${body}" | awk -F'"' '/"id":/ { print $4; exit }')"
+if [[ -z "${agent_id}" ]]; then
+    e2e::fail "could not extract agent id from create response: ${body:0:200}"
+    e2e::summary
+    exit 1
+fi
+agent_address="agent:${agent_id}"
 
 # --- Dispatch a turn ----------------------------------------------------------
 # The send itself returns as soon as the message is accepted. The actual agent
@@ -77,8 +89,8 @@ e2e::expect_status "0" "${code}" "agent create with dapr-agent execution succeed
 # `--conversation` was renamed to `--thread` when the conversation surface was
 # unified into the `thread` subcommand.
 thread_id="e2e-thread-$(date +%s)-$$"
-e2e::log "spring message send agent://${agent} (thread=${thread_id})"
-response="$(e2e::cli --output json message send "agent://${agent}" \
+e2e::log "spring message send ${agent_address} (thread=${thread_id})"
+response="$(e2e::cli --output json message send "${agent_address}" \
     "Say the word 'hello' in a single sentence and nothing else." \
     --thread "${thread_id}")"
 code="${response##*$'\n'}"

@@ -82,10 +82,12 @@ public class EngagementCommandTests
     [Fact]
     public void EngagementList_ParticipantFlag_ParsesParticipantAddress()
     {
+        // Canonical participant address per ADR-0036.
+        const string participant = "human:8c5fab2a8e7e4b9c92f1d8a3b4c5d6e7";
         var (root, _) = BuildCommandTree();
-        var result = root.Parse("engagement list --participant human://alice");
+        var result = root.Parse($"engagement list --participant {participant}");
         result.Errors.ShouldBeEmpty();
-        result.GetValue<string>("--participant").ShouldBe("human://alice");
+        result.GetValue<string>("--participant").ShouldBe(participant);
     }
 
     [Fact]
@@ -138,10 +140,12 @@ public class EngagementCommandTests
     [Fact]
     public void EngagementWatch_SourceFlag_ParsesSource()
     {
+        // Canonical source address per ADR-0036.
+        const string source = "agent:8c5fab2a8e7e4b9c92f1d8a3b4c5d6e7";
         var (root, _) = BuildCommandTree();
-        var result = root.Parse("engagement watch thread-abc-123 --source agent://ada");
+        var result = root.Parse($"engagement watch thread-abc-123 --source {source}");
         result.Errors.ShouldBeEmpty();
-        result.GetValue<string>("--source").ShouldBe("agent://ada");
+        result.GetValue<string>("--source").ShouldBe(source);
     }
 
     // -----------------------------------------------------------------------
@@ -153,18 +157,20 @@ public class EngagementCommandTests
     {
         var (root, _) = BuildCommandTree();
         // Missing message
-        var result = root.Parse("engagement send thread-1 agent://ada");
+        var result = root.Parse("engagement send thread-1 agent:8c5fab2a8e7e4b9c92f1d8a3b4c5d6e7");
         result.Errors.ShouldNotBeEmpty();
     }
 
     [Fact]
     public void EngagementSend_ParsesAllArgs()
     {
+        // Canonical address shape per ADR-0036.
+        const string addr = "agent:8c5fab2a8e7e4b9c92f1d8a3b4c5d6e7";
         var (root, _) = BuildCommandTree();
-        var result = root.Parse("engagement send thread-1 agent://ada \"Review this PR\"");
+        var result = root.Parse($"engagement send thread-1 {addr} \"Review this PR\"");
         result.Errors.ShouldBeEmpty();
         result.GetValue<string>("id").ShouldBe("thread-1");
-        result.GetValue<string>("address").ShouldBe("agent://ada");
+        result.GetValue<string>("address").ShouldBe(addr);
         result.GetValue<string>("message").ShouldBe("Review this PR");
     }
 
@@ -176,18 +182,20 @@ public class EngagementCommandTests
     public void EngagementAnswer_RequiresIdAddressAndAnswer()
     {
         var (root, _) = BuildCommandTree();
-        var result = root.Parse("engagement answer thread-1 agent://ada");
+        var result = root.Parse("engagement answer thread-1 agent:8c5fab2a8e7e4b9c92f1d8a3b4c5d6e7");
         result.Errors.ShouldNotBeEmpty();
     }
 
     [Fact]
     public void EngagementAnswer_ParsesAllArgs()
     {
+        // Canonical address shape per ADR-0036.
+        const string addr = "agent:8c5fab2a8e7e4b9c92f1d8a3b4c5d6e7";
         var (root, _) = BuildCommandTree();
-        var result = root.Parse("engagement answer thread-1 agent://ada \"Yes, merge it\"");
+        var result = root.Parse($"engagement answer thread-1 {addr} \"Yes, merge it\"");
         result.Errors.ShouldBeEmpty();
         result.GetValue<string>("id").ShouldBe("thread-1");
-        result.GetValue<string>("address").ShouldBe("agent://ada");
+        result.GetValue<string>("address").ShouldBe(addr);
         result.GetValue<string>("answer").ShouldBe("Yes, merge it");
     }
 
@@ -270,15 +278,16 @@ public class EngagementCommandTests
     [Fact]
     public async Task EngagementListAsync_WithParticipant_ForwardsParticipantQueryParam()
     {
+        // Canonical participant address per ADR-0036 — `:` URL-encodes as %3A.
         var handler = new MockHttpMessageHandler(
             expectedPath: "/api/v1/tenant/threads",
             expectedMethod: HttpMethod.Get,
             responseBody: "[]",
-            validateQuery: q => q.ShouldContain("Participant=human%3A%2F%2Falice"));
+            validateQuery: q => q.ShouldContain("Participant=human%3A8c5fab2a8e7e4b9c92f1d8a3b4c5d6e7"));
 
         var client = new SpringApiClient(new HttpClient(handler), BaseUrl);
         var result = await client.ListThreadsAsync(
-            participant: "human://alice",
+            participant: "human:8c5fab2a8e7e4b9c92f1d8a3b4c5d6e7",
             ct: TestContext.Current.CancellationToken);
 
         result.ShouldBeEmpty();
