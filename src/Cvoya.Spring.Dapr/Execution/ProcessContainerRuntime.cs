@@ -3,7 +3,9 @@
 
 namespace Cvoya.Spring.Dapr.Execution;
 
+using System.ComponentModel;
 using System.Diagnostics;
+using System.IO;
 using System.Net.Http;
 
 using Cvoya.Spring.Core.Execution;
@@ -957,7 +959,7 @@ public class ProcessContainerRuntime(
             process.StartInfo.ArgumentList.Add(arg);
         }
 
-        process.Start();
+        StartProcessOrTranslate(process, fileName);
 
         // Write the body and close stdin so the child sees EOF. Closing the
         // BaseStream is the only reliable cross-platform way to propagate
@@ -1001,7 +1003,7 @@ public class ProcessContainerRuntime(
             process.StartInfo.ArgumentList.Add(arg);
         }
 
-        process.Start();
+        StartProcessOrTranslate(process, fileName);
 
         var stdoutTask = process.StandardOutput.ReadToEndAsync(ct);
         var stderrTask = process.StandardError.ReadToEndAsync(ct);
@@ -1013,4 +1015,116 @@ public class ProcessContainerRuntime(
 
         return (process.ExitCode, stdout, stderr);
     }
+
+    /// <summary>
+    /// Calls <see cref="Process.Start()"/> and, on failure, rewrites the
+    /// exception to name the dispatcher's working directory when the cwd
+    /// itself is the cause. See issue #1674: on macOS and Linux,
+    /// <c>posix_spawn</c> returns an ENOENT-flavoured error when the
+    /// parent's <c>getcwd()</c> no longer resolves — typical after the
+    /// operator removes the git worktree the dispatcher was launched
+    /// from — and the BCL surfaces that as
+    /// <see cref="FileNotFoundException"/>. Without this rewrite the log
+    /// reads "Unable to find the specified file" with no hint that the
+    /// cwd is the problem, so operators spend an hour chasing a missing
+    /// <c>podman</c> binary.
+    /// </summary>
+    internal static void StartProcessOrTranslate(Process process, string fileName)
+    {
+        try
+        {
+            process.Start();
+        }
+        catch (Exception ex)
+            when (ex is FileNotFoundException
+                or DirectoryNotFoundException
+                or Win32Exception
+                or InvalidOperationException)
+        {
+            throw TranslateProcessStartFailure(ex, fileName);
+        }
+    }
+
+    /// <summary>
+    /// Inspects the current working directory and, when it is unreachable,
+    /// wraps <paramref name="original"/> in an
+    /// <see cref="InvalidOperationException"/> that names the cwd problem
+    /// explicitly. Returns <paramref name="original"/> unchanged when the
+    /// cwd is healthy — the original exception is honest in that case.
+    /// </summary>
+    /// <remarks>
+    /// Extracted as <c>internal static</c> so the .Tests project can
+    /// exercise the decision logic without spawning a real process. The
+    /// cwd probe is an overridable delegate so tests never have to
+    /// <c>rmdir</c> the test runner's cwd mid-run (that would race every
+    /// parallel test in the same assembly and is platform-variable).
+    /// </remarks>
+    internal static Exception TranslateProcessStartFailure(Exception original, string fileName)
+        => TranslateProcessStartFailure(original, fileName, DefaultCwdProbe);
+
+    /// <summary>
+    /// Same as <see cref="TranslateProcessStartFailure(Exception, string)"/>
+    /// but with an injectable cwd probe for unit-testability. Production
+    /// callers go through the two-argument overload; tests synthesise
+    /// deleted-cwd / throwing-<c>getcwd</c> scenarios by passing a fake
+    /// probe here.
+    /// </summary>
+    internal static Exception TranslateProcessStartFailure(
+        Exception original,
+        string fileName,
+        Func<CwdProbeResult> probe)
+    {
+        var (cwd, cwdError) = probe();
+
+        if (cwdError is null)
+        {
+            return original;
+        }
+
+        var cwdDescription = string.IsNullOrEmpty(cwd) ? "unknown" : $"'{cwd}'";
+        var message =
+            $"Failed to start '{fileName}' because the dispatcher's working directory ({cwdDescription}) is unreachable: {cwdError}. "
+            + "Restart the dispatcher from a valid directory (e.g. `./deployment/spring-voyage-host.sh restart`). "
+            + "See https://github.com/cvoya-com/spring-voyage/issues/1674.";
+        return new InvalidOperationException(message, original);
+    }
+
+    /// <summary>
+    /// Default cwd probe used by <see cref="TranslateProcessStartFailure(Exception, string)"/>.
+    /// Returns <c>(cwd, null)</c> when <see cref="Directory.GetCurrentDirectory"/>
+    /// succeeds and the resolved path still exists, <c>(cwd, error)</c>
+    /// otherwise. Never throws.
+    /// </summary>
+    internal static CwdProbeResult DefaultCwdProbe()
+    {
+        string cwd;
+        try
+        {
+            cwd = Directory.GetCurrentDirectory();
+        }
+        catch (Exception ex)
+        {
+            return new CwdProbeResult(
+                Cwd: null,
+                Error: $"Directory.GetCurrentDirectory() threw {ex.GetType().Name}: {ex.Message}");
+        }
+
+        if (!Directory.Exists(cwd))
+        {
+            return new CwdProbeResult(
+                Cwd: cwd,
+                Error: "cwd path no longer exists on disk (inode unlinked?)");
+        }
+
+        return new CwdProbeResult(Cwd: cwd, Error: null);
+    }
+
+    /// <summary>
+    /// Result of a cwd probe: the resolved path (when available) and an
+    /// optional failure reason. <see cref="Error"/> is <c>null</c> on
+    /// success and carries a human-readable diagnosis on failure. Kept
+    /// <c>internal</c> — it's an implementation detail of the translator,
+    /// not part of the runtime's public API.
+    /// </summary>
+    internal readonly record struct CwdProbeResult(string? Cwd, string? Error);
 }

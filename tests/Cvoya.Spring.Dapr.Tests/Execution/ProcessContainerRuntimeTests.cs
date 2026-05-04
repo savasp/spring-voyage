@@ -345,6 +345,109 @@ public class ProcessContainerRuntimeTests
         result.ShouldBe("http://10.0.0.1/health");
     }
 
+    // ── TranslateProcessStartFailure tests (#1674) ──
+    //
+    // The translator is unit-tested through its injectable-probe overload so
+    // the tests never have to mutate the test runner's process cwd. Running
+    // `Directory.SetCurrentDirectory(...)` inside a parallel xUnit collection
+    // is a well-known landmine — sibling tests in other classes observe the
+    // poisoned value and flake at random. The overload surface is visible
+    // only to .Tests (via InternalsVisibleTo); production code uses the
+    // default-probe entry point unchanged.
+
+    [Fact]
+    public void TranslateProcessStartFailure_HealthyCwd_ReturnsOriginalException()
+    {
+        // When the dispatcher's cwd is fine, the Process.Start failure is
+        // honestly about the binary — we must not pile a misleading cwd
+        // wrapper on top, or the operator will chase the wrong bug.
+        var original = new System.IO.FileNotFoundException("Unable to find the specified file.");
+        var healthyProbe = () => new ProcessContainerRuntime.CwdProbeResult(Cwd: "/workspaces/spring", Error: null);
+
+        var translated = ProcessContainerRuntime.TranslateProcessStartFailure(
+            original, "podman", healthyProbe);
+
+        translated.ShouldBeSameAs(original);
+    }
+
+    [Fact]
+    public void TranslateProcessStartFailure_UnreachableCwd_WrapsWithCwdNarration()
+    {
+        // The stat-branch shape: `getcwd()` returned a path but the inode
+        // is gone (rm -rf of an ancestor, git worktree removal, etc.).
+        var original = new System.IO.FileNotFoundException("Unable to find the specified file.");
+        var unreachableProbe = () => new ProcessContainerRuntime.CwdProbeResult(
+            Cwd: "/tmp/deleted-worktree/spring",
+            Error: "cwd path no longer exists on disk (inode unlinked?)");
+
+        var translated = ProcessContainerRuntime.TranslateProcessStartFailure(
+            original, "podman", unreachableProbe);
+
+        translated.ShouldNotBeSameAs(original);
+        translated.ShouldBeOfType<InvalidOperationException>();
+        translated.Message.ShouldContain("podman");
+        translated.Message.ShouldContain("working directory");
+        translated.Message.ShouldContain("/tmp/deleted-worktree/spring");
+        translated.Message.ShouldContain("inode unlinked");
+        translated.Message.ShouldContain("1674");
+        translated.Message.ShouldContain("spring-voyage-host.sh restart");
+        translated.InnerException.ShouldBeSameAs(original);
+    }
+
+    [Fact]
+    public void TranslateProcessStartFailure_GetcwdThrew_NarratesSymbolicCwd()
+    {
+        // The syscall-branch shape: `getcwd()` itself failed, so the
+        // probe has no path to quote. The translator must still render
+        // something coherent — "''" in the log is useless.
+        var original = new System.IO.FileNotFoundException("Unable to find the specified file.");
+        var throwingProbe = () => new ProcessContainerRuntime.CwdProbeResult(
+            Cwd: null,
+            Error: "Directory.GetCurrentDirectory() threw IOException: No such file or directory");
+
+        var translated = ProcessContainerRuntime.TranslateProcessStartFailure(
+            original, "podman", throwingProbe);
+
+        translated.ShouldBeOfType<InvalidOperationException>();
+        translated.Message.ShouldContain("unknown");
+        translated.Message.ShouldContain("IOException");
+        translated.Message.ShouldContain("1674");
+    }
+
+    [Fact]
+    public void TranslateProcessStartFailure_Win32Exception_RoutesThroughSameLogic()
+    {
+        // The .NET BCL sometimes surfaces posix_spawn failures as
+        // Win32Exception (via System.ComponentModel) rather than
+        // FileNotFoundException. The translator's exception-type filter in
+        // StartProcessOrTranslate covers that; the translator itself is
+        // type-agnostic, so pin the contract here.
+        var original = new System.ComponentModel.Win32Exception(2, "No such file or directory");
+        var unreachableProbe = () => new ProcessContainerRuntime.CwdProbeResult(
+            Cwd: "/tmp/gone",
+            Error: "cwd path no longer exists on disk (inode unlinked?)");
+
+        var translated = ProcessContainerRuntime.TranslateProcessStartFailure(
+            original, "podman", unreachableProbe);
+
+        translated.ShouldBeOfType<InvalidOperationException>();
+        translated.InnerException.ShouldBeSameAs(original);
+        translated.Message.ShouldContain("/tmp/gone");
+    }
+
+    [Fact]
+    public void DefaultCwdProbe_RealCwd_ReturnsNoError()
+    {
+        // The test host itself always has a reachable cwd (xUnit would not
+        // have started otherwise), so the default probe must succeed and
+        // never report an error back to the translator.
+        var result = ProcessContainerRuntime.DefaultCwdProbe();
+
+        result.Error.ShouldBeNull();
+        result.Cwd.ShouldNotBeNullOrEmpty();
+        Directory.Exists(result.Cwd).ShouldBeTrue();
+    }
+
     /// <summary>
     /// Asserts that <paramref name="value"/> immediately follows
     /// <paramref name="flag"/> in <paramref name="args"/>. Used to pin the
