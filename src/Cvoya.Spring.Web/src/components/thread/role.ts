@@ -94,24 +94,6 @@ export function isHumanAddress(address: string): boolean {
 }
 
 /**
- * Loose UUID detector. Returns true for both dashed (`8-4-4-4-12`) and
- * undashed (32 hex chars) forms. Retained because legacy navigation-form
- * paths can still be UUID-shaped (e.g. `agent://<uuid>` from pre-#1629
- * activity events) — the resolver in #1635 covers post-#1629 emit, but
- * this detector still gates the legacy path.
- */
-export function looksLikeUuid(value: string): boolean {
-  if (!value) return false;
-  // Dashed form: 8-4-4-4-12 hex
-  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) {
-    return true;
-  }
-  // Undashed form: 32 hex chars
-  if (/^[0-9a-f]{32}$/i.test(value)) return true;
-  return false;
-}
-
-/**
  * Address-shaped value tolerated by the rendering helpers. Mirrors the
  * `ParticipantRef` server shape (`{ address, displayName }`) plus the
  * legacy plain-string form that pre-#1502 servers emit.
@@ -134,62 +116,29 @@ export function addressOf(p: AddressLike): string {
 
 /**
  * Resolves the human-readable display name for any `AddressLike` value
- * for the engagement portal — never returns a UUID.
+ * for the engagement portal.
  *
  * <p>
- * Post-#1635 the server guarantees that every <c>ParticipantRef</c>
- * returned from the API carries a non-empty <c>displayName</c> (deleted
- * entities surface as <c>&lt;deleted&gt;</c>). This helper therefore
- * collapses to a thin pass-through over the server-supplied value: when
- * the input shape carries a non-empty string we use it verbatim, no
- * UUID-shape filtering applied.
+ * Post-#1635 (PR #1643) the server guarantees that every
+ * <c>ParticipantRef</c> returned from the API carries a non-empty
+ * <c>displayName</c> (deleted entities surface as <c>&lt;deleted&gt;</c>).
+ * This helper is a thin pass-through over the server-supplied value:
+ * trimmed, returned verbatim when present, otherwise <c>null</c>. Callers
+ * surface their own "Unknown participant" fallback when the resolver
+ * returns <c>null</c>.
  * </p>
  *
  * <p>
- * The fallbacks below cover the legacy / partial-data cases:
+ * The legacy navigation-form / identity-form filtering heuristic that
+ * lived here pre-#1645 has been removed. If a raw GUID ever leaks into
+ * the UI again, that's a server-side resolver bug (#1635), not something
+ * the portal should mask.
  * </p>
- * <ul>
- *   <li>
- *     The input is a bare string (pre-#1502 server shape): treat the
- *     string as the address and walk the legacy heuristic — this is the
- *     pathway that still gates UUID-shaped paths in case the activity
- *     event is older than #1629.
- *   </li>
- *   <li>
- *     The input is a {@link ParticipantRef} but the server somehow
- *     supplied an empty / whitespace display name. The resolver should
- *     never emit that, but we still cover it with a path-segment fallback
- *     so the UI never blanks the row.
- *   </li>
- * </ul>
  */
 export function participantDisplayName(p: AddressLike): string | null {
-  if (!p) return null;
-
-  if (typeof p !== "string") {
-    // Server-supplied display name is the source of truth post-#1635.
-    // Trim and return verbatim (including the `<deleted>` placeholder)
-    // when present.
-    const dn = p.displayName?.trim();
-    if (dn) return dn;
-  }
-
-  // Legacy fallback path — the input is either a bare-string address or a
-  // ParticipantRef with no displayName. Walk the address with the
-  // pre-#1635 heuristic so old activity events (pre-baseline migration)
-  // still render rather than leaking a raw GUID.
-  const addr = addressOf(p);
-  if (!addr) return null;
-  const parsed = parseThreadSource(addr);
-  if (parsed.kind === "identity") {
-    // The path is the raw UUID — never display it.
-    return null;
-  }
-  // Navigation form: refuse UUID-shaped paths and human-scheme paths
-  // (which can themselves be UUIDs in v0.x).
-  if (parsed.scheme === "human") return null;
-  if (looksLikeUuid(parsed.path)) return null;
-  return parsed.path || null;
+  if (!p || typeof p === "string") return null;
+  const dn = p.displayName?.trim();
+  return dn ? dn : null;
 }
 
 /**

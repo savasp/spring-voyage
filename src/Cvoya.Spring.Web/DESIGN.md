@@ -774,11 +774,7 @@ Do not use `text-voyage` / `--color-voyage` tokens for any management-portal sur
 
 **Card shape.** `rounded-lg border border-border bg-card`, `hover:border-primary/40`, whole-card `<Link>` to `/engagement/<id>`. Inactive engagements fade via opacity class (`opacity-80` for 1–7 d old, `opacity-50` for > 7 d). The `data-role` icon signals the type: `MessagesSquare` (text-voyage) for participated threads, `Eye` (muted) for A2A-only threads.
 
-**Card title — participant names, never UUIDs (#1630).** The title renders the comma-joined display names of every participant *except the active user*. For engagements where the user is an *observer* (not in the participant list), every participant name appears. Names are resolved via the shared `participantDisplayName()` helper (`src/components/thread/role.ts`), which:
-- prefers the server-supplied `displayName` when present and not UUID-shaped;
-- falls back to the path segment of `scheme://path` navigation-form addresses for non-human schemes;
-- returns `null` for identity-form `scheme:id:<uuid>` addresses (the path is a meaningless GUID) and for human navigation-form addresses (the path may itself be a UUID).
-When every name fails to resolve, the title shows the soft fallback `Unknown participant` / `Unknown participants` rather than leaking a GUID into the UI.
+**Card title — participant names, never UUIDs (#1630).** The title renders the comma-joined display names of every participant *except the active user*. For engagements where the user is an *observer* (not in the participant list), every participant name appears. Names are resolved via the shared `participantDisplayName()` helper (`src/components/thread/role.ts`), which is a thin pass-through over the server-supplied `ParticipantRef.displayName` (#1635 / PR #1643): non-empty values render verbatim; empty / missing values yield `null` so the caller emits the soft fallback `Unknown participant` / `Unknown participants` (#1645 removed the legacy UUID-shape filtering — if a raw GUID ever leaks again, the fix is server-side).
 
 **Status badges on cards:**
 - Pending question: `<Badge variant="warning">Question</Badge>` + `MessageCircleQuestion` icon in `text-warning`. Sourced from `useInbox()` cross-matched by `threadId`.

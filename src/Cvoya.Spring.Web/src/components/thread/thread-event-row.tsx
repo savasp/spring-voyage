@@ -137,8 +137,10 @@ export function ThreadEventRow({
   // reads as a real conversation rather than a list of envelope summaries.
   const bodyText = isMessageReceived && event.body ? event.body : null;
 
-  // Display name resolution: shared helper drops UUID-shaped paths so we
-  // never paint a raw GUID in place of a display name (#1630).
+  // Display name resolution: shared helper passes through the
+  // server-supplied `displayName` (#1635 / PR #1643 / #1645). When the
+  // server cannot resolve a participant it returns the `<deleted>`
+  // sentinel; raw GUIDs leaking here is a server-side resolver bug.
   const resolvedDisplayName = participantDisplayName(attributed);
 
   // #1161: error events render with destructive styling and are never
