@@ -48,7 +48,8 @@ RUN apt-get update \
 # `claude` (see package.json on npm). We probe both `--version` (prints the
 # installed release) so any install breakage fails the build loudly instead
 # of producing a silently broken image.
-RUN npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
+RUN export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
+    && npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
     && command -v claude >/dev/null \
     && claude --version
 

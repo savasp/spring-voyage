@@ -62,7 +62,8 @@ ARG CLAUDE_CODE_VERSION=2.1.98
 # `agent`, so we drop down for the install and switch back so we keep the
 # non-root posture the dispatcher and the bridge sidecar expect.
 USER root
-RUN npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
+RUN export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
+ && npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
  && command -v claude >/dev/null \
  && claude --version
 USER agent

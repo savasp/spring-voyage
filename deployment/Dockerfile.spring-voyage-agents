@@ -50,7 +50,8 @@ USER root
 
 # ---- OSS CLI installs (npm globals) -----------------------------------------
 # 1. Claude Code CLI (@anthropic-ai/claude-code → `claude` binary)
-RUN npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
+RUN export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
+ && npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
  && command -v claude >/dev/null \
  && claude --version
 

@@ -82,9 +82,11 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
 RUN pip install --no-cache-dir --break-system-packages "ruff==${RUFF_VERSION}"
 
 # ---- Playwright + browsers + required apt deps ---------------------------------
-# System libraries required by Playwright browser engines (Chromium, Firefox,
-# WebKit). These are the packages that `npx playwright install-deps` would
-# otherwise install; listed explicitly for reproducibility and layer caching.
+# Chromium and Firefox runtime deps are listed explicitly for reproducibility.
+# WebKit deps are installed via `playwright install-deps webkit`: Playwright
+# 1.55.0+ has official Debian 13 (Trixie) support and maps the correct package
+# names automatically, avoiding the Bookworm-era vs Trixie ABI naming
+# differences (e.g. libvpx6 → libvpx9, libevent-2.1-7 → libevent-2.1-7t64).
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       libasound2 \
@@ -109,13 +111,14 @@ RUN apt-get update \
       libxrandr2 \
  && rm -rf /var/lib/apt/lists/*
 
-# `--with-deps` is intentionally omitted: it tries to apt-install Debian-12-
-# era package names (e.g. `libvpx6`, `libwebp6`) that no longer exist on
-# Debian trixie (which ships `libvpx9` / `libwebp7`). The required runtime
-# libs are pinned explicitly above; the browsers themselves are bundled
-# binaries that Playwright downloads.
+# `install-deps webkit` installs WebKit's system deps using Playwright's
+# Trixie-aware package list (GStreamer stack, GTK-4, Vulkan, Opus, libflite,
+# libavif, libjxl, etc.). Running as root in Docker, so no sudo is needed.
+# `install chromium firefox webkit` then downloads the browser binaries.
 RUN npm install -g "playwright@${PLAYWRIGHT_VERSION}" \
- && npx playwright install chromium firefox webkit
+ && npx playwright install-deps webkit \
+ && npx playwright install chromium firefox webkit \
+ && rm -rf /var/lib/apt/lists/*
 
 # Build-time smoke test: verify that the downloaded Chromium binary actually
 # launches inside this container. If a future Playwright release breaks the
