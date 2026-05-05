@@ -95,6 +95,62 @@ public class GitHubConnectorType : IConnectorType
         _logger = loggerFactory.CreateLogger<GitHubConnectorType>();
     }
 
+    // Tries to mint an authorize URL the portal can deep-link to from the
+    // missing-OAuth panel. Returns null when GitHub:OAuth is not configured
+    // or the OAuth service is otherwise unreachable — the portal then
+    // renders a "ask your operator to configure GitHub OAuth" message
+    // instead of a half-broken button. Resolved through the service
+    // provider rather than constructor-injected so the connector keeps
+    // working when the OAuth wiring is absent (the OAuth service throws
+    // InvalidOperationException at the call site rather than at DI time).
+    private async Task<(string? Url, string? State)> TryBuildAuthorizeUrlAsync(
+        CancellationToken cancellationToken)
+    {
+        var oauthService = _serviceProvider.GetService(typeof(IGitHubOAuthService))
+            as IGitHubOAuthService;
+        if (oauthService is null)
+        {
+            return (null, null);
+        }
+
+        try
+        {
+            var result = await oauthService.BeginAuthorizationAsync(
+                scopesOverride: null,
+                clientState: null,
+                cancellationToken);
+            return (result.AuthorizeUrl, result.State);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogInformation(ex,
+                "list-repositories: GitHub OAuth not configured; " +
+                "missing-OAuth response will omit the authorize URL");
+            return (null, null);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "list-repositories: failed to mint authorize URL; " +
+                "missing-OAuth response will omit it");
+            return (null, null);
+        }
+    }
+
+    private async Task<IResult> MissingOAuthResultAsync(
+        string reason,
+        CancellationToken cancellationToken)
+    {
+        var (url, state) = await TryBuildAuthorizeUrlAsync(cancellationToken);
+        return Results.Json(
+            new GitHubMissingOAuthResponse(
+                MissingOAuth: true,
+                Reason: reason,
+                AuthorizeUrl: url,
+                State: state),
+            statusCode: StatusCodes.Status401Unauthorized);
+    }
+
     /// <summary>
     /// Returns <c>true</c> when the connector has usable App credentials.
     /// Reads the current <see cref="IConfigurationRequirement"/> status so the
@@ -172,19 +228,21 @@ public class GitHubConnectorType : IConnectorType
         // The installation id rides along on every row so the wizard can
         // post it back without a second resolver call.
         //
-        // The optional `session_id` query parameter scopes the result to
-        // only installations owned by the calling portal user's GitHub
-        // identity (their login + organisations), preventing cross-tenant
-        // repository leakage when the App is installed across multiple orgs
-        // (#1505). When the parameter is absent the full unfiltered list is
-        // returned — preserved for backward-compatibility with any CLI or
-        // integration that calls this endpoint without a GitHub OAuth session.
+        // #1663: the endpoint requires a `session_id` query parameter
+        // tied to the caller's GitHub OAuth session, and the result is
+        // intersected with both the installations the user's identity
+        // can reach AND the per-repo permissions on the user's OAuth
+        // token. A session-less call returns a structured 401 with
+        // `missingOAuth=true` — the portal renders a "Link your GitHub
+        // account" panel rather than a leaky installation list.
         group.MapGet("/actions/list-repositories", ListRepositoriesAsync)
             .WithName("ListGitHubRepositories")
-            .WithSummary("List repositories visible to the GitHub App, aggregated across installations, optionally scoped to the current user's identity via session_id")
+            .WithSummary("List repositories the calling user can access in the GitHub App's installations; requires a GitHub OAuth session_id (fail-closed, #1663)")
             .WithTags("Connectors.GitHub")
             .Produces<GitHubRepositoryResponse[]>(StatusCodes.Status200OK)
+            .Produces<GitHubMissingOAuthResponse>(StatusCodes.Status401Unauthorized)
             .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status429TooManyRequests)
             .ProducesProblem(StatusCodes.Status502BadGateway);
 
         // Collaborator list for a single repo (#1133). The wizard's
@@ -564,119 +622,150 @@ public class GitHubConnectorType : IConnectorType
                 });
         }
 
+        // #1663: fail closed when no usable user OAuth session is in play.
+        // The pre-1663 contract fell back to the App-installation list
+        // when no session_id was supplied, which leaked every repo the
+        // App could see — including ones the calling portal user has no
+        // access to in their own GitHub identity. The fix:
+        //
+        //   * No session_id query param            → 401 missingOAuth
+        //   * session_id present but unknown        → 401 missingOAuth
+        //   * Session known but no token in store   → 401 missingOAuth
+        //   * Session + token                        → user-scoped intersect (existing happy path)
+        //
+        // The 401 body carries an `authorizeUrl` minted from
+        // IGitHubOAuthService.BeginAuthorizationAsync (when GitHub:OAuth
+        // is configured) so the portal can render a "Link your GitHub
+        // account" button without a second round-trip.
+        //
+        // No CLI / integration caller drives this endpoint today (the
+        // CLI lets operators set owner/repo by hand on the create-unit
+        // command), so the fail-closed move is a contract tightening
+        // rather than a backwards-compat breakage.
+        if (string.IsNullOrWhiteSpace(sessionId))
+        {
+            _logger.LogInformation(
+                "list-repositories: no session_id supplied; returning 401 missingOAuth (#1663)");
+            return await MissingOAuthResultAsync(
+                "No GitHub OAuth session was supplied. The portal must " +
+                "link the operator's GitHub account before listing repositories.",
+                cancellationToken);
+        }
+
+        var session = await _oauthSessionStore.GetAsync(sessionId, cancellationToken);
+        if (session is null)
+        {
+            _logger.LogWarning(
+                "list-repositories: session_id '{SessionId}' not found; returning 401 missingOAuth (#1663)",
+                sessionId);
+            return await MissingOAuthResultAsync(
+                "The GitHub OAuth session is unknown or has expired. " +
+                "Link the operator's GitHub account again to refresh it.",
+                cancellationToken);
+        }
+
+        // Resolve ISecretStore lazily — it may have heavyweight activation
+        // requirements (e.g. Dapr state store needing an AES key) that
+        // should not block OpenAPI generation or cold-path startup.
+        var secretStore = _serviceProvider.GetRequiredService<ISecretStore>();
+        var userAccessToken = await secretStore.ReadAsync(
+            session.AccessTokenStoreKey, cancellationToken);
+        if (string.IsNullOrEmpty(userAccessToken))
+        {
+            _logger.LogWarning(
+                "list-repositories: session {SessionId} found but access token is missing " +
+                "from the secret store; returning 401 missingOAuth (#1663)",
+                sessionId);
+            return await MissingOAuthResultAsync(
+                "The GitHub OAuth session is missing its access token. " +
+                "Re-link the operator's GitHub account to recover.",
+                cancellationToken);
+        }
+
         try
         {
-            // #1505: Resolve the caller's GitHub identity when a GitHub
-            // OAuth session id is supplied. The session was established by
-            // the portal's OAuth flow (POST /oauth/authorize → GET
-            // /oauth/callback) and ties the portal user to their GitHub
-            // login + org memberships. We filter the App's installations
-            // to only those whose account login is in that set, preventing
-            // cross-tenant repository leakage when the App is installed on
-            // multiple organisations belonging to different tenants.
-            //
-            // When no session_id is supplied we fall back to the
-            // unfiltered list (backward-compatible for CLI and integration
-            // callers that do not carry an OAuth session). A warning is
-            // logged so operators can audit unauthenticated calls.
-            IReadOnlySet<string>? userScope = null;
-            string? userAccessToken = null;
-            if (!string.IsNullOrWhiteSpace(sessionId))
-            {
-                var session = await _oauthSessionStore.GetAsync(sessionId, cancellationToken);
-                if (session is not null)
-                {
-                    // Resolve ISecretStore lazily — it may have heavyweight
-                    // activation requirements (e.g. Dapr state store needing
-                    // an AES key) that should not block the OpenAPI generation
-                    // process or cold-path startup.
-                    var secretStore = _serviceProvider.GetRequiredService<ISecretStore>();
-                    var accessToken = await secretStore.ReadAsync(
-                        session.AccessTokenStoreKey, cancellationToken);
-                    if (!string.IsNullOrEmpty(accessToken))
-                    {
-                        userAccessToken = accessToken;
-                        userScope = await _userScopeResolver.ResolveAsync(
-                            accessToken, cancellationToken);
-                        _logger.LogInformation(
-                            "list-repositories: user scope resolved for session {SessionId} " +
-                            "(login={Login}, accounts={Count})",
-                            sessionId, session.Login, userScope.Count);
-                    }
-                    else
-                    {
-                        _logger.LogWarning(
-                            "list-repositories: session {SessionId} found but access token is missing " +
-                            "from the secret store; returning unfiltered list",
-                            sessionId);
-                    }
-                }
-                else
-                {
-                    _logger.LogWarning(
-                        "list-repositories: session_id '{SessionId}' not found; " +
-                        "returning unfiltered list",
-                        sessionId);
-                }
-            }
-            else
-            {
-                _logger.LogInformation(
-                    "list-repositories: no session_id supplied; " +
-                    "returning all installations (unfiltered)");
-            }
+            // Resolve the caller's GitHub identity (login + org
+            // memberships) and use it to filter installations to those
+            // owned by accounts the user belongs to. The per-installation
+            // listing then uses the user's OAuth token so each
+            // installation's repos are intersected with the user's own
+            // permissions — closing the "App is installed on my org but
+            // I can't actually see this private repo" leak (#1663).
+            var userScope = await _userScopeResolver.ResolveAsync(
+                userAccessToken, cancellationToken);
+            _logger.LogInformation(
+                "list-repositories: user scope resolved for session {SessionId} " +
+                "(login={Login}, accounts={Count})",
+                sessionId, session.Login, userScope.Count);
 
             var installations = await _installationsClient
                 .ListInstallationsAsync(cancellationToken);
 
-            // When we have a user scope, retain only installations whose
-            // account login is in { user-login, user-orgs }. GitHub
-            // logins are case-preserving but case-insensitive, so use
-            // the case-insensitive comparer the HashSet was built with.
-            var visibleInstallations = userScope is not null
-                ? installations
-                    .Where(i => userScope.Contains(i.Account))
-                    .ToList()
-                : installations;
+            // Retain only installations whose account login is in
+            // { user-login, user-orgs }. GitHub logins are
+            // case-preserving but case-insensitive, so use the
+            // case-insensitive comparer the resolver builds the HashSet
+            // with.
+            var visibleInstallations = installations
+                .Where(i => userScope.Contains(i.Account))
+                .ToList();
 
-            if (userScope is not null)
-            {
-                _logger.LogInformation(
-                    "list-repositories: filtered {Total} installation(s) down to {Visible} " +
-                    "matching the caller's GitHub scope",
-                    installations.Count, visibleInstallations.Count);
-            }
+            _logger.LogInformation(
+                "list-repositories: filtered {Total} installation(s) down to {Visible} " +
+                "matching the caller's GitHub scope",
+                installations.Count, visibleInstallations.Count);
 
             // Aggregate across installations so the wizard can present a
-            // single repository dropdown (#1133).
+            // single repository dropdown (#1133). Use the user's OAuth
+            // token via `GET /user/installations/{id}/repositories` so
+            // the result is intersected with the *user's* repository
+            // permissions — narrower than the App-installation listing.
             //
-            // Two paths:
-            //   * With a user OAuth access token, call
-            //     `GET /user/installations/{id}/repositories` so the result
-            //     is intersected with the *user's* repository permissions.
-            //     This is what closes the "App is installed on my org but I
-            //     can't actually access this private repo" leak — the App
-            //     can see it, but the user-token endpoint won't return it.
-            //   * Without a token (CLI / unauthenticated), fall back to the
-            //     installation-token path which returns every repo the App
-            //     can see.
+            // The result of `ListUserAccessibleRepositoriesAsync` is
+            // already intersected on the GitHub side, but we run it
+            // through `UserScopedRepositoryFilter.Intersect(…, null)`
+            // anyway — the helper enforces the canonical alphabetical
+            // ordering and stays the single seam a private cloud impl
+            // can override to layer additional filtering on top
+            // (e.g. tenant-scoped repo allow-lists).
             //
             // A failure on one installation MUST NOT poison the list —
-            // log it and keep the other installations' rows so the wizard
-            // still has something to render.
+            // log it and keep the other installations' rows so the
+            // wizard still has something to render.
             var aggregated = new List<GitHubRepositoryResponse>();
             foreach (var installation in visibleInstallations)
             {
                 IReadOnlyList<GitHubInstallationRepository> repos;
                 try
                 {
-                    repos = userAccessToken is not null
-                        ? await _installationsClient
-                            .ListUserAccessibleRepositoriesAsync(
-                                installation.InstallationId, userAccessToken, cancellationToken)
-                        : await _installationsClient
-                            .ListInstallationRepositoriesAsync(
-                                installation.InstallationId, cancellationToken);
+                    repos = await _installationsClient
+                        .ListUserAccessibleRepositoriesAsync(
+                            installation.InstallationId, userAccessToken, cancellationToken);
+                }
+                catch (Octokit.AuthorizationException ex)
+                {
+                    // The user's OAuth token is no longer accepted — surface
+                    // a precise error rather than failing opaquely (#1663
+                    // edge case: rate-limited / revoked OAuth tokens).
+                    _logger.LogWarning(ex,
+                        "list-repositories: user OAuth token rejected (401/403) " +
+                        "while enumerating installation {InstallationId}; returning 401 missingOAuth",
+                        installation.InstallationId);
+                    return await MissingOAuthResultAsync(
+                        "GitHub rejected the OAuth token (it may have been " +
+                        "revoked). Re-link the operator's GitHub account.",
+                        cancellationToken);
+                }
+                catch (Octokit.RateLimitExceededException ex)
+                {
+                    _logger.LogWarning(ex,
+                        "list-repositories: user OAuth token rate-limited while " +
+                        "enumerating installation {InstallationId}",
+                        installation.InstallationId);
+                    return Results.Problem(
+                        title: "GitHub rate limit exceeded",
+                        detail: "The user's OAuth token is rate-limited; retry shortly.",
+                        statusCode: StatusCodes.Status429TooManyRequests);
                 }
                 catch (Exception ex)
                 {
@@ -687,7 +776,15 @@ public class GitHubConnectorType : IConnectorType
                     continue;
                 }
 
-                foreach (var repo in repos)
+                // Run the per-installation result through the pure
+                // intersection helper (#1663). With a null user-set
+                // this is a no-op besides the canonical alphabetical
+                // sort; the helper exists so the cloud overlay can
+                // wedge in tenant-scoped allow-lists at this seam
+                // without re-implementing the rule.
+                var filtered = UserScopedRepositoryFilter
+                    .Intersect(repos, userAccessibleRepoIds: null);
+                foreach (var repo in filtered)
                 {
                     aggregated.Add(new GitHubRepositoryResponse(
                         installation.InstallationId,

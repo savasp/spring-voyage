@@ -378,8 +378,40 @@ public class GitHubConnectorEndpointsTests
     }
 
     [Fact]
-    public async Task ListRepositories_AggregatesAcrossInstallations()
+    public async Task ListRepositories_AggregatesAcrossInstallations_ForSessionedUser()
     {
+        // #1663: the endpoint is fail-closed against session-less callers,
+        // so the happy-path "aggregates across installations" baseline
+        // must run with a real OAuth session in scope. We model a user
+        // ("alice") who belongs to "acme" and to her own personal
+        // account; all of the App's installations happen to fall in
+        // that scope, so the user-scoped intersect doesn't drop any.
+        const string sessionId = "test-session-aggregate";
+        const string fakeStoreKey = "store-key-aggregate";
+        const string fakeAccessToken = "ghu_aggregate";
+
+        var sessionStore = Substitute.For<IOAuthSessionStore>();
+        sessionStore.GetAsync(sessionId, Arg.Any<CancellationToken>())
+            .Returns(new OAuthSession(
+                SessionId: sessionId,
+                Login: "alice",
+                UserId: 42L,
+                Scopes: "repo read:org",
+                AccessTokenStoreKey: fakeStoreKey,
+                RefreshTokenStoreKey: null,
+                ExpiresAt: null,
+                CreatedAt: DateTimeOffset.UtcNow,
+                ClientState: null));
+
+        var secretStore = Substitute.For<ISecretStore>();
+        secretStore.ReadAsync(fakeStoreKey, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<string?>(fakeAccessToken));
+
+        var scopeResolver = Substitute.For<IGitHubUserScopeResolver>();
+        scopeResolver.ResolveAsync(fakeAccessToken, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlySet<string>>(
+                new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "alice", "acme" }));
+
         // #1133: the new endpoint replaces "type owner / type repo /
         // pick installation" with a single dropdown sourced from every
         // visible installation. The response carries the installation id
@@ -391,24 +423,31 @@ public class GitHubConnectorEndpointsTests
                 new GitHubInstallation(1001L, "acme", "Organization", "selected"),
                 new GitHubInstallation(1002L, "alice", "User", "all"),
             });
-        installationsClient.ListInstallationRepositoriesAsync(1001L, Arg.Any<CancellationToken>())
+        installationsClient.ListUserAccessibleRepositoriesAsync(
+                1001L, fakeAccessToken, Arg.Any<CancellationToken>())
             .Returns(new[]
             {
                 new GitHubInstallationRepository(10L, "acme", "platform", "acme/platform", true),
                 new GitHubInstallationRepository(11L, "acme", "ui", "acme/ui", false),
             });
-        installationsClient.ListInstallationRepositoriesAsync(1002L, Arg.Any<CancellationToken>())
+        installationsClient.ListUserAccessibleRepositoriesAsync(
+                1002L, fakeAccessToken, Arg.Any<CancellationToken>())
             .Returns(new[]
             {
                 new GitHubInstallationRepository(20L, "alice", "demos", "alice/demos", false),
             });
 
-        await using var factory = CreateFactory(installationsClient: installationsClient);
+        await using var factory = CreateFactory(
+            installationsClient: installationsClient,
+            sessionStore: sessionStore,
+            secretStore: secretStore,
+            scopeResolver: scopeResolver);
         var client = factory.CreateClient();
         var ct = TestContext.Current.CancellationToken;
 
         var response = await client.GetAsync(
-            "/api/v1/tenant/connectors/github/actions/list-repositories", ct);
+            $"/api/v1/tenant/connectors/github/actions/list-repositories?session_id={sessionId}",
+            ct);
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
         var body = await response.Content.ReadFromJsonAsync<GitHubRepositoryResponse[]>(ct);
@@ -430,6 +469,12 @@ public class GitHubConnectorEndpointsTests
         platform.Owner.ShouldBe("acme");
         platform.Repo.ShouldBe("platform");
         platform.Private.ShouldBeTrue();
+
+        // The App-installation listing must NEVER be used when an OAuth
+        // user token is in play (#1663). Only the user-scoped
+        // /user/installations/{id}/repositories path is allowed.
+        await installationsClient.DidNotReceive()
+            .ListInstallationRepositoriesAsync(Arg.Any<long>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -438,6 +483,32 @@ public class GitHubConnectorEndpointsTests
         // One installation throwing must not collapse the entire response
         // — the wizard still needs to render the other installations'
         // repos so the user can pick one.
+        const string sessionId = "test-session-poison";
+        const string fakeStoreKey = "store-key-poison";
+        const string fakeAccessToken = "ghu_poison";
+
+        var sessionStore = Substitute.For<IOAuthSessionStore>();
+        sessionStore.GetAsync(sessionId, Arg.Any<CancellationToken>())
+            .Returns(new OAuthSession(
+                SessionId: sessionId,
+                Login: "alice",
+                UserId: 42L,
+                Scopes: "repo read:org",
+                AccessTokenStoreKey: fakeStoreKey,
+                RefreshTokenStoreKey: null,
+                ExpiresAt: null,
+                CreatedAt: DateTimeOffset.UtcNow,
+                ClientState: null));
+
+        var secretStore = Substitute.For<ISecretStore>();
+        secretStore.ReadAsync(fakeStoreKey, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<string?>(fakeAccessToken));
+
+        var scopeResolver = Substitute.For<IGitHubUserScopeResolver>();
+        scopeResolver.ResolveAsync(fakeAccessToken, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlySet<string>>(
+                new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "alice", "acme" }));
+
         var installationsClient = Substitute.For<IGitHubInstallationsClient>();
         installationsClient.ListInstallationsAsync(Arg.Any<CancellationToken>())
             .Returns(new[]
@@ -445,20 +516,27 @@ public class GitHubConnectorEndpointsTests
                 new GitHubInstallation(1001L, "acme", "Organization", "selected"),
                 new GitHubInstallation(1002L, "alice", "User", "all"),
             });
-        installationsClient.ListInstallationRepositoriesAsync(1001L, Arg.Any<CancellationToken>())
+        installationsClient.ListUserAccessibleRepositoriesAsync(
+                1001L, fakeAccessToken, Arg.Any<CancellationToken>())
             .ThrowsAsync(new InvalidOperationException("github 503"));
-        installationsClient.ListInstallationRepositoriesAsync(1002L, Arg.Any<CancellationToken>())
+        installationsClient.ListUserAccessibleRepositoriesAsync(
+                1002L, fakeAccessToken, Arg.Any<CancellationToken>())
             .Returns(new[]
             {
                 new GitHubInstallationRepository(20L, "alice", "demos", "alice/demos", false),
             });
 
-        await using var factory = CreateFactory(installationsClient: installationsClient);
+        await using var factory = CreateFactory(
+            installationsClient: installationsClient,
+            sessionStore: sessionStore,
+            secretStore: secretStore,
+            scopeResolver: scopeResolver);
         var client = factory.CreateClient();
         var ct = TestContext.Current.CancellationToken;
 
         var response = await client.GetAsync(
-            "/api/v1/tenant/connectors/github/actions/list-repositories", ct);
+            $"/api/v1/tenant/connectors/github/actions/list-repositories?session_id={sessionId}",
+            ct);
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
         var body = await response.Content.ReadFromJsonAsync<GitHubRepositoryResponse[]>(ct);
@@ -721,12 +799,13 @@ public class GitHubConnectorEndpointsTests
     }
 
     [Fact]
-    public async Task ListRepositories_WithUnknownSessionId_ReturnsAllInstallations()
+    public async Task ListRepositories_WithUnknownSessionId_Returns401MissingOAuth()
     {
-        // When the session_id is supplied but not found, the endpoint falls
-        // back to the unfiltered list rather than returning an empty result.
-        // Operators who call without a valid session still get the full
-        // picture; the session is optional for backward compatibility.
+        // #1663: an unknown session id is treated the same as a missing
+        // one — the endpoint must NEVER fall back to the App-installation
+        // listing. The pre-#1663 contract returned every visible
+        // installation in this case, leaking repos the caller has no
+        // user-side permission for.
         const string sessionId = "unknown-session";
 
         var sessionStore = Substitute.For<IOAuthSessionStore>();
@@ -735,21 +814,8 @@ public class GitHubConnectorEndpointsTests
 
         var installationsClient = Substitute.For<IGitHubInstallationsClient>();
         installationsClient.ListInstallationsAsync(Arg.Any<CancellationToken>())
-            .Returns(new[]
-            {
-                new GitHubInstallation(3001L, "acme", "Organization", "all"),
-                new GitHubInstallation(3002L, "other-org", "Organization", "all"),
-            });
-        installationsClient.ListInstallationRepositoriesAsync(3001L, Arg.Any<CancellationToken>())
-            .Returns(new[]
-            {
-                new GitHubInstallationRepository(30L, "acme", "api", "acme/api", false),
-            });
-        installationsClient.ListInstallationRepositoriesAsync(3002L, Arg.Any<CancellationToken>())
-            .Returns(new[]
-            {
-                new GitHubInstallationRepository(31L, "other-org", "legacy", "other-org/legacy", false),
-            });
+            .ThrowsAsync(new InvalidOperationException(
+                "Installations must not be enumerated when no OAuth session is available."));
 
         await using var factory = CreateFactory(
             installationsClient: installationsClient,
@@ -761,35 +827,31 @@ public class GitHubConnectorEndpointsTests
             $"/api/v1/tenant/connectors/github/actions/list-repositories?session_id={sessionId}",
             ct);
 
-        response.StatusCode.ShouldBe(HttpStatusCode.OK);
-        var body = await response.Content.ReadFromJsonAsync<GitHubRepositoryResponse[]>(ct);
-        body.ShouldNotBeNull();
-        // Both installations are returned because the session was unknown.
-        body!.Length.ShouldBe(2);
+        response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(ct);
+        body.GetProperty("missingOAuth").GetBoolean().ShouldBeTrue(
+            "the portal keys its remediation panel off the missingOAuth flag");
+        body.GetProperty("reason").GetString().ShouldNotBeNullOrEmpty();
+
+        // No installation lookup may have happened — that's the leak we
+        // closed.
+        await installationsClient.DidNotReceiveWithAnyArgs()
+            .ListInstallationsAsync(Arg.Any<CancellationToken>());
+        await installationsClient.DidNotReceiveWithAnyArgs()
+            .ListInstallationRepositoriesAsync(Arg.Any<long>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
-    public async Task ListRepositories_WithoutSessionId_ReturnsAllInstallations()
+    public async Task ListRepositories_WithoutSessionId_Returns401MissingOAuth()
     {
-        // The baseline: no session_id supplied → full unfiltered list.
-        // This is the backward-compatible case (CLI, integrations).
+        // #1663: the endpoint is fail-closed against session-less callers.
+        // The pre-#1663 contract returned the full installation list
+        // here, which surfaced every repo the App could see — including
+        // ones the caller's GitHub identity has no permission to view.
         var installationsClient = Substitute.For<IGitHubInstallationsClient>();
         installationsClient.ListInstallationsAsync(Arg.Any<CancellationToken>())
-            .Returns(new[]
-            {
-                new GitHubInstallation(4001L, "tenant-a", "Organization", "all"),
-                new GitHubInstallation(4002L, "tenant-b", "Organization", "all"),
-            });
-        installationsClient.ListInstallationRepositoriesAsync(4001L, Arg.Any<CancellationToken>())
-            .Returns(new[]
-            {
-                new GitHubInstallationRepository(40L, "tenant-a", "core", "tenant-a/core", false),
-            });
-        installationsClient.ListInstallationRepositoriesAsync(4002L, Arg.Any<CancellationToken>())
-            .Returns(new[]
-            {
-                new GitHubInstallationRepository(41L, "tenant-b", "infra", "tenant-b/infra", false),
-            });
+            .ThrowsAsync(new InvalidOperationException(
+                "Installations must not be enumerated when no OAuth session is supplied."));
 
         await using var factory = CreateFactory(installationsClient: installationsClient);
         var client = factory.CreateClient();
@@ -798,10 +860,69 @@ public class GitHubConnectorEndpointsTests
         var response = await client.GetAsync(
             "/api/v1/tenant/connectors/github/actions/list-repositories", ct);
 
-        response.StatusCode.ShouldBe(HttpStatusCode.OK);
-        var body = await response.Content.ReadFromJsonAsync<GitHubRepositoryResponse[]>(ct);
-        body.ShouldNotBeNull();
-        body!.Length.ShouldBe(2);
+        response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(ct);
+        body.GetProperty("missingOAuth").GetBoolean().ShouldBeTrue();
+        body.GetProperty("reason").GetString().ShouldNotBeNullOrEmpty();
+
+        // The installation list MUST NOT be enumerated — that's the
+        // entire point of the fail-closed contract.
+        await installationsClient.DidNotReceiveWithAnyArgs()
+            .ListInstallationsAsync(Arg.Any<CancellationToken>());
+        await installationsClient.DidNotReceiveWithAnyArgs()
+            .ListInstallationRepositoriesAsync(Arg.Any<long>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ListRepositories_SessionWithoutAccessToken_Returns401MissingOAuth()
+    {
+        // #1663: when the OAuth session record exists but the secret
+        // store has no token (e.g. the secret was rotated / wiped),
+        // the endpoint must fail closed rather than fall back. The
+        // pre-#1663 code logged a warning and returned the unfiltered
+        // installation list.
+        const string sessionId = "session-without-token";
+        const string fakeStoreKey = "store-key-empty";
+
+        var sessionStore = Substitute.For<IOAuthSessionStore>();
+        sessionStore.GetAsync(sessionId, Arg.Any<CancellationToken>())
+            .Returns(new OAuthSession(
+                SessionId: sessionId,
+                Login: "alice",
+                UserId: 42L,
+                Scopes: "repo read:org",
+                AccessTokenStoreKey: fakeStoreKey,
+                RefreshTokenStoreKey: null,
+                ExpiresAt: null,
+                CreatedAt: DateTimeOffset.UtcNow,
+                ClientState: null));
+
+        var secretStore = Substitute.For<ISecretStore>();
+        secretStore.ReadAsync(fakeStoreKey, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<string?>(null));
+
+        var installationsClient = Substitute.For<IGitHubInstallationsClient>();
+        installationsClient.ListInstallationsAsync(Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException(
+                "Installations must not be enumerated without a usable OAuth token."));
+
+        await using var factory = CreateFactory(
+            installationsClient: installationsClient,
+            sessionStore: sessionStore,
+            secretStore: secretStore);
+        var client = factory.CreateClient();
+        var ct = TestContext.Current.CancellationToken;
+
+        var response = await client.GetAsync(
+            $"/api/v1/tenant/connectors/github/actions/list-repositories?session_id={sessionId}",
+            ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(ct);
+        body.GetProperty("missingOAuth").GetBoolean().ShouldBeTrue();
+
+        await installationsClient.DidNotReceiveWithAnyArgs()
+            .ListInstallationsAsync(Arg.Any<CancellationToken>());
     }
 
     // -----------------------------------------------------------------------

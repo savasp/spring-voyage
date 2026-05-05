@@ -31,6 +31,7 @@ import { useToast } from "@/components/ui/toast";
 import { ApiError, api } from "@/lib/api/client";
 import type {
   GitHubCollaboratorResponse,
+  GitHubMissingOAuthResponse,
   GitHubRepositoryResponse,
   UnitGitHubConfigResponse,
 } from "@/lib/api/types";
@@ -45,6 +46,34 @@ const GITHUB_APP_DOCS_URL =
 
 const NO_REVIEWER = "";
 
+// #1663: shared sessionStorage key with `connector-wizard-step.tsx`. The
+// post-bind tab and the create-unit wizard see the same linked GitHub
+// OAuth session within a single browser tab so operators don't have to
+// link twice.
+const GH_OAUTH_SESSION_STORAGE_KEY = "springvoyage:github-oauth-session-id";
+
+function readStoredOAuthSessionId(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.sessionStorage.getItem(GH_OAUTH_SESSION_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredOAuthSessionId(value: string | null): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (value === null) {
+      window.sessionStorage.removeItem(GH_OAUTH_SESSION_STORAGE_KEY);
+    } else {
+      window.sessionStorage.setItem(GH_OAUTH_SESSION_STORAGE_KEY, value);
+    }
+  } catch {
+    // Ignore — sessionStorage may be unavailable in embedded contexts.
+  }
+}
+
 function extractDisabledReason(err: unknown): string | null {
   if (!(err instanceof ApiError) || err.status !== 404) {
     return null;
@@ -57,6 +86,28 @@ function extractDisabledReason(err: unknown): string | null {
     typeof body.reason === "string"
   ) {
     return body.reason;
+  }
+  return null;
+}
+
+/**
+ * #1663: extracts the missing-OAuth payload from a 401 ApiError thrown
+ * by the connector-scoped `list-repositories` endpoint. Drives the
+ * "Link your GitHub account" panel rendered in place of the dropdown.
+ */
+function extractMissingOAuth(
+  err: unknown,
+): GitHubMissingOAuthResponse | null {
+  if (!(err instanceof ApiError) || err.status !== 401) {
+    return null;
+  }
+  const body = err.body as { missingOAuth?: unknown } | null;
+  if (
+    body !== null &&
+    typeof body === "object" &&
+    body.missingOAuth === true
+  ) {
+    return body as GitHubMissingOAuthResponse;
   }
   return null;
 }
@@ -131,6 +182,19 @@ export function GitHubConnectorTab({ unitId }: GitHubConnectorTabProps) {
   // a network error or an unconfigured repo (#1186). When set we hide the
   // install affordances and render a remediation panel instead.
   const [disabledReason, setDisabledReason] = useState<string | null>(null);
+  // #1663: missing-OAuth-session is a first-class connector state distinct
+  // from disabled-with-reason. The list-repositories endpoint is fail-
+  // closed against session-less callers, so when no session is linked
+  // we render a "Link your GitHub account" panel and hide every other
+  // affordance until the operator completes the OAuth dance.
+  const [missingOAuth, setMissingOAuth] =
+    useState<GitHubMissingOAuthResponse | null>(null);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(
+    readStoredOAuthSessionId(),
+  );
+  const [pendingSessionId, setPendingSessionId] = useState("");
+  const [linkingOAuth, setLinkingOAuth] = useState(false);
+  const [oAuthLinkError, setOAuthLinkError] = useState<string | null>(null);
 
   const applyConfig = useCallback((c: UnitGitHubConfigResponse) => {
     setConfig(c);
@@ -171,35 +235,52 @@ export function GitHubConnectorTab({ unitId }: GitHubConnectorTabProps) {
   // #1132: `reposLoading` doubles as the in-flight indicator for the
   // Recheck button — operators editing an existing unit get the same
   // affordance as operators using the create-unit wizard.
+  // #1663: passes the cached OAuth session id and treats the 401
+  // missingOAuth body as a first-class state, mirroring the wizard
+  // step's handling.
   const loadRepositories = useCallback(async () => {
     let list: GitHubRepositoryResponse[] = [];
     let disabled: string | null = null;
+    let missing: GitHubMissingOAuthResponse | null = null;
     setReposLoading(true);
     try {
-      list = await api.listGitHubRepositories();
+      list = await api.listGitHubRepositories(activeSessionId ?? undefined);
       setRepositories(list);
       setReposError(null);
       setDisabledReason(null);
+      setMissingOAuth(null);
     } catch (err) {
-      disabled = extractDisabledReason(err);
-      if (disabled !== null) {
-        setDisabledReason(disabled);
-        setReposError(null);
-      } else {
-        const message = err instanceof Error ? err.message : String(err);
-        setReposError(message);
+      missing = extractMissingOAuth(err);
+      if (missing !== null) {
+        setMissingOAuth(missing);
         setDisabledReason(null);
+        setReposError(null);
+        setRepositories([]);
+      } else {
+        disabled = extractDisabledReason(err);
+        if (disabled !== null) {
+          setDisabledReason(disabled);
+          setReposError(null);
+          setMissingOAuth(null);
+        } else {
+          const message = err instanceof Error ? err.message : String(err);
+          setReposError(message);
+          setDisabledReason(null);
+          setMissingOAuth(null);
+        }
+        setRepositories([]);
       }
-      setRepositories([]);
     } finally {
       setReposLoading(false);
     }
     // Fetch the install URL whenever the empty-state banner will show
     // (either the list came back empty, or the call errored). Keeps the
     // post-bind surface in parity with the create-unit wizard (#599).
-    // Skip when the connector is disabled at the deployment level — the
-    // install URL endpoint will return the same 404 with no URL to show.
-    if (disabled === null && list.length === 0) {
+    // Skip when the connector is disabled or the OAuth session is
+    // missing — those panels render their own CTAs and the install-url
+    // endpoint either 404s with the disabled body or is irrelevant
+    // until the operator has linked their account.
+    if (disabled === null && missing === null && list.length === 0) {
       try {
         const { url } = await api.getGitHubInstallUrl();
         setInstallUrl(url);
@@ -208,7 +289,58 @@ export function GitHubConnectorTab({ unitId }: GitHubConnectorTabProps) {
         // configured for GitHub Apps at all.
       }
     }
-  }, []);
+  }, [activeSessionId]);
+
+  // #1663: imperative wrappers for the "Link GitHub account" / "paste
+  // session id" affordances on the missing-OAuth panel. Mirrors the
+  // wizard step's behaviour so the two surfaces handle the OAuth dance
+  // identically.
+  const linkGitHubAccount = useCallback(async () => {
+    setLinkingOAuth(true);
+    setOAuthLinkError(null);
+    try {
+      const target = missingOAuth?.authorizeUrl ?? null;
+      if (target !== null && target.length > 0) {
+        window.open(target, "_blank", "noopener,noreferrer");
+        return;
+      }
+      const result = await api.beginGitHubOAuthAuthorize();
+      window.open(result.authorizeUrl, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setOAuthLinkError(message);
+    } finally {
+      setLinkingOAuth(false);
+    }
+  }, [missingOAuth]);
+
+  const applyPastedSessionId = useCallback(async () => {
+    const trimmed = pendingSessionId.trim();
+    if (trimmed === "") return;
+    writeStoredOAuthSessionId(trimmed);
+    setActiveSessionId(trimmed);
+    setPendingSessionId("");
+    setMissingOAuth(null);
+    setReposLoading(true);
+    try {
+      const list = await api.listGitHubRepositories(trimmed);
+      setRepositories(list);
+      setReposError(null);
+    } catch (err) {
+      const missing = extractMissingOAuth(err);
+      if (missing !== null) {
+        writeStoredOAuthSessionId(null);
+        setActiveSessionId(null);
+        setMissingOAuth(missing);
+      } else {
+        const message = err instanceof Error ? err.message : String(err);
+        setReposError(message);
+      }
+      setRepositories([]);
+    } finally {
+      setReposLoading(false);
+    }
+  }, [pendingSessionId]);
 
   // Re-fetch collaborators whenever the chosen repo changes — same
   // behaviour as the wizard step.
@@ -419,7 +551,90 @@ export function GitHubConnectorTab({ unitId }: GitHubConnectorTabProps) {
           </div>
         )}
 
+        {/* #1663: missing-OAuth-session panel. Mirrors the wizard step
+            so the post-bind tab and the create-unit wizard share both
+            the contract and the affordance copy. */}
+        {disabledReason === null && missingOAuth !== null && (
+          <div
+            role="alert"
+            className="space-y-3 rounded-md border border-info/50 bg-info/15 px-3 py-2 text-sm text-info"
+            data-testid="github-missing-oauth"
+          >
+            <p className="font-medium">
+              Link your GitHub account to manage this connector.
+            </p>
+            <p className="text-foreground">{missingOAuth.reason}</p>
+            <p className="text-xs text-foreground">
+              The repository dropdown is filtered to only repos you can
+              access on GitHub. Linking your account lets the platform
+              intersect its installations with your own permissions.
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => void linkGitHubAccount()}
+                disabled={linkingOAuth}
+                aria-busy={linkingOAuth}
+                data-testid="github-link-account"
+              >
+                {linkingOAuth ? (
+                  <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                ) : (
+                  <Github className="mr-1 h-4 w-4" />
+                )}
+                {linkingOAuth ? "Opening…" : "Link GitHub account"}
+              </Button>
+              {missingOAuth.authorizeUrl === null && (
+                <span className="text-xs text-muted-foreground">
+                  (GitHub OAuth is not configured on this deployment.)
+                </span>
+              )}
+            </div>
+            {oAuthLinkError && (
+              <p className="text-xs text-destructive">
+                Could not open OAuth flow: {oAuthLinkError}
+              </p>
+            )}
+            <div className="space-y-1 border-t border-info/30 pt-2">
+              <label className="block space-y-1 text-xs">
+                <span className="text-foreground">
+                  After authorizing, paste the session id GitHub returned:
+                </span>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    className="h-8 flex-1 rounded-md border border-input bg-background px-2 text-xs font-mono"
+                    placeholder="sess_…"
+                    value={pendingSessionId}
+                    onChange={(e) => setPendingSessionId(e.target.value)}
+                    data-testid="github-oauth-session-input"
+                    spellCheck={false}
+                  />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => void applyPastedSessionId()}
+                    disabled={pendingSessionId.trim() === "" || reposLoading}
+                    data-testid="github-oauth-session-apply"
+                  >
+                    Use this session
+                  </Button>
+                </div>
+              </label>
+              <span className="block text-[11px] text-muted-foreground">
+                The OAuth callback returns JSON of the form
+                <code className="mx-1 rounded bg-muted px-1 py-0.5">
+                  {"{ \"sessionId\": \"…\", \"login\": \"…\" }"}
+                </code>
+                .
+              </span>
+            </div>
+          </div>
+        )}
+
         {disabledReason === null &&
+          missingOAuth === null &&
           repositories &&
           repositories.length === 0 && (
             <div
@@ -488,7 +703,7 @@ export function GitHubConnectorTab({ unitId }: GitHubConnectorTabProps) {
             </div>
           )}
 
-        {disabledReason === null && (
+        {disabledReason === null && missingOAuth === null && (
           <label className="block space-y-1">
             <span className="text-sm text-muted-foreground">Repository</span>
             <div className="flex items-center gap-2">
@@ -542,7 +757,7 @@ export function GitHubConnectorTab({ unitId }: GitHubConnectorTabProps) {
           </label>
         )}
 
-        {disabledReason === null && installationId != null && (
+        {disabledReason === null && missingOAuth === null && installationId != null && (
           <label className="block space-y-1">
             <span className="text-sm text-muted-foreground">
               Default reviewer
