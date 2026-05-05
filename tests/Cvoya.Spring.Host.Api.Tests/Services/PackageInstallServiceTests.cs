@@ -124,6 +124,7 @@ public class PackageInstallServiceTests
         a.ActivateAsync(
                 Arg.Any<string>(), Arg.Any<ResolvedArtefact>(),
                 Arg.Any<Guid>(), Arg.Any<LocalSymbolMap>(),
+                Arg.Any<IReadOnlyDictionary<string, ConnectorBinding>?>(),
                 Arg.Any<CancellationToken>())
             .Returns(Task.CompletedTask);
         return a;
@@ -166,7 +167,7 @@ public class PackageInstallServiceTests
         var activator = Substitute.For<IPackageArtefactActivator>();
         activator.ActivateAsync(
                 Arg.Any<string>(), Arg.Any<ResolvedArtefact>(),
-                Arg.Any<Guid>(), Arg.Any<LocalSymbolMap>(), Arg.Any<CancellationToken>())
+                Arg.Any<Guid>(), Arg.Any<LocalSymbolMap>(), Arg.Any<IReadOnlyDictionary<string, ConnectorBinding>?>(), Arg.Any<CancellationToken>())
             .Throws(new InvalidOperationException("Simulated mid-Phase-2 failure"));
 
         var (svc, scopeFactory) = BuildService(activator: activator);
@@ -190,7 +191,7 @@ public class PackageInstallServiceTests
         var activator = Substitute.For<IPackageArtefactActivator>();
         activator.ActivateAsync(
                 Arg.Any<string>(), Arg.Any<ResolvedArtefact>(),
-                Arg.Any<Guid>(), Arg.Any<LocalSymbolMap>(), Arg.Any<CancellationToken>())
+                Arg.Any<Guid>(), Arg.Any<LocalSymbolMap>(), Arg.Any<IReadOnlyDictionary<string, ConnectorBinding>?>(), Arg.Any<CancellationToken>())
             .Throws(new InvalidOperationException("Phase-2 failure"));
 
         var (svc, scopeFactory) = BuildService(activator: activator);
@@ -227,7 +228,7 @@ public class PackageInstallServiceTests
         var activator = Substitute.For<IPackageArtefactActivator>();
         activator.ActivateAsync(
                 Arg.Any<string>(), Arg.Any<ResolvedArtefact>(),
-                Arg.Any<Guid>(), Arg.Any<LocalSymbolMap>(), Arg.Any<CancellationToken>())
+                Arg.Any<Guid>(), Arg.Any<LocalSymbolMap>(), Arg.Any<IReadOnlyDictionary<string, ConnectorBinding>?>(), Arg.Any<CancellationToken>())
             .Returns(_ =>
             {
                 if (failCount++ == 0)
@@ -265,7 +266,7 @@ public class PackageInstallServiceTests
         var activator = Substitute.For<IPackageArtefactActivator>();
         activator.ActivateAsync(
                 Arg.Any<string>(), Arg.Any<ResolvedArtefact>(),
-                Arg.Any<Guid>(), Arg.Any<LocalSymbolMap>(), Arg.Any<CancellationToken>())
+                Arg.Any<Guid>(), Arg.Any<LocalSymbolMap>(), Arg.Any<IReadOnlyDictionary<string, ConnectorBinding>?>(), Arg.Any<CancellationToken>())
             .Throws(new InvalidOperationException("Activation fails"));
 
         var (svc, scopeFactory) = BuildService(activator: activator);
@@ -308,6 +309,7 @@ public class PackageInstallServiceTests
                 Arg.Any<ResolvedArtefact>(),
                 Arg.Any<Guid>(),
                 Arg.Do<LocalSymbolMap>(m => capturedMap = m),
+                Arg.Any<IReadOnlyDictionary<string, ConnectorBinding>?>(),
                 Arg.Any<CancellationToken>())
             .Returns(Task.CompletedTask);
 
