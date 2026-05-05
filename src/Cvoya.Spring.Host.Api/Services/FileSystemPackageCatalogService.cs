@@ -113,6 +113,8 @@ public class FileSystemPackageCatalogService(
         var connectors = ReadConnectors(packageDir, name, cancellationToken);
         var workflows = ReadWorkflows(packageDir, name, cancellationToken);
 
+        var connectorDeclarations = ReadConnectorDeclarations(packageDir);
+
         var detail = new PackageDetail(
             Name: name,
             Description: TryReadReadmeSummary(packageDir),
@@ -122,9 +124,57 @@ public class FileSystemPackageCatalogService(
             AgentTemplates: agentTemplates,
             Skills: skills,
             Connectors: connectors,
-            Workflows: workflows);
+            Workflows: workflows,
+            ConnectorDeclarations: connectorDeclarations);
 
         return Task.FromResult<PackageDetail?>(detail);
+    }
+
+    /// <summary>
+    /// Reads the package manifest's <c>connectors:</c> block (#1670) so the
+    /// install surfaces (wizard, CLI <c>spring package show</c>) can render
+    /// one row per declared connector type. Failures fall back to an empty
+    /// list — best-effort metadata, like <see cref="ReadPackageInputs"/>.
+    /// </summary>
+    private List<RequiredConnectorSummary> ReadConnectorDeclarations(string packageDir)
+    {
+        var manifestPath = FindManifestPath(packageDir);
+        if (manifestPath is null)
+        {
+            return [];
+        }
+
+        try
+        {
+            var yaml = File.ReadAllText(manifestPath);
+            var manifest = PackageManifestParser.ParseRaw(yaml);
+            if (manifest.Connectors is null || manifest.Connectors.Count == 0)
+            {
+                return [];
+            }
+
+            var result = new List<RequiredConnectorSummary>(manifest.Connectors.Count);
+            foreach (var c in manifest.Connectors)
+            {
+                if (string.IsNullOrWhiteSpace(c.Type))
+                {
+                    continue;
+                }
+                result.Add(new RequiredConnectorSummary(
+                    Type: c.Type!,
+                    Required: c.Required,
+                    InheritAll: c.InheritAll,
+                    InheritUnits: c.InheritUnits));
+            }
+            return result;
+        }
+        catch (Exception ex) when (ex is PackageParseException or YamlDotNet.Core.YamlException or IOException)
+        {
+            logger.LogWarning(ex,
+                "Skipping connector declarations for package manifest '{Path}' because it could not be parsed.",
+                manifestPath);
+            return [];
+        }
     }
 
     /// <summary>

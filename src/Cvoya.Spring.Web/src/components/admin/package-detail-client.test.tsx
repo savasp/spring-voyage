@@ -61,6 +61,7 @@ function makePackage(overrides?: Partial<PackageDetail>): PackageDetail {
     skills: [],
     connectors: [],
     workflows: [],
+    connectorDeclarations: [],
     ...overrides,
   };
 }

@@ -117,6 +117,88 @@ public class PackageManifest
     /// </summary>
     [YamlMember(Alias = "workflows")]
     public List<string>? Workflows { get; set; }
+
+    /// <summary>
+    /// Declarative connectors block (#1670). Lists each connector type the
+    /// package depends on, whether it is required at install time, and how
+    /// its binding inherits to member units. Operators configure each
+    /// declared connector once at install time; the resolved binding is
+    /// inherited by every member unit unless the unit's own
+    /// <c>connectors:</c> block opts out via <c>inherit: false</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Inheritance forms accepted on each entry's <c>inherit</c> slot:
+    /// </para>
+    /// <list type="bullet">
+    ///   <item><description><c>all</c> (default) — every member unit inherits.</description></item>
+    ///   <item><description><c>[unit-a, unit-b]</c> — only the named members inherit.</description></item>
+    /// </list>
+    /// <para>
+    /// Per-unit opt-out is expressed in the unit YAML by declaring the
+    /// connector slug in the unit's <c>connectors:</c> block with
+    /// <c>inherit: false</c>.
+    /// </para>
+    /// </remarks>
+    [YamlMember(Alias = "connectors")]
+    public List<RequiredConnector>? Connectors { get; set; }
+}
+
+/// <summary>
+/// One entry in a package's <c>connectors:</c> block (#1670). Declares
+/// the connector type the package depends on plus how its binding
+/// inherits to member units.
+/// </summary>
+public class RequiredConnector
+{
+    /// <summary>
+    /// The connector type slug (matches
+    /// <c>Cvoya.Spring.Connectors.IConnectorType.Slug</c>) — e.g.
+    /// <c>github</c>. The manifest parser validates the slug against the
+    /// connector registry at install time; an unknown slug is a parse error.
+    /// </summary>
+    [YamlMember(Alias = "type")]
+    public string? Type { get; set; }
+
+    /// <summary>
+    /// When <c>true</c>, the install pipeline rejects the request with a
+    /// <c>ConnectorBindingMissing</c> 400 if the operator has not supplied
+    /// a binding for this connector at install time. Defaults to <c>true</c>
+    /// — a connector is declared because it is needed.
+    /// </summary>
+    [YamlMember(Alias = "required")]
+    public bool Required { get; set; } = true;
+
+    /// <summary>
+    /// Inheritance scope. Accepts the literal string <c>all</c> (every
+    /// member unit inherits — the default) or a YAML sequence of member
+    /// unit names (only the named members inherit). The two shapes are
+    /// surfaced through <see cref="InheritAll"/> and
+    /// <see cref="InheritUnits"/> after parsing — the raw YAML node lives
+    /// on <see cref="InheritRaw"/> so the parser can distinguish "absent"
+    /// from "explicitly set to all".
+    /// </summary>
+    /// <remarks>
+    /// Per-unit opt-out (<c>inherit: false</c>) is expressed on the unit
+    /// side, not here — see <see cref="ConnectorManifest.Inherit"/>.
+    /// </remarks>
+    [YamlMember(Alias = "inherit")]
+    public object? InheritRaw { get; set; }
+
+    /// <summary>
+    /// True when <see cref="InheritRaw"/> is absent or the literal string
+    /// <c>all</c>. Set by the parser after reading the raw YAML.
+    /// </summary>
+    [YamlIgnore]
+    public bool InheritAll { get; set; } = true;
+
+    /// <summary>
+    /// When non-null, the explicit list of member unit names that inherit
+    /// the package-level binding. <c>null</c> when <see cref="InheritAll"/>
+    /// is <c>true</c>. Set by the parser after reading the raw YAML.
+    /// </summary>
+    [YamlIgnore]
+    public IReadOnlyList<string>? InheritUnits { get; set; }
 }
 
 /// <summary>

@@ -50,6 +50,13 @@ public record PackageSummary(
 /// <param name="Skills">Skill bundles offered by the package.</param>
 /// <param name="Connectors">Connector assets shipped with the package.</param>
 /// <param name="Workflows">Workflow bundles shipped with the package.</param>
+/// <param name="ConnectorDeclarations">
+/// Declarative connector dependencies (#1670). Each entry mirrors one
+/// row of the <c>connectors:</c> block in the package's <c>package.yaml</c>:
+/// the connector slug, whether it is required at install time, and how
+/// its binding inherits to member units. Empty when the package declares
+/// no connectors.
+/// </param>
 public record PackageDetail(
     string Name,
     string? Description,
@@ -59,7 +66,31 @@ public record PackageDetail(
     IReadOnlyList<AgentTemplateSummary> AgentTemplates,
     IReadOnlyList<SkillSummary> Skills,
     IReadOnlyList<ConnectorSummary> Connectors,
-    IReadOnlyList<WorkflowSummary> Workflows);
+    IReadOnlyList<WorkflowSummary> Workflows,
+    IReadOnlyList<RequiredConnectorSummary> ConnectorDeclarations);
+
+/// <summary>
+/// Wire shape for one entry in <see cref="PackageDetail.ConnectorDeclarations"/>
+/// — the parsed <c>connectors:</c> block on the package manifest (#1670).
+/// Surfaces the inheritance shape so the wizard / CLI can decide which
+/// connector configuration steps to render before the package-inputs step.
+/// </summary>
+/// <param name="Type">The connector slug (matches <c>IConnectorType.Slug</c>).</param>
+/// <param name="Required">When true, install fails if no binding is supplied.</param>
+/// <param name="InheritAll">
+/// True when the binding inherits to every member unit unless that unit
+/// opts out via its own <c>connectors:</c> block.
+/// </param>
+/// <param name="InheritUnits">
+/// When non-null, the explicit list of member-unit names that inherit
+/// the package-level binding. <c>null</c> when <see cref="InheritAll"/>
+/// is true.
+/// </param>
+public record RequiredConnectorSummary(
+    string Type,
+    bool Required,
+    bool InheritAll,
+    IReadOnlyList<string>? InheritUnits);
 
 /// <summary>
 /// Wire-shape for a single declared input on a <see cref="PackageDetail"/>.

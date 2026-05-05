@@ -212,6 +212,118 @@ public class PackageManifestParserRawTests
             .Message.ShouldContain("YAML");
     }
 
+    // ---- Connector block (#1670) ---------------------------------------
+
+    [Fact]
+    public void ParseRaw_ConnectorsDefaultInheritAll_ParsesAndDefaults()
+    {
+        var yaml = """
+            apiVersion: spring.voyage/v1
+            kind: UnitPackage
+            metadata:
+              name: my-pkg
+            connectors:
+              - type: github
+                required: true
+            unit: root-unit
+            """;
+
+        var manifest = PackageManifestParser.ParseRaw(yaml);
+
+        manifest.Connectors.ShouldNotBeNull();
+        manifest.Connectors!.Count.ShouldBe(1);
+        var entry = manifest.Connectors[0];
+        entry.Type.ShouldBe("github");
+        entry.Required.ShouldBeTrue();
+        entry.InheritAll.ShouldBeTrue();
+        entry.InheritUnits.ShouldBeNull();
+    }
+
+    [Fact]
+    public void ParseRaw_ConnectorsInheritList_ParsesUnitNames()
+    {
+        var yaml = """
+            apiVersion: spring.voyage/v1
+            kind: UnitPackage
+            metadata:
+              name: my-pkg
+            connectors:
+              - type: github
+                inherit:
+                  - sv-oss-software-engineering
+                  - sv-oss-design
+            unit: root-unit
+            """;
+
+        var manifest = PackageManifestParser.ParseRaw(yaml);
+
+        var entry = manifest.Connectors!.Single();
+        entry.InheritAll.ShouldBeFalse();
+        entry.InheritUnits.ShouldNotBeNull();
+        entry.InheritUnits!.Count.ShouldBe(2);
+        entry.InheritUnits.ShouldContain("sv-oss-software-engineering");
+    }
+
+    [Fact]
+    public void ParseRaw_ConnectorsInheritAllScalar_DefaultsToInheritAll()
+    {
+        var yaml = """
+            apiVersion: spring.voyage/v1
+            kind: UnitPackage
+            metadata:
+              name: my-pkg
+            connectors:
+              - type: github
+                inherit: all
+            unit: root-unit
+            """;
+
+        var manifest = PackageManifestParser.ParseRaw(yaml);
+
+        var entry = manifest.Connectors!.Single();
+        entry.InheritAll.ShouldBeTrue();
+        entry.InheritUnits.ShouldBeNull();
+    }
+
+    [Fact]
+    public void ParseRaw_ConnectorsBadInheritScalar_Throws()
+    {
+        var yaml = """
+            apiVersion: spring.voyage/v1
+            kind: UnitPackage
+            metadata:
+              name: my-pkg
+            connectors:
+              - type: github
+                inherit: nonsense
+            unit: root-unit
+            """;
+
+        var act = () => PackageManifestParser.ParseRaw(yaml);
+
+        Should.Throw<PackageParseException>(act)
+            .Message.ShouldContain("inherit");
+    }
+
+    [Fact]
+    public void ParseRaw_ConnectorsMissingType_Throws()
+    {
+        var yaml = """
+            apiVersion: spring.voyage/v1
+            kind: UnitPackage
+            metadata:
+              name: my-pkg
+            connectors:
+              - required: true
+            unit: root-unit
+            """;
+
+        var act = () => PackageManifestParser.ParseRaw(yaml);
+
+        Should.Throw<PackageParseException>(act)
+            .Message.ShouldContain("type");
+    }
+
     // ---- Backward compatibility: old single-unit YAML still parses via ManifestParser ----------
 
     [Fact]

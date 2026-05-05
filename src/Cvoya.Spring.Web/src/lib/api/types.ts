@@ -148,6 +148,26 @@ export type PackageDetail = Schemas["PackageDetail"];
  */
 export type PackageInputSummary = Schemas["PackageInputSummary"];
 
+/**
+ * Single declared connector dependency on a {@link PackageDetail} (#1670).
+ * The wizard reads the array of these to decide how many forced
+ * connector steps to render before the package-inputs step.
+ */
+export type RequiredConnectorSummary = Schemas["RequiredConnectorSummary"];
+
+/**
+ * Wire shape for the connector-binding payload supplied at install time
+ * (#1671). The wizard emits this on the install request body's
+ * <c>connectorBindings</c> field instead of stuffing connector outputs
+ * into <c>catalogInputs</c>.
+ */
+export type PackageConnectorBindings = Schemas["PackageConnectorBindings"];
+
+/**
+ * One connector binding payload — wraps a connector-typed config object.
+ */
+export type ConnectorBindingPayload = Schemas["ConnectorBindingPayload"];
+
 /** GET /api/v1/costs/agents/{id} or /units/{id} response. */
 export type CostSummaryResponse = Schemas["CostSummaryResponse"];
 

@@ -4,19 +4,13 @@ metadata:
   name: spring-voyage-oss
   description: The Spring Voyage OSS dogfooding organisation — software engineering, design, product management, and program management operating on the Spring Voyage platform itself.
 
-inputs:
-  - name: github_owner
-    type: string
+# #1670: declarative connector dependency. Operators configure the GitHub
+# binding once at install time (via the wizard's forced connector step or
+# `spring package install --connector github=<owner>/<repo>@<installation-id>`);
+# every member unit inherits the binding by default.
+connectors:
+  - type: github
     required: true
-    description: GitHub owner (org or user) that owns the repository this organisation operates on.
-  - name: github_repo
-    type: string
-    required: true
-    description: GitHub repository name this organisation operates on.
-  - name: github_installation_id
-    type: string
-    required: true
-    description: GitHub App installation ID for the Spring Voyage App on the target repository. Obtain from the GitHub App settings page — not a secret, operator-specific.
 
 unit: spring-voyage-oss
 subUnits:
